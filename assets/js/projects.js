@@ -1,17 +1,10 @@
 const PROJECTS = [
   {
-    title: 'Template',
-    href: 'apps/template/',
-    poster: null,
-    blurb: 'Starting point to copy when building a new app.',
-    status: 'live',
-  },
-  {
     title: 'FractalExplorer',
     href: 'apps/fractal-explorer/',
-    poster: 'assets/img/posters/fractal-explorer.png',
-    blurb: 'Pan and zoom the Mandelbrot set.',
-    status: 'planned',
+    poster: 'assets/img/posters/fractal-explorer.webp',
+    blurb: 'Explore, animate and invent fractal formulas on the GPU.',
+    status: 'live',
   },
   {
     title: '[App 2]',

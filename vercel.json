@@ -1,0 +1,26 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "trailingSlash": true,
+  "redirects": [
+    {
+      "source": "/apps/fractal-explorer",
+      "destination": "/apps/fractal-explorer/portal/",
+      "permanent": false
+    },
+    {
+      "source": "/apps/fractal-explorer/",
+      "destination": "/apps/fractal-explorer/portal/",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/apps/fractal-explorer/:path*/",
+      "destination": "https://fractal-explorer-six.vercel.app/:path*/"
+    },
+    {
+      "source": "/apps/fractal-explorer/:path*",
+      "destination": "https://fractal-explorer-six.vercel.app/:path*"
+    }
+  ]
+}
