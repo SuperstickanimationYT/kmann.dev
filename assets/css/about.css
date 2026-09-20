@@ -1,0 +1,15 @@
+.prose {
+  max-width: 62ch;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.prose h2 {
+  margin: 30px 0 10px;
+  font-size: 20px;
+  color: var(--text-strong);
+}
+
+.prose p {
+  margin: 0 0 14px;
+}
