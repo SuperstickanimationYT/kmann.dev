@@ -1,6 +1,13 @@
-import { BATTERY } from './world.js';
+import { MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
+const TOAST_MS = 4500;
+const UPGRADE_TEXT = {
+  batterySlots: { name: 'Battery rack', describe: (value) => `${value} slots` },
+  panels: { name: 'Solar panels', describe: (value) => `${value}× charging` },
+  tank: { name: 'Fuel tank', describe: (value) => `${value} fuel` },
+  engine: { name: 'Engine', describe: (value) => `${value}× thrust` },
+};
 
 const SUFFIXES = ['', 'K', 'M', 'B', 'T'];
 
@@ -24,7 +31,7 @@ function setHidden(element, hidden) {
 }
 
 function createBatteryCells(container) {
-  return Array.from({ length: BATTERY.slots }, () => {
+  return Array.from({ length: MAX_BATTERY_SLOTS }, () => {
     const cell = document.createElement('span');
     cell.className = 'pp-battery';
     container.append(cell);
@@ -80,6 +87,9 @@ export function createHud(root, actions) {
     rigStatus: find('[data-rig-status]'),
     loadRig: find('[data-load-rig]'),
     collectGold: find('[data-collect-gold]'),
+    upgrades: find('[data-upgrades]'),
+    toast: find('[data-toast]'),
+    bountyHere: find('[data-bounty-here]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -110,7 +120,38 @@ export function createHud(root, actions) {
     const button = event.target.closest('[data-star]');
     if (button) actions.warpTo(button.dataset.star);
   });
+  parts.upgrades.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-upgrade]');
+    if (button) actions.buyUpgrade(button.dataset.upgrade);
+  });
   let shownDestinations = '';
+  let shownUpgrades = '';
+  let toastTimer = 0;
+
+  function toast(text) {
+    setText(parts.toast, text);
+    setHidden(parts.toast, false);
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => setHidden(parts.toast, true), TOAST_MS);
+  }
+
+  function showUpgrades(upgrades) {
+    const signature = upgrades.map(({ key, current, affordable }) => `${key}:${current}:${affordable}`).join('|');
+    if (signature === shownUpgrades) return;
+    shownUpgrades = signature;
+    parts.upgrades.replaceChildren(
+      ...upgrades.map(({ key, current, next, affordable }) => {
+        const { name, describe } = UPGRADE_TEXT[key];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pp-action pp-upgrade';
+        button.dataset.upgrade = key;
+        button.disabled = !affordable;
+        button.textContent = next ? `${name}: ${describe(current)} → ${describe(next.value)} · ${next.cost}` : `${name}: ${describe(current)} (max)`;
+        return button;
+      }),
+    );
+  }
 
   function showDestinations(destinations) {
     const signature = destinations.map(({ star, affordable }) => `${star.name}:${affordable}`).join('|');
@@ -146,7 +187,7 @@ export function createHud(root, actions) {
   function update(status) {
     setText(parts.tokens, String(status.galactokens));
     setText(parts.fuel, String(Math.floor(status.fuel)));
-    parts.fuelBar.style.width = `${status.fuel}%`;
+    parts.fuelBar.style.width = `${status.fuelFraction * 100}%`;
     setText(parts.warp, `${status.timewarp}x`);
     parts.warpKnob.style.bottom = `${((status.timewarp - 1) / 99) * 100}%`;
     setText(parts.location, status.location);
@@ -188,6 +229,9 @@ export function createHud(root, actions) {
     parts.sellGold.disabled = status.gold === 0;
     setHidden(parts.deploySatellite, !status.canDeploySatellite);
     setHidden(parts.deployRig, !status.canDeployRig);
+    showUpgrades(status.upgrades);
+    setHidden(parts.bountyHere, !status.bountyHere);
+    setText(parts.bountyHere, `Bounty ${status.bountyHere}`);
     updateSatellite(status);
     updateRig(status);
     showDestinations(status.warpDestinations);
@@ -214,5 +258,5 @@ export function createHud(root, actions) {
     parts.collectGold.disabled = rig.gold < 1;
   }
 
-  return { showPanel, update };
+  return { showPanel, update, toast };
 }

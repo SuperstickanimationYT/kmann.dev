@@ -26,6 +26,7 @@ import {
   takeSatelliteCharge,
   withinReach,
 } from './outposts.js';
+import { applyUpgrades, bountyWaiting, claimBounty, createUpgrades, nextUpgrade, upgradeValue } from './progression.js';
 import { deleteSave, readSave, writeSave } from './save.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
@@ -38,12 +39,12 @@ import {
   GOLD,
   HOME_BODY,
   MARKET,
-  MAX_FUEL,
   MINING_RIG,
   SATELLITE,
   SOLAR_PANELS,
   STARTING_GALACTOKENS,
   TICKS_PER_SECOND,
+  UPGRADES,
   WARP_DRIVE,
 } from './world.js';
 
@@ -92,9 +93,13 @@ const game = {
   satellite: null,
   rig: null,
   gold: 0,
+  upgrades: createUpgrades(),
+  claimedBounties: new Set(),
   panel: 'help',
   forecast: null,
 };
+
+applyUpgrades(game.upgrades, game.rocket, game.power);
 
 const held = new Set();
 const isHeld = (...keys) => keys.some((key) => held.has(key));
@@ -137,7 +142,7 @@ const actions = {
   stopDrill: () => stopDrill(game.drill, play),
   buyFuel: () => {
     const { rocket } = game;
-    if (game.galactokens < FUEL_PACK.cost || rocket.fuel > MAX_FUEL - FUEL_PACK.amount) return;
+    if (game.galactokens < FUEL_PACK.cost || rocket.fuel > rocket.fuelCapacity - FUEL_PACK.amount) return;
     rocket.fuel += FUEL_PACK.amount;
     game.galactokens -= FUEL_PACK.cost;
   },
@@ -151,6 +156,13 @@ const actions = {
     if (freeBatterySlots(game.power) < 1 || game.galactokens < BATTERY.cost) return;
     game.power.batteries.push(0);
     game.galactokens -= BATTERY.cost;
+  },
+  buyUpgrade: (key) => {
+    const upgrade = nextUpgrade(key, game.upgrades[key]);
+    if (!upgrade || game.galactokens < upgrade.cost) return;
+    game.galactokens -= upgrade.cost;
+    game.upgrades[key] += 1;
+    applyUpgrades(game.upgrades, game.rocket, game.power);
   },
   buyWarpDrive: () => {
     if (game.ownsWarpDrive || game.galactokens < WARP_DRIVE.cost) return;
@@ -225,14 +237,14 @@ const CHEATS = {
     game.galactokens += CHEAT_GALACTOKENS;
   },
   fuel: () => {
-    game.rocket.fuel = MAX_FUEL;
+    game.rocket.fuel = game.rocket.fuelCapacity;
   },
   unlockAll: () => {
     game.power.ownsPanels = true;
     game.ownsWarpDrive = true;
   },
   chargeBatteries: () => {
-    game.power.batteries = Array(BATTERY.slots).fill(1);
+    game.power.batteries = Array(game.power.slots).fill(1);
   },
   skipTenMinutes: () => advanceOutposts(CHEAT_SKIP_SECONDS),
   goHome: () => {
@@ -374,11 +386,21 @@ function explode() {
   if (game.panel === 'rocket') openPanel(null);
 }
 
+function rewardFirstLanding() {
+  const body = game.rocket.soi;
+  const bounty = claimBounty(game.claimedBounties, body);
+  if (!bounty) return;
+  game.galactokens += bounty;
+  hud.toast(`First landing on ${body.name}! +${bounty} galactokens`);
+}
+
 function simulate() {
   const { rocket } = game;
   let simTicks = 0;
   for (let i = 0; i < game.timewarp && !rocket.destroyed; i++) {
-    if (advance(rocket, STEP_TICKS) === 'crash') explode();
+    const hit = advance(rocket, STEP_TICKS);
+    if (hit === 'crash') explode();
+    if (hit === 'land') rewardFirstLanding();
     simTicks += STEP_TICKS;
   }
   return simTicks;
@@ -445,7 +467,7 @@ function marketNote() {
   if (galactokens < Math.min(FUEL_PACK.cost, BATTERY.cost) && chargedBatteries(power) === 0) return 'Not enough galactokens.';
   if (!power.ownsPanels) return 'Solar panels charge batteries near a star.';
   if (power.batteries.length === 0) return 'Charge empty batteries near the Sun, then sell them back here.';
-  if (rocket.fuel > MAX_FUEL - FUEL_PACK.amount) return 'Tank is full.';
+  if (rocket.fuel > rocket.fuelCapacity - FUEL_PACK.amount) return 'Tank is full.';
   return '';
 }
 
@@ -460,11 +482,17 @@ function warpNote(destinations) {
 function status() {
   const { rocket, drill, power } = game;
   const body = rocket.soi;
-  const fuelFull = rocket.fuel > MAX_FUEL - FUEL_PACK.amount;
+  const fuelFull = rocket.fuel > rocket.fuelCapacity - FUEL_PACK.amount;
   const destinations = game.panel === 'warp' && game.ownsWarpDrive && canWarpFrom(rocket) ? warpDestinations(rocket, power) : [];
   return {
     galactokens: game.galactokens,
     fuel: rocket.fuel,
+    fuelFraction: rocket.fuel / rocket.fuelCapacity,
+    upgrades: Object.keys(UPGRADES).map((key) => {
+      const next = nextUpgrade(key, game.upgrades[key]);
+      return { key, current: upgradeValue(key, game.upgrades[key]), next, affordable: Boolean(next) && game.galactokens >= next.cost };
+    }),
+    bountyHere: body ? bountyWaiting(game.claimedBounties, body) : 0,
     timewarp: game.timewarp,
     location: body ? body.name : 'Deep space',
     altitude: altitude(rocket),
@@ -537,6 +565,8 @@ function snapshot() {
     satellite: game.satellite,
     rig: game.rig,
     gold: game.gold,
+    upgrades: game.upgrades,
+    claimedBounties: [...game.claimedBounties],
   };
 }
 
@@ -550,6 +580,9 @@ function restore(saved) {
   Object.assign(power, saved.power);
   Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, timewarp: saved.timewarp, panel: null });
   Object.assign(game, { satellite: saved.satellite ?? null, rig: saved.rig ?? null, gold: saved.gold ?? 0 });
+  game.upgrades = { ...createUpgrades(), ...saved.upgrades };
+  game.claimedBounties = new Set(saved.claimedBounties ?? []);
+  applyUpgrades(game.upgrades, rocket, power);
   outpostClock = saved.savedAt;
   camera.zoom = saved.zoom;
   streamSectors(rocket.x, rocket.y);

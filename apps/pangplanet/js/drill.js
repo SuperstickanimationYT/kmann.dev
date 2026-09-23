@@ -1,4 +1,4 @@
-import { MAX_FUEL, TICKS_PER_SECOND } from './world.js';
+import { TICKS_PER_SECOND } from './world.js';
 
 const TRAVEL = 36;
 const TRAVEL_TICKS = 12;
@@ -53,7 +53,7 @@ function pumpWait() {
 
 function pump(drill, rocket, play) {
   play('blender');
-  rocket.fuel = Math.min(MAX_FUEL, Math.floor(rocket.fuel) + 1);
+  rocket.fuel = Math.min(rocket.fuelCapacity, Math.floor(rocket.fuel) + 1);
   drill.timer = pumpWait();
 }
 
@@ -73,7 +73,7 @@ export function updateDrill(drill, rocket, wallTicks, simTicks, play) {
       }
       break;
     case 'pumping':
-      if (rocket.fuel >= MAX_FUEL) {
+      if (rocket.fuel >= rocket.fuelCapacity) {
         stopDrill(drill, play);
         break;
       }

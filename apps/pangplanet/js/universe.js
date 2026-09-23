@@ -1,6 +1,6 @@
 import { randomPlanet } from '../../planet-textures/js/presets.js';
 import { createRandom } from '../../planet-textures/js/random.js';
-import { HOME_SYSTEM, SOI_MARGIN, massFor } from './world.js';
+import { GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
 const SECTOR_SIZE = 1.5e7;
@@ -44,22 +44,32 @@ function starName(next) {
   return syllables[0].toUpperCase() + syllables.slice(1);
 }
 
+const GRAVITY_RANGE = [ROCKY.gravity[0], GAS_GIANT.gravity[1]];
+
+function bountyForGravity(surfaceGravity) {
+  const { min, max, step } = GENERATED_BOUNTY;
+  const difficulty = (surfaceGravity - GRAVITY_RANGE[0]) / (GRAVITY_RANGE[1] - GRAVITY_RANGE[0]);
+  return Math.round((min + difficulty * (max - min)) / step) * step;
+}
+
 function generatePlanet(next, star, orbit, index) {
   const gasGiant = next() < GAS_GIANT_CHANCE;
   const shape = gasGiant ? GAS_GIANT : ROCKY;
   const radius = within(next, shape.radius);
   const bearing = next() * Math.PI * 2;
   const planet = randomPlanet(next, gasGiant);
+  const surfaceGravity = within(next, shape.gravity);
   return {
     name: `${star.name} ${String.fromCharCode(98 + index)}`,
     x: star.x + Math.sin(bearing) * orbit,
     y: star.y + Math.cos(bearing) * orbit,
     radius,
     soi: radius + SOI_MARGIN,
-    mass: massFor(radius, within(next, shape.gravity)),
+    mass: massFor(radius, surfaceGravity),
     kind: 'planemo',
     palette: { fill: planet.baseColor },
     planet,
+    bounty: bountyForGravity(surfaceGravity),
   };
 }
 
