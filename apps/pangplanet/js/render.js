@@ -16,6 +16,9 @@ const RING_BANDS = [[0, 1], [0.35, 1], [0.4, 0], [0.45, 1], [0.8, 1], [1, 0]];
 const STAR_TILE = 640;
 const STAR_PARALLAX = 0.04;
 const SOLAR_PANEL = { reach: 55, width: 22, inset: 12, cells: 4 };
+const SATELLITE_SHAPE = { core: 30, panelReach: 60, panelWidth: 18 };
+const RIG_SHAPE = { base: 50, height: 80, besideRocket: 75 };
+const OUTPOST_DOT_BELOW_PX = 8;
 
 const LOOKS = {
   earth: { fill: '#2b6fb0', rock: '#3fbf2a', atmosphere: 'rgba(110, 180, 255, 0.35)' },
@@ -242,6 +245,61 @@ export function createRenderer(canvas, sprites) {
     withPose(sx, sy, 0, () => drawSprite(sprite, scale));
   }
 
+  function drawOutpostDot(sx, sy, label) {
+    context.fillStyle = '#3fe0d0';
+    context.fillRect(sx - 2, sy - 2, 4, 4);
+    drawLabel(label, sx, sy + 16, 'rgba(63, 224, 208, 0.85)');
+  }
+
+  function drawSatellite(satellite) {
+    if (!satellite?.deployed) return;
+    const [sx, sy] = toScreen(satellite.x, satellite.y);
+    const { core, panelReach, panelWidth } = SATELLITE_SHAPE;
+    const scale = view.ppu;
+    if (!onScreen(sx, sy, (core / 2 + panelReach) * scale + 20)) return;
+    if (core * scale < OUTPOST_DOT_BELOW_PX) {
+      drawOutpostDot(sx, sy, 'Satellite');
+      return;
+    }
+    withPose(sx, sy, 0, () => {
+      context.fillStyle = '#1f4fa8';
+      context.fillRect((-core / 2 - panelReach) * scale, (-panelWidth / 2) * scale, panelReach * scale, panelWidth * scale);
+      context.fillRect((core / 2) * scale, (-panelWidth / 2) * scale, panelReach * scale, panelWidth * scale);
+      context.fillStyle = '#d9dde3';
+      context.fillRect((-core / 2) * scale, (-core / 2) * scale, core * scale, core * scale);
+      context.fillStyle = '#3fe0d0';
+      context.fillRect((-core / 6) * scale, (-core / 6) * scale, (core / 3) * scale, (core / 3) * scale);
+    });
+  }
+
+  function drawRig(rig) {
+    if (!rig?.deployed) return;
+    const [sx, sy] = toScreen(...rocketPoint(rig, -ROCKET_HEIGHT / 2, RIG_SHAPE.besideRocket));
+    const { base, height } = RIG_SHAPE;
+    const scale = view.ppu;
+    if (!onScreen(sx, sy, height * scale + 20)) return;
+    if (height * scale < OUTPOST_DOT_BELOW_PX) {
+      drawOutpostDot(sx, sy, 'Mining rig');
+      return;
+    }
+    withPose(sx, sy, rig.heading, () => {
+      context.strokeStyle = '#ffc933';
+      context.lineWidth = Math.max(1, 4 * scale);
+      context.lineJoin = 'round';
+      context.beginPath();
+      context.moveTo((-base / 2) * scale, 0);
+      context.lineTo(0, -height * scale);
+      context.lineTo((base / 2) * scale, 0);
+      context.moveTo((-base / 3) * scale, (-height / 3) * scale);
+      context.lineTo((base / 3) * scale, (-height / 3) * scale);
+      context.moveTo((-base / 6) * scale, ((-2 * height) / 3) * scale);
+      context.lineTo((base / 6) * scale, ((-2 * height) / 3) * scale);
+      context.stroke();
+      context.fillStyle = '#7a5200';
+      context.fillRect((-base / 2) * scale, -6 * scale, base * scale, 6 * scale);
+    });
+  }
+
   function drawForecast(forecast) {
     if (!forecast) return;
     context.strokeStyle = 'rgba(95, 227, 255, 0.45)';
@@ -373,6 +431,8 @@ export function createRenderer(canvas, sprites) {
     drawStars();
     bodies.forEach(drawBody);
     drawMarket();
+    drawSatellite(scene.satellite);
+    drawRig(scene.rig);
     drawBodyLabels();
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);

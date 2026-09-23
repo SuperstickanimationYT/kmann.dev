@@ -2,7 +2,30 @@ import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling,
 import { createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, sphereOfInfluence, wrapAngle } from './physics.js';
 import { createRenderer } from './render.js';
-import { chargeBatteries, chargedBatteries, createPower, freeBatterySlots, losePowerCargo, sunlight, togglePanels } from './solar.js';
+import {
+  chargeBatteries,
+  chargedBatteries,
+  createPower,
+  freeBatterySlots,
+  losePowerCargo,
+  roomToCharge,
+  storedCharge,
+  sunlight,
+  togglePanels,
+} from './solar.js';
+import {
+  chargeSatellite,
+  collectGold,
+  createRig,
+  createSatellite,
+  deployRig,
+  deploySatellite,
+  loadRig,
+  rigSecondsLeft,
+  runRig,
+  takeSatelliteCharge,
+  withinReach,
+} from './outposts.js';
 import { deleteSave, readSave, writeSave } from './save.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
@@ -12,9 +35,12 @@ import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   BATTERY,
   FUEL_PACK,
+  GOLD,
   HOME_BODY,
   MARKET,
   MAX_FUEL,
+  MINING_RIG,
+  SATELLITE,
   SOLAR_PANELS,
   STARTING_GALACTOKENS,
   TICKS_PER_SECOND,
@@ -38,6 +64,7 @@ const AUTOSAVE_MS = 5000;
 const SAVED_ROCKET_FIELDS = ['x', 'y', 'vx', 'vy', 'heading', 'throttle', 'fuel', 'destroyed'];
 const ARRIVAL_VIEW_IN_STANDOFFS = 3;
 const CHEAT_GALACTOKENS = 10000;
+const CHEAT_SKIP_SECONDS = 600;
 
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
@@ -62,6 +89,9 @@ const game = {
   explosion: null,
   warp: null,
   ownsWarpDrive: false,
+  satellite: null,
+  rig: null,
+  gold: 0,
   panel: 'help',
   forecast: null,
 };
@@ -74,10 +104,22 @@ function landedBody() {
   return rocket.landed ? rocket.soi : null;
 }
 
-function canDock() {
+function dockTarget() {
   const { rocket } = game;
-  return !rocket.destroyed && game.panel !== 'market' && Math.hypot(rocket.x - MARKET.x, rocket.y - MARKET.y) < MARKET.dockingRange;
+  if (rocket.destroyed || game.warp) return null;
+  if (Math.hypot(rocket.x - MARKET.x, rocket.y - MARKET.y) < MARKET.dockingRange) return 'market';
+  if (withinReach(rocket, game.satellite, SATELLITE.dockingRange)) return 'satellite';
+  if (rocket.landed && withinReach(rocket, game.rig, MINING_RIG.reach)) return 'rig';
+  return null;
 }
+
+function canDock() {
+  const target = dockTarget();
+  return Boolean(target) && game.panel !== target;
+}
+
+const canDeploySatellite = () => game.satellite && !game.satellite.deployed && !game.rocket.soi && !game.rocket.destroyed;
+const canDeployRig = () => game.rig && !game.rig.deployed && landedBody()?.kind === 'planemo';
 
 function openPanel(name) {
   game.panel = name;
@@ -133,6 +175,44 @@ const actions = {
   },
   toggleCheats: () => openPanel(game.panel === 'cheats' ? null : 'cheats'),
   cheat: (name) => CHEATS[name]?.(),
+  buySatellite: () => {
+    if (game.satellite || game.galactokens < SATELLITE.cost) return;
+    game.satellite = createSatellite();
+    game.galactokens -= SATELLITE.cost;
+  },
+  deploySatellite: () => {
+    if (!canDeploySatellite()) return;
+    deploySatellite(game.satellite, game.rocket);
+    openPanel(null);
+  },
+  takeSatelliteCharge: () => takeSatelliteCharge(game.satellite, game.power),
+  pickUpSatellite: () => {
+    game.satellite.deployed = false;
+    openPanel(null);
+  },
+  buyRig: () => {
+    if (game.rig || game.galactokens < MINING_RIG.cost) return;
+    game.rig = createRig();
+    game.galactokens -= MINING_RIG.cost;
+  },
+  deployRig: () => {
+    if (!canDeployRig()) return;
+    deployRig(game.rig, game.rocket);
+    openPanel(null);
+  },
+  loadRig: () => loadRig(game.rig, game.power),
+  collectGold: () => {
+    game.gold += collectGold(game.rig);
+  },
+  pickUpRig: () => {
+    game.gold += collectGold(game.rig);
+    game.rig.deployed = false;
+    openPanel(null);
+  },
+  sellGold: () => {
+    game.galactokens += game.gold * GOLD.sellPrice;
+    game.gold = 0;
+  },
   sellBatteries: () => {
     const { power } = game;
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
@@ -154,6 +234,7 @@ const CHEATS = {
   chargeBatteries: () => {
     game.power.batteries = Array(BATTERY.slots).fill(1);
   },
+  skipTenMinutes: () => advanceOutposts(CHEAT_SKIP_SECONDS),
   goHome: () => {
     const { rocket, drill } = game;
     stopDrill(drill, play);
@@ -168,8 +249,22 @@ const hud = createHud(stage, actions);
 
 function dock() {
   if (!canDock()) return;
-  Object.assign(game.rocket, { vx: 0, vy: 0, engineOn: false });
-  openPanel('market');
+  const target = dockTarget();
+  if (target !== 'rig') Object.assign(game.rocket, { vx: 0, vy: 0, engineOn: false });
+  openPanel(target);
+}
+
+function advanceOutposts(seconds) {
+  chargeSatellite(game.satellite, seconds);
+  runRig(game.rig, seconds);
+}
+
+let outpostClock = Date.now();
+
+function catchUpOutposts() {
+  const now = Date.now();
+  advanceOutposts((now - outpostClock) / 1000);
+  outpostClock = now;
 }
 
 function respawn() {
@@ -377,6 +472,16 @@ function status() {
     throttle: rocket.throttle,
     engineOn: rocket.engineOn,
     canDock: canDock(),
+    dockAction: { market: 'enter the market', satellite: 'dock with the satellite', rig: 'use the mining rig' }[dockTarget()] ?? '',
+    gold: game.gold,
+    satellite: game.satellite,
+    rig: game.rig && { ...game.rig, secondsLeft: rigSecondsLeft(game.rig) },
+    canBuySatellite: !game.satellite && game.galactokens >= SATELLITE.cost,
+    canBuyRig: !game.rig && game.galactokens >= MINING_RIG.cost,
+    canDeploySatellite: Boolean(canDeploySatellite()),
+    canDeployRig: Boolean(canDeployRig()),
+    canTakeSatelliteCharge: Boolean(game.satellite) && roomToCharge(power.batteries) > 0 && storedCharge(game.satellite.batteries) > 0,
+    canLoadRig: Boolean(game.rig) && game.rig.charge < MINING_RIG.batterySlots && storedCharge(power.batteries) > 0,
     destroyed: rocket.destroyed,
     canMine: landedBody()?.kind === 'planemo' && !drillBusy(drill),
     drillBusy: drillBusy(drill),
@@ -410,6 +515,7 @@ function frame(time) {
   }
   const { rocket } = game;
   game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
+  catchUpOutposts();
   renderer.draw(game);
   bakeNextTexture();
   hud.update(status());
@@ -419,6 +525,7 @@ function frame(time) {
 let restarting = false;
 
 function snapshot() {
+  catchUpOutposts();
   const { rocket, power, camera } = game;
   return {
     galactokens: game.galactokens,
@@ -427,6 +534,9 @@ function snapshot() {
     zoom: camera.zoom,
     rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
     power: { ownsPanels: power.ownsPanels, panelsDeployed: power.panelsDeployed, batteries: power.batteries },
+    satellite: game.satellite,
+    rig: game.rig,
+    gold: game.gold,
   };
 }
 
@@ -439,6 +549,8 @@ function restore(saved) {
   Object.assign(rocket, saved.rocket, { engineOn: false });
   Object.assign(power, saved.power);
   Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, timewarp: saved.timewarp, panel: null });
+  Object.assign(game, { satellite: saved.satellite ?? null, rig: saved.rig ?? null, gold: saved.gold ?? 0 });
+  outpostClock = saved.savedAt;
   camera.zoom = saved.zoom;
   streamSectors(rocket.x, rocket.y);
   rocket.soi = sphereOfInfluence(rocket.x, rocket.y);

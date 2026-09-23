@@ -25,14 +25,33 @@ export function losePowerCargo(power) {
   power.batteries = [];
 }
 
+export const chargeRate = (light) => light * CHARGE_PER_SECOND_AT_STAR_SURFACE;
+
+export function fillBatteries(batteries, energy) {
+  let left = energy;
+  for (let i = 0; i < batteries.length && left > 0; i++) {
+    const added = Math.min(1 - batteries[i], left);
+    batteries[i] += added;
+    left -= added;
+  }
+  return energy - left;
+}
+
+export function drainBatteries(batteries, amount) {
+  let owed = amount;
+  for (let i = batteries.length - 1; i >= 0 && owed > 0; i--) {
+    const taken = Math.min(batteries[i], owed);
+    batteries[i] -= taken;
+    owed -= taken;
+  }
+  return amount - owed;
+}
+
+export const storedCharge = (batteries) => batteries.reduce((sum, charge) => sum + charge, 0);
+export const roomToCharge = (batteries) => batteries.length - storedCharge(batteries);
+
 // Runs on wall-clock ticks so time warp cannot shortcut a trip to the star.
 export function chargeBatteries(power, rocket, wallTicks) {
   if (!power.panelsDeployed) return;
-  let energy = sunlight(rocket.x, rocket.y) * CHARGE_PER_SECOND_AT_STAR_SURFACE * (wallTicks / TICKS_PER_SECOND);
-  for (let i = 0; i < power.batteries.length && energy > 0; i++) {
-    const room = 1 - power.batteries[i];
-    const added = Math.min(room, energy);
-    power.batteries[i] += added;
-    energy -= added;
-  }
+  fillBatteries(power.batteries, chargeRate(sunlight(rocket.x, rocket.y)) * (wallTicks / TICKS_PER_SECOND));
 }

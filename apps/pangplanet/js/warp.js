@@ -1,8 +1,9 @@
 import { bearingBetween } from './physics.js';
+import { drainBatteries, storedCharge } from './solar.js';
 import { starsWithin } from './universe.js';
 import { WARP_DRIVE } from './world.js';
 
-export const totalCharge = (power) => power.batteries.reduce((sum, charge) => sum + charge, 0);
+export const totalCharge = (power) => storedCharge(power.batteries);
 
 export const canWarpFrom = (rocket) => !rocket.destroyed && !rocket.landed && !rocket.soi;
 
@@ -17,17 +18,8 @@ export function warpDestinations(rocket, power) {
     .filter(({ distance }) => distance >= WARP_DRIVE.minimumJump);
 }
 
-function drainCharge(power, amount) {
-  let owed = amount;
-  for (let i = power.batteries.length - 1; i >= 0 && owed > 0; i--) {
-    const taken = Math.min(power.batteries[i], owed);
-    power.batteries[i] -= taken;
-    owed -= taken;
-  }
-}
-
 export function jumpTo(rocket, power, { star, cost }) {
-  drainCharge(power, cost);
+  drainBatteries(power.batteries, cost);
   const bearing = bearingBetween(star.x, star.y, rocket.x, rocket.y);
   const standoff = star.radius * WARP_DRIVE.arrivalInStarRadii;
   Object.assign(rocket, {

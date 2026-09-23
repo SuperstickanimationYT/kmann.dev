@@ -80,3 +80,6 @@ export const SOLAR_PANELS = { cost: 100 };
 export const BATTERY = { cost: 10, sellPrice: 40, slots: 3 };
 export const CHARGE_PER_SECOND_AT_STAR_SURFACE = 0.05;
 export const WARP_DRIVE = { cost: 10000, range: 2e7, minimumJump: 5e6, chargePerUnit: 1 / 1e7, arrivalInStarRadii: 3 };
+export const SATELLITE = { cost: 450, batteries: 3, dockingRange: 1500 };
+export const MINING_RIG = { cost: 1000, batterySlots: 6, secondsPerBattery: 600, goldPerMinute: 1, reach: 1500 };
+export const GOLD = { sellPrice: 10 };
