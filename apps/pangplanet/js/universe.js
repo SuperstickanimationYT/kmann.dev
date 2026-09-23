@@ -3,7 +3,7 @@ import { createRandom } from '../../planet-textures/js/random.js';
 import { GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
-const SECTOR_SIZE = 1.5e7;
+export const SECTOR_SIZE = 1.5e7;
 const GALAXY_CENTER_IN_SECTORS = [100, 0];
 const GALAXY_RADIUS_IN_SECTORS = 150;
 const GALACTIC_PULL = 0.05;
@@ -120,20 +120,26 @@ function generateSystem(sectorX, sectorY) {
   return [star, ...planets];
 }
 
-export function starsWithin(x, y, range) {
+const describeSystem = (systemBodies) => ({
+  star: systemBodies.find((body) => body.kind === 'star'),
+  planets: systemBodies.filter((body) => body.kind === 'planemo'),
+});
+
+export function systemsWithin(x, y, range) {
   const [sectorX, sectorY] = sectorOf(x, y);
   const reach = Math.ceil(range / SECTOR_SIZE);
-  const stars = HOME_SYSTEM.filter((body) => body.kind === 'star');
+  const systems = [describeSystem(HOME_SYSTEM)];
   for (let dx = -reach; dx <= reach; dx++) {
     for (let dy = -reach; dy <= reach; dy++) {
       const systemBodies = loadedSectors.get(`${sectorX + dx},${sectorY + dy}`)?.bodies ?? generateSystem(sectorX + dx, sectorY + dy);
-      const star = systemBodies.find((body) => body.kind === 'star');
-      if (star) stars.push(star);
+      if (systemBodies.length) systems.push(describeSystem(systemBodies));
     }
   }
-  const distance = (star) => Math.hypot(star.x - x, star.y - y);
-  return stars.filter((star) => distance(star) <= range).sort((a, b) => distance(a) - distance(b));
+  const distance = ({ star }) => Math.hypot(star.x - x, star.y - y);
+  return systems.filter((system) => distance(system) <= range).sort((a, b) => distance(a) - distance(b));
 }
+
+export const starsWithin = (x, y, range) => systemsWithin(x, y, range).map(({ star }) => star);
 
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));
 

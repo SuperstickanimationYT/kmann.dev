@@ -7,6 +7,7 @@ const UPGRADE_TEXT = {
   panels: { name: 'Solar panels', describe: (value) => `${value}× charging` },
   tank: { name: 'Fuel tank', describe: (value) => `${value} fuel` },
   engine: { name: 'Engine', describe: (value) => `${value}× thrust` },
+  telescope: { name: 'Telescope', describe: (value) => `${abbreviate(value)} range` },
 };
 
 const SUFFIXES = ['', 'K', 'M', 'B', 'T'];
@@ -89,6 +90,9 @@ export function createHud(root, actions) {
     collectGold: find('[data-collect-gold]'),
     upgrades: find('[data-upgrades]'),
     toast: find('[data-toast]'),
+    buyTelescope: find('[data-buy-telescope]'),
+    scan: find('[data-scan]'),
+    mapInfo: find('[data-map-info]'),
     bountyHere: find('[data-bounty-here]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
@@ -120,6 +124,8 @@ export function createHud(root, actions) {
     const button = event.target.closest('[data-star]');
     if (button) actions.warpTo(button.dataset.star);
   });
+  parts.buyTelescope.addEventListener('click', actions.buyTelescope);
+  parts.scan.addEventListener('click', actions.scan);
   parts.upgrades.addEventListener('click', (event) => {
     const button = event.target.closest('[data-upgrade]');
     if (button) actions.buyUpgrade(button.dataset.upgrade);
@@ -171,6 +177,10 @@ export function createHud(root, actions) {
   }
   find('[data-help-toggle]').addEventListener('click', actions.toggleHelp);
   find('[data-restart]').addEventListener('click', actions.restart);
+  find('[data-map-toggle]').addEventListener('click', actions.toggleMap);
+  find('[data-map]').addEventListener('click', (event) => actions.pickOnMap(event.clientX, event.clientY));
+  root.querySelectorAll('[data-map-view]').forEach((button) => button.addEventListener('click', () => actions.mapView(button.dataset.mapView)));
+  root.querySelectorAll('[data-map-zoom]').forEach((button) => button.addEventListener('click', () => actions.mapZoom(button.dataset.mapZoom)));
   const cheatsToggle = find('[data-cheats-toggle]');
   cheatsToggle.hidden = !new URLSearchParams(window.location.search).has('cheats');
   cheatsToggle.addEventListener('click', actions.toggleCheats);
@@ -230,6 +240,10 @@ export function createHud(root, actions) {
     setHidden(parts.deploySatellite, !status.canDeploySatellite);
     setHidden(parts.deployRig, !status.canDeployRig);
     showUpgrades(status.upgrades);
+    setHidden(parts.buyTelescope, status.ownsTelescope);
+    parts.buyTelescope.disabled = !status.canBuyTelescope;
+    setHidden(parts.scan, !status.ownsTelescope);
+    setText(parts.mapInfo, status.mapInfo);
     setHidden(parts.bountyHere, !status.bountyHere);
     setText(parts.bountyHere, `Bounty ${status.bountyHere}`);
     updateSatellite(status);

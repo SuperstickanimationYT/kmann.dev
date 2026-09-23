@@ -55,6 +55,7 @@
 
     <div class="pp-corner-buttons">
       <button type="button" data-cheats-toggle aria-label="Cheats" hidden>&#x1F527;</button>
+      <button type="button" data-map-toggle aria-label="Galaxy map">&#x1F5FA;</button>
       <button type="button" data-help-toggle aria-label="Controls">?</button>
       <button type="button" data-fullscreen aria-label="Fullscreen">&#x26F6;</button>
     </div>
@@ -107,6 +108,7 @@
           <img src="img/solar.svg" alt=""> <span data-panels-label></span> <kbd>P</kbd>
         </button>
         <button type="button" class="pp-action pp-warp-button" data-open-warp>Warp drive <kbd>W</kbd></button>
+        <button type="button" class="pp-action pp-outpost" data-scan>Scan with telescope <kbd>T</kbd></button>
         <button type="button" class="pp-action pp-outpost" data-deploy-satellite>Park satellite here</button>
         <button type="button" class="pp-action pp-outpost" data-deploy-rig>
           <img src="img/gold.svg" alt=""> Set up mining rig here
@@ -130,6 +132,10 @@
         </button>
         <button type="button" class="pp-action pp-buy" data-buy-battery>
           <img src="img/battery.svg" alt=""> Empty battery for 10
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-telescope>
+          Telescope for 600
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-satellite>
@@ -202,6 +208,22 @@
       </div>
     </section>
 
+    <section class="pp-panel pp-map-panel" data-panel="map" hidden aria-label="Galaxy map">
+      <header>
+        <h3>Galaxy map</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <canvas class="pp-map" data-map></canvas>
+      <div class="pp-actions pp-map-controls">
+        <button type="button" class="pp-action" data-map-view="nearby">Nearby</button>
+        <button type="button" class="pp-action" data-map-view="galaxy">Whole galaxy</button>
+        <button type="button" class="pp-action" data-map-zoom="in" aria-label="Zoom in">+</button>
+        <button type="button" class="pp-action" data-map-zoom="out" aria-label="Zoom out">&minus;</button>
+      </div>
+      <p data-map-info></p>
+      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map.</p>
+    </section>
+
     <section class="pp-panel" data-panel="cheats" hidden aria-label="Cheats">
       <header>
         <h3>Cheats</h3>
@@ -213,6 +235,7 @@
         <button type="button" class="pp-action" data-cheat="unlockAll">Unlock panels + warp drive</button>
         <button type="button" class="pp-action" data-cheat="chargeBatteries">Fill every battery slot, charged</button>
         <button type="button" class="pp-action" data-cheat="skipTenMinutes">Skip 10 minutes (satellite + rig)</button>
+        <button type="button" class="pp-action" data-cheat="revealNearby">Reveal stars within 10 sectors</button>
         <button type="button" class="pp-action" data-cheat="goHome">Teleport to Earth</button>
       </div>
       <p class="pp-hint">Toggle with <kbd>`</kbd>. Add <code>?cheats</code> to the URL for a button.</p>
@@ -235,6 +258,7 @@
         <div><dt>Left slider</dt><dd>Drag to change time warp</dd></div>
         <div><dt>Tap rocket</dt><dd>Rocket menu: mine fuel, solar panels, warp drive</dd></div>
         <div><dt>Prompts</dt><dd>Tap to enter the market or respawn</dd></div>
+        <div><dt>&#x1F5FA;</dt><dd>Galaxy map</dd></div>
       </dl>
       <dl class="pp-keys pp-keyboard-only">
         <div><dt><kbd>Space</kbd></dt><dd>Engine on / off</dd></div>
@@ -247,6 +271,8 @@
         <div><dt><kbd>G</kbd></dt><dd>Stop drilling</dd></div>
         <div><dt><kbd>P</kbd></dt><dd>Deploy / stow solar panels</dd></div>
         <div><dt><kbd>W</kbd></dt><dd>Warp drive, once bought</dd></div>
+        <div><dt><kbd>M</kbd></dt><dd>Galaxy map</dd></div>
+        <div><dt><kbd>T</kbd></dt><dd>Scan with telescope, once bought</dd></div>
         <div><dt><kbd>C</kbd></dt><dd>Respawn after a crash</dd></div>
         <div><dt><kbd>H</kbd></dt><dd>Show this again</dd></div>
       </dl>
