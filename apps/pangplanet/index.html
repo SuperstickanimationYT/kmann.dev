@@ -75,6 +75,12 @@
       <span class="pp-touch-only">Tap to <span data-dock-action>enter the market</span></span>
     </button>
     <p class="pp-toast" data-toast role="status" hidden></p>
+    <div class="pp-prompt pp-recording" data-recording hidden>
+      <span>Recording drone route <span data-recording-time></span></span>
+      <span class="pp-recording-hint" data-recording-hint>Land beside the drone to finish.</span>
+      <button type="button" class="pp-action" data-finish-recording>Finish</button>
+      <button type="button" class="pp-action" data-cancel-recording>Cancel</button>
+    </div>
     <p class="pp-prompt" data-drill-hint hidden>Click the drill to start drilling.</p>
     <button type="button" class="pp-prompt pp-crash" data-crash data-tap="c" hidden>
       Rocket destroyed. <span class="pp-keyboard-only">Press <kbd>C</kbd> to respawn.</span>
@@ -98,7 +104,7 @@
         <h3>Your rocket</h3>
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
-      <p>Land on a planet or moon to drill for fuel. Deploy solar panels near the Sun to charge batteries; firing the engine stows them. Satellites park in open space, clear of any gravity; mining rigs go on the ground.</p>
+      <p>Land on a planet or moon to drill for fuel. Deploy solar panels near the Sun to charge batteries; firing the engine stows them. Satellites and battery banks park in open space, clear of any gravity; mining rigs go on the ground. Antennas go on planets and moons of our solar system and reach 600K (the dashed circle); drones park on the ground inside that range.</p>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-mine" data-mine>
           <img src="img/fuel.svg" alt=""> Mine fuel
@@ -113,6 +119,11 @@
         <button type="button" class="pp-action pp-outpost" data-deploy-rig>
           <img src="img/gold.svg" alt=""> Set up mining rig here
         </button>
+        <button type="button" class="pp-action pp-outpost" data-deploy-bank>Park battery bank here</button>
+        <button type="button" class="pp-action pp-outpost" data-deploy-antenna>Set up antenna here (<span data-antennas-in-hold></span> in hold)</button>
+        <button type="button" class="pp-action" data-pick-up-antenna>Pick up antenna</button>
+        <button type="button" class="pp-action pp-outpost" data-deploy-drone>Park drone here</button>
+        <button type="button" class="pp-action pp-outpost" data-open-drone>Drone controls</button>
       </div>
     </section>
 
@@ -144,6 +155,18 @@
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-rig>
           <img src="img/gold.svg" alt=""> Mining rig for 1,000
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-bank>
+          <img src="img/battery.svg" alt=""> Battery bank for 600
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-antenna>
+          Antenna for 800
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-drone>
+          Drone for 1,500
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action pp-sell" data-sell-gold>
@@ -208,6 +231,38 @@
       </div>
     </section>
 
+    <section class="pp-panel" data-panel="bank" hidden aria-label="Battery bank">
+      <header>
+        <h3>Battery bank</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Stores up to 10 batteries of charge. Drones can drop charge here or pick it up.</p>
+      <p data-bank-stored></p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-deposit-in-bank>
+          <img src="img/battery.svg" alt=""> Deposit charge
+        </button>
+        <button type="button" class="pp-action pp-buy" data-take-from-bank>
+          <img src="img/battery.svg" alt=""> Take charge
+        </button>
+        <button type="button" class="pp-action" data-pick-up-bank>Pick up battery bank</button>
+      </div>
+    </section>
+
+    <section class="pp-panel" data-panel="drone" hidden aria-label="Drone">
+      <header>
+        <h3>Drone</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Record a route by flying it yourself from here and landing back beside the drone. The drone repeats it forever, docking and using the satellite, battery bank or mining rig wherever you did.</p>
+      <p data-drone-status></p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-outpost" data-record-route>Record a new route</button>
+        <button type="button" class="pp-action" data-toggle-drone-runs></button>
+        <button type="button" class="pp-action" data-pick-up-drone>Pick up drone</button>
+      </div>
+    </section>
+
     <section class="pp-panel pp-map-panel" data-panel="map" hidden aria-label="Galaxy map">
       <header>
         <h3>Galaxy map</h3>
@@ -235,7 +290,7 @@
         <button type="button" class="pp-action" data-cheat="fuel">Refill fuel</button>
         <button type="button" class="pp-action" data-cheat="unlockAll">Unlock panels + warp drive</button>
         <button type="button" class="pp-action" data-cheat="chargeBatteries">Fill every battery slot, charged</button>
-        <button type="button" class="pp-action" data-cheat="skipTenMinutes">Skip 10 minutes (satellite + rig)</button>
+        <button type="button" class="pp-action" data-cheat="skipTenMinutes">Skip 10 minutes (satellite, rig, drone)</button>
         <button type="button" class="pp-action" data-cheat="revealNearby">Reveal stars within 10 sectors</button>
         <button type="button" class="pp-action" data-cheat="goHome">Teleport to Earth</button>
       </div>
@@ -251,6 +306,7 @@
       <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board.</p>
       <p>Explore: the first landing on each planet or moon pays a bounty, shown in gold next to its name. Spend earnings on upgrades at the market.</p>
       <p>Earn faster: park a satellite by a star to charge batteries while you travel, and power a mining rig on any planet to dig gold for the market.</p>
+      <p>Automate: set up antennas on planets and moons of our solar system, park a drone in range, then record a route by flying it yourself. The drone repeats the route, carrying charge between satellites, battery banks and mining rigs.</p>
       <dl class="pp-keys pp-touch-only">
         <div><dt>Engine</dt><dd>Engine on / off</dd></div>
         <div><dt>&#x27F2; &#x27F3;</dt><dd>Hold to rotate</dd></div>

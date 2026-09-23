@@ -97,6 +97,26 @@ export function createHud(root, actions) {
     warpSlider: find('[data-warp-slider]'),
     mapCloseUp: find('[data-map-close-up]'),
     bountyHere: find('[data-bounty-here]'),
+    buyBank: find('[data-buy-bank]'),
+    deployBank: find('[data-deploy-bank]'),
+    bankStored: find('[data-bank-stored]'),
+    depositInBank: find('[data-deposit-in-bank]'),
+    takeFromBank: find('[data-take-from-bank]'),
+    buyAntenna: find('[data-buy-antenna]'),
+    deployAntenna: find('[data-deploy-antenna]'),
+    antennasInHold: find('[data-antennas-in-hold]'),
+    pickUpAntenna: find('[data-pick-up-antenna]'),
+    openDrone: find('[data-open-drone]'),
+    buyDrone: find('[data-buy-drone]'),
+    deployDrone: find('[data-deploy-drone]'),
+    droneStatus: find('[data-drone-status]'),
+    recordRoute: find('[data-record-route]'),
+    toggleDroneRuns: find('[data-toggle-drone-runs]'),
+    pickUpDrone: find('[data-pick-up-drone]'),
+    recording: find('[data-recording]'),
+    recordingTime: find('[data-recording-time]'),
+    recordingHint: find('[data-recording-hint]'),
+    finishRecording: find('[data-finish-recording]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -119,10 +139,26 @@ export function createHud(root, actions) {
     takeCharge: actions.takeSatelliteCharge,
     loadRig: actions.loadRig,
     collectGold: actions.collectGold,
+    buyBank: actions.buyBank,
+    deployBank: actions.deployBank,
+    depositInBank: actions.depositInBank,
+    takeFromBank: actions.takeFromBank,
+    buyAntenna: actions.buyAntenna,
+    deployAntenna: actions.deployAntenna,
+    buyDrone: actions.buyDrone,
+    deployDrone: actions.deployDrone,
+    recordRoute: actions.recordRoute,
+    toggleDroneRuns: actions.toggleDroneRuns,
+    pickUpDrone: actions.pickUpDrone,
+    finishRecording: actions.finishRecording,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
   find('[data-pick-up-rig]').addEventListener('click', actions.pickUpRig);
+  find('[data-pick-up-bank]').addEventListener('click', actions.pickUpBank);
+  parts.pickUpAntenna.addEventListener('click', actions.pickUpAntenna);
+  parts.openDrone.addEventListener('click', actions.openDrone);
+  find('[data-cancel-recording]').addEventListener('click', actions.cancelRecording);
   parts.destinations.addEventListener('click', (event) => {
     const button = event.target.closest('[data-star]');
     if (button) actions.warpTo(button.dataset.star);
@@ -254,6 +290,8 @@ export function createHud(root, actions) {
     setText(parts.bountyHere, `Bounty ${status.bountyHere}`);
     updateSatellite(status);
     updateRig(status);
+    updateBank(status);
+    updateDrones(status);
     showDestinations(status.warpDestinations);
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;
@@ -276,6 +314,40 @@ export function createHud(root, actions) {
     setText(parts.rigStatus, `Power: ${rig.charge.toFixed(2)} batteries (${minutesLeft} min left). Gold waiting: ${Math.floor(rig.gold)}.`);
     parts.loadRig.disabled = !canLoadRig;
     parts.collectGold.disabled = rig.gold < 1;
+  }
+
+  function updateBank({ bank, canBuyBank, canDeployBank, canDepositInBank, canTakeFromBank }) {
+    setHidden(parts.buyBank, Boolean(bank));
+    parts.buyBank.disabled = !canBuyBank;
+    setHidden(parts.deployBank, !canDeployBank);
+    if (!bank) return;
+    const stored = bank.batteries.reduce((sum, charge) => sum + charge, 0);
+    setText(parts.bankStored, `Stored: ${stored.toFixed(2)} of ${bank.batteries.length} batteries.`);
+    parts.depositInBank.disabled = !canDepositInBank;
+    parts.takeFromBank.disabled = !canTakeFromBank;
+  }
+
+  function updateDrones(status) {
+    parts.buyAntenna.disabled = !status.canBuyAntenna;
+    setHidden(parts.deployAntenna, !status.canDeployAntenna);
+    setText(parts.antennasInHold, String(status.antennasInHold));
+    setHidden(parts.pickUpAntenna, !status.canPickUpAntenna);
+    setHidden(parts.openDrone, !status.nearDrone);
+    setHidden(parts.buyDrone, status.ownsDrone);
+    parts.buyDrone.disabled = !status.canBuyDrone;
+    setHidden(parts.deployDrone, !status.canDeployDrone);
+    setText(parts.droneStatus, status.droneStatus);
+    parts.recordRoute.disabled = !status.canRecordRoute;
+    setHidden(parts.toggleDroneRuns, !status.canToggleDroneRuns);
+    setText(parts.toggleDroneRuns, status.droneRunning ? 'Pause runs' : 'Start runs');
+    parts.pickUpDrone.disabled = !status.canPickUpDrone;
+    const recording = status.recordingSeconds !== null;
+    setHidden(parts.recording, !recording);
+    if (!recording) return;
+    const seconds = Math.floor(status.recordingSeconds);
+    setText(parts.recordingTime, `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
+    setHidden(parts.recordingHint, status.canFinishRecording);
+    setHidden(parts.finishRecording, !status.canFinishRecording);
   }
 
   return { showPanel, update, toast };
