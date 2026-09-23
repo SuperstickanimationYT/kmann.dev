@@ -57,6 +57,10 @@ export function createHud(root, actions) {
     buyPanels: find('[data-buy-panels]'),
     buyBattery: find('[data-buy-battery]'),
     sellBatteries: find('[data-sell-batteries]'),
+    buyWarpDrive: find('[data-buy-warp-drive]'),
+    openWarp: find('[data-open-warp]'),
+    warpNote: find('[data-warp-note]'),
+    destinations: find('[data-destinations]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -68,7 +72,35 @@ export function createHud(root, actions) {
   parts.buyPanels.addEventListener('click', actions.buyPanels);
   parts.buyBattery.addEventListener('click', actions.buyBattery);
   parts.sellBatteries.addEventListener('click', actions.sellBatteries);
+  parts.buyWarpDrive.addEventListener('click', actions.buyWarpDrive);
+  parts.openWarp.addEventListener('click', actions.openWarp);
+  parts.destinations.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-star]');
+    if (button) actions.warpTo(button.dataset.star);
+  });
+  let shownDestinations = '';
+
+  function showDestinations(destinations) {
+    const signature = destinations.map(({ star, affordable }) => `${star.name}:${affordable}`).join('|');
+    if (signature === shownDestinations) return;
+    shownDestinations = signature;
+    parts.destinations.replaceChildren(
+      ...destinations.map(({ star, distance, cost, affordable }) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pp-action pp-destination';
+        button.dataset.star = star.name;
+        button.disabled = !affordable;
+        button.textContent = `${star.name} · ${abbreviate(distance)} away · ${cost.toFixed(2)} batteries`;
+        return button;
+      }),
+    );
+  }
   find('[data-help-toggle]').addEventListener('click', actions.toggleHelp);
+  const cheatsToggle = find('[data-cheats-toggle]');
+  cheatsToggle.hidden = !new URLSearchParams(window.location.search).has('cheats');
+  cheatsToggle.addEventListener('click', actions.toggleCheats);
+  root.querySelectorAll('[data-cheat]').forEach((button) => button.addEventListener('click', () => actions.cheat(button.dataset.cheat)));
   find('[data-fullscreen]').addEventListener('click', () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else root.requestFullscreen?.();
@@ -107,6 +139,11 @@ export function createHud(root, actions) {
     setHidden(parts.panelsToggle, !status.ownsPanels);
     setText(parts.panelsLabel, status.panelsDeployed ? 'Stow solar panels' : 'Deploy solar panels');
     setHidden(parts.buyPanels, status.ownsPanels);
+    setHidden(parts.buyWarpDrive, status.ownsWarpDrive);
+    parts.buyWarpDrive.disabled = !status.canBuyWarpDrive;
+    setHidden(parts.openWarp, !status.ownsWarpDrive);
+    setText(parts.warpNote, status.warpNote);
+    showDestinations(status.warpDestinations);
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;
     parts.sellBatteries.disabled = !status.canSellBatteries;

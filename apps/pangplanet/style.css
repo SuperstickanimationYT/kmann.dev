@@ -313,6 +313,21 @@
   color: #fff;
 }
 
+.pp-warp-button {
+  background: #6a3fd1;
+  color: #fff;
+}
+
+.pp-destinations {
+  flex-direction: column;
+}
+
+.pp-destination {
+  justify-content: flex-start;
+  background: #2a1f4d;
+  color: #fff;
+}
+
 .pp-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -353,6 +368,17 @@
   color: #111;
 }
 
+@media (max-width: 900px) {
+  .pp-telemetry {
+    left: 12px;
+    right: 146px;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    white-space: normal;
+    transform: none;
+  }
+}
+
 @media (max-width: 640px) {
   .pp-counter {
     font-size: 16px;
@@ -369,15 +395,6 @@
 
   .pp-batteries {
     top: 50px;
-  }
-
-  .pp-telemetry {
-    left: 12px;
-    right: 100px;
-    flex-wrap: wrap;
-    gap: 2px 10px;
-    white-space: normal;
-    transform: none;
   }
 
   .pp-warp-track {

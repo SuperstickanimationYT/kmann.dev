@@ -11,6 +11,7 @@ const LABEL_BELOW_PX = 40;
 const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
 const TEXTURED_ABOVE_PX = 6;
+const WARP_STREAKS = 90;
 const RING_BANDS = [[0, 1], [0.35, 1], [0.4, 0], [0.45, 1], [0.8, 1], [1, 0]];
 const STAR_TILE = 640;
 const STAR_PARALLAX = 0.04;
@@ -22,6 +23,15 @@ const LOOKS = {
   wormhole: { fill: '#0c0c0c', rim: 'rgba(170, 120, 255, 0.55)' },
   sun: { fill: '#fff7dc', glow: 'rgba(255, 236, 170, 0.45)' },
 };
+
+function scatterStreaks() {
+  let seed = 31337;
+  const random = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  return Array.from({ length: WARP_STREAKS }, () => ({ bearing: random() * Math.PI * 2, start: 0.1 + random() * 0.5, length: 0.2 + random() * 0.6 }));
+}
 
 function scatterStars() {
   const stars = [];
@@ -41,6 +51,7 @@ const positiveModulo = (value, modulus) => ((value % modulus) + modulus) % modul
 export function createRenderer(canvas, sprites) {
   const context = canvas.getContext('2d');
   const stars = scatterStars();
+  const streaks = scatterStreaks();
   const view = { x: 0, y: 0, angle: 0, zoom: 1, width: 0, height: 0, ppu: 1, cos: 1, sin: 0 };
   let ratio = 1;
 
@@ -333,6 +344,27 @@ export function createRenderer(canvas, sprites) {
     context.globalAlpha = 1;
   }
 
+  function drawWarp(warp) {
+    if (!warp) return;
+    const surge = Math.sin(warp.progress * Math.PI);
+    const reach = Math.hypot(view.width, view.height) / 2;
+    context.save();
+    context.translate(view.width / 2, view.height / 2);
+    context.strokeStyle = `rgba(200, 225, 255, ${0.8 * surge})`;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    for (const { bearing, start, length } of streaks) {
+      const inner = start * reach;
+      const outer = inner + length * reach * surge;
+      context.moveTo(Math.sin(bearing) * inner, Math.cos(bearing) * inner);
+      context.lineTo(Math.sin(bearing) * outer, Math.cos(bearing) * outer);
+    }
+    context.stroke();
+    context.fillStyle = `rgba(220, 235, 255, ${0.85 * surge ** 6})`;
+    context.fillRect(-view.width / 2, -view.height / 2, view.width, view.height);
+    context.restore();
+  }
+
   function draw(scene) {
     aim(scene.camera);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -347,6 +379,7 @@ export function createRenderer(canvas, sprites) {
     drawSolarPanels(scene.rocket, scene.power);
     drawRocket(scene.rocket);
     drawExplosion(scene.explosion);
+    drawWarp(scene.warp);
   }
 
   function screenDistanceTo(x, y, clientX, clientY) {
@@ -365,5 +398,7 @@ export function createRenderer(canvas, sprites) {
     return screenDistanceTo(x, y, clientX, clientY) <= Math.max(22 * view.ppu, 12);
   }
 
-  return { resize, draw, hitsRocket, hitsDrill, get pixelsPerUnit() { return view.ppu; } };
+  const zoomShowing = (units) => STAGE_HEIGHT_UNITS / units;
+
+  return { resize, draw, hitsRocket, hitsDrill, zoomShowing, get pixelsPerUnit() { return view.ppu; } };
 }

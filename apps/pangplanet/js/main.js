@@ -5,7 +5,8 @@ import { createRenderer } from './render.js';
 import { chargeBatteries, chargedBatteries, createPower, freeBatterySlots, losePowerCargo, sunlight, togglePanels } from './solar.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
-import { bodies, sectorCenter, streamSectors } from './universe.js';
+import { streamSectors } from './universe.js';
+import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   BATTERY,
   FUEL_PACK,
@@ -15,6 +16,7 @@ import {
   SOLAR_PANELS,
   STARTING_GALACTOKENS,
   TICKS_PER_SECOND,
+  WARP_DRIVE,
 } from './world.js';
 
 const STEP_TICKS = 0.5;
@@ -29,6 +31,9 @@ const TIMEWARP_LIMITS = { min: 1, max: 100 };
 const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
 const EXPLOSION_TICKS = 35;
+const WARP_TICKS = 60;
+const ARRIVAL_VIEW_IN_STANDOFFS = 3;
+const CHEAT_GALACTOKENS = 10000;
 
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
@@ -51,6 +56,8 @@ const game = {
   galactokens: STARTING_GALACTOKENS,
   timewarp: 1,
   explosion: null,
+  warp: null,
+  ownsWarpDrive: false,
   panel: 'help',
   forecast: null,
 };
@@ -99,10 +106,51 @@ const actions = {
     game.power.batteries.push(0);
     game.galactokens -= BATTERY.cost;
   },
+  buyWarpDrive: () => {
+    if (game.ownsWarpDrive || game.galactokens < WARP_DRIVE.cost) return;
+    game.ownsWarpDrive = true;
+    game.galactokens -= WARP_DRIVE.cost;
+  },
+  openWarp: () => openPanel(game.panel === 'warp' ? null : 'warp'),
+  warpTo: (starName) => {
+    const { rocket, power } = game;
+    if (!game.ownsWarpDrive || game.warp || !canWarpFrom(rocket)) return;
+    const destination = warpDestinations(rocket, power).find(({ star, affordable }) => star.name === starName && affordable);
+    if (!destination) return;
+    game.warp = { destination, progress: 0, jumped: false };
+    rocket.engineOn = false;
+    openPanel(null);
+  },
+  toggleCheats: () => openPanel(game.panel === 'cheats' ? null : 'cheats'),
+  cheat: (name) => CHEATS[name]?.(),
   sellBatteries: () => {
     const { power } = game;
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
     power.batteries = power.batteries.filter((charge) => charge < 1);
+  },
+};
+
+const CHEATS = {
+  galactokens: () => {
+    game.galactokens += CHEAT_GALACTOKENS;
+  },
+  fuel: () => {
+    game.rocket.fuel = MAX_FUEL;
+  },
+  unlockAll: () => {
+    game.power.ownsPanels = true;
+    game.ownsWarpDrive = true;
+  },
+  chargeBatteries: () => {
+    game.power.batteries = Array(BATTERY.slots).fill(1);
+  },
+  goHome: () => {
+    const { rocket, drill } = game;
+    stopDrill(drill, play);
+    placeOnSurface(rocket, HOME_BODY, 0);
+    Object.assign(rocket, { soi: HOME_BODY, destroyed: false, engineOn: false });
+    game.explosion = null;
+    streamSectors(rocket.x, rocket.y);
   },
 };
 
@@ -141,6 +189,7 @@ const KEY_ACTIONS = {
   f: dock,
   g: actions.stopDrill,
   p: actions.togglePanels,
+  w: actions.openWarp,
   c: respawn,
   h: actions.toggleHelp,
   '?': actions.toggleHelp,
@@ -154,6 +203,10 @@ const KEY_ACTIONS = {
   '-': () => changeZoom(1 / ZOOM_STEP),
 };
 
+const PHYSICAL_KEY_ACTIONS = {
+  Backquote: actions.toggleCheats,
+};
+
 const GAME_KEYS = new Set([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 window.addEventListener('keydown', (event) => {
@@ -162,7 +215,7 @@ window.addEventListener('keydown', (event) => {
   if (GAME_KEYS.has(key)) event.preventDefault();
   held.add(key);
   if (event.repeat && key === ' ') return;
-  KEY_ACTIONS[key]?.();
+  (KEY_ACTIONS[key] ?? PHYSICAL_KEY_ACTIONS[event.code])?.();
 });
 
 window.addEventListener('keyup', (event) => held.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key));
@@ -243,7 +296,26 @@ function animateExplosion() {
   explosion.ticks += STEP_TICKS;
 }
 
+function advanceWarp() {
+  const { warp, rocket, power } = game;
+  warp.progress = Math.min(1, warp.progress + STEP_TICKS / WARP_TICKS);
+  if (!warp.jumped && warp.progress >= 0.5) {
+    jumpTo(rocket, power, warp.destination);
+    streamSectors(rocket.x, rocket.y);
+    const { star } = warp.destination;
+    const standoff = Math.hypot(rocket.x - star.x, rocket.y - star.y);
+    game.camera.zoom = clamp(renderer.zoomShowing(standoff * ARRIVAL_VIEW_IN_STANDOFFS), ZOOM_LIMITS);
+    followRocket();
+    warp.jumped = true;
+  }
+  if (warp.progress >= 1) game.warp = null;
+}
+
 function tick() {
+  if (game.warp) {
+    advanceWarp();
+    return;
+  }
   steer();
   const simTicks = simulate();
   const { rocket, drill, power } = game;
@@ -265,10 +337,19 @@ function marketNote() {
   return '';
 }
 
+function warpNote(destinations) {
+  const { rocket, power } = game;
+  if (!game.ownsWarpDrive) return `Buy the warp drive at the market for ${WARP_DRIVE.cost.toLocaleString()} galactokens.`;
+  if (!canWarpFrom(rocket)) return "Leave this body's gravity before warping.";
+  if (destinations.length === 0) return 'No stars in range.';
+  return `Charge on board: ${totalCharge(power).toFixed(2)} batteries.`;
+}
+
 function status() {
   const { rocket, drill, power } = game;
   const body = rocket.soi;
   const fuelFull = rocket.fuel > MAX_FUEL - FUEL_PACK.amount;
+  const destinations = game.panel === 'warp' && game.ownsWarpDrive && canWarpFrom(rocket) ? warpDestinations(rocket, power) : [];
   return {
     galactokens: game.galactokens,
     fuel: rocket.fuel,
@@ -292,6 +373,10 @@ function status() {
     canBuyBattery: freeBatterySlots(power) > 0 && game.galactokens >= BATTERY.cost,
     canSellBatteries: chargedBatteries(power) > 0,
     marketNote: marketNote(),
+    ownsWarpDrive: game.ownsWarpDrive,
+    canBuyWarpDrive: !game.ownsWarpDrive && game.galactokens >= WARP_DRIVE.cost,
+    warpDestinations: destinations,
+    warpNote: warpNote(destinations),
   };
 }
 
@@ -314,23 +399,10 @@ function frame(time) {
   window.requestAnimationFrame(frame);
 }
 
-function debugStartInSectorFromUrl() {
-  const match = new URLSearchParams(window.location.search).get('sector')?.match(/^(-?\d+),(-?\d+)$/);
-  if (!match) return;
-  const [x, y] = sectorCenter(Number(match[1]), Number(match[2]));
-  streamSectors(x, y);
-  const distanceFromCenter = (body) => Math.hypot(body.x - x, body.y - y);
-  const planet = bodies.filter((body) => body.planet).sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
-  if (!planet) return;
-  placeOnSurface(game.rocket, planet, 0);
-  game.rocket.soi = planet;
-}
-
 async function start() {
   const [sprites] = await Promise.all([loadSprites(), loadTextureStamps()]);
   renderer = createRenderer(canvas, sprites);
   streamSectors(game.rocket.x, game.rocket.y);
-  debugStartInSectorFromUrl();
   renderer.resize();
   new ResizeObserver(() => renderer.resize()).observe(canvas);
   hud.showPanel(game.panel);
