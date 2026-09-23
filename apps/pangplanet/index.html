@@ -38,6 +38,7 @@
       <img src="img/galactokens.svg" alt="Galactokens">
       <span data-tokens>0</span>
     </div>
+    <div class="pp-batteries" data-batteries title="Batteries"></div>
     <div class="pp-counter pp-fuel" title="Fuel">
       <span class="pp-fuel-bar" data-fuel-bar></span>
       <span data-fuel>0</span>
@@ -59,6 +60,7 @@
       <div><dt>Alt</dt><dd data-altitude></dd></div>
       <div><dt>Speed</dt><dd data-speed></dd></div>
       <div><dt>Throttle</dt><dd data-throttle></dd></div>
+      <div><dt>Light</dt><dd data-sunlight></dd></div>
       <div><dt>Engine</dt><dd class="pp-engine" data-engine></dd></div>
     </dl>
 
@@ -71,12 +73,15 @@
         <h3>Your rocket</h3>
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
-      <p>Land on a planet or moon to drill for fuel.</p>
+      <p>Land on a planet or moon to drill for fuel. Deploy solar panels near the Sun to charge batteries; firing the engine stows them.</p>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-mine" data-mine>
           <img src="img/fuel.svg" alt=""> Mine fuel
         </button>
         <button type="button" class="pp-action" data-stop-drill>Stop drilling <kbd>G</kbd></button>
+        <button type="button" class="pp-action pp-solar" data-panels-toggle>
+          <img src="img/solar.svg" alt=""> <span data-panels-label></span> <kbd>P</kbd>
+        </button>
       </div>
     </section>
 
@@ -90,6 +95,18 @@
           <img src="img/fuel.svg" alt=""> Buy 5 fuel for 5
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
+        <button type="button" class="pp-action pp-buy" data-buy-panels>
+          <img src="img/solar.svg" alt=""> Solar panels for 100
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-buy" data-buy-battery>
+          <img src="img/battery.svg" alt=""> Empty battery for 10
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-sell" data-sell-batteries>
+          <img src="img/battery.svg" alt=""> Sell charged batteries, 40
+          <img src="img/galactokens.svg" alt="galactokens"> each
+        </button>
       </div>
       <p class="pp-hint" data-market-note></p>
     </section>
@@ -100,6 +117,7 @@
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
       <p>Take off from Earth, reach the Moon, find the wormhole to the Sun and dock at the market for fuel.</p>
+      <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board.</p>
       <dl class="pp-keys">
         <div><dt><kbd>Space</kbd></dt><dd>Engine on / off</dd></div>
         <div><dt><kbd>Shift</kbd> <kbd>Ctrl</kbd></dt><dd>Throttle up / down</dd></div>
@@ -109,6 +127,7 @@
         <div><dt>Click rocket</dt><dd>Rocket menu, mine fuel</dd></div>
         <div><dt><kbd>F</kbd></dt><dd>Enter the market when close</dd></div>
         <div><dt><kbd>G</kbd></dt><dd>Stop drilling</dd></div>
+        <div><dt><kbd>P</kbd></dt><dd>Deploy / stow solar panels</dd></div>
         <div><dt><kbd>C</kbd></dt><dd>Respawn after a crash</dd></div>
         <div><dt><kbd>H</kbd></dt><dd>Show this again</dd></div>
       </dl>

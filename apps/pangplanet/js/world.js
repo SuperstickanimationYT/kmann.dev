@@ -19,3 +19,6 @@ export const MARKET = { x: 1000, y: -50000, scale: 3, dockingRange: 1000 };
 export const STARTING_GALACTOKENS = 200;
 export const MAX_FUEL = 100;
 export const FUEL_PACK = { cost: 5, amount: 5 };
+export const SOLAR_PANELS = { cost: 100 };
+export const BATTERY = { cost: 10, sellPrice: 40, slots: 3 };
+export const CHARGE_PER_SECOND_AT_STAR_SURFACE = 0.05;

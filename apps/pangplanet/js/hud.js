@@ -1,3 +1,5 @@
+import { BATTERY } from './world.js';
+
 const SUFFIXES = ['', 'K', 'M', 'B', 'T'];
 
 export function abbreviate(value, decimals = 1) {
@@ -17,6 +19,15 @@ function setText(element, text) {
 
 function setHidden(element, hidden) {
   if (element.hidden !== hidden) element.hidden = hidden;
+}
+
+function createBatteryCells(container) {
+  return Array.from({ length: BATTERY.slots }, () => {
+    const cell = document.createElement('span');
+    cell.className = 'pp-battery';
+    container.append(cell);
+    return cell;
+  });
 }
 
 export function createHud(root, actions) {
@@ -39,6 +50,13 @@ export function createHud(root, actions) {
     drillHint: find('[data-drill-hint]'),
     buy: find('[data-buy]'),
     marketNote: find('[data-market-note]'),
+    sunlight: find('[data-sunlight]'),
+    batteryCells: createBatteryCells(find('[data-batteries]')),
+    panelsToggle: find('[data-panels-toggle]'),
+    panelsLabel: find('[data-panels-label]'),
+    buyPanels: find('[data-buy-panels]'),
+    buyBattery: find('[data-buy-battery]'),
+    sellBatteries: find('[data-sell-batteries]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -46,6 +64,10 @@ export function createHud(root, actions) {
   parts.mine.addEventListener('click', actions.mine);
   parts.stopDrill.addEventListener('click', actions.stopDrill);
   parts.buy.addEventListener('click', actions.buyFuel);
+  parts.panelsToggle.addEventListener('click', actions.togglePanels);
+  parts.buyPanels.addEventListener('click', actions.buyPanels);
+  parts.buyBattery.addEventListener('click', actions.buyBattery);
+  parts.sellBatteries.addEventListener('click', actions.sellBatteries);
   find('[data-help-toggle]').addEventListener('click', actions.toggleHelp);
   find('[data-fullscreen]').addEventListener('click', () => {
     if (document.fullscreenElement) document.exitFullscreen();
@@ -75,6 +97,19 @@ export function createHud(root, actions) {
     setHidden(parts.drillHint, !status.drillAwaitingClick);
     parts.buy.disabled = !status.canBuy;
     setText(parts.marketNote, status.marketNote);
+    setText(parts.sunlight, `${Math.round(status.sunlight * 100)}%`);
+    parts.batteryCells.forEach((cell, slot) => {
+      const charge = status.batteries[slot];
+      setHidden(cell, charge === undefined);
+      cell.style.setProperty('--charge', `${(charge ?? 0) * 100}%`);
+      cell.classList.toggle('is-full', charge >= 1);
+    });
+    setHidden(parts.panelsToggle, !status.ownsPanels);
+    setText(parts.panelsLabel, status.panelsDeployed ? 'Stow solar panels' : 'Deploy solar panels');
+    setHidden(parts.buyPanels, status.ownsPanels);
+    parts.buyPanels.disabled = !status.canBuyPanels;
+    parts.buyBattery.disabled = !status.canBuyBattery;
+    parts.sellBatteries.disabled = !status.canSellBatteries;
   }
 
   return { showPanel, update };

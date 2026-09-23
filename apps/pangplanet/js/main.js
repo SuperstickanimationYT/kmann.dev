@@ -2,8 +2,19 @@ import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling,
 import { createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, wrapAngle } from './physics.js';
 import { createRenderer } from './render.js';
+import { chargeBatteries, chargedBatteries, createPower, freeBatterySlots, losePowerCargo, sunlight, togglePanels } from './solar.js';
 import { loadSprites } from './sprites.js';
-import { BODIES, FUEL_PACK, HOME_BODY, MARKET, MAX_FUEL, STARTING_GALACTOKENS, TICKS_PER_SECOND } from './world.js';
+import {
+  BATTERY,
+  BODIES,
+  FUEL_PACK,
+  HOME_BODY,
+  MARKET,
+  MAX_FUEL,
+  SOLAR_PANELS,
+  STARTING_GALACTOKENS,
+  TICKS_PER_SECOND,
+} from './world.js';
 
 const STEP_TICKS = 0.5;
 const STEP_SECONDS = STEP_TICKS / TICKS_PER_SECOND;
@@ -34,6 +45,7 @@ const canvas = stage.querySelector('canvas');
 const game = {
   rocket: createRocket(),
   drill: createDrill(),
+  power: createPower(),
   camera: { x: 0, y: 0, angle: 0, zoom: 1 },
   galactokens: STARTING_GALACTOKENS,
   timewarp: 1,
@@ -75,6 +87,22 @@ const actions = {
     rocket.fuel += FUEL_PACK.amount;
     game.galactokens -= FUEL_PACK.cost;
   },
+  togglePanels: () => togglePanels(game.power, game.rocket),
+  buyPanels: () => {
+    if (game.power.ownsPanels || game.galactokens < SOLAR_PANELS.cost) return;
+    game.power.ownsPanels = true;
+    game.galactokens -= SOLAR_PANELS.cost;
+  },
+  buyBattery: () => {
+    if (freeBatterySlots(game.power) < 1 || game.galactokens < BATTERY.cost) return;
+    game.power.batteries.push(0);
+    game.galactokens -= BATTERY.cost;
+  },
+  sellBatteries: () => {
+    const { power } = game;
+    game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
+    power.batteries = power.batteries.filter((charge) => charge < 1);
+  },
 };
 
 const hud = createHud(stage, actions);
@@ -111,6 +139,7 @@ const KEY_ACTIONS = {
   },
   f: dock,
   g: actions.stopDrill,
+  p: actions.togglePanels,
   c: respawn,
   h: actions.toggleHelp,
   '?': actions.toggleHelp,
@@ -175,6 +204,7 @@ function explode() {
   const { rocket, drill } = game;
   game.explosion = { x: rocket.x, y: rocket.y, size: 1, ghost: 0, ticks: 0 };
   stopDrill(drill, play);
+  losePowerCargo(game.power);
   if (game.panel === 'rocket') openPanel(null);
 }
 
@@ -215,18 +245,28 @@ function animateExplosion() {
 function tick() {
   steer();
   const simTicks = simulate();
-  const { rocket, drill } = game;
+  const { rocket, drill, power } = game;
   if (!rocket.landed && drillBusy(drill)) stopDrill(drill, play);
   updateDrill(drill, rocket, STEP_TICKS, simTicks, play);
+  if (rocket.engineOn) power.panelsDeployed = false;
+  chargeBatteries(power, rocket, STEP_TICKS);
   followRocket();
   animateExplosion();
 }
 
+function marketNote() {
+  const { rocket, power, galactokens } = game;
+  if (galactokens < Math.min(FUEL_PACK.cost, BATTERY.cost) && chargedBatteries(power) === 0) return 'Not enough galactokens.';
+  if (!power.ownsPanels) return 'Solar panels charge batteries near a star.';
+  if (power.batteries.length === 0) return 'Charge empty batteries near the Sun, then sell them back here.';
+  if (rocket.fuel > MAX_FUEL - FUEL_PACK.amount) return 'Tank is full.';
+  return '';
+}
+
 function status() {
-  const { rocket, drill } = game;
+  const { rocket, drill, power } = game;
   const body = rocket.soi >= 0 ? BODIES[rocket.soi] : null;
   const fuelFull = rocket.fuel > MAX_FUEL - FUEL_PACK.amount;
-  const broke = game.galactokens < FUEL_PACK.cost;
   return {
     galactokens: game.galactokens,
     fuel: rocket.fuel,
@@ -241,8 +281,15 @@ function status() {
     canMine: landedBody()?.kind === 'planemo' && !drillBusy(drill),
     drillBusy: drillBusy(drill),
     drillAwaitingClick: drillAwaitingClick(drill),
-    canBuy: !broke && !fuelFull,
-    marketNote: broke ? 'Not enough galactokens.' : fuelFull ? 'Tank is full.' : '',
+    canBuy: game.galactokens >= FUEL_PACK.cost && !fuelFull,
+    sunlight: sunlight(rocket.x, rocket.y),
+    batteries: power.batteries,
+    ownsPanels: power.ownsPanels,
+    panelsDeployed: power.panelsDeployed,
+    canBuyPanels: !power.ownsPanels && game.galactokens >= SOLAR_PANELS.cost,
+    canBuyBattery: freeBatterySlots(power) > 0 && game.galactokens >= BATTERY.cost,
+    canSellBatteries: chargedBatteries(power) > 0,
+    marketNote: marketNote(),
   };
 }
 
