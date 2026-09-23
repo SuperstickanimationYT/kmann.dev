@@ -1,5 +1,5 @@
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
-import { createHud } from './hud.js';
+import { abbreviate, createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, sphereOfInfluence, wrapAngle } from './physics.js';
 import { createRenderer } from './render.js';
 import {
@@ -26,12 +26,14 @@ import {
   takeSatelliteCharge,
   withinReach,
 } from './outposts.js';
+import { createGalaxyMap } from './galaxy-map.js';
 import { applyUpgrades, bountyWaiting, claimBounty, createUpgrades, nextUpgrade, upgradeValue } from './progression.js';
 import { deleteSave, readSave, writeSave } from './save.js';
+import { chartVisitsNear, createStarChart, isCharted, scanFrom } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
-import { outsideGalaxy, streamSectors } from './universe.js';
+import { outsideGalaxy, starsWithin, streamSectors } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   BATTERY,
@@ -43,6 +45,7 @@ import {
   SATELLITE,
   SOLAR_PANELS,
   STARTING_GALACTOKENS,
+  TELESCOPE,
   TICKS_PER_SECOND,
   UPGRADES,
   WARP_DRIVE,
@@ -66,6 +69,8 @@ const SAVED_ROCKET_FIELDS = ['x', 'y', 'vx', 'vy', 'heading', 'throttle', 'fuel'
 const ARRIVAL_VIEW_IN_STANDOFFS = 3;
 const CHEAT_GALACTOKENS = 10000;
 const CHEAT_SKIP_SECONDS = 600;
+const CHEAT_REVEAL_RANGE = 1.5e8;
+const CHART_EVERY_TICKS = 30;
 
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
@@ -95,6 +100,9 @@ const game = {
   gold: 0,
   upgrades: createUpgrades(),
   claimedBounties: new Set(),
+  starChart: createStarChart(),
+  ownsTelescope: false,
+  mapSelection: null,
   panel: 'help',
   forecast: null,
 };
@@ -164,6 +172,23 @@ const actions = {
     game.upgrades[key] += 1;
     applyUpgrades(game.upgrades, game.rocket, game.power);
   },
+  buyTelescope: () => {
+    if (game.ownsTelescope || game.galactokens < TELESCOPE.cost) return;
+    game.ownsTelescope = true;
+    game.galactokens -= TELESCOPE.cost;
+  },
+  scan: () => {
+    const { rocket } = game;
+    if (!game.ownsTelescope || rocket.destroyed) return;
+    const found = scanFrom(game.starChart, rocket.x, rocket.y, telescopeRange());
+    hud.toast(found ? `Telescope found ${found} new star${found === 1 ? '' : 's'}.` : 'No new stars in telescope range.');
+  },
+  toggleMap: () => openPanel(game.panel === 'map' ? null : 'map'),
+  mapView: (mode) => galaxyMap.showView(mode),
+  mapZoom: (direction) => galaxyMap.zoom(direction),
+  pickOnMap: (clientX, clientY) => {
+    game.mapSelection = galaxyMap.pick(game.starChart, clientX, clientY);
+  },
   buyWarpDrive: () => {
     if (game.ownsWarpDrive || game.galactokens < WARP_DRIVE.cost) return;
     game.ownsWarpDrive = true;
@@ -173,7 +198,7 @@ const actions = {
   warpTo: (starName) => {
     const { rocket, power } = game;
     if (!game.ownsWarpDrive || game.warp || !canWarpFrom(rocket)) return;
-    const destination = warpDestinations(rocket, power).find(({ star, affordable }) => star.name === starName && affordable);
+    const destination = chartedDestinations().find(({ star, affordable }) => star.name === starName && affordable);
     if (!destination) return;
     game.warp = { destination, progress: 0, jumped: false };
     rocket.engineOn = false;
@@ -197,8 +222,11 @@ const actions = {
     deploySatellite(game.satellite, game.rocket);
     openPanel(null);
   },
-  takeSatelliteCharge: () => takeSatelliteCharge(game.satellite, game.power),
+  takeSatelliteCharge: () => {
+    if (game.satellite) takeSatelliteCharge(game.satellite, game.power);
+  },
   pickUpSatellite: () => {
+    if (!game.satellite) return;
     game.satellite.deployed = false;
     openPanel(null);
   },
@@ -212,11 +240,14 @@ const actions = {
     deployRig(game.rig, game.rocket);
     openPanel(null);
   },
-  loadRig: () => loadRig(game.rig, game.power),
+  loadRig: () => {
+    if (game.rig) loadRig(game.rig, game.power);
+  },
   collectGold: () => {
-    game.gold += collectGold(game.rig);
+    if (game.rig) game.gold += collectGold(game.rig);
   },
   pickUpRig: () => {
+    if (!game.rig) return;
     game.gold += collectGold(game.rig);
     game.rig.deployed = false;
     openPanel(null);
@@ -247,6 +278,7 @@ const CHEATS = {
     game.power.batteries = Array(game.power.slots).fill(1);
   },
   skipTenMinutes: () => advanceOutposts(CHEAT_SKIP_SECONDS),
+  revealNearby: () => scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE),
   goHome: () => {
     const { rocket, drill } = game;
     stopDrill(drill, play);
@@ -258,6 +290,7 @@ const CHEATS = {
 };
 
 const hud = createHud(stage, actions);
+const galaxyMap = createGalaxyMap(stage.querySelector('[data-map]'));
 
 function dock() {
   if (!canDock()) return;
@@ -307,6 +340,8 @@ const KEY_ACTIONS = {
   g: actions.stopDrill,
   p: actions.togglePanels,
   w: actions.openWarp,
+  m: actions.toggleMap,
+  t: actions.scan,
   c: respawn,
   h: actions.toggleHelp,
   '?': actions.toggleHelp,
@@ -386,6 +421,36 @@ function explode() {
   if (game.panel === 'rocket') openPanel(null);
 }
 
+const telescopeRange = () => upgradeValue('telescope', game.upgrades.telescope);
+
+const chartedDestinations = () => warpDestinations(game.rocket, game.power).filter(({ star }) => isCharted(game.starChart, star));
+
+let ticksSinceCharting = CHART_EVERY_TICKS;
+
+function chartVisits() {
+  ticksSinceCharting += STEP_TICKS;
+  if (ticksSinceCharting < CHART_EVERY_TICKS) return;
+  ticksSinceCharting = 0;
+  const { rocket } = game;
+  if (chartVisitsNear(game.starChart, rocket.x, rocket.y)) hud.toast('New star system added to your galaxy map.');
+}
+
+function mapInfo() {
+  const entry = game.mapSelection;
+  if (!entry) return 'Tap a star for details.';
+  const { rocket } = game;
+  const distance = Math.hypot(entry.x - rocket.x, entry.y - rocket.y);
+  const details = [
+    entry.name,
+    `${entry.planets} planet${entry.planets === 1 ? '' : 's'}`,
+    entry.bounty ? `up to ${entry.bounty} in bounties` : null,
+    entry.visited ? 'visited' : 'seen through telescope',
+    `${abbreviate(distance)} away`,
+    game.ownsWarpDrive && distance <= WARP_DRIVE.range ? 'in warp range' : null,
+  ];
+  return details.filter(Boolean).join(' · ');
+}
+
 function rewardFirstLanding() {
   const body = game.rocket.soi;
   const bounty = claimBounty(game.claimedBounties, body);
@@ -454,6 +519,7 @@ function tick() {
   const simTicks = simulate();
   const { rocket, drill, power } = game;
   streamSectors(rocket.x, rocket.y);
+  chartVisits();
   if (!rocket.landed && drillBusy(drill)) stopDrill(drill, play);
   updateDrill(drill, rocket, STEP_TICKS, simTicks, play);
   if (rocket.engineOn) power.panelsDeployed = false;
@@ -471,11 +537,12 @@ function marketNote() {
   return '';
 }
 
-function warpNote(destinations) {
+function warpNote(destinations, unchartedInRange) {
   const { rocket, power } = game;
   if (!game.ownsWarpDrive) return `Buy the warp drive at the market for ${WARP_DRIVE.cost.toLocaleString()} galactokens.`;
   if (!canWarpFrom(rocket)) return "Leave this body's gravity before warping.";
-  if (destinations.length === 0) return 'No stars in range.';
+  if (destinations.length === 0 && unchartedInRange > 0) return `${unchartedInRange} star${unchartedInRange === 1 ? '' : 's'} in range but not on your galaxy map. Scan with a telescope to find ${unchartedInRange === 1 ? 'it' : 'them'}.`;
+  if (destinations.length === 0) return 'No known stars in range.';
   return `Charge on board: ${totalCharge(power).toFixed(2)} batteries.`;
 }
 
@@ -483,12 +550,14 @@ function status() {
   const { rocket, drill, power } = game;
   const body = rocket.soi;
   const fuelFull = rocket.fuel > rocket.fuelCapacity - FUEL_PACK.amount;
-  const destinations = game.panel === 'warp' && game.ownsWarpDrive && canWarpFrom(rocket) ? warpDestinations(rocket, power) : [];
+  const planningWarp = game.panel === 'warp' && game.ownsWarpDrive && canWarpFrom(rocket);
+  const destinations = planningWarp ? chartedDestinations() : [];
+  const unchartedInRange = planningWarp ? warpDestinations(rocket, power).length - destinations.length : 0;
   return {
     galactokens: game.galactokens,
     fuel: rocket.fuel,
     fuelFraction: rocket.fuel / rocket.fuelCapacity,
-    upgrades: Object.keys(UPGRADES).map((key) => {
+    upgrades: Object.keys(UPGRADES).filter((key) => key !== 'telescope' || game.ownsTelescope).map((key) => {
       const next = nextUpgrade(key, game.upgrades[key]);
       return { key, current: upgradeValue(key, game.upgrades[key]), next, affordable: Boolean(next) && game.galactokens >= next.cost };
     }),
@@ -526,7 +595,10 @@ function status() {
     ownsWarpDrive: game.ownsWarpDrive,
     canBuyWarpDrive: !game.ownsWarpDrive && game.galactokens >= WARP_DRIVE.cost,
     warpDestinations: destinations,
-    warpNote: warpNote(destinations),
+    warpNote: warpNote(destinations, unchartedInRange),
+    ownsTelescope: game.ownsTelescope,
+    canBuyTelescope: !game.ownsTelescope && game.galactokens >= TELESCOPE.cost,
+    mapInfo: mapInfo(),
   };
 }
 
@@ -545,6 +617,14 @@ function frame(time) {
   game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   catchUpOutposts();
   renderer.draw(game);
+  if (game.panel === 'map') {
+    galaxyMap.draw({
+      chart: game.starChart,
+      rocket,
+      warpRange: game.ownsWarpDrive ? WARP_DRIVE.range : 0,
+      telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
+    });
+  }
   bakeNextTexture();
   hud.update(status());
   window.requestAnimationFrame(frame);
@@ -567,6 +647,8 @@ function snapshot() {
     gold: game.gold,
     upgrades: game.upgrades,
     claimedBounties: [...game.claimedBounties],
+    starChart: [...game.starChart],
+    ownsTelescope: game.ownsTelescope,
   };
 }
 
@@ -582,6 +664,8 @@ function restore(saved) {
   Object.assign(game, { satellite: saved.satellite ?? null, rig: saved.rig ?? null, gold: saved.gold ?? 0 });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
+  game.starChart = new Map(saved.starChart ?? []);
+  game.ownsTelescope = saved.ownsTelescope ?? false;
   applyUpgrades(game.upgrades, rocket, power);
   outpostClock = saved.savedAt;
   camera.zoom = saved.zoom;
@@ -604,6 +688,7 @@ async function start() {
   const [sprites] = await Promise.all([loadSprites(), loadTextureStamps()]);
   renderer = createRenderer(canvas, sprites);
   streamSectors(game.rocket.x, game.rocket.y);
+  chartVisitsNear(game.starChart, game.rocket.x, game.rocket.y);
   renderer.resize();
   new ResizeObserver(() => renderer.resize()).observe(canvas);
   hud.showPanel(game.panel);

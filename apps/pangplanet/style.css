@@ -390,6 +390,25 @@
   color: #ffc933;
 }
 
+.pp-map-panel {
+  width: min(560px, calc(100% - 32px));
+}
+
+.pp-stage .pp-map {
+  position: static;
+  display: block;
+  width: min(100%, 48vh);
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0 auto 10px;
+  border-radius: 10px;
+  cursor: crosshair;
+}
+
+.pp-map-controls .pp-action {
+  padding: 5px 10px;
+}
+
 .pp-destinations {
   flex-direction: column;
 }
@@ -533,7 +552,7 @@
 @media (max-width: 900px) {
   .pp-telemetry {
     left: 12px;
-    right: 146px;
+    right: 190px;
     flex-wrap: wrap;
     gap: 2px 10px;
     white-space: normal;
