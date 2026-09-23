@@ -27,12 +27,12 @@ export const PRESETS = [
   },
 ];
 
-const between = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
-const chance = (odds) => Math.random() < odds;
+const between = (min, max, next = Math.random) => min + Math.floor(next() * (max - min + 1));
+const chance = (odds, next) => next() < odds;
 
-function randomColor(minSaturation) {
-  const hue = Math.random() * 360;
-  const saturation = minSaturation + Math.random() * (100 - minSaturation);
+function randomColor(minSaturation, next) {
+  const hue = next() * 360;
+  const saturation = minSaturation + next() * (100 - minSaturation);
   const lightness = 50 + (100 - saturation) / 2;
   const context = document.createElement('canvas').getContext('2d');
   context.fillStyle = `hsl(${hue} ${saturation}% ${lightness}%)`;
@@ -43,19 +43,18 @@ export function randomSeed() {
   return between(1, 999999);
 }
 
-export function randomPlanet() {
-  const gasGiant = chance(0.3);
+export function randomPlanet(next = Math.random, gasGiant = chance(0.3, next)) {
   return {
-    seed: randomSeed(),
-    baseColor: randomColor(20),
-    variation: between(10, 45),
-    darkness: between(0, 50),
-    polarCap: !gasGiant && chance(0.5) ? between(15, 80) : 0,
-    bands: gasGiant ? between(2, 16) / 2 : 0,
-    craters: !gasGiant && chance(0.4) ? between(1, 20) : 0,
-    land: !gasGiant && chance(0.4),
-    landColor: randomColor(40),
-    landCover: between(20, 70),
-    clouds: chance(0.5) ? between(10, 80) : 0,
+    seed: between(1, 999999, next),
+    baseColor: randomColor(20, next),
+    variation: between(10, 45, next),
+    darkness: between(0, 50, next),
+    polarCap: !gasGiant && chance(0.5, next) ? between(15, 80, next) : 0,
+    bands: gasGiant ? between(2, 16, next) / 2 : 0,
+    craters: !gasGiant && chance(0.4, next) ? between(1, 20, next) : 0,
+    land: !gasGiant && chance(0.4, next),
+    landColor: randomColor(40, next),
+    landCover: between(20, 70, next),
+    clouds: chance(0.5, next) ? between(10, 80, next) : 0,
   };
 }

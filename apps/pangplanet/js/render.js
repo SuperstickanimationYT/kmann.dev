@@ -1,5 +1,7 @@
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
-import { BODIES, MARKET, ROCKET_HEIGHT } from './world.js';
+import { planetTexture } from './textures.js';
+import { bodies } from './universe.js';
+import { MARKET, ROCKET_HEIGHT } from './world.js';
 
 const STAGE_HEIGHT_UNITS = 360;
 const FLAME_OFFSET = 50;
@@ -8,6 +10,8 @@ const ROCK_LIFT = 5;
 const LABEL_BELOW_PX = 40;
 const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
+const TEXTURED_ABOVE_PX = 6;
+const RING_BANDS = [[0, 1], [0.35, 1], [0.4, 0], [0.45, 1], [0.8, 1], [1, 0]];
 const STAR_TILE = 640;
 const STAR_PARALLAX = 0.04;
 const SOLAR_PANEL = { reach: 55, width: 22, inset: 12, cells: 4 };
@@ -119,8 +123,18 @@ export function createRenderer(canvas, sprites) {
     context.fill();
   }
 
-  function drawTexture(sprite, sx, sy, radius, fill) {
-    const reach = radius * TEXTURE_OVERSCAN;
+  function drawRings(sx, sy, radius, { inner, outer, colour }) {
+    const gradient = context.createRadialGradient(sx, sy, radius * inner, sx, sy, radius * outer);
+    RING_BANDS.forEach(([stop, alpha]) => gradient.addColorStop(stop, alpha ? colour : 'rgba(0, 0, 0, 0)'));
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.arc(sx, sy, radius * outer, 0, Math.PI * 2);
+    context.arc(sx, sy, radius * inner, 0, Math.PI * 2, true);
+    context.fill();
+  }
+
+  function drawTexture(image, sx, sy, radius, fill, overscan) {
+    const reach = radius * overscan;
     context.save();
     discPath(sx, sy, radius);
     context.fillStyle = fill;
@@ -128,33 +142,35 @@ export function createRenderer(canvas, sprites) {
     context.clip();
     context.translate(sx, sy);
     context.rotate(-view.angle);
-    context.drawImage(sprite.bitmap, -reach, -reach, reach * 2, reach * 2);
+    context.drawImage(image, -reach, -reach, reach * 2, reach * 2);
     context.restore();
   }
 
   function drawBody(body) {
     const [sx, sy] = toScreen(body.x, body.y);
     const radius = body.radius * view.ppu;
-    const look = LOOKS[body.look];
-    if (!onScreen(sx, sy, radius * 1.2)) return;
+    const look = body.palette ?? LOOKS[body.look];
+    if (!onScreen(sx, sy, radius * (body.rings?.outer ?? 1.2))) return;
     if (radius < 1.5) {
       context.fillStyle = look.fill;
       discPath(sx, sy, 1.5);
       context.fill();
       return;
     }
+    if (body.rings) drawRings(sx, sy, radius, body.rings);
     if (look.glow) drawGlow(sx, sy, radius, 1.25, look.glow);
     if (look.atmosphere) drawGlow(sx, sy, radius, 1.04, look.atmosphere);
 
     const sprite = sprites[body.look];
-    if (!sprite || radius > HUGE_DISC_PX) {
+    const texture = body.planet ? radius > TEXTURED_ABOVE_PX && planetTexture(body, radius) : sprite?.bitmap;
+    if (!texture || radius > HUGE_DISC_PX) {
       context.fillStyle = look.fill;
       discPath(sx, sy, radius);
       context.fill();
     } else if (body.look === 'wormhole') {
       withPose(sx, sy, 0, () => drawSprite(sprite, radius / sprite.pivot[0]));
     } else {
-      drawTexture(sprite, sx, sy, radius, look.fill);
+      drawTexture(texture, sx, sy, radius, look.fill, body.planet ? 1 : TEXTURE_OVERSCAN);
     }
     if (look.rim) {
       context.strokeStyle = look.rim;
@@ -192,7 +208,7 @@ export function createRenderer(canvas, sprites) {
   }
 
   function drawBodyLabels() {
-    for (const body of BODIES) {
+    for (const body of bodies) {
       const radius = body.radius * view.ppu;
       if (radius > LABEL_BELOW_PX) continue;
       const [sx, sy] = toScreen(body.x, body.y);
@@ -323,7 +339,7 @@ export function createRenderer(canvas, sprites) {
     context.fillStyle = '#000';
     context.fillRect(0, 0, view.width, view.height);
     drawStars();
-    BODIES.forEach(drawBody);
+    bodies.forEach(drawBody);
     drawMarket();
     drawBodyLabels();
     drawForecast(scene.forecast);

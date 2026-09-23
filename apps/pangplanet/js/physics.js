@@ -1,5 +1,4 @@
 import {
-  BODIES,
   CRASH_SPEED,
   GRAVITATIONAL_CONSTANT,
   HOME_BODY,
@@ -8,6 +7,7 @@ import {
   TICKS_PER_SECOND,
   WORMHOLE_EXIT_GAP,
 } from './world.js';
+import { bodies } from './universe.js';
 
 // Bearings follow Scratch: 0 is world up, positive turns clockwise, unit vector (sin, cos).
 export function bearingBetween(fromX, fromY, toX, toY) {
@@ -19,11 +19,7 @@ export function wrapAngle(angle) {
 }
 
 export function sphereOfInfluence(x, y) {
-  let found = -1;
-  BODIES.forEach((body, index) => {
-    if (Math.hypot(x - body.x, y - body.y) <= body.soi) found = index;
-  });
-  return found;
+  return bodies.findLast((body) => Math.hypot(x - body.x, y - body.y) <= body.soi) ?? null;
 }
 
 export function surfaceClearance(body) {
@@ -44,7 +40,7 @@ export function createRocket() {
     landed: false,
     destroyed: false,
   };
-  placeOnSurface(rocket, BODIES[HOME_BODY], 0);
+  placeOnSurface(rocket, HOME_BODY, 0);
   return rocket;
 }
 
@@ -59,7 +55,7 @@ export function placeOnSurface(rocket, body, bearing) {
 }
 
 function passThroughWormhole(rocket, mouth) {
-  const exit = BODIES[mouth.exit];
+  const { exit } = mouth;
   const bearing = bearingBetween(mouth.x, mouth.y, rocket.x, rocket.y);
   const distance = exit.radius + WORMHOLE_EXIT_GAP;
   rocket.x = exit.x + Math.sin(bearing) * distance;
@@ -103,9 +99,9 @@ export function advance(rocket, dt) {
   rocket.x += rocket.vx * dt;
   rocket.y += rocket.vy * dt;
   rocket.landed = false;
-  if (rocket.soi < 0) return null;
+  const body = rocket.soi;
+  if (!body) return null;
 
-  const body = BODIES[rocket.soi];
   const dx = body.x - rocket.x;
   const dy = body.y - rocket.y;
   const distance = Math.hypot(dx, dy);
@@ -118,8 +114,8 @@ export function advance(rocket, dt) {
 }
 
 export function altitude(rocket) {
-  if (rocket.soi < 0) return null;
-  const body = BODIES[rocket.soi];
+  const body = rocket.soi;
+  if (!body) return null;
   return Math.max(0, Math.hypot(rocket.x - body.x, rocket.y - body.y) - surfaceClearance(body));
 }
 
