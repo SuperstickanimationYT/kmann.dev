@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PangPlanet &mdash; kmann314</title>
+<meta name="description" content="Fly a rocket between planets, moons and wormholes, mine fuel and trade galactokens.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">PangPlanet</h2>
+    </div>
+  </div>
+  <div class="shell app-stage pp-stage" data-stage>
+    <canvas></canvas>
+
+    <div class="pp-counter pp-tokens" title="Galactokens">
+      <img src="img/galactokens.svg" alt="Galactokens">
+      <span data-tokens>0</span>
+    </div>
+    <div class="pp-counter pp-fuel" title="Fuel">
+      <span class="pp-fuel-bar" data-fuel-bar></span>
+      <span data-fuel>0</span>
+      <img src="img/fuel.svg" alt="Fuel">
+    </div>
+
+    <div class="pp-warp" title="Time warp (Shift + scroll)">
+      <div class="pp-warp-track"><span class="pp-warp-knob" data-warp-knob></span></div>
+      <span class="pp-warp-label" data-warp>1x</span>
+    </div>
+
+    <div class="pp-corner-buttons">
+      <button type="button" data-help-toggle aria-label="Controls">?</button>
+      <button type="button" data-fullscreen aria-label="Fullscreen">&#x26F6;</button>
+    </div>
+
+    <dl class="pp-telemetry">
+      <div><dt>Near</dt><dd data-location></dd></div>
+      <div><dt>Alt</dt><dd data-altitude></dd></div>
+      <div><dt>Speed</dt><dd data-speed></dd></div>
+      <div><dt>Throttle</dt><dd data-throttle></dd></div>
+      <div><dt>Engine</dt><dd class="pp-engine" data-engine></dd></div>
+    </dl>
+
+    <p class="pp-prompt" data-dock-prompt hidden><kbd>F</kbd> Press F to enter the market</p>
+    <p class="pp-prompt" data-drill-hint hidden>Click the drill to start drilling.</p>
+    <p class="pp-prompt pp-crash" data-crash hidden>Rocket destroyed. Press <kbd>C</kbd> to respawn.</p>
+
+    <section class="pp-panel" data-panel="rocket" hidden aria-label="Your rocket">
+      <header>
+        <h3>Your rocket</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Land on a planet or moon to drill for fuel.</p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-mine" data-mine>
+          <img src="img/fuel.svg" alt=""> Mine fuel
+        </button>
+        <button type="button" class="pp-action" data-stop-drill>Stop drilling <kbd>G</kbd></button>
+      </div>
+    </section>
+
+    <section class="pp-panel" data-panel="market" hidden aria-label="Market">
+      <header>
+        <h3>Market</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-buy>
+          <img src="img/fuel.svg" alt=""> Buy 5 fuel for 5
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+      </div>
+      <p class="pp-hint" data-market-note></p>
+    </section>
+
+    <section class="pp-panel pp-help" data-panel="help" hidden aria-label="Controls">
+      <header>
+        <h3>PangPlanet</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Take off from Earth, reach the Moon, find the wormhole to the Sun and dock at the market for fuel.</p>
+      <dl class="pp-keys">
+        <div><dt><kbd>Space</kbd></dt><dd>Engine on / off</dd></div>
+        <div><dt><kbd>Shift</kbd> <kbd>Ctrl</kbd></dt><dd>Throttle up / down</dd></div>
+        <div><dt><kbd>Q</kbd> <kbd>E</kbd></dt><dd>Rotate</dd></div>
+        <div><dt>Scroll</dt><dd>Zoom</dd></div>
+        <div><dt><kbd>Shift</kbd> + scroll</dt><dd>Time warp (or <kbd>,</kbd> <kbd>.</kbd>)</dd></div>
+        <div><dt>Click rocket</dt><dd>Rocket menu, mine fuel</dd></div>
+        <div><dt><kbd>F</kbd></dt><dd>Enter the market when close</dd></div>
+        <div><dt><kbd>G</kbd></dt><dd>Stop drilling</dd></div>
+        <div><dt><kbd>C</kbd></dt><dd>Respawn after a crash</dd></div>
+        <div><dt><kbd>H</kbd></dt><dd>Show this again</dd></div>
+      </dl>
+      <p class="pp-hint">Touch down slower than 10 or the rocket explodes. The blue line shows where you will coast with the engine off.</p>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
