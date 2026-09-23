@@ -45,8 +45,8 @@
       <img src="img/fuel.svg" alt="Fuel">
     </div>
 
-    <div class="pp-warp" title="Time warp (Shift + scroll)">
-      <div class="pp-warp-track"><span class="pp-warp-knob" data-warp-knob></span></div>
+    <div class="pp-warp" title="Time warp (drag, or Shift + scroll)" data-warp-slider>
+      <div class="pp-warp-track" data-warp-track><span class="pp-warp-knob" data-warp-knob></span></div>
       <span class="pp-warp-label" data-warp>1x</span>
     </div>
 
@@ -65,9 +65,27 @@
       <div><dt>Engine</dt><dd class="pp-engine" data-engine></dd></div>
     </dl>
 
-    <p class="pp-prompt" data-dock-prompt hidden><kbd>F</kbd> Press F to enter the market</p>
+    <button type="button" class="pp-prompt" data-dock-prompt data-tap="f" hidden>
+      <span class="pp-keyboard-only"><kbd>F</kbd> Press F to enter the market</span>
+      <span class="pp-touch-only">Tap to enter the market</span>
+    </button>
     <p class="pp-prompt" data-drill-hint hidden>Click the drill to start drilling.</p>
-    <p class="pp-prompt pp-crash" data-crash hidden>Rocket destroyed. Press <kbd>C</kbd> to respawn.</p>
+    <button type="button" class="pp-prompt pp-crash" data-crash data-tap="c" hidden>
+      Rocket destroyed. <span class="pp-keyboard-only">Press <kbd>C</kbd> to respawn.</span>
+      <span class="pp-touch-only">Tap to respawn.</span>
+    </button>
+
+    <div class="pp-touch-controls">
+      <div class="pp-touch-group">
+        <button type="button" data-hold="ArrowLeft" aria-label="Rotate left">&#x27F2;</button>
+        <button type="button" data-hold="ArrowRight" aria-label="Rotate right">&#x27F3;</button>
+      </div>
+      <button type="button" class="pp-touch-engine" data-tap=" " data-engine-button>Engine</button>
+      <div class="pp-touch-group">
+        <button type="button" data-hold="ArrowDown" aria-label="Throttle down">&minus;</button>
+        <button type="button" data-hold="ArrowUp" aria-label="Throttle up">+</button>
+      </div>
+    </div>
 
     <section class="pp-panel" data-panel="rocket" hidden aria-label="Your rocket">
       <header>
@@ -149,7 +167,16 @@
       </header>
       <p>Take off from Earth, reach the Moon, find the wormhole to the Sun and dock at the market for fuel.</p>
       <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board.</p>
-      <dl class="pp-keys">
+      <dl class="pp-keys pp-touch-only">
+        <div><dt>Engine</dt><dd>Engine on / off</dd></div>
+        <div><dt>&#x27F2; &#x27F3;</dt><dd>Hold to rotate</dd></div>
+        <div><dt>&minus; +</dt><dd>Hold to change throttle</dd></div>
+        <div><dt>Pinch</dt><dd>Zoom</dd></div>
+        <div><dt>Left slider</dt><dd>Drag to change time warp</dd></div>
+        <div><dt>Tap rocket</dt><dd>Rocket menu: mine fuel, solar panels, warp drive</dd></div>
+        <div><dt>Prompts</dt><dd>Tap to enter the market or respawn</dd></div>
+      </dl>
+      <dl class="pp-keys pp-keyboard-only">
         <div><dt><kbd>Space</kbd></dt><dd>Engine on / off</dd></div>
         <div><dt><kbd>Shift</kbd> <kbd>Ctrl</kbd></dt><dd>Throttle up / down</dd></div>
         <div><dt><kbd>Q</kbd> <kbd>E</kbd></dt><dd>Rotate</dd></div>
