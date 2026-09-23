@@ -15,15 +15,15 @@ const WISP_OPACITY = 0.25;
 const STREAM = { surface: 0x51f1, land: 0x1a4d, craters: 0xc4a7, polarCap: 0x9013, clouds: 0xc10d };
 
 const SPRITES = {
-  crater: { src: 'img/crater.svg', originX: 39.846, originY: 90.64 },
-  cloud: { src: 'img/cloud.svg', originX: 43.041, originY: 18.738 },
-  wisp: { src: 'img/wisp.svg', originX: 32.164, originY: 9.099 },
+  crater: { src: '../img/crater.svg', originX: 39.846, originY: 90.64 },
+  cloud: { src: '../img/cloud.svg', originX: 43.041, originY: 18.738 },
+  wisp: { src: '../img/wisp.svg', originX: 32.164, originY: 9.099 },
 };
 
 export async function loadSprites() {
   const entries = await Promise.all(Object.entries(SPRITES).map(async ([name, sprite]) => {
     const image = new Image();
-    image.src = sprite.src;
+    image.src = new URL(sprite.src, import.meta.url).href;
     await image.decode();
     return [name, { ...sprite, image }];
   }));
@@ -70,7 +70,10 @@ function writeHsv(pixels, offset, hue, saturation, value) {
 const sinDegrees = (degrees) => Math.sin((degrees * Math.PI) / 180);
 const cosDegrees = (degrees) => Math.cos((degrees * Math.PI) / 180);
 
+const inWorker = typeof document === 'undefined';
+
 function createLayer(size) {
+  if (inWorker) return new OffscreenCanvas(size, size);
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;

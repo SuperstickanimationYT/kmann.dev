@@ -1,6 +1,5 @@
-import { BATTERY, BODIES, CHARGE_PER_SECOND_AT_STAR_SURFACE, TICKS_PER_SECOND } from './world.js';
-
-const STARS = BODIES.filter((body) => body.kind === 'star');
+import { bodies } from './universe.js';
+import { BATTERY, CHARGE_PER_SECOND_AT_STAR_SURFACE, TICKS_PER_SECOND } from './world.js';
 
 export function createPower() {
   return { ownsPanels: false, panelsDeployed: false, batteries: [] };
@@ -8,7 +7,8 @@ export function createPower() {
 
 // Inverse square falloff, 1 at a star's surface.
 export function sunlight(x, y) {
-  return Math.max(0, ...STARS.map((star) => Math.min(1, (star.radius / Math.hypot(x - star.x, y - star.y)) ** 2)));
+  const stars = bodies.filter((body) => body.kind === 'star');
+  return Math.max(0, ...stars.map((star) => Math.min(1, (star.radius / Math.hypot(x - star.x, y - star.y)) ** 2)));
 }
 
 export const chargedBatteries = (power) => power.batteries.filter((charge) => charge >= 1).length;

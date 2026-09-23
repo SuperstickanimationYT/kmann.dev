@@ -4,9 +4,10 @@ import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurfa
 import { createRenderer } from './render.js';
 import { chargeBatteries, chargedBatteries, createPower, freeBatterySlots, losePowerCargo, sunlight, togglePanels } from './solar.js';
 import { loadSprites } from './sprites.js';
+import { bakeNextTexture, loadTextureStamps } from './textures.js';
+import { bodies, sectorCenter, streamSectors } from './universe.js';
 import {
   BATTERY,
-  BODIES,
   FUEL_PACK,
   HOME_BODY,
   MARKET,
@@ -23,7 +24,7 @@ const THROTTLE_PER_TICK = 5;
 const TURN_PER_TICK = (3 * Math.PI) / 180;
 const CAMERA_EASE_PER_TICK = 1 / 20;
 const ZOOM_STEP = 1.1;
-const ZOOM_LIMITS = { min: 0.0003, max: 8 };
+const ZOOM_LIMITS = { min: 0.00002, max: 8 };
 const TIMEWARP_LIMITS = { min: 1, max: 100 };
 const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
@@ -59,7 +60,7 @@ const isHeld = (...keys) => keys.some((key) => held.has(key));
 
 function landedBody() {
   const { rocket } = game;
-  return rocket.landed && rocket.soi >= 0 ? BODIES[rocket.soi] : null;
+  return rocket.landed ? rocket.soi : null;
 }
 
 function canDock() {
@@ -116,9 +117,9 @@ function dock() {
 function respawn() {
   const { rocket } = game;
   if (!rocket.destroyed) return;
-  const crashedInto = BODIES[rocket.soi];
+  const crashedInto = rocket.soi;
   const survivable = crashedInto?.kind === 'planemo';
-  const body = survivable ? crashedInto : BODIES[HOME_BODY];
+  const body = survivable ? crashedInto : HOME_BODY;
   placeOnSurface(rocket, body, survivable ? bearingBetween(body.x, body.y, rocket.x, rocket.y) : 0);
   rocket.destroyed = false;
   game.explosion = null;
@@ -220,8 +221,8 @@ function simulate() {
 
 function cameraTarget() {
   const { rocket } = game;
-  if (rocket.soi < 0) return 0;
-  const body = BODIES[rocket.soi];
+  const body = rocket.soi;
+  if (!body) return 0;
   return bearingBetween(body.x, body.y, rocket.x + rocket.vx, rocket.y + rocket.vy);
 }
 
@@ -246,6 +247,7 @@ function tick() {
   steer();
   const simTicks = simulate();
   const { rocket, drill, power } = game;
+  streamSectors(rocket.x, rocket.y);
   if (!rocket.landed && drillBusy(drill)) stopDrill(drill, play);
   updateDrill(drill, rocket, STEP_TICKS, simTicks, play);
   if (rocket.engineOn) power.panelsDeployed = false;
@@ -265,7 +267,7 @@ function marketNote() {
 
 function status() {
   const { rocket, drill, power } = game;
-  const body = rocket.soi >= 0 ? BODIES[rocket.soi] : null;
+  const body = rocket.soi;
   const fuelFull = rocket.fuel > MAX_FUEL - FUEL_PACK.amount;
   return {
     galactokens: game.galactokens,
@@ -307,12 +309,28 @@ function frame(time) {
   const { rocket } = game;
   game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   renderer.draw(game);
+  bakeNextTexture();
   hud.update(status());
   window.requestAnimationFrame(frame);
 }
 
+function debugStartInSectorFromUrl() {
+  const match = new URLSearchParams(window.location.search).get('sector')?.match(/^(-?\d+),(-?\d+)$/);
+  if (!match) return;
+  const [x, y] = sectorCenter(Number(match[1]), Number(match[2]));
+  streamSectors(x, y);
+  const distanceFromCenter = (body) => Math.hypot(body.x - x, body.y - y);
+  const planet = bodies.filter((body) => body.planet).sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
+  if (!planet) return;
+  placeOnSurface(game.rocket, planet, 0);
+  game.rocket.soi = planet;
+}
+
 async function start() {
-  renderer = createRenderer(canvas, await loadSprites());
+  const [sprites] = await Promise.all([loadSprites(), loadTextureStamps()]);
+  renderer = createRenderer(canvas, sprites);
+  streamSectors(game.rocket.x, game.rocket.y);
+  debugStartInSectorFromUrl();
   renderer.resize();
   new ResizeObserver(() => renderer.resize()).observe(canvas);
   hud.showPanel(game.panel);
