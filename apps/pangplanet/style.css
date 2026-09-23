@@ -131,6 +131,10 @@
   transform: translateY(-50%);
 }
 
+.pp-warp.is-held {
+  opacity: 0.45;
+}
+
 .pp-warp-track {
   position: relative;
   width: 8px;

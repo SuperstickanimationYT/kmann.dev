@@ -8,6 +8,7 @@ const UPGRADE_TEXT = {
   tank: { name: 'Fuel tank', describe: (value) => `${value} fuel` },
   engine: { name: 'Engine', describe: (value) => `${value}× thrust` },
   telescope: { name: 'Telescope', describe: (value) => `${abbreviate(value)} range` },
+  timewarp: { name: 'Time warp', describe: (value) => `up to ${value}x` },
 };
 
 const SUFFIXES = ['', 'K', 'M', 'B', 'T'];
@@ -93,6 +94,7 @@ export function createHud(root, actions) {
     buyTelescope: find('[data-buy-telescope]'),
     scan: find('[data-scan]'),
     mapInfo: find('[data-map-info]'),
+    warpSlider: find('[data-warp-slider]'),
     mapCloseUp: find('[data-map-close-up]'),
     bountyHere: find('[data-bounty-here]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
@@ -201,7 +203,8 @@ export function createHud(root, actions) {
     setText(parts.fuel, String(Math.floor(status.fuel)));
     parts.fuelBar.style.width = `${status.fuelFraction * 100}%`;
     setText(parts.warp, `${status.timewarp}x`);
-    parts.warpKnob.style.bottom = `${((status.timewarp - 1) / 99) * 100}%`;
+    parts.warpKnob.style.bottom = `${((status.timewarp - 1) / (status.timewarpBought - 1)) * 100}%`;
+    parts.warpSlider.classList.toggle('is-held', status.timewarpHeld);
     setText(parts.location, status.location);
     setText(parts.altitude, status.altitude === null ? '—' : abbreviate(status.altitude));
     setText(parts.speed, abbreviate(status.speed));

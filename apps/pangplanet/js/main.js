@@ -59,7 +59,6 @@ const TURN_PER_TICK = (3 * Math.PI) / 180;
 const CAMERA_EASE_PER_TICK = 1 / 20;
 const ZOOM_STEP = 1.1;
 const ZOOM_LIMITS = { min: 0.00002, max: 8 };
-const TIMEWARP_LIMITS = { min: 1, max: 100 };
 const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
 const EXPLOSION_TICKS = 35;
@@ -336,7 +335,7 @@ function respawn() {
 }
 
 function changeTimewarp(change) {
-  game.timewarp = clamp(game.timewarp + change, TIMEWARP_LIMITS);
+  game.timewarp = clamp(game.timewarp + change, { min: 1, max: timewarpCap() });
 }
 
 function changeZoom(factor) {
@@ -389,7 +388,7 @@ bindHoldButtons(stage, { hold: (key) => held.add(key), release: (key) => held.de
 bindTapButtons(stage, (key) => KEY_ACTIONS[key]?.());
 bindPinchZoom(canvas, changeZoom);
 bindVerticalSlider(stage.querySelector('[data-warp-slider]'), stage.querySelector('[data-warp-track]'), (fraction) => {
-  game.timewarp = Math.round(TIMEWARP_LIMITS.min + fraction * (TIMEWARP_LIMITS.max - TIMEWARP_LIMITS.min));
+  game.timewarp = Math.min(timewarpCap(), Math.round(1 + fraction * (timewarpBought() - 1)));
 });
 
 canvas.addEventListener(
@@ -434,6 +433,9 @@ function explode() {
 }
 
 const telescopeRange = () => upgradeValue('telescope', game.upgrades.telescope);
+const timewarpBought = () => upgradeValue('timewarp', game.upgrades.timewarp);
+const inGravityWell = () => Boolean(game.rocket.soi);
+const timewarpCap = () => (inGravityWell() ? 1 : timewarpBought());
 
 const chartedDestinations = () => warpDestinations(game.rocket, game.power).filter(({ star }) => isCharted(game.starChart, star));
 
@@ -494,6 +496,7 @@ function simulate() {
     if (hit === 'crash') explode();
     if (hit === 'land') rewardFirstLanding();
     simTicks += STEP_TICKS;
+    game.timewarp = Math.min(game.timewarp, timewarpCap());
   }
   return simTicks;
 }
@@ -590,6 +593,8 @@ function status() {
     }),
     bountyHere: body ? bountyWaiting(game.claimedBounties, body) : 0,
     timewarp: game.timewarp,
+    timewarpBought: timewarpBought(),
+    timewarpHeld: inGravityWell(),
     location: body ? body.name : outsideGalaxy(rocket.x, rocket.y) ? 'Outside the galaxy' : 'Deep space',
     altitude: altitude(rocket),
     speed: Math.hypot(rocket.vx, rocket.vy),
@@ -689,9 +694,10 @@ function restore(saved) {
   const { rocket, power, camera } = game;
   Object.assign(rocket, saved.rocket, { engineOn: false });
   Object.assign(power, saved.power);
-  Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, timewarp: saved.timewarp, panel: null });
+  Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, panel: null });
   Object.assign(game, { satellite: saved.satellite ?? null, rig: saved.rig ?? null, gold: saved.gold ?? 0 });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
+  game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
   game.starChart = new Map(saved.starChart ?? []);
   game.ownsTelescope = saved.ownsTelescope ?? false;
