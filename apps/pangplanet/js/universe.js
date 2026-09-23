@@ -4,6 +4,9 @@ import { GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
 const SECTOR_SIZE = 1.5e7;
+const GALAXY_CENTER_IN_SECTORS = [100, 0];
+const GALAXY_RADIUS_IN_SECTORS = 150;
+const GALACTIC_PULL = 0.05;
 const LOAD_REACH = 1;
 const UNLOAD_REACH = 2;
 const STAR_CHANCE = 0.6;
@@ -28,6 +31,20 @@ const loadedSectors = new Map();
 
 export const sectorOf = (x, y) => [Math.round(x / SECTOR_SIZE), Math.round(y / SECTOR_SIZE)];
 const sectorCenter = (sectorX, sectorY) => [sectorX * SECTOR_SIZE, sectorY * SECTOR_SIZE];
+
+export const GALAXY = {
+  x: GALAXY_CENTER_IN_SECTORS[0] * SECTOR_SIZE,
+  y: GALAXY_CENTER_IN_SECTORS[1] * SECTOR_SIZE,
+  radius: GALAXY_RADIUS_IN_SECTORS * SECTOR_SIZE,
+};
+
+export const outsideGalaxy = (x, y) => Math.hypot(x - GALAXY.x, y - GALAXY.y) > GALAXY.radius;
+
+export function galacticPull(x, y) {
+  if (!outsideGalaxy(x, y)) return null;
+  const distance = Math.hypot(GALAXY.x - x, GALAXY.y - y);
+  return [((GALAXY.x - x) / distance) * GALACTIC_PULL, ((GALAXY.y - y) / distance) * GALACTIC_PULL];
+}
 
 function sectorSeed(sectorX, sectorY) {
   let hash = GALAXY_SEED ^ Math.imul(sectorX, 0x27d4eb2d) ^ Math.imul(sectorY, 0x165667b1);
@@ -75,6 +92,7 @@ function generatePlanet(next, star, orbit, index) {
 
 function generateSystem(sectorX, sectorY) {
   if (sectorX === 0 && sectorY === 0) return [];
+  if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return [];
   const { next, integer } = createRandom(sectorSeed(sectorX, sectorY));
   if (next() > STAR_CHANCE) return [];
 

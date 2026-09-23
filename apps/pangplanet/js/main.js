@@ -31,7 +31,7 @@ import { deleteSave, readSave, writeSave } from './save.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
-import { streamSectors } from './universe.js';
+import { outsideGalaxy, streamSectors } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   BATTERY,
@@ -494,7 +494,7 @@ function status() {
     }),
     bountyHere: body ? bountyWaiting(game.claimedBounties, body) : 0,
     timewarp: game.timewarp,
-    location: body ? body.name : 'Deep space',
+    location: body ? body.name : outsideGalaxy(rocket.x, rocket.y) ? 'Outside the galaxy' : 'Deep space',
     altitude: altitude(rocket),
     speed: Math.hypot(rocket.vx, rocket.vy),
     throttle: rocket.throttle,
