@@ -398,5 +398,7 @@ export function createRenderer(canvas, sprites) {
     return screenDistanceTo(x, y, clientX, clientY) <= Math.max(22 * view.ppu, 12);
   }
 
-  return { resize, draw, hitsRocket, hitsDrill, get pixelsPerUnit() { return view.ppu; } };
+  const zoomShowing = (units) => STAGE_HEIGHT_UNITS / units;
+
+  return { resize, draw, hitsRocket, hitsDrill, zoomShowing, get pixelsPerUnit() { return view.ppu; } };
 }

@@ -97,6 +97,10 @@ export function createHud(root, actions) {
     );
   }
   find('[data-help-toggle]').addEventListener('click', actions.toggleHelp);
+  const cheatsToggle = find('[data-cheats-toggle]');
+  cheatsToggle.hidden = !new URLSearchParams(window.location.search).has('cheats');
+  cheatsToggle.addEventListener('click', actions.toggleCheats);
+  root.querySelectorAll('[data-cheat]').forEach((button) => button.addEventListener('click', () => actions.cheat(button.dataset.cheat)));
   find('[data-fullscreen]').addEventListener('click', () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else root.requestFullscreen?.();

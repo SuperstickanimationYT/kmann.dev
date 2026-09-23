@@ -32,6 +32,8 @@ const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
 const EXPLOSION_TICKS = 35;
 const WARP_TICKS = 60;
+const ARRIVAL_VIEW_IN_STANDOFFS = 3;
+const CHEAT_GALACTOKENS = 10000;
 
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
@@ -119,10 +121,36 @@ const actions = {
     rocket.engineOn = false;
     openPanel(null);
   },
+  toggleCheats: () => openPanel(game.panel === 'cheats' ? null : 'cheats'),
+  cheat: (name) => CHEATS[name]?.(),
   sellBatteries: () => {
     const { power } = game;
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
     power.batteries = power.batteries.filter((charge) => charge < 1);
+  },
+};
+
+const CHEATS = {
+  galactokens: () => {
+    game.galactokens += CHEAT_GALACTOKENS;
+  },
+  fuel: () => {
+    game.rocket.fuel = MAX_FUEL;
+  },
+  unlockAll: () => {
+    game.power.ownsPanels = true;
+    game.ownsWarpDrive = true;
+  },
+  chargeBatteries: () => {
+    game.power.batteries = Array(BATTERY.slots).fill(1);
+  },
+  goHome: () => {
+    const { rocket, drill } = game;
+    stopDrill(drill, play);
+    placeOnSurface(rocket, HOME_BODY, 0);
+    Object.assign(rocket, { soi: HOME_BODY, destroyed: false, engineOn: false });
+    game.explosion = null;
+    streamSectors(rocket.x, rocket.y);
   },
 };
 
@@ -175,6 +203,10 @@ const KEY_ACTIONS = {
   '-': () => changeZoom(1 / ZOOM_STEP),
 };
 
+const PHYSICAL_KEY_ACTIONS = {
+  Backquote: actions.toggleCheats,
+};
+
 const GAME_KEYS = new Set([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 window.addEventListener('keydown', (event) => {
@@ -183,7 +215,7 @@ window.addEventListener('keydown', (event) => {
   if (GAME_KEYS.has(key)) event.preventDefault();
   held.add(key);
   if (event.repeat && key === ' ') return;
-  KEY_ACTIONS[key]?.();
+  (KEY_ACTIONS[key] ?? PHYSICAL_KEY_ACTIONS[event.code])?.();
 });
 
 window.addEventListener('keyup', (event) => held.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key));
@@ -270,6 +302,9 @@ function advanceWarp() {
   if (!warp.jumped && warp.progress >= 0.5) {
     jumpTo(rocket, power, warp.destination);
     streamSectors(rocket.x, rocket.y);
+    const { star } = warp.destination;
+    const standoff = Math.hypot(rocket.x - star.x, rocket.y - star.y);
+    game.camera.zoom = clamp(renderer.zoomShowing(standoff * ARRIVAL_VIEW_IN_STANDOFFS), ZOOM_LIMITS);
     followRocket();
     warp.jumped = true;
   }
