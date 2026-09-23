@@ -33,7 +33,7 @@ import { chartVisitsNear, createStarChart, isCharted, scanFrom } from './starcha
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
-import { outsideGalaxy, starsWithin, streamSectors } from './universe.js';
+import { outsideGalaxy, starsWithin, streamSectors, systemAt } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   BATTERY,
@@ -103,6 +103,7 @@ const game = {
   starChart: createStarChart(),
   ownsTelescope: false,
   mapSelection: null,
+  mapPlanet: null,
   panel: 'help',
   forecast: null,
 };
@@ -184,10 +185,21 @@ const actions = {
     hud.toast(found ? `Telescope found ${found} new star${found === 1 ? '' : 's'}.` : 'No new stars in telescope range.');
   },
   toggleMap: () => openPanel(game.panel === 'map' ? null : 'map'),
-  mapView: (mode) => galaxyMap.showView(mode),
+  mapView: (mode) => {
+    galaxyMap.showView(mode);
+    game.mapPlanet = null;
+  },
+  mapCloseUp: () => {
+    const system = closeUpSystem();
+    if (!system) return;
+    galaxyMap.showSystem(system);
+    game.mapPlanet = null;
+  },
   mapZoom: (direction) => galaxyMap.zoom(direction),
   pickOnMap: (clientX, clientY) => {
-    game.mapSelection = galaxyMap.pick(game.starChart, clientX, clientY);
+    const picked = galaxyMap.pick(game.starChart, clientX, clientY);
+    if (galaxyMap.showingSystem()) game.mapPlanet = picked;
+    else game.mapSelection = picked;
   },
   buyWarpDrive: () => {
     if (game.ownsWarpDrive || game.galactokens < WARP_DRIVE.cost) return;
@@ -435,7 +447,22 @@ function chartVisits() {
   if (chartVisitsNear(game.starChart, rocket.x, rocket.y)) hud.toast('New star system added to your galaxy map.');
 }
 
+const closeUpSystem = () => (game.mapSelection?.visited ? systemAt(game.mapSelection.x, game.mapSelection.y) : null);
+
+function planetInfo(planet) {
+  const waiting = bountyWaiting(game.claimedBounties, planet);
+  const details = [
+    planet.name,
+    `${abbreviate(planet.radius)} radius`,
+    waiting ? `${waiting} bounty waiting` : null,
+    planet.bounty && !waiting ? 'bounty claimed' : null,
+    `${abbreviate(Math.hypot(planet.x - game.rocket.x, planet.y - game.rocket.y))} away`,
+  ];
+  return details.filter(Boolean).join(' · ');
+}
+
 function mapInfo() {
+  if (galaxyMap.showingSystem()) return game.mapPlanet ? planetInfo(game.mapPlanet) : `${game.mapSelection.name} system. Tap a planet for details.`;
   const entry = game.mapSelection;
   if (!entry) return 'Tap a star for details.';
   const { rocket } = game;
@@ -599,6 +626,7 @@ function status() {
     ownsTelescope: game.ownsTelescope,
     canBuyTelescope: !game.ownsTelescope && game.galactokens >= TELESCOPE.cost,
     mapInfo: mapInfo(),
+    canCloseUp: Boolean(game.mapSelection?.visited) && !galaxyMap.showingSystem(),
   };
 }
 
@@ -623,6 +651,7 @@ function frame(time) {
       rocket,
       warpRange: game.ownsWarpDrive ? WARP_DRIVE.range : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
+      bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
     });
   }
   bakeNextTexture();
