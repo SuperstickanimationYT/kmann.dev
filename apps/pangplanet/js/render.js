@@ -10,6 +10,7 @@ const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
 const STAR_TILE = 640;
 const STAR_PARALLAX = 0.04;
+const SOLAR_PANEL = { reach: 55, width: 22, inset: 12, cells: 4 };
 
 const LOOKS = {
   earth: { fill: '#2b6fb0', rock: '#3fbf2a', atmosphere: 'rgba(110, 180, 255, 0.35)' },
@@ -263,6 +264,29 @@ export function createRenderer(canvas, sprites) {
     context.globalAlpha = 1;
   }
 
+  function drawSolarPanels(rocket, power) {
+    if (!power.panelsDeployed || rocket.destroyed || ROCKET_HEIGHT * view.ppu < 10) return;
+    const [sx, sy] = toScreen(rocket.x, rocket.y);
+    const { reach, width, inset, cells } = SOLAR_PANEL;
+    const scale = view.ppu;
+    withPose(sx, sy, rocket.heading, () => {
+      for (const side of [-1, 1]) {
+        const left = side > 0 ? inset * scale : -(inset + reach) * scale;
+        context.fillStyle = '#1f4fa8';
+        context.fillRect(left, (-width / 2) * scale, reach * scale, width * scale);
+        context.strokeStyle = '#7fb4ff';
+        context.lineWidth = Math.max(1, scale);
+        for (let i = 1; i < cells; i++) {
+          const x = left + (reach * scale * i) / cells;
+          context.beginPath();
+          context.moveTo(x, (-width / 2) * scale);
+          context.lineTo(x, (width / 2) * scale);
+          context.stroke();
+        }
+      }
+    });
+  }
+
   function drawRocket(rocket) {
     if (rocket.destroyed) return;
     const [sx, sy] = toScreen(rocket.x, rocket.y);
@@ -304,6 +328,7 @@ export function createRenderer(canvas, sprites) {
     drawBodyLabels();
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
+    drawSolarPanels(scene.rocket, scene.power);
     drawRocket(scene.rocket);
     drawExplosion(scene.explosion);
   }
