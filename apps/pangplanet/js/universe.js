@@ -27,7 +27,7 @@ export const bodies = [...HOME_SYSTEM];
 const loadedSectors = new Map();
 
 export const sectorOf = (x, y) => [Math.round(x / SECTOR_SIZE), Math.round(y / SECTOR_SIZE)];
-export const sectorCenter = (sectorX, sectorY) => [sectorX * SECTOR_SIZE, sectorY * SECTOR_SIZE];
+const sectorCenter = (sectorX, sectorY) => [sectorX * SECTOR_SIZE, sectorY * SECTOR_SIZE];
 
 function sectorSeed(sectorX, sectorY) {
   let hash = GALAXY_SEED ^ Math.imul(sectorX, 0x27d4eb2d) ^ Math.imul(sectorY, 0x165667b1);
@@ -90,6 +90,21 @@ function generateSystem(sectorX, sectorY) {
     planets.push(generatePlanet(next, star, orbit, index));
   }
   return [star, ...planets];
+}
+
+export function starsWithin(x, y, range) {
+  const [sectorX, sectorY] = sectorOf(x, y);
+  const reach = Math.ceil(range / SECTOR_SIZE);
+  const stars = HOME_SYSTEM.filter((body) => body.kind === 'star');
+  for (let dx = -reach; dx <= reach; dx++) {
+    for (let dy = -reach; dy <= reach; dy++) {
+      const systemBodies = loadedSectors.get(`${sectorX + dx},${sectorY + dy}`)?.bodies ?? generateSystem(sectorX + dx, sectorY + dy);
+      const star = systemBodies.find((body) => body.kind === 'star');
+      if (star) stars.push(star);
+    }
+  }
+  const distance = (star) => Math.hypot(star.x - x, star.y - y);
+  return stars.filter((star) => distance(star) <= range).sort((a, b) => distance(a) - distance(b));
 }
 
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));

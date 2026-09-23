@@ -82,6 +82,7 @@
         <button type="button" class="pp-action pp-solar" data-panels-toggle>
           <img src="img/solar.svg" alt=""> <span data-panels-label></span> <kbd>P</kbd>
         </button>
+        <button type="button" class="pp-action pp-warp-button" data-open-warp>Warp drive <kbd>W</kbd></button>
       </div>
     </section>
 
@@ -103,12 +104,26 @@
           <img src="img/battery.svg" alt=""> Empty battery for 10
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
+        <button type="button" class="pp-action pp-warp-button" data-buy-warp-drive>
+          Warp drive for 10,000
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
         <button type="button" class="pp-action pp-sell" data-sell-batteries>
           <img src="img/battery.svg" alt=""> Sell charged batteries, 40
           <img src="img/galactokens.svg" alt="galactokens"> each
         </button>
       </div>
       <p class="pp-hint" data-market-note></p>
+    </section>
+
+    <section class="pp-panel" data-panel="warp" hidden aria-label="Warp drive">
+      <header>
+        <h3>Warp drive</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Jump to a nearby star. Each jump drains battery charge by distance, and you arrive at a safe distance from the star, ready to recharge.</p>
+      <div class="pp-actions pp-destinations" data-destinations></div>
+      <p class="pp-hint" data-warp-note></p>
     </section>
 
     <section class="pp-panel pp-help" data-panel="help" hidden aria-label="Controls">
@@ -128,6 +143,7 @@
         <div><dt><kbd>F</kbd></dt><dd>Enter the market when close</dd></div>
         <div><dt><kbd>G</kbd></dt><dd>Stop drilling</dd></div>
         <div><dt><kbd>P</kbd></dt><dd>Deploy / stow solar panels</dd></div>
+        <div><dt><kbd>W</kbd></dt><dd>Warp drive, once bought</dd></div>
         <div><dt><kbd>C</kbd></dt><dd>Respawn after a crash</dd></div>
         <div><dt><kbd>H</kbd></dt><dd>Show this again</dd></div>
       </dl>

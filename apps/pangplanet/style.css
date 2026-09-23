@@ -313,6 +313,21 @@
   color: #fff;
 }
 
+.pp-warp-button {
+  background: #6a3fd1;
+  color: #fff;
+}
+
+.pp-destinations {
+  flex-direction: column;
+}
+
+.pp-destination {
+  justify-content: flex-start;
+  background: #2a1f4d;
+  color: #fff;
+}
+
 .pp-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
