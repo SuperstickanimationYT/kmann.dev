@@ -38,7 +38,10 @@
       <img src="img/galactokens.svg" alt="Galactokens">
       <span data-tokens>0</span>
     </div>
-    <div class="pp-batteries" data-batteries title="Batteries"></div>
+    <div class="pp-cargo">
+      <div class="pp-batteries" data-batteries title="Batteries"></div>
+      <span class="pp-gold" data-gold-counter title="Gold" hidden><img src="img/gold.svg" alt="Gold"> <span data-gold>0</span></span>
+    </div>
     <div class="pp-counter pp-fuel" title="Fuel">
       <span class="pp-fuel-bar" data-fuel-bar></span>
       <span data-fuel>0</span>
@@ -66,8 +69,8 @@
     </dl>
 
     <button type="button" class="pp-prompt" data-dock-prompt data-tap="f" hidden>
-      <span class="pp-keyboard-only"><kbd>F</kbd> Press F to enter the market</span>
-      <span class="pp-touch-only">Tap to enter the market</span>
+      <span class="pp-keyboard-only"><kbd>F</kbd> Press F to <span data-dock-action>enter the market</span></span>
+      <span class="pp-touch-only">Tap to <span data-dock-action>enter the market</span></span>
     </button>
     <p class="pp-prompt" data-drill-hint hidden>Click the drill to start drilling.</p>
     <button type="button" class="pp-prompt pp-crash" data-crash data-tap="c" hidden>
@@ -92,7 +95,7 @@
         <h3>Your rocket</h3>
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
-      <p>Land on a planet or moon to drill for fuel. Deploy solar panels near the Sun to charge batteries; firing the engine stows them.</p>
+      <p>Land on a planet or moon to drill for fuel. Deploy solar panels near the Sun to charge batteries; firing the engine stows them. Satellites park in open space, clear of any gravity; mining rigs go on the ground.</p>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-mine" data-mine>
           <img src="img/fuel.svg" alt=""> Mine fuel
@@ -102,6 +105,10 @@
           <img src="img/solar.svg" alt=""> <span data-panels-label></span> <kbd>P</kbd>
         </button>
         <button type="button" class="pp-action pp-warp-button" data-open-warp>Warp drive <kbd>W</kbd></button>
+        <button type="button" class="pp-action pp-outpost" data-deploy-satellite>Park satellite here</button>
+        <button type="button" class="pp-action pp-outpost" data-deploy-rig>
+          <img src="img/gold.svg" alt=""> Set up mining rig here
+        </button>
       </div>
     </section>
 
@@ -122,6 +129,18 @@
         <button type="button" class="pp-action pp-buy" data-buy-battery>
           <img src="img/battery.svg" alt=""> Empty battery for 10
           <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-satellite>
+          Satellite for 450
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-rig>
+          <img src="img/gold.svg" alt=""> Mining rig for 1,000
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-sell" data-sell-gold>
+          <img src="img/gold.svg" alt=""> Sell gold, 10
+          <img src="img/galactokens.svg" alt="galactokens"> each
         </button>
         <button type="button" class="pp-action pp-warp-button" data-buy-warp-drive>
           Warp drive for 10,000
@@ -145,6 +164,40 @@
       <p class="pp-hint" data-warp-note></p>
     </section>
 
+    <section class="pp-panel" data-panel="satellite" hidden aria-label="Satellite">
+      <header>
+        <h3>Satellite</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Parked here, it charges its 3 batteries in <span data-satellite-light></span> sunlight, even while you're away.</p>
+      <p data-satellite-stored></p>
+      <p class="pp-hint" data-satellite-dim hidden>That's too little light to charge much. Pick it up and park it closer to a star.</p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-take-charge>
+          <img src="img/battery.svg" alt=""> Take charge
+        </button>
+        <button type="button" class="pp-action" data-pick-up-satellite>Pick up satellite</button>
+      </div>
+    </section>
+
+    <section class="pp-panel" data-panel="rig" hidden aria-label="Mining rig">
+      <header>
+        <h3>Mining rig</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Mines 1 gold a minute on <span data-rig-site></span> while powered, even while you're away. Each battery of charge runs it for 10 minutes; it holds 6.</p>
+      <p data-rig-status></p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-load-rig>
+          <img src="img/battery.svg" alt=""> Load batteries
+        </button>
+        <button type="button" class="pp-action pp-sell" data-collect-gold>
+          <img src="img/gold.svg" alt=""> Collect gold
+        </button>
+        <button type="button" class="pp-action" data-pick-up-rig>Pick up rig</button>
+      </div>
+    </section>
+
     <section class="pp-panel" data-panel="cheats" hidden aria-label="Cheats">
       <header>
         <h3>Cheats</h3>
@@ -155,6 +208,7 @@
         <button type="button" class="pp-action" data-cheat="fuel">Refill fuel</button>
         <button type="button" class="pp-action" data-cheat="unlockAll">Unlock panels + warp drive</button>
         <button type="button" class="pp-action" data-cheat="chargeBatteries">Fill every battery slot, charged</button>
+        <button type="button" class="pp-action" data-cheat="skipTenMinutes">Skip 10 minutes (satellite + rig)</button>
         <button type="button" class="pp-action" data-cheat="goHome">Teleport to Earth</button>
       </div>
       <p class="pp-hint">Toggle with <kbd>`</kbd>. Add <code>?cheats</code> to the URL for a button.</p>
@@ -167,6 +221,7 @@
       </header>
       <p>Take off from Earth, reach the Moon, find the wormhole to the Sun and dock at the market for fuel.</p>
       <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board.</p>
+      <p>Earn faster: park a satellite by a star to charge batteries while you travel, and power a mining rig on any planet to dig gold for the market.</p>
       <dl class="pp-keys pp-touch-only">
         <div><dt>Engine</dt><dd>Engine on / off</dd></div>
         <div><dt>&#x27F2; &#x27F3;</dt><dd>Hold to rotate</dd></div>
