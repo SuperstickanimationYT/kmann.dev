@@ -98,6 +98,7 @@ export function createHud(root, actions) {
     );
   }
   find('[data-help-toggle]').addEventListener('click', actions.toggleHelp);
+  find('[data-restart]').addEventListener('click', actions.restart);
   const cheatsToggle = find('[data-cheats-toggle]');
   cheatsToggle.hidden = !new URLSearchParams(window.location.search).has('cheats');
   cheatsToggle.addEventListener('click', actions.toggleCheats);
