@@ -13,8 +13,6 @@
   --text-strong: #e2effd;
   --text-dim: #6f9dc9;
   --link: #5fe3ff;
-  --coffee: #ffe848;
-  --coffee-ink: #1c1600;
 
   --radius: 14px;
   --shell-width: 1180px;
@@ -135,18 +133,6 @@ main {
 
 .back-link:hover {
   text-decoration: underline;
-}
-
-.coffee {
-  background: var(--coffee);
-  color: var(--coffee-ink);
-  padding: 3px 9px;
-  border-radius: 4px;
-}
-
-.coffee:hover {
-  background: #fff37e;
-  color: var(--coffee-ink);
 }
 
 .footer-copy {

@@ -68,8 +68,3 @@ python -m http.server 8000
 
 Proxied apps 404 locally, because the rewrites only exist on Vercel. Use a Vercel
 preview deployment to check those.
-
-## Still to fill in
-
-- The `Buy me a coffee` link in every footer points at `#`.
-- `about.html` holds placeholder copy.
