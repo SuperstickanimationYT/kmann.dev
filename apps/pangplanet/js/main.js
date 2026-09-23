@@ -1,8 +1,9 @@
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
 import { createHud } from './hud.js';
-import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, wrapAngle } from './physics.js';
+import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, sphereOfInfluence, wrapAngle } from './physics.js';
 import { createRenderer } from './render.js';
 import { chargeBatteries, chargedBatteries, createPower, freeBatterySlots, losePowerCargo, sunlight, togglePanels } from './solar.js';
+import { deleteSave, readSave, writeSave } from './save.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
@@ -33,6 +34,8 @@ const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
 const EXPLOSION_TICKS = 35;
 const WARP_TICKS = 60;
+const AUTOSAVE_MS = 5000;
+const SAVED_ROCKET_FIELDS = ['x', 'y', 'vx', 'vy', 'heading', 'throttle', 'fuel', 'destroyed'];
 const ARRIVAL_VIEW_IN_STANDOFFS = 3;
 const CHEAT_GALACTOKENS = 10000;
 
@@ -121,6 +124,12 @@ const actions = {
     game.warp = { destination, progress: 0, jumped: false };
     rocket.engineOn = false;
     openPanel(null);
+  },
+  restart: () => {
+    if (!window.confirm('Start over from the beginning? Your saved progress will be deleted.')) return;
+    restarting = true;
+    deleteSave();
+    window.location.reload();
   },
   toggleCheats: () => openPanel(game.panel === 'cheats' ? null : 'cheats'),
   cheat: (name) => CHEATS[name]?.(),
@@ -407,7 +416,46 @@ function frame(time) {
   window.requestAnimationFrame(frame);
 }
 
+let restarting = false;
+
+function snapshot() {
+  const { rocket, power, camera } = game;
+  return {
+    galactokens: game.galactokens,
+    ownsWarpDrive: game.ownsWarpDrive,
+    timewarp: game.timewarp,
+    zoom: camera.zoom,
+    rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
+    power: { ownsPanels: power.ownsPanels, panelsDeployed: power.panelsDeployed, batteries: power.batteries },
+  };
+}
+
+function save() {
+  if (!restarting) writeSave(snapshot());
+}
+
+function restore(saved) {
+  const { rocket, power, camera } = game;
+  Object.assign(rocket, saved.rocket, { engineOn: false });
+  Object.assign(power, saved.power);
+  Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, timewarp: saved.timewarp, panel: null });
+  camera.zoom = saved.zoom;
+  streamSectors(rocket.x, rocket.y);
+  rocket.soi = sphereOfInfluence(rocket.x, rocket.y);
+}
+
+function startAutosave() {
+  window.setInterval(save, AUTOSAVE_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') save();
+  });
+  window.addEventListener('pagehide', save);
+}
+
 async function start() {
+  const saved = readSave();
+  if (saved) restore(saved);
+  startAutosave();
   const [sprites] = await Promise.all([loadSprites(), loadTextureStamps()]);
   renderer = createRenderer(canvas, sprites);
   streamSectors(game.rocket.x, game.rocket.y);
