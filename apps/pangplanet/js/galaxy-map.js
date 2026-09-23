@@ -1,16 +1,25 @@
 import { GALAXY, SECTOR_SIZE } from './universe.js';
 
 const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08 };
+const SYSTEM_MARGIN = 1.15;
 const ZOOM_STEP = 1.5;
 const ZOOM_LIMITS = { min: 0.25, max: 40 };
 const STAR_DOT_PX = 3;
+const SYSTEM_STAR_MIN_PX = 6;
+const PLANET_MIN_PX = 3;
 const PICK_REACH_PX = 14;
 const LABELS_ABOVE_PX_PER_SECTOR = 18;
+const BOUNTY_GOLD = '#ffc933';
+
+const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
 
 export function createGalaxyMap(canvas) {
   const context = canvas.getContext('2d');
   const view = { mode: 'nearby', zoom: 1, size: 0, scale: 1, centerX: 0, centerY: 0 };
+  let system = null;
   let selected = null;
+  let selectedPlanet = null;
 
   function fit() {
     const ratio = window.devicePixelRatio || 1;
@@ -18,6 +27,12 @@ export function createGalaxyMap(canvas) {
     canvas.width = Math.round(view.size * ratio);
     canvas.height = Math.round(view.size * ratio);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+
+  function frameOn(focus, radius) {
+    view.centerX = focus.x;
+    view.centerY = focus.y;
+    view.scale = view.size / 2 / (radius / view.zoom);
   }
 
   const toMap = (x, y) => [view.size / 2 + (x - view.centerX) * view.scale, view.size / 2 - (y - view.centerY) * view.scale];
@@ -35,6 +50,22 @@ export function createGalaxyMap(canvas) {
     context.restore();
   }
 
+  function disk(x, y, radiusPx, fill) {
+    const [mx, my] = toMap(x, y);
+    context.fillStyle = fill;
+    context.beginPath();
+    context.arc(mx, my, radiusPx, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  function label(text, x, y, offsetPx) {
+    const [mx, my] = toMap(x, y);
+    context.font = '11px "Trebuchet MS", "Segoe UI", sans-serif';
+    context.textAlign = 'center';
+    context.fillStyle = 'rgba(200, 220, 245, 0.85)';
+    context.fillText(text, mx, my + offsetPx);
+  }
+
   function drawGalaxy() {
     const [mx, my] = toMap(GALAXY.x, GALAXY.y);
     const radius = GALAXY.radius * view.scale;
@@ -50,8 +81,6 @@ export function createGalaxyMap(canvas) {
 
   function drawStars(chart) {
     const showLabels = view.scale * SECTOR_SIZE > LABELS_ABOVE_PX_PER_SECTOR;
-    context.font = '11px "Trebuchet MS", "Segoe UI", sans-serif';
-    context.textAlign = 'center';
     for (const entry of chart.values()) {
       const [mx, my] = toMap(entry.x, entry.y);
       if (!onMap(mx, my)) continue;
@@ -65,11 +94,23 @@ export function createGalaxyMap(canvas) {
         context.lineWidth = 1.5;
         context.stroke();
       }
-      if (entry === selected) ring(entry.x, entry.y, (STAR_DOT_PX + 5) / view.scale, '#ffc933', false);
-      if (showLabels || entry === selected) {
-        context.fillStyle = 'rgba(200, 220, 245, 0.85)';
-        context.fillText(entry.name, mx, my + 15);
-      }
+      if (entry === selected) ring(entry.x, entry.y, (STAR_DOT_PX + 5) / view.scale, BOUNTY_GOLD, false);
+      if (showLabels || entry === selected) label(entry.name, entry.x, entry.y, 15);
+    }
+  }
+
+  function drawSystem(bountyWaiting) {
+    const { star, planets } = system;
+    for (const planet of planets) ring(star.x, star.y, distanceBetween(star, planet), 'rgba(140, 170, 255, 0.18)', false);
+    const starPx = Math.max(star.radius * view.scale, SYSTEM_STAR_MIN_PX);
+    disk(star.x, star.y, starPx, star.palette?.fill ?? '#fff7dc');
+    label(star.name, star.x, star.y, starPx + 13);
+    for (const planet of planets) {
+      const planetPx = Math.max(planet.radius * view.scale, PLANET_MIN_PX);
+      disk(planet.x, planet.y, planetPx, planet.palette?.fill ?? '#9c9489');
+      if (bountyWaiting(planet)) ring(planet.x, planet.y, (planetPx + 3) / view.scale, BOUNTY_GOLD, true);
+      if (planet === selectedPlanet) ring(planet.x, planet.y, (planetPx + 6) / view.scale, BOUNTY_GOLD, false);
+      label(planet.name, planet.x, planet.y, planetPx + 13);
     }
   }
 
@@ -84,48 +125,66 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, rocket, warpRange, telescopeRange }) {
+  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting }) {
     if (canvas.clientWidth !== view.size) fit();
-    const focus = view.mode === 'nearby' ? rocket : GALAXY;
-    view.centerX = focus.x;
-    view.centerY = focus.y;
-    view.scale = view.size / 2 / (VIEW_RADIUS[view.mode] / view.zoom);
     context.fillStyle = '#02060d';
     context.fillRect(0, 0, view.size, view.size);
-    drawGalaxy();
-    if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
-    if (telescopeRange) ring(rocket.x, rocket.y, telescopeRange, 'rgba(63, 224, 208, 0.6)', true);
-    drawStars(chart);
+    if (view.mode === 'system') {
+      frameOn(system.star, systemRadius(system));
+      drawSystem(bountyWaiting);
+    } else {
+      frameOn(view.mode === 'nearby' ? rocket : GALAXY, VIEW_RADIUS[view.mode]);
+      drawGalaxy();
+      if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
+      if (telescopeRange) ring(rocket.x, rocket.y, telescopeRange, 'rgba(63, 224, 208, 0.6)', true);
+      drawStars(chart);
+    }
     drawRocket(rocket);
   }
 
-  function pick(chart, clientX, clientY) {
+  function nearestOnMap(candidates, clientX, clientY) {
     const box = canvas.getBoundingClientRect();
     const x = clientX - box.left;
     const y = clientY - box.top;
     let nearest = null;
     let nearestDistance = PICK_REACH_PX;
-    for (const entry of chart.values()) {
-      const [mx, my] = toMap(entry.x, entry.y);
+    for (const candidate of candidates) {
+      const [mx, my] = toMap(candidate.x, candidate.y);
       const distance = Math.hypot(mx - x, my - y);
       if (distance < nearestDistance) {
-        nearest = entry;
+        nearest = candidate;
         nearestDistance = distance;
       }
     }
-    selected = nearest;
     return nearest;
+  }
+
+  function pick(chart, clientX, clientY) {
+    if (view.mode === 'system') {
+      selectedPlanet = nearestOnMap(system.planets, clientX, clientY);
+      return selectedPlanet;
+    }
+    selected = nearestOnMap(chart.values(), clientX, clientY);
+    return selected;
   }
 
   function showView(mode) {
     view.mode = mode;
     view.zoom = 1;
+    selectedPlanet = null;
   }
+
+  function showSystem(closeUp) {
+    system = closeUp;
+    showView('system');
+  }
+
+  const showingSystem = () => view.mode === 'system';
 
   function zoom(direction) {
     const factor = direction === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP;
     view.zoom = Math.min(ZOOM_LIMITS.max, Math.max(ZOOM_LIMITS.min, view.zoom * factor));
   }
 
-  return { draw, pick, showView, zoom };
+  return { draw, pick, showView, showSystem, showingSystem, zoom };
 }

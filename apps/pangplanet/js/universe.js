@@ -141,6 +141,8 @@ export function systemsWithin(x, y, range) {
 
 export const starsWithin = (x, y, range) => systemsWithin(x, y, range).map(({ star }) => star);
 
+export const systemAt = (x, y) => systemsWithin(x, y, 1)[0] ?? null;
+
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));
 
 export function streamSectors(x, y) {
