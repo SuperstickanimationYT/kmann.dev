@@ -91,6 +91,7 @@ export const UPGRADES = {
   tank: { base: MAX_FUEL, levels: [{ cost: 120, value: 150 }, { cost: 450, value: 200 }] },
   engine: { base: 1, levels: [{ cost: 200, value: 1.25 }, { cost: 600, value: 1.5 }] },
   telescope: { base: 4.5e7, levels: [{ cost: 800, value: 9e7 }, { cost: 2000, value: 1.5e8 }] },
+  timewarp: { base: 5, levels: [{ cost: 500, value: 10 }, { cost: 1500, value: 20 }, { cost: 4000, value: 30 }] },
 };
 export const TELESCOPE = { cost: 600 };
 export const MAX_BATTERY_SLOTS = UPGRADES.batterySlots.levels.at(-1).value;
