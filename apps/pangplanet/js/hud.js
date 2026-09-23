@@ -43,6 +43,7 @@ export function createHud(root, actions) {
     speed: find('[data-speed]'),
     throttle: find('[data-throttle]'),
     engine: find('[data-engine]'),
+    engineButton: find('[data-engine-button]'),
     dockPrompt: find('[data-dock-prompt]'),
     crash: find('[data-crash]'),
     mine: find('[data-mine]'),
@@ -122,6 +123,7 @@ export function createHud(root, actions) {
     setText(parts.throttle, `${Math.round(status.throttle)}%`);
     setText(parts.engine, status.engineOn ? 'on' : 'off');
     parts.engine.classList.toggle('is-on', status.engineOn);
+    parts.engineButton.classList.toggle('is-on', status.engineOn);
     setHidden(parts.dockPrompt, !status.canDock);
     setHidden(parts.crash, !status.destroyed);
     setHidden(parts.mine, !status.canMine);

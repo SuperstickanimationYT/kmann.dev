@@ -5,6 +5,7 @@ import { createRenderer } from './render.js';
 import { chargeBatteries, chargedBatteries, createPower, freeBatterySlots, losePowerCargo, sunlight, togglePanels } from './solar.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
+import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { streamSectors } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
@@ -220,6 +221,13 @@ window.addEventListener('keydown', (event) => {
 
 window.addEventListener('keyup', (event) => held.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key));
 window.addEventListener('blur', () => held.clear());
+
+bindHoldButtons(stage, { hold: (key) => held.add(key), release: (key) => held.delete(key) });
+bindTapButtons(stage, (key) => KEY_ACTIONS[key]?.());
+bindPinchZoom(canvas, changeZoom);
+bindVerticalSlider(stage.querySelector('[data-warp-slider]'), stage.querySelector('[data-warp-track]'), (fraction) => {
+  game.timewarp = Math.round(TIMEWARP_LIMITS.min + fraction * (TIMEWARP_LIMITS.max - TIMEWARP_LIMITS.min));
+});
 
 canvas.addEventListener(
   'wheel',

@@ -97,7 +97,10 @@
 
 .pp-warp {
   position: absolute;
-  left: 22px;
+  left: 12px;
+  padding: 0 10px;
+  cursor: ns-resize;
+  touch-action: none;
   top: 50%;
   display: flex;
   flex-direction: column;
@@ -207,6 +210,12 @@
   font-size: 14px;
   white-space: nowrap;
   transform: translateX(-50%);
+}
+
+.pp-prompt[data-tap] {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .pp-crash {
@@ -366,6 +375,91 @@
   border-color: #333;
   background: #d8d8d8;
   color: #111;
+}
+
+.pp-touch-only,
+.pp-touch-controls {
+  display: none;
+}
+
+.pp-touch-controls {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.pp-touch-group {
+  display: flex;
+  gap: 8px;
+}
+
+.pp-touch-controls button {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 14px;
+  background: rgba(11, 33, 55, 0.8);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+.pp-touch-controls button:active {
+  background: var(--accent-deep);
+}
+
+.pp-touch-controls .pp-touch-engine {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  font-size: 15px;
+}
+
+.pp-touch-engine.is-on {
+  border-color: #ffa000;
+  background: rgba(255, 160, 0, 0.35);
+}
+
+@media (pointer: coarse) {
+  .pp-touch-only {
+    display: inline;
+  }
+
+  .pp-keys.pp-touch-only {
+    display: grid;
+  }
+
+  .pp-keyboard-only {
+    display: none;
+  }
+
+  .pp-touch-controls {
+    display: flex;
+  }
+
+  .pp-corner-buttons {
+    bottom: 96px;
+  }
+
+  .pp-stage .pp-telemetry {
+    top: 96px;
+    bottom: auto;
+    left: 12px;
+    right: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px 10px;
+    white-space: normal;
+    transform: none;
+  }
 }
 
 @media (max-width: 900px) {
