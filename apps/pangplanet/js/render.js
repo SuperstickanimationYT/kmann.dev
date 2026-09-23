@@ -1,4 +1,5 @@
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
+import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
 import { MARKET, ROCKET_HEIGHT } from './world.js';
@@ -221,13 +222,15 @@ export function createRenderer(canvas, sprites) {
     context.fillText(text, sx, sy);
   }
 
-  function drawBodyLabels() {
+  function drawBodyLabels(claimedBounties) {
     for (const body of bodies) {
       const radius = body.radius * view.ppu;
       if (radius > LABEL_BELOW_PX) continue;
       const [sx, sy] = toScreen(body.x, body.y);
       const offset = Math.max(radius, 2) + (body.kind === 'wormhole' ? -8 : 14);
-      if (onScreen(sx, sy, 40)) drawLabel(body.name, sx, sy + (body.kind === 'wormhole' ? -offset : offset), 'rgba(185, 214, 245, 0.8)');
+      const bounty = bountyWaiting(claimedBounties, body);
+      const label = bounty ? `${body.name} · ${bounty} bounty` : body.name;
+      if (onScreen(sx, sy, 40)) drawLabel(label, sx, sy + (body.kind === 'wormhole' ? -offset : offset), bounty ? 'rgba(255, 214, 110, 0.9)' : 'rgba(185, 214, 245, 0.8)');
     }
   }
 
@@ -433,7 +436,7 @@ export function createRenderer(canvas, sprites) {
     drawMarket();
     drawSatellite(scene.satellite);
     drawRig(scene.rig);
-    drawBodyLabels();
+    drawBodyLabels(scene.claimedBounties);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);

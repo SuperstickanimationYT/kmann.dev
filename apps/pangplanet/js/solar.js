@@ -2,7 +2,7 @@ import { bodies } from './universe.js';
 import { BATTERY, CHARGE_PER_SECOND_AT_STAR_SURFACE, TICKS_PER_SECOND } from './world.js';
 
 export function createPower() {
-  return { ownsPanels: false, panelsDeployed: false, batteries: [] };
+  return { ownsPanels: false, panelsDeployed: false, batteries: [], slots: BATTERY.slots, panelBoost: 1 };
 }
 
 // Inverse square falloff, 1 at a star's surface.
@@ -12,7 +12,7 @@ export function sunlight(x, y) {
 }
 
 export const chargedBatteries = (power) => power.batteries.filter((charge) => charge >= 1).length;
-export const freeBatterySlots = (power) => BATTERY.slots - power.batteries.length;
+export const freeBatterySlots = (power) => power.slots - power.batteries.length;
 
 export function togglePanels(power, rocket) {
   if (!power.ownsPanels || rocket.destroyed) return;
@@ -53,5 +53,5 @@ export const roomToCharge = (batteries) => batteries.length - storedCharge(batte
 // Runs on wall-clock ticks so time warp cannot shortcut a trip to the star.
 export function chargeBatteries(power, rocket, wallTicks) {
   if (!power.panelsDeployed) return;
-  fillBatteries(power.batteries, chargeRate(sunlight(rocket.x, rocket.y)) * (wallTicks / TICKS_PER_SECOND));
+  fillBatteries(power.batteries, chargeRate(sunlight(rocket.x, rocket.y)) * power.panelBoost * (wallTicks / TICKS_PER_SECOND));
 }

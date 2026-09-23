@@ -36,6 +36,8 @@ export function createRocket() {
     throttle: 100,
     engineOn: false,
     fuel: MAX_FUEL,
+    fuelCapacity: MAX_FUEL,
+    thrust: 1,
     soi: HOME_BODY,
     landed: false,
     destroyed: false,
@@ -85,7 +87,7 @@ function burnEngine(rocket, dt) {
     rocket.engineOn = false;
     return;
   }
-  const push = (rocket.throttle / 100) * dt;
+  const push = (rocket.throttle / 100) * rocket.thrust * dt;
   rocket.vx += Math.sin(rocket.heading) * push;
   rocket.vy += Math.cos(rocket.heading) * push;
   rocket.fuel = Math.max(0, rocket.fuel - (rocket.throttle / 100) * (dt / TICKS_PER_SECOND));

@@ -66,12 +66,14 @@
       <div><dt>Throttle</dt><dd data-throttle></dd></div>
       <div><dt>Light</dt><dd data-sunlight></dd></div>
       <div><dt>Engine</dt><dd class="pp-engine" data-engine></dd></div>
+      <div class="pp-bounty-here" data-bounty-here hidden></div>
     </dl>
 
     <button type="button" class="pp-prompt" data-dock-prompt data-tap="f" hidden>
       <span class="pp-keyboard-only"><kbd>F</kbd> Press F to <span data-dock-action>enter the market</span></span>
       <span class="pp-touch-only">Tap to <span data-dock-action>enter the market</span></span>
     </button>
+    <p class="pp-toast" data-toast role="status" hidden></p>
     <p class="pp-prompt" data-drill-hint hidden>Click the drill to start drilling.</p>
     <button type="button" class="pp-prompt pp-crash" data-crash data-tap="c" hidden>
       Rocket destroyed. <span class="pp-keyboard-only">Press <kbd>C</kbd> to respawn.</span>
@@ -151,6 +153,8 @@
           <img src="img/galactokens.svg" alt="galactokens"> each
         </button>
       </div>
+      <h4 class="pp-subhead">Upgrades</h4>
+      <div class="pp-actions pp-upgrades" data-upgrades></div>
       <p class="pp-hint" data-market-note></p>
     </section>
 
@@ -221,6 +225,7 @@
       </header>
       <p>Take off from Earth, reach the Moon, find the wormhole to the Sun and dock at the market for fuel.</p>
       <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board.</p>
+      <p>Explore: the first landing on each planet or moon pays a bounty, shown in gold next to its name. Spend earnings on upgrades at the market.</p>
       <p>Earn faster: park a satellite by a star to charge batteries while you travel, and power a mining rig on any planet to dig gold for the market.</p>
       <dl class="pp-keys pp-touch-only">
         <div><dt>Engine</dt><dd>Engine on / off</dd></div>
