@@ -7,11 +7,11 @@ const PROJECTS = [
     status: 'live',
   },
   {
-    title: '[App 2]',
-    href: null,
-    poster: null,
-    blurb: null,
-    status: 'planned',
+    title: 'PangPlanet',
+    href: 'apps/pangplanet/',
+    poster: 'assets/img/posters/pangplanet.webp',
+    blurb: 'Fly a rocket between planets and wormholes, mine fuel, trade galactokens.',
+    status: 'live',
   },
   {
     title: '[App 3]',
