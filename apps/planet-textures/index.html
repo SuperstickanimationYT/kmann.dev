@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planet Texture Generator &mdash; kmann314</title>
+<meta name="description" content="Generate procedural planet textures from a handful of dials, or roll random ones, and save them as PNG.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Planet Texture Generator</h2>
+    </div>
+  </div>
+
+  <div class="shell ptg-layout">
+    <form class="ptg-panel" data-controls>
+      <div class="ptg-actions">
+        <button type="button" class="ptg-primary" data-randomize>Randomize planet</button>
+        <button type="button" data-reroll>New seed</button>
+      </div>
+
+      <label class="ptg-field">
+        <span>Preset</span>
+        <select data-preset>
+          <option value="">Custom</option>
+        </select>
+      </label>
+
+      <label class="ptg-field">
+        <span>Seed</span>
+        <input type="number" name="seed" min="1" max="999999" step="1">
+      </label>
+
+      <fieldset>
+        <legend>Surface</legend>
+        <label class="ptg-field ptg-color">
+          <span>Base color</span>
+          <input type="color" name="baseColor">
+        </label>
+        <label class="ptg-field">
+          <span>Variation <output></output></span>
+          <input type="range" name="variation" min="0" max="50" step="1">
+        </label>
+        <label class="ptg-field">
+          <span>Darkness <output></output></span>
+          <input type="range" name="darkness" min="0" max="80" step="1">
+        </label>
+        <label class="ptg-field">
+          <span>Gas giant bands <output></output></span>
+          <input type="range" name="bands" min="0" max="10" step="0.5">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Features</legend>
+        <label class="ptg-field">
+          <span>Polar cap <output></output></span>
+          <input type="range" name="polarCap" min="0" max="120" step="1">
+        </label>
+        <label class="ptg-field">
+          <span>Craters <output></output></span>
+          <input type="range" name="craters" min="0" max="40" step="1">
+        </label>
+        <label class="ptg-field">
+          <span>Clouds <output></output></span>
+          <input type="range" name="clouds" min="0" max="150" step="1">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>
+          <label class="ptg-toggle"><input type="checkbox" name="land"> Continents</label>
+        </legend>
+        <label class="ptg-field ptg-color">
+          <span>Land color</span>
+          <input type="color" name="landColor">
+        </label>
+        <label class="ptg-field">
+          <span>Land cover <output></output></span>
+          <input type="range" name="landCover" min="0" max="100" step="1">
+        </label>
+      </fieldset>
+    </form>
+
+    <section class="ptg-preview">
+      <div class="app-stage ptg-stage">
+        <canvas data-preview></canvas>
+      </div>
+
+      <div class="ptg-export">
+        <label class="ptg-field">
+          <span>Download size</span>
+          <select data-size>
+            <option value="512">512 &times; 512</option>
+            <option value="1024" selected>1024 &times; 1024</option>
+            <option value="2048">2048 &times; 2048</option>
+          </select>
+        </label>
+        <div class="ptg-actions">
+          <button type="button" data-download="planet">Download planet</button>
+          <button type="button" data-download="surface">Surface only</button>
+          <button type="button" data-download="clouds">Clouds only</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

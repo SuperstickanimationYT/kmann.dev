@@ -14,10 +14,10 @@ const PROJECTS = [
     status: 'live',
   },
   {
-    title: '[App 3]',
-    href: null,
-    poster: null,
-    blurb: null,
-    status: 'planned',
+    title: 'Planet Texture Generator',
+    href: 'apps/planet-textures/',
+    poster: 'assets/img/posters/planet-textures.webp',
+    blurb: 'Dial in or roll random procedural planets and save them as PNG textures.',
+    status: 'live',
   },
 ];
