@@ -10,6 +10,10 @@ const STAGE_HEIGHT_UNITS = 360;
 const ROCK_COUNT = 72;
 const ROCK_LIFT = 5;
 const LABEL_BELOW_PX = 40;
+const LABEL_LINE_PX = 14;
+const LABEL_GAP_PX = 6;
+const LABEL_SEPARATOR = ', ';
+const LABEL_SEPARATOR_COLOUR = 'rgba(185, 214, 245, 0.6)';
 const SHOWN_FROM_PPU = { minor: 3e-3, intermediate: 1e-3, major: 0 };
 const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
@@ -233,11 +237,43 @@ export function createRenderer(canvas, sprites) {
     }
   }
 
+  let queuedLabels = [];
+
   function drawLabel(text, sx, sy, colour) {
+    queuedLabels.push({ text, sx, sy, colour });
+  }
+
+  function mergeOverlapping(labels) {
+    const lines = [];
+    for (const label of labels) {
+      const width = context.measureText(label.text).width;
+      const line = lines.find(({ sx, sy, width: lineWidth }) => Math.abs(sy - label.sy) < LABEL_LINE_PX && Math.abs(sx - label.sx) < (lineWidth + width) / 2 + LABEL_GAP_PX);
+      if (!line) lines.push({ sx: label.sx, sy: label.sy, width, parts: [label] });
+      else {
+        line.width += context.measureText(LABEL_SEPARATOR).width + width;
+        line.parts.push(label);
+      }
+    }
+    return lines;
+  }
+
+  function flushLabels() {
     context.font = '12px "Trebuchet MS", "Segoe UI", sans-serif';
-    context.textAlign = 'center';
-    context.fillStyle = colour;
-    context.fillText(text, sx, sy);
+    context.textAlign = 'left';
+    for (const { sx, sy, width, parts } of mergeOverlapping(queuedLabels)) {
+      let x = sx - width / 2;
+      parts.forEach(({ text, colour }, index) => {
+        if (index > 0) {
+          context.fillStyle = LABEL_SEPARATOR_COLOUR;
+          context.fillText(LABEL_SEPARATOR, x, sy);
+          x += context.measureText(LABEL_SEPARATOR).width;
+        }
+        context.fillStyle = colour;
+        context.fillText(text, x, sy);
+        x += context.measureText(text).width;
+      });
+    }
+    queuedLabels = [];
   }
 
   function drawBodyLabels(shownBodies, claimedBounties) {
@@ -613,25 +649,26 @@ export function createRenderer(canvas, sprites) {
     drawStars();
     const shownBodies = bodies.filter((body) => shownAtZoom(tierOf(body)));
     shownBodies.forEach(drawBody);
+    drawBodyLabels(shownBodies, scene.claimedBounties);
     if (shownAtZoom('minor')) {
       drawMarket();
       scene.satellites.forEach(drawSatellite);
       drawRig(scene.rig);
       scene.banks.forEach(drawBank);
       scene.antennas.forEach(drawAntenna);
-      drawSignal(scene.antennas);
     }
-    drawBodyLabels(shownBodies, scene.claimedBounties);
+    drawSignal(scene.antennas);
     drawPath(routePath, 'rgba(255, 150, 90, 0.55)', [8, 6]);
     clock = scene.clock;
     drawParticles(scene.particles);
-    if (shownAtZoom('minor')) scene.drones.forEach(drawDrone);
+    scene.drones.forEach(drawDrone);
     scene.haulers.forEach(drawHauler);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);
     drawRocket(scene.rocket);
     drawExplosion(scene.explosion);
+    flushLabels();
     drawWarp(scene.warp);
   }
 
