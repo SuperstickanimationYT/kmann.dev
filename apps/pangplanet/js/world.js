@@ -27,14 +27,17 @@ const EARTH_SURFACE_GRAVITY = 0.1;
 
 const SURFACE_DEFAULTS = { variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: '#7eff00', landCover: 47, clouds: 0 };
 
-function solarPlanet({ name, orbitNumber, bearingDegrees, radius, gravityInEarths, seed, surface, rings, bounty, resource = null }) {
-  const orbit = (EARTH_ORBIT / EARTH_ORBIT_NUMBER) * orbitNumber;
+function orbiting(center, distance, bearingDegrees) {
   const bearing = (bearingDegrees * Math.PI) / 180;
+  return { x: center.x + Math.sin(bearing) * distance, y: center.y + Math.cos(bearing) * distance };
+}
+
+function surfaceBody({ name, x, y, radius, gravityInEarths, seed, surface, rings, bounty, resource = null }) {
   const planet = { ...SURFACE_DEFAULTS, seed, ...surface };
   return {
     name,
-    x: SUN.x + Math.sin(bearing) * orbit,
-    y: SUN.y + Math.cos(bearing) * orbit,
+    x,
+    y,
     radius,
     soi: radius + SOI_MARGIN,
     mass: massFor(radius, gravityInEarths * EARTH_SURFACE_GRAVITY),
@@ -45,6 +48,14 @@ function solarPlanet({ name, orbitNumber, bearingDegrees, radius, gravityInEarth
     bounty,
     resource,
   };
+}
+
+const solarPlanet = ({ orbitNumber, bearingDegrees, ...body }) =>
+  surfaceBody({ ...body, ...orbiting(SUN, (EARTH_ORBIT / EARTH_ORBIT_NUMBER) * orbitNumber, bearingDegrees) });
+
+function solarMoon({ parent, distance, bearingDegrees, ...body }) {
+  const center = SOLAR_PLANETS.find((planet) => planet.name === parent);
+  return surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) });
 }
 
 const SOLAR_PLANETS = [
@@ -68,6 +79,14 @@ const SOLAR_PLANETS = [
   { name: 'Neptune', orbitNumber: 8, bearingDegrees: 30, radius: 17500, gravityInEarths: 1.14, bounty: 400, resource: 'gas', seed: 8808, surface: { baseColor: '#3f6fff', variation: 12, darkness: 20, bands: 2 } },
 ].map(solarPlanet);
 
+const SOLAR_MOONS = [
+  { parent: 'Mars', name: 'Phobos', distance: 25000, bearingDegrees: 60, radius: 600, gravityInEarths: 0.02, bounty: 200, seed: 4411, surface: { baseColor: '#7a6e64', darkness: 40, craters: 20 } },
+  { parent: 'Mars', name: 'Deimos', distance: 50000, bearingDegrees: -110, radius: 400, gravityInEarths: 0.015, bounty: 200, seed: 4422, surface: { baseColor: '#9a8c7c', darkness: 30, craters: 12 } },
+  { parent: 'Jupiter', name: 'Europa', distance: 110000, bearingDegrees: -30, radius: 2700, gravityInEarths: 0.134, bounty: 250, seed: 5511, surface: { baseColor: '#d8cfc0', variation: 10, darkness: 15, craters: 2 } },
+  { parent: 'Saturn', name: 'Titan', distance: 150000, bearingDegrees: 120, radius: 4450, gravityInEarths: 0.138, bounty: 300, resource: 'gas', seed: 6611, surface: { baseColor: '#d99a3a', variation: 8, darkness: 15, clouds: 80 } },
+  { parent: 'Neptune', name: 'Triton', distance: 90000, bearingDegrees: 200, radius: 2340, gravityInEarths: 0.08, bounty: 400, seed: 8811, surface: { baseColor: '#d9b8b0', variation: 15, polarCap: 40, craters: 3 } },
+].map(solarMoon);
+
 export const HOME_SYSTEM = [
   HOME_BODY,
   { name: 'Moon', x: 100000, y: 0, radius: 3000, soi: 5000, mass: 3e7, kind: 'planemo', look: 'moon', bounty: 75 },
@@ -77,6 +96,7 @@ export const HOME_SYSTEM = [
   ),
   SUN,
   ...SOLAR_PLANETS,
+  ...SOLAR_MOONS,
 ];
 
 export const MARKET = { x: 1000, y: -50000, scale: 3, dockingRange: 1000 };
