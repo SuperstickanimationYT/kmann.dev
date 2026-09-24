@@ -19,7 +19,7 @@ async function loadImage(src) {
   return image;
 }
 
-function rasterize(image) {
+async function rasterize(image) {
   const width = image.naturalWidth || image.width;
   const height = image.naturalHeight || image.height;
   const density = RASTER_SIZE / Math.max(width, height);
@@ -27,7 +27,7 @@ function rasterize(image) {
   canvas.width = Math.ceil(width * density);
   canvas.height = Math.ceil(height * density);
   canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-  return { bitmap: canvas, width, height };
+  return { bitmap: await createImageBitmap(canvas), width, height };
 }
 
 export async function loadSprites() {
@@ -35,7 +35,7 @@ export async function loadSprites() {
     Object.entries(SPRITES).map(async ([name, { src, pivot }]) => {
       const image = await loadImage(src);
       const sprite = src.endsWith('.svg')
-        ? rasterize(image)
+        ? await rasterize(image)
         : { bitmap: image, width: image.naturalWidth, height: image.naturalHeight };
       return [name, { ...sprite, pivot: pivot ?? [sprite.width / 2, sprite.height / 2] }];
     }),
