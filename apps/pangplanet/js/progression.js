@@ -16,6 +16,8 @@ export const upgradeValue = (key, level) => (level === 0 ? UPGRADES[key].base : 
 
 export const nextUpgrade = (key, level) => UPGRADES[key].levels[level] ?? null;
 
+export const canAfford = (upgrade, galactokens, crystals) => galactokens >= upgrade.cost && crystals >= (upgrade.crystals ?? 0);
+
 export function applyUpgrades(upgrades, rocket, power) {
   power.slots = upgradeValue('batterySlots', upgrades.batterySlots);
   power.panelBoost = upgradeValue('panels', upgrades.panels);

@@ -1,4 +1,4 @@
-import { systemsWithin } from './universe.js';
+import { crystalWorlds, systemsWithin } from './universe.js';
 
 const VISIT_RANGE = 4e6;
 const SUN_FILL = '#fff7dc';
@@ -15,6 +15,7 @@ function chartEntry({ star, planets }, visited) {
     fill: star.palette?.fill ?? SUN_FILL,
     planets: planets.length,
     bounty: planets.reduce((sum, planet) => sum + (planet.bounty ?? 0), 0),
+    crystals: crystalWorlds(planets),
     visited,
   };
 }

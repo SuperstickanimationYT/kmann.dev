@@ -15,6 +15,7 @@ const PLANET_COUNT = [1, 7];
 const FIRST_ORBIT_IN_STAR_RADII = 4;
 const ORBIT_GAP = [150000, 350000];
 const GAS_GIANT_CHANCE = 0.3;
+const CRYSTAL_CHANCE = 0.15;
 const STAR_GRAVITY = [2, 6];
 const ROCKY = { radius: [2000, 14000], gravity: [0.05, 0.4] };
 const GAS_GIANT = { radius: [16000, 30000], gravity: [0.3, 0.7] };
@@ -69,7 +70,12 @@ function bountyForGravity(surfaceGravity) {
   return Math.round((min + difficulty * (max - min)) / step) * step;
 }
 
-function generatePlanet(next, star, orbit, index) {
+function resourceFor(gasGiant, seed, index) {
+  if (gasGiant) return 'gas';
+  return createRandom(seed ^ Math.imul(index + 1, 0x9e3779b1)).next() < CRYSTAL_CHANCE ? 'crystals' : null;
+}
+
+function generatePlanet(next, star, orbit, index, seed) {
   const gasGiant = next() < GAS_GIANT_CHANCE;
   const shape = gasGiant ? GAS_GIANT : ROCKY;
   const radius = within(next, shape.radius);
@@ -87,13 +93,15 @@ function generatePlanet(next, star, orbit, index) {
     palette: { fill: planet.baseColor },
     planet,
     bounty: bountyForGravity(surfaceGravity),
+    resource: resourceFor(gasGiant, seed, index),
   };
 }
 
 function generateSystem(sectorX, sectorY) {
   if (sectorX === 0 && sectorY === 0) return [];
   if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return [];
-  const { next, integer } = createRandom(sectorSeed(sectorX, sectorY));
+  const seed = sectorSeed(sectorX, sectorY);
+  const { next, integer } = createRandom(seed);
   if (next() > STAR_CHANCE) return [];
 
   const type = pick(next, STAR_TYPES);
@@ -115,7 +123,7 @@ function generateSystem(sectorX, sectorY) {
   const count = integer(...PLANET_COUNT);
   for (let index = 0; index < count; index++) {
     orbit += within(next, ORBIT_GAP);
-    planets.push(generatePlanet(next, star, orbit, index));
+    planets.push(generatePlanet(next, star, orbit, index, seed));
   }
   return [star, ...planets];
 }
@@ -141,7 +149,15 @@ export function systemsWithin(x, y, range) {
 
 export const starsWithin = (x, y, range) => systemsWithin(x, y, range).map(({ star }) => star);
 
-export const systemAt = (x, y) => systemsWithin(x, y, 1)[0] ?? null;
+export function systemAt(x, y) {
+  const home = describeSystem(HOME_SYSTEM);
+  if (home.star.x === x && home.star.y === y) return home;
+  const [sectorX, sectorY] = sectorOf(x, y);
+  const systemBodies = loadedSectors.get(`${sectorX},${sectorY}`)?.bodies ?? generateSystem(sectorX, sectorY);
+  return systemBodies.length ? describeSystem(systemBodies) : null;
+}
+
+export const crystalWorlds = (planets) => planets.filter((planet) => planet.resource === 'crystals').length;
 
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));
 
