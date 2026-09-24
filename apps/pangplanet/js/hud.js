@@ -72,6 +72,7 @@ export function createHud(root, actions) {
     buyBattery: find('[data-buy-battery]'),
     sellBatteries: find('[data-sell-batteries]'),
     buyWarpDrive: find('[data-buy-warp-drive]'),
+    buyRescueModule: find('[data-buy-rescue-module]'),
     openWarp: find('[data-open-warp]'),
     warpNote: find('[data-warp-note]'),
     destinations: find('[data-destinations]'),
@@ -155,6 +156,7 @@ export function createHud(root, actions) {
   parts.buyBattery.addEventListener('click', actions.buyBattery);
   parts.sellBatteries.addEventListener('click', actions.sellBatteries);
   parts.buyWarpDrive.addEventListener('click', actions.buyWarpDrive);
+  parts.buyRescueModule.addEventListener('click', actions.buyRescueModule);
   parts.openWarp.addEventListener('click', actions.openWarp);
   const clicks = {
     buySatellite: actions.buySatellite,
@@ -359,6 +361,8 @@ export function createHud(root, actions) {
     setHidden(parts.buyPanels, status.ownsPanels);
     setHidden(parts.buyWarpDrive, status.ownsWarpDrive);
     parts.buyWarpDrive.disabled = !status.canBuyWarpDrive;
+    setHidden(parts.buyRescueModule, !status.offersRescueModule);
+    parts.buyRescueModule.disabled = !status.canBuyRescueModule;
     setHidden(parts.openWarp, !status.ownsWarpDrive);
     setText(parts.warpNote, status.warpNote);
     parts.dockActions.forEach((action) => setText(action, status.dockAction));

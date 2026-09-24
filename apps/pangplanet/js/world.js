@@ -131,6 +131,7 @@ export const TELESCOPE = { cost: 600 };
 export const PRICE_GROWTH = 1.5;
 export const ANTENNA = { cost: 800, range: 6e5, reach: 1500 };
 export const DRONE = { cost: 1500, batteries: 3, padReach: 1500, fuelMargin: 0.05 };
+export const RESCUE = { cost: 2500, fee: 50, speed: 300, reach: 300 };
 export const OFFLINE_CATCH_UP_SECONDS = 86400;
 export const HAULER = { cost: 8000, batteries: 6, speed: 2000, tokensPerUnit: 1 / 20000, stopSeconds: 10, warpSeconds: 60, retrySeconds: 60, idleSeconds: 300 };
 export const BUILDER = { cost: 15000, siteInStarRadii: 1.5, siteSpacing: 800, siteTries: 200, starChoices: 40 };
