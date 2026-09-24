@@ -40,6 +40,7 @@ const LOOKS = {
   earth: { fill: '#2b6fb0', rock: '#3fbf2a', atmosphere: 'rgba(110, 180, 255, 0.35)' },
   moon: { fill: '#bdbdbd', rock: '#8a8a8a' },
   wormhole: { fill: '#0c0c0c', rim: 'rgba(170, 120, 255, 0.55)' },
+  blackhole: { fill: '#000', dot: '#ff963c', rim: 'rgba(255, 200, 120, 0.9)', glow: 'rgba(255, 140, 60, 0.3)' },
   sun: { fill: '#fff7dc', glow: 'rgba(255, 236, 170, 0.45)' },
 };
 
@@ -184,7 +185,7 @@ export function createRenderer(canvas, sprites) {
     const look = body.palette ?? LOOKS[body.look];
     if (!onScreen(sx, sy, radius * (body.rings?.outer ?? 1.2))) return;
     if (radius < 1.5) {
-      context.fillStyle = look.fill;
+      context.fillStyle = look.dot ?? look.fill;
       discPath(sx, sy, 1.5);
       context.fill();
       return;

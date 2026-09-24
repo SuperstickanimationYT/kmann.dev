@@ -1,6 +1,6 @@
 import { randomPlanet } from '../../planet-textures/js/presets.js';
 import { createRandom } from '../../planet-textures/js/random.js';
-import { GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, massFor } from './world.js';
+import { GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, blackHole, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
 export const SECTOR_SIZE = 1.5e7;
@@ -17,6 +17,9 @@ const ORBIT_GAP = [150000, 350000];
 const GAS_GIANT_CHANCE = 0.3;
 const CRYSTAL_CHANCE = 0.15;
 const STARDUST_CHANCE = 0.05;
+const BLACK_HOLE_CHANCE = 0.25;
+const BLACK_HOLE_COUNT = [1, 3];
+const BLACK_HOLE_SALT = 0xb1ac4;
 const STAR_GRAVITY = [2, 6];
 const ROCKY = { radius: [2000, 14000], gravity: [0.05, 0.4] };
 const GAS_GIANT = { radius: [16000, 30000], gravity: [0.3, 0.7] };
@@ -122,18 +125,33 @@ function generateSystem(sectorX, sectorY) {
   };
 
   const planets = [];
+  const orbits = [];
   let orbit = radius * FIRST_ORBIT_IN_STAR_RADII;
   const count = integer(...PLANET_COUNT);
   for (let index = 0; index < count; index++) {
     orbit += within(next, ORBIT_GAP);
+    orbits.push(orbit);
     planets.push(generatePlanet(next, star, orbit, index, seed));
   }
-  return [star, ...planets];
+  return [star, ...blackHolesBetween(star, orbits, seed), ...planets];
+}
+
+function blackHolesBetween(star, orbits, seed) {
+  const random = createRandom(seed ^ BLACK_HOLE_SALT);
+  if (orbits.length < 2 || random.next() >= BLACK_HOLE_CHANCE) return [];
+  const gaps = orbits.slice(1).map((outer, index) => (orbits[index] + outer) / 2);
+  const count = Math.min(gaps.length, random.integer(...BLACK_HOLE_COUNT));
+  return Array.from({ length: count }, (_, index) => {
+    const [gap] = gaps.splice(random.integer(0, gaps.length - 1), 1);
+    const bearing = random.next() * Math.PI * 2;
+    return blackHole(`${star.name} X-${index + 1}`, { x: star.x + Math.sin(bearing) * gap, y: star.y + Math.cos(bearing) * gap });
+  });
 }
 
 const describeSystem = (systemBodies) => ({
   star: systemBodies.find((body) => body.kind === 'star'),
   planets: systemBodies.filter((body) => body.kind === 'planemo'),
+  blackHoles: systemBodies.filter((body) => body.kind === 'blackhole'),
 });
 
 export function systemsWithin(x, y, range) {

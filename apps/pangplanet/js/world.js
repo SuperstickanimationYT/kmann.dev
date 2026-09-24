@@ -7,6 +7,7 @@ export const CRASH_SPEED = 10;
 export const WORMHOLE_EXIT_GAP = 100;
 
 export const SOI_MARGIN = 2000;
+export const BLACK_HOLE = { radius: 2500, soi: 60000, mass: 1e10, rings: { inner: 1.6, outer: 3.2, colour: 'rgba(255, 150, 60, 0.7)' } };
 export const massFor = (radius, surfaceGravity) => (surfaceGravity * radius * radius) / GRAVITATIONAL_CONSTANT;
 
 function linkWormholes(mouth, exit) {
@@ -58,6 +59,8 @@ function solarMoon({ parent, distance, bearingDegrees, ...body }) {
   return { ...surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) }), moon: true };
 }
 
+export const blackHole = (name, { x, y }) => ({ name, x, y, ...BLACK_HOLE, kind: 'blackhole', look: 'blackhole' });
+
 const SOLAR_PLANETS = [
   { name: 'Mercury', orbitNumber: 1, bearingDegrees: 150, radius: 4000, gravityInEarths: 0.38, bounty: 150, seed: 1101, surface: { baseColor: '#9c9489', variation: 30, darkness: 30, craters: 18 } },
   { name: 'Venus', orbitNumber: 2, bearingDegrees: 60, radius: 9500, gravityInEarths: 0.9, bounty: 150, seed: 2202, surface: { baseColor: '#e8c07a', variation: 12, darkness: 15, clouds: 70 } },
@@ -95,6 +98,7 @@ export const HOME_SYSTEM = [
     { name: 'Sun Wormhole', x: 1000000, y: -1080000, radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' },
   ),
   SUN,
+  blackHole('Sun X-1', orbiting(SUN, (EARTH_ORBIT / EARTH_ORBIT_NUMBER) * 5.5, 40)),
   ...SOLAR_PLANETS,
   ...SOLAR_MOONS,
 ];
