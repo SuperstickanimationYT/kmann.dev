@@ -33,9 +33,9 @@ export function deployRig(rig, rocket) {
   Object.assign(rig, { deployed: true, x: rocket.x, y: rocket.y, heading: rocket.heading, site: rocket.soi.name });
 }
 
-export function loadRig(rig, power) {
+export function loadRig(rig, power, keep = 0) {
   const room = MINING_RIG.batterySlots - rig.charge;
-  rig.charge += drainBatteries(power.batteries, Math.min(room, storedCharge(power.batteries)));
+  rig.charge += drainBatteries(power.batteries, Math.max(0, Math.min(room, storedCharge(power.batteries) - keep)));
 }
 
 export function runRig(rig, seconds) {

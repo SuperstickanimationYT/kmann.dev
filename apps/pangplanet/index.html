@@ -125,6 +125,7 @@
         <button type="button" class="pp-action" data-pick-up-antenna>Pick up antenna</button>
         <button type="button" class="pp-action pp-outpost" data-deploy-drone>Park drone here (<span data-drones-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-open-drone>Drone controls</button>
+        <button type="button" class="pp-action pp-outpost" data-open-haulers>Haulers</button>
       </div>
     </section>
 
@@ -170,6 +171,11 @@
           Drone for <span data-price="drone"></span>
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-hauler>
+          Hauler for <span data-price="hauler"></span>
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-add-hauler-stop="market">Add to hauler route: sell gold</button>
         <button type="button" class="pp-action pp-sell" data-sell-gold>
           <img src="img/gold.svg" alt=""> Sell gold, 10
           <img src="img/galactokens.svg" alt="galactokens"> each
@@ -214,6 +220,7 @@
         <button type="button" class="pp-action pp-buy" data-take-charge>
           <img src="img/battery.svg" alt=""> Take charge
         </button>
+        <button type="button" class="pp-action pp-outpost" data-add-hauler-stop="satellite">Add to hauler route</button>
         <button type="button" class="pp-action" data-pick-up-satellite>Pick up satellite</button>
       </div>
     </section>
@@ -232,6 +239,7 @@
         <button type="button" class="pp-action pp-sell" data-collect-gold>
           <img src="img/gold.svg" alt=""> Collect gold
         </button>
+        <button type="button" class="pp-action pp-outpost" data-add-hauler-stop="rig">Add to hauler route</button>
         <button type="button" class="pp-action" data-pick-up-rig>Pick up rig</button>
       </div>
     </section>
@@ -250,7 +258,24 @@
         <button type="button" class="pp-action pp-buy" data-take-from-bank>
           <img src="img/battery.svg" alt=""> Take charge
         </button>
+        <button type="button" class="pp-action pp-outpost" data-add-hauler-stop="bankTake">Add to hauler route: take charge</button>
+        <button type="button" class="pp-action pp-outpost" data-add-hauler-stop="bankDeposit">Add to hauler route: deposit charge</button>
         <button type="button" class="pp-action" data-pick-up-bank>Pick up battery bank</button>
+      </div>
+    </section>
+
+    <section class="pp-panel" data-panel="hauler" hidden aria-label="Haulers">
+      <header>
+        <h3 data-hauler-title>Haulers</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>A hauler flies its route of stops on repeat with no antennas, even while you're away. It pays galactokens for fuel inside a star system and burns the charge it carries to warp between stars. It carries 6 batteries and sells gold at the market, but never batteries.</p>
+      <p data-hauler-status></p>
+      <ol class="pp-stops" data-hauler-stops></ol>
+      <div class="pp-actions">
+        <button type="button" class="pp-action" data-toggle-hauler></button>
+        <button type="button" class="pp-action" data-cycle-hauler="-1">Previous hauler</button>
+        <button type="button" class="pp-action" data-cycle-hauler="1">Next hauler</button>
       </div>
     </section>
 
@@ -312,7 +337,7 @@
       <p>Explore: the first landing on each planet or moon pays a bounty, shown in gold next to its name. Spend earnings on upgrades at the market.</p>
       <p>Earn faster: park a satellite by a star to charge batteries while you travel, and power a mining rig on any planet to dig gold for the market.</p>
       <p>Go further: rocky worlds around other stars sometimes hold crystals that the fuel drill brings up. Scan with a telescope to see which systems have them. Crystals sell well and pay for the best upgrades. Gas giants pump double fuel.</p>
-      <p>Automate: set up antennas on planets and moons around any star, park a drone in range, then record a route by flying it yourself. The drone repeats the route, carrying charge between satellites, battery banks and mining rigs.</p>
+      <p>Automate: set up antennas on planets and moons around any star, park a drone in range, then record a route by flying it yourself. The drone repeats the route, carrying charge between satellites, battery banks and mining rigs. Later, buy a hauler: dock at your outposts to add them to its route, and it flies that route between stars with no antennas.</p>
       <dl class="pp-keys pp-touch-only">
         <div><dt>Engine</dt><dd>Engine on / off</dd></div>
         <div><dt>&#x27F2; &#x27F3;</dt><dd>Hold to rotate</dd></div>

@@ -49,6 +49,7 @@ import {
   replayFlight,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
+import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
 import { blast, createParticles, drift, exhaust } from './particles.js';
 import { applyUpgrades, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
 import { deleteSave, readSave, writeSave } from './save.js';
@@ -68,9 +69,11 @@ import {
   FUEL_PACK,
   FUEL_PER_PUMP,
   GOLD,
+  HAULER,
   HOME_BODY,
   MARKET,
   MINING_RIG,
+  OFFLINE_CATCH_UP_SECONDS,
   SATELLITE,
   SOLAR_PANELS,
   STARTING_GALACTOKENS,
@@ -131,6 +134,8 @@ const game = {
   antennas: [],
   antennasInHold: 0,
   drones: [],
+  haulers: [],
+  haulerIndex: 0,
   recording: null,
   docked: null,
   gold: 0,
@@ -218,7 +223,66 @@ const PRICES = {
   bank: () => risingPrice(BATTERY_BANK.cost, game.banks.length),
   antenna: () => risingPrice(ANTENNA.cost, game.antennas.length + game.antennasInHold),
   drone: () => risingPrice(DRONE.cost, game.drones.length),
+  hauler: () => risingPrice(HAULER.cost, game.haulers.length),
 };
+
+const deployedOrNull = (outpost) => (outpost?.deployed ? outpost : null);
+
+const STOP_KINDS = {
+  satellite: {
+    locate: ({ index }) => deployedOrNull(game.satellites[index]),
+    act: ({ index }, hauler) => transferCharge(game.satellites[index].batteries, hauler.batteries),
+    describe: ({ index }) => `Satellite ${index + 1}: take charge`,
+  },
+  bankTake: {
+    locate: ({ index }) => deployedOrNull(game.banks[index]),
+    act: ({ index }, hauler) => transferCharge(game.banks[index].batteries, hauler.batteries),
+    describe: ({ index }) => `Battery bank ${index + 1}: take charge`,
+  },
+  bankDeposit: {
+    locate: ({ index }) => deployedOrNull(game.banks[index]),
+    act: ({ index }, hauler, keep) => transferCharge(hauler.batteries, game.banks[index].batteries, keep),
+    describe: ({ index }) => `Battery bank ${index + 1}: deposit charge`,
+  },
+  rig: {
+    locate: () => deployedOrNull(game.rig),
+    act: (stop, hauler, keep) => {
+      loadRig(game.rig, hauler, keep);
+      hauler.gold += collectGold(game.rig);
+    },
+    describe: () => `Mining rig on ${game.rig?.site || 'nowhere'}: load batteries, collect gold`,
+  },
+  market: {
+    locate: () => MARKET,
+    act: (stop, hauler) => {
+      game.galactokens += hauler.gold * GOLD.sellPrice;
+      hauler.gold = 0;
+    },
+    describe: () => 'Market: sell gold',
+  },
+};
+
+const describeStop = (stop) => STOP_KINDS[stop.kind].describe(stop);
+
+const haulerWorld = {
+  locate: (stop) => STOP_KINDS[stop.kind].locate(stop),
+  act: (stop, hauler, keep) => STOP_KINDS[stop.kind].act(stop, hauler, keep),
+  spend: (tokens) => {
+    if (game.galactokens < tokens) return false;
+    game.galactokens -= tokens;
+    return true;
+  },
+};
+
+const selectedHauler = () => game.haulers[game.haulerIndex] ?? null;
+
+function stopHere(kind) {
+  if (kind === 'satellite') return dockedOf('satellite') && { kind, index: game.satellites.indexOf(dockedOf('satellite')) };
+  if (kind === 'bankTake' || kind === 'bankDeposit') return dockedOf('bank') && { kind, index: game.banks.indexOf(dockedOf('bank')) };
+  if (kind === 'rig') return game.panel === 'rig' && game.rig ? { kind } : null;
+  if (kind === 'market') return game.panel === 'market' ? { kind } : null;
+  return null;
+}
 
 function pay(kind) {
   const price = PRICES[kind]();
@@ -463,6 +527,32 @@ const actions = {
     stowDrone(drone);
     openPanel(null);
   },
+  buyHauler: () => {
+    if (!pay('hauler')) return;
+    game.haulers.push(createHauler(MARKET));
+    game.haulerIndex = game.haulers.length - 1;
+    hud.toast('Hauler waiting at the market. Dock at your outposts to add stops to its route.');
+  },
+  openHaulers: () => openPanel(game.panel === 'hauler' ? null : 'hauler'),
+  cycleHauler: (step) => {
+    const count = game.haulers.length;
+    if (count > 0) game.haulerIndex = (game.haulerIndex + step + count) % count;
+  },
+  addHaulerStop: (kind) => {
+    const hauler = selectedHauler();
+    const stop = stopHere(kind);
+    if (!hauler || !stop) return;
+    hauler.stops.push(stop);
+    hud.toast(`Hauler ${game.haulerIndex + 1}, stop ${hauler.stops.length}: ${describeStop(stop)}.`);
+  },
+  removeHaulerStop: (index) => {
+    const hauler = selectedHauler();
+    if (hauler) removeStop(hauler, index);
+  },
+  toggleHauler: () => {
+    const hauler = selectedHauler();
+    if (hauler?.stops.length) hauler.running = !hauler.running;
+  },
   sellCrystals: () => {
     game.galactokens += game.crystals * CRYSTALS.sellPrice;
     game.crystals = 0;
@@ -522,12 +612,17 @@ function advanceOutposts(seconds) {
   runRig(game.rig, seconds);
 }
 
-let outpostClock = Date.now();
+function advanceUnattended(seconds) {
+  advanceOutposts(seconds);
+  for (const hauler of game.haulers) passTime(hauler, seconds);
+}
 
-function catchUpOutposts() {
+let unattendedClock = Date.now();
+
+function catchUpToNow() {
   const now = Date.now();
-  advanceOutposts((now - outpostClock) / 1000);
-  outpostClock = now;
+  runTimeline((now - unattendedClock) / 1000);
+  unattendedClock = now;
 }
 
 function respawn() {
@@ -813,8 +908,29 @@ function settleRun(run, now) {
   } else endRun(run);
 }
 
+function runTimeline(seconds, runs = []) {
+  let now = 0;
+  for (;;) {
+    let settle = null;
+    let soonestAt = seconds;
+    for (const run of runs) {
+      const at = nextMoment(run, now);
+      if (at !== null && at <= soonestAt) [settle, soonestAt] = [() => settleRun(run, at), at];
+    }
+    for (const hauler of game.haulers) {
+      const due = secondsUntilDue(hauler);
+      if (due !== null && now + due <= soonestAt) [settle, soonestAt] = [() => settleHauler(hauler, haulerWorld), now + due];
+    }
+    if (!settle) break;
+    advanceUnattended(soonestAt - now);
+    now = soonestAt;
+    settle();
+  }
+  advanceUnattended(seconds - now);
+}
+
 function catchUp(seconds) {
-  const droneSeconds = Math.min(seconds, DRONE.catchUpSeconds);
+  const busySeconds = Math.min(seconds, OFFLINE_CATCH_UP_SECONDS);
   streamAround();
   const runs = game.drones
     .filter((drone) => drone.pad && drone.route && !drone.lost)
@@ -825,22 +941,10 @@ function catchUp(seconds) {
       next: drone.flight?.nextEvent ?? 0,
       finished: false,
     }));
-  let now = 0;
-  for (;;) {
-    let soonest = null;
-    let soonestAt = droneSeconds;
-    for (const run of runs) {
-      const at = nextMoment(run, now);
-      if (at !== null && at <= soonestAt) [soonest, soonestAt] = [run, at];
-    }
-    if (!soonest) break;
-    advanceOutposts(soonestAt - now);
-    now = soonestAt;
-    settleRun(soonest, now);
-  }
-  advanceOutposts(seconds - now);
+  runTimeline(busySeconds, runs);
+  advanceOutposts(seconds - busySeconds);
   for (const run of runs) {
-    if (!run.finished && run.start !== null) replayFlight(run.drone, game.antennas, Math.round((droneSeconds - run.start) / STEP_SECONDS), STEP_TICKS);
+    if (!run.finished && run.start !== null) replayFlight(run.drone, game.antennas, Math.round((busySeconds - run.start) / STEP_SECONDS), STEP_TICKS);
   }
 }
 
@@ -966,6 +1070,36 @@ function droneStatus() {
   return `Waiting for ${refuelCost(drone)} galactokens to refuel. ${carrying} ${fuel}`;
 }
 
+function formatDuration(seconds) {
+  return seconds < 60 ? `${Math.ceil(seconds)} s` : `${Math.ceil(seconds / 60)} min`;
+}
+
+function haulerStatus(hauler) {
+  if (hauler.stops.length === 0) return 'No stops yet. Dock at a satellite, battery bank, mining rig or the market and add it to this route.';
+  const cargo = `Carrying ${storedCharge(hauler.batteries).toFixed(2)} of ${HAULER.batteries} batteries and ${hauler.gold} gold.`;
+  const target = describeStop(hauler.stops[hauler.next]);
+  const { leg, stalled } = hauler;
+  if (!hauler.running) return `Paused. ${cargo}`;
+  if (leg) return `${leg.warp ? 'Warping' : 'Flying'} to ${target}, ${formatDuration(leg.left)} left. ${cargo}`;
+  if (stalled?.kind === 'tokens') return `Waiting for ${stalled.amount} galactokens of fuel to reach ${target}. ${cargo}`;
+  if (stalled?.kind === 'charge') return `Needs ${stalled.amount.toFixed(2)} batteries of charge to warp to ${target}. ${cargo}`;
+  if (stalled?.kind === 'idle') return `Nothing to carry on its last loop. Trying again in ${formatDuration(hauler.wait)}. ${cargo}`;
+  if (stalled?.kind === 'stops') return `None of its stops are set up right now. Redeploy them or change the route. ${cargo}`;
+  return `Setting off. ${cargo}`;
+}
+
+function haulerInfo() {
+  const hauler = selectedHauler();
+  if (!hauler) return null;
+  return {
+    title: `Hauler ${game.haulerIndex + 1} of ${game.haulers.length}`,
+    count: game.haulers.length,
+    status: haulerStatus(hauler),
+    running: hauler.running,
+    stops: hauler.stops.map((stop, index) => ({ label: describeStop(stop), next: index === hauler.next, missing: !haulerWorld.locate(stop) })),
+  };
+}
+
 function status() {
   const { rocket, drill, power } = game;
   const body = rocket.soi;
@@ -1053,6 +1187,9 @@ function status() {
     canPickUpDrone: Boolean(dockedOf('drone')) && (!dockedOf('drone').flight || dockedOf('drone').lost),
     recordingSeconds: game.recording ? game.recording.steps * STEP_SECONDS : null,
     canFinishRecording: canFinishRecording(),
+    canBuyHauler: game.galactokens >= PRICES.hauler(),
+    hauler: haulerInfo(),
+    haulerStopsHere: Object.keys(STOP_KINDS).filter((kind) => selectedHauler() && stopHere(kind)),
   };
 }
 
@@ -1069,7 +1206,7 @@ function frame(time) {
   }
   const { rocket } = game;
   game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
-  catchUpOutposts();
+  catchUpToNow();
   renderer.draw(game, routePaths());
   if (game.panel === 'map') {
     galaxyMap.draw({
@@ -1079,7 +1216,7 @@ function frame(time) {
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
       routePath: routePaths(),
-      drones: parkedDrones().map((drone) => drone.flight ?? drone.pad),
+      drones: [...parkedDrones().map((drone) => drone.flight ?? drone.pad), ...game.haulers.map(haulerPose)],
     });
   }
   bakeNextTexture();
@@ -1090,7 +1227,7 @@ function frame(time) {
 let restarting = false;
 
 function snapshot() {
-  catchUpOutposts();
+  catchUpToNow();
   const { rocket, power, camera } = game;
   return {
     galactokens: game.galactokens,
@@ -1105,6 +1242,7 @@ function snapshot() {
     antennas: game.antennas,
     antennasInHold: game.antennasInHold,
     drones: game.drones.map((drone) => ({ ...drone, flight: drone.flight && { ...drone.flight, soi: null } })),
+    haulers: game.haulers,
     gold: game.gold,
     crystals: game.crystals,
     upgrades: game.upgrades,
@@ -1125,7 +1263,7 @@ function restore(saved) {
   Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, panel: null });
   const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
   Object.assign(game, { satellites: listOf('satellites', 'satellite'), rig: saved.rig ?? null, gold: saved.gold ?? 0 });
-  Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone') });
+  Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone'), haulers: saved.haulers ?? [] });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
