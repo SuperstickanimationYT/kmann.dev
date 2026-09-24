@@ -10,6 +10,7 @@ const STAGE_HEIGHT_UNITS = 360;
 const ROCK_COUNT = 72;
 const ROCK_LIFT = 5;
 const LABEL_BELOW_PX = 40;
+const SHOWN_FROM_PPU = { minor: 3e-3, intermediate: 1e-3, major: 0 };
 const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
 const TEXTURED_ABOVE_PX = 6;
@@ -238,8 +239,8 @@ export function createRenderer(canvas, sprites) {
     context.fillText(text, sx, sy);
   }
 
-  function drawBodyLabels(claimedBounties) {
-    for (const body of bodies) {
+  function drawBodyLabels(shownBodies, claimedBounties) {
+    for (const body of shownBodies) {
       const radius = body.radius * view.ppu;
       if (radius > LABEL_BELOW_PX) continue;
       const [sx, sy] = toScreen(body.x, body.y);
@@ -600,24 +601,30 @@ export function createRenderer(canvas, sprites) {
     context.restore();
   }
 
+  const tierOf = (body) => (body.moon || body.kind === 'wormhole' ? 'intermediate' : 'major');
+  const shownAtZoom = (tier) => view.ppu >= SHOWN_FROM_PPU[tier];
+
   function draw(scene, routePath) {
     aim(scene.camera);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.fillStyle = '#000';
     context.fillRect(0, 0, view.width, view.height);
     drawStars();
-    bodies.forEach(drawBody);
-    drawMarket();
-    scene.satellites.forEach(drawSatellite);
-    drawRig(scene.rig);
-    scene.banks.forEach(drawBank);
-    scene.antennas.forEach(drawAntenna);
-    drawSignal(scene.antennas);
-    drawBodyLabels(scene.claimedBounties);
+    const shownBodies = bodies.filter((body) => shownAtZoom(tierOf(body)));
+    shownBodies.forEach(drawBody);
+    if (shownAtZoom('minor')) {
+      drawMarket();
+      scene.satellites.forEach(drawSatellite);
+      drawRig(scene.rig);
+      scene.banks.forEach(drawBank);
+      scene.antennas.forEach(drawAntenna);
+      drawSignal(scene.antennas);
+    }
+    drawBodyLabels(shownBodies, scene.claimedBounties);
     drawPath(routePath, 'rgba(255, 150, 90, 0.55)', [8, 6]);
     clock = scene.clock;
     drawParticles(scene.particles);
-    scene.drones.forEach(drawDrone);
+    if (shownAtZoom('minor')) scene.drones.forEach(drawDrone);
     scene.haulers.forEach(drawHauler);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);

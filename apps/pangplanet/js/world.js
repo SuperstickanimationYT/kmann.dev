@@ -55,7 +55,7 @@ const solarPlanet = ({ orbitNumber, bearingDegrees, ...body }) =>
 
 function solarMoon({ parent, distance, bearingDegrees, ...body }) {
   const center = SOLAR_PLANETS.find((planet) => planet.name === parent);
-  return surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) });
+  return { ...surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) }), moon: true };
 }
 
 const SOLAR_PLANETS = [
@@ -89,7 +89,7 @@ const SOLAR_MOONS = [
 
 export const HOME_SYSTEM = [
   HOME_BODY,
-  { name: 'Moon', x: 100000, y: 0, radius: 3000, soi: 5000, mass: 3e7, kind: 'planemo', look: 'moon', bounty: 75 },
+  { name: 'Moon', x: 100000, y: 0, radius: 3000, soi: 5000, mass: 3e7, kind: 'planemo', look: 'moon', bounty: 75, moon: true },
   ...linkWormholes(
     { name: 'Sun Wormhole', x: 100000, y: 10000, radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' },
     { name: 'Sun Wormhole', x: 1000000, y: -1080000, radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' },
