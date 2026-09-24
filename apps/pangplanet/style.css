@@ -467,6 +467,21 @@
   padding: 2px 8px;
 }
 
+.pp-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.pp-picker select {
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 6px;
+  font: inherit;
+}
+
 .pp-restart {
   background: #7a1010;
   color: #fff;

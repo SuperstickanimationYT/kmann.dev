@@ -2,8 +2,8 @@ import { bearingBetween } from './physics.js';
 import { drainBatteries, storedCharge } from './solar.js';
 import { HAULER, WARP_DRIVE } from './world.js';
 
-export function createHauler(at) {
-  return { x: at.x, y: at.y, stops: [], next: 0, running: false, leg: null, wait: 0, stalled: null, movedThisLoop: false, batteries: Array(HAULER.batteries).fill(0), gold: 0 };
+export function createHauler(at, builds = false) {
+  return { builds, x: at.x, y: at.y, stops: [], next: 0, running: false, leg: null, wait: 0, stalled: null, movedThisLoop: false, batteries: Array(HAULER.batteries).fill(0), gold: 0 };
 }
 
 export const secondsUntilDue = (hauler) => (hauler.running ? (hauler.leg?.left ?? hauler.wait) : null);
@@ -64,9 +64,10 @@ function arrive(hauler, { locate, act }) {
   const spot = stop && locate(stop);
   if (!spot || spot.x !== to.x || spot.y !== to.y) return;
   const before = cargoOf(hauler);
-  act(stop, hauler, chargeForNextWarp(hauler, locate));
-  if (cargoOf(hauler) !== before) hauler.movedThisLoop = true;
-  hauler.next = (hauler.next + 1) % hauler.stops.length;
+  const finished = act(stop, hauler, chargeForNextWarp(hauler, locate));
+  if (cargoOf(hauler) !== before || finished) hauler.movedThisLoop = true;
+  if (finished) removeStop(hauler, hauler.next);
+  else hauler.next = (hauler.next + 1) % hauler.stops.length;
   return hauler.next === 0;
 }
 

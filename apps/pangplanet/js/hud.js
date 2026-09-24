@@ -133,6 +133,12 @@ export function createHud(root, actions) {
     toggleHauler: find('[data-toggle-hauler]'),
     cycleHauler: [...root.querySelectorAll('[data-cycle-hauler]')],
     addHaulerStop: [...root.querySelectorAll('[data-add-hauler-stop]')],
+    buyBuilder: find('[data-buy-builder]'),
+    builderNote: find('[data-builder-note]'),
+    stopChoice: find('[data-stop-choice]'),
+    buildPicker: find('[data-build-picker]'),
+    buildKind: find('[data-build-kind]'),
+    buildStar: find('[data-build-star]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -170,6 +176,7 @@ export function createHud(root, actions) {
     finishRecording: actions.finishRecording,
     openHaulers: actions.openHaulers,
     buyHauler: actions.buyHauler,
+    buyBuilder: actions.buyBuilder,
     toggleHauler: actions.toggleHauler,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
@@ -181,6 +188,8 @@ export function createHud(root, actions) {
   find('[data-cancel-recording]').addEventListener('click', actions.cancelRecording);
   parts.cycleHauler.forEach((button) => button.addEventListener('click', () => actions.cycleHauler(Number(button.dataset.cycleHauler))));
   parts.addHaulerStop.forEach((button) => button.addEventListener('click', () => actions.addHaulerStop(button.dataset.addHaulerStop)));
+  find('[data-add-stop-choice]').addEventListener('click', () => parts.stopChoice.value && actions.addRemoteStop(parts.stopChoice.value));
+  find('[data-add-build-stop]').addEventListener('click', () => parts.buildStar.value && actions.addBuildStop(parts.buildKind.value, parts.buildStar.value));
   parts.haulerStops.addEventListener('click', (event) => {
     const button = event.target.closest('[data-remove-stop]');
     if (button) actions.removeHaulerStop(Number(button.dataset.removeStop));
@@ -198,6 +207,16 @@ export function createHud(root, actions) {
   let shownDestinations = '';
   let shownUpgrades = '';
   let shownStops = '';
+  const shownOptions = new Map();
+
+  function showOptions(select, choices) {
+    const signature = choices.map(({ value, label }) => `${value}=${label}`).join('|');
+    if (shownOptions.get(select) === signature) return;
+    shownOptions.set(select, signature);
+    const picked = select.value;
+    select.replaceChildren(...choices.map(({ value, label }) => new Option(label, value)));
+    if (choices.some(({ value }) => value === picked)) select.value = picked;
+  }
   let toastTimer = 0;
 
   function toast(text) {
@@ -246,14 +265,19 @@ export function createHud(root, actions) {
     );
   }
 
-  function updateHaulers({ hauler, canBuyHauler, haulerStopsHere }) {
+  function updateHaulers({ hauler, canBuyHauler, canBuyBuilder, haulerStopsHere, stopChoices, buildChoices }) {
     parts.buyHauler.disabled = !canBuyHauler;
+    parts.buyBuilder.disabled = !canBuyBuilder;
     setHidden(parts.openHaulers, !hauler);
     parts.addHaulerStop.forEach((button) => setHidden(button, !haulerStopsHere.includes(button.dataset.addHaulerStop)));
     if (!hauler) return;
     setText(parts.haulerTitle, hauler.title);
     setText(parts.haulerStatus, hauler.status);
     showStops(hauler.stops);
+    setHidden(parts.builderNote, !hauler.builds);
+    setHidden(parts.buildPicker, !hauler.builds);
+    showOptions(parts.stopChoice, stopChoices);
+    showOptions(parts.buildStar, buildChoices);
     setText(parts.toggleHauler, hauler.running ? 'Pause' : 'Start');
     parts.toggleHauler.disabled = hauler.stops.length === 0;
     parts.cycleHauler.forEach((button) => setHidden(button, hauler.count < 2));
