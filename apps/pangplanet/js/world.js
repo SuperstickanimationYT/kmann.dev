@@ -23,7 +23,7 @@ const EARTH_SURFACE_GRAVITY = 0.1;
 
 const SURFACE_DEFAULTS = { variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: '#7eff00', landCover: 47, clouds: 0 };
 
-function solarPlanet({ name, orbitNumber, bearingDegrees, radius, gravityInEarths, seed, surface, rings, bounty }) {
+function solarPlanet({ name, orbitNumber, bearingDegrees, radius, gravityInEarths, seed, surface, rings, bounty, resource = null }) {
   const orbit = (EARTH_ORBIT / EARTH_ORBIT_NUMBER) * orbitNumber;
   const bearing = (bearingDegrees * Math.PI) / 180;
   const planet = { ...SURFACE_DEFAULTS, seed, ...surface };
@@ -39,6 +39,7 @@ function solarPlanet({ name, orbitNumber, bearingDegrees, radius, gravityInEarth
     planet,
     rings,
     bounty,
+    resource,
   };
 }
 
@@ -46,7 +47,7 @@ const SOLAR_PLANETS = [
   { name: 'Mercury', orbitNumber: 1, bearingDegrees: 150, radius: 4000, gravityInEarths: 0.38, bounty: 150, seed: 1101, surface: { baseColor: '#9c9489', variation: 30, darkness: 30, craters: 18 } },
   { name: 'Venus', orbitNumber: 2, bearingDegrees: 60, radius: 9500, gravityInEarths: 0.9, bounty: 150, seed: 2202, surface: { baseColor: '#e8c07a', variation: 12, darkness: 15, clouds: 70 } },
   { name: 'Mars', orbitNumber: 4, bearingDegrees: -140, radius: 5300, gravityInEarths: 0.38, bounty: 200, seed: 4404, surface: { baseColor: '#ff6e00', variation: 25, polarCap: 35, craters: 4 } },
-  { name: 'Jupiter', orbitNumber: 5, bearingDegrees: 100, radius: 32000, gravityInEarths: 2.5, bounty: 300, seed: 5505, surface: { baseColor: '#d9a066', variation: 20, darkness: 25, bands: 6 } },
+  { name: 'Jupiter', orbitNumber: 5, bearingDegrees: 100, radius: 32000, gravityInEarths: 2.5, bounty: 300, resource: 'gas', seed: 5505, surface: { baseColor: '#d9a066', variation: 20, darkness: 25, bands: 6 } },
   {
     name: 'Saturn',
     orbitNumber: 6,
@@ -54,12 +55,13 @@ const SOLAR_PLANETS = [
     radius: 27000,
     gravityInEarths: 1.07,
     bounty: 300,
+    resource: 'gas',
     seed: 6606,
     surface: { baseColor: '#e3c98a', variation: 10, darkness: 20, bands: 3 },
     rings: { inner: 1.35, outer: 2.3, colour: 'rgba(226, 206, 160, 0.6)' },
   },
-  { name: 'Uranus', orbitNumber: 7, bearingDegrees: 200, radius: 18000, gravityInEarths: 0.9, bounty: 350, seed: 7707, surface: { baseColor: '#9fe3e8', variation: 5, darkness: 10, bands: 1 } },
-  { name: 'Neptune', orbitNumber: 8, bearingDegrees: 30, radius: 17500, gravityInEarths: 1.14, bounty: 400, seed: 8808, surface: { baseColor: '#3f6fff', variation: 12, darkness: 20, bands: 2 } },
+  { name: 'Uranus', orbitNumber: 7, bearingDegrees: 200, radius: 18000, gravityInEarths: 0.9, bounty: 350, resource: 'gas', seed: 7707, surface: { baseColor: '#9fe3e8', variation: 5, darkness: 10, bands: 1 } },
+  { name: 'Neptune', orbitNumber: 8, bearingDegrees: 30, radius: 17500, gravityInEarths: 1.14, bounty: 400, resource: 'gas', seed: 8808, surface: { baseColor: '#3f6fff', variation: 12, darkness: 20, bands: 2 } },
 ].map(solarPlanet);
 
 export const HOME_SYSTEM = [
@@ -81,16 +83,19 @@ export const FUEL_PACK = { cost: 5, amount: 5 };
 export const SOLAR_PANELS = { cost: 100 };
 export const BATTERY = { cost: 10, sellPrice: 40, slots: 3 };
 export const CHARGE_PER_SECOND_AT_STAR_SURFACE = 0.05;
-export const WARP_DRIVE = { cost: 10000, range: 2e7, minimumJump: 5e6, chargePerUnit: 1 / 1e7, arrivalInStarRadii: 3 };
+export const WARP_DRIVE = { cost: 10000, minimumJump: 5e6, chargePerUnit: 1 / 1e7, arrivalInStarRadii: 3 };
 export const SATELLITE = { cost: 450, batteries: 3, dockingRange: 1500 };
 export const MINING_RIG = { cost: 1000, batterySlots: 6, secondsPerBattery: 600, goldPerMinute: 1, reach: 1500 };
 export const GOLD = { sellPrice: 10 };
+export const CRYSTALS = { sellPrice: 80, chancePerPump: 0.25 };
+export const FUEL_PER_PUMP = { gas: 2, other: 1 };
 export const UPGRADES = {
-  batterySlots: { base: BATTERY.slots, levels: [{ cost: 150, value: 4 }, { cost: 400, value: 5 }, { cost: 900, value: 6 }] },
-  panels: { base: 1, levels: [{ cost: 250, value: 1.5 }, { cost: 700, value: 2 }] },
-  tank: { base: MAX_FUEL, levels: [{ cost: 120, value: 150 }, { cost: 450, value: 200 }] },
-  engine: { base: 1, levels: [{ cost: 200, value: 1.25 }, { cost: 600, value: 1.5 }] },
-  telescope: { base: 4.5e7, levels: [{ cost: 800, value: 9e7 }, { cost: 2000, value: 1.5e8 }] },
+  batterySlots: { base: BATTERY.slots, levels: [{ cost: 150, value: 4 }, { cost: 400, value: 5 }, { cost: 900, value: 6 }, { cost: 2000, crystals: 4, value: 8 }] },
+  panels: { base: 1, levels: [{ cost: 250, value: 1.5 }, { cost: 700, value: 2 }, { cost: 1500, crystals: 4, value: 3 }] },
+  tank: { base: MAX_FUEL, levels: [{ cost: 120, value: 150 }, { cost: 450, value: 200 }, { cost: 1200, crystals: 3, value: 300 }] },
+  engine: { base: 1, levels: [{ cost: 200, value: 1.25 }, { cost: 600, value: 1.5 }, { cost: 1500, crystals: 4, value: 2 }] },
+  telescope: { base: 4.5e7, levels: [{ cost: 800, value: 9e7 }, { cost: 2000, value: 1.5e8 }, { cost: 4000, crystals: 5, value: 3e8 }] },
+  warpRange: { base: 2e7, levels: [{ cost: 3000, crystals: 3, value: 3.5e7 }, { cost: 6000, crystals: 8, value: 5e7 }] },
   timewarp: { base: 5, levels: [{ cost: 500, value: 10 }, { cost: 1500, value: 20 }, { cost: 4000, value: 30 }] },
 };
 export const TELESCOPE = { cost: 600 };

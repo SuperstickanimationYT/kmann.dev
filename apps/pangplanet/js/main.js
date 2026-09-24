@@ -48,20 +48,22 @@ import {
   traceRoute,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
-import { applyUpgrades, bountyWaiting, claimBounty, createUpgrades, nextUpgrade, upgradeValue } from './progression.js';
+import { applyUpgrades, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, upgradeValue } from './progression.js';
 import { deleteSave, readSave, writeSave } from './save.js';
 import { chartVisitsNear, createStarChart, isCharted, scanFrom } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
-import { outsideGalaxy, starsWithin, streamSectors, systemAt } from './universe.js';
+import { crystalWorlds, outsideGalaxy, starsWithin, streamSectors, systemAt } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   ANTENNA,
   BATTERY,
   BATTERY_BANK,
+  CRYSTALS,
   DRONE,
   FUEL_PACK,
+  FUEL_PER_PUMP,
   GOLD,
   HOME_BODY,
   HOME_SYSTEM,
@@ -127,6 +129,7 @@ const game = {
   drone: null,
   recording: null,
   gold: 0,
+  crystals: 0,
   upgrades: createUpgrades(),
   claimedBounties: new Set(),
   starChart: createStarChart(),
@@ -229,8 +232,9 @@ const actions = {
   },
   buyUpgrade: (key) => {
     const upgrade = nextUpgrade(key, game.upgrades[key]);
-    if (!upgrade || game.galactokens < upgrade.cost) return;
+    if (!upgrade || !canAfford(upgrade, game.galactokens, game.crystals)) return;
     game.galactokens -= upgrade.cost;
+    game.crystals -= upgrade.crystals ?? 0;
     game.upgrades[key] += 1;
     applyUpgrades(game.upgrades, game.rocket, game.power);
   },
@@ -413,6 +417,10 @@ const actions = {
     stowDrone(drone);
     openPanel(null);
   },
+  sellCrystals: () => {
+    game.galactokens += game.crystals * CRYSTALS.sellPrice;
+    game.crystals = 0;
+  },
   sellBatteries: () => {
     const { power } = game;
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
@@ -586,11 +594,12 @@ function explode() {
 }
 
 const telescopeRange = () => upgradeValue('telescope', game.upgrades.telescope);
+const warpRange = () => upgradeValue('warpRange', game.upgrades.warpRange);
 const timewarpBought = () => upgradeValue('timewarp', game.upgrades.timewarp);
 const inGravityWell = () => Boolean(game.rocket.soi);
 const timewarpCap = () => (inGravityWell() ? 1 : timewarpBought());
 
-const chartedDestinations = () => warpDestinations(game.rocket, game.power).filter(({ star }) => isCharted(game.starChart, star));
+const chartedDestinations = () => warpDestinations(game.rocket, game.power, warpRange()).filter(({ star }) => isCharted(game.starChart, star));
 
 let ticksSinceCharting = CHART_EVERY_TICKS;
 
@@ -609,6 +618,8 @@ function planetInfo(planet) {
   const details = [
     planet.name,
     `${abbreviate(planet.radius)} radius`,
+    planet.resource === 'crystals' ? 'crystals' : null,
+    planet.resource === 'gas' ? 'gas giant: double fuel' : null,
     waiting ? `${waiting} bounty waiting` : null,
     planet.bounty && !waiting ? 'bounty claimed' : null,
     `${abbreviate(Math.hypot(planet.x - game.rocket.x, planet.y - game.rocket.y))} away`,
@@ -628,10 +639,23 @@ function mapInfo() {
     entry.bounty ? `up to ${entry.bounty} in bounties` : null,
     entry.visited ? 'visited' : 'seen through telescope',
     `${abbreviate(distance)} away`,
-    game.ownsWarpDrive && distance <= WARP_DRIVE.range ? 'in warp range' : null,
+    entry.crystals ? `${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'}` : null,
+    game.ownsWarpDrive && distance <= warpRange() ? 'in warp range' : null,
   ];
   return details.filter(Boolean).join(' · ');
 }
+
+const drillWell = {
+  pump: () => {
+    const { rocket } = game;
+    const { resource } = rocket.soi;
+    rocket.fuel = Math.min(rocket.fuelCapacity, Math.floor(rocket.fuel) + (FUEL_PER_PUMP[resource] ?? FUEL_PER_PUMP.other));
+    if (resource !== 'crystals' || Math.random() >= CRYSTALS.chancePerPump) return;
+    game.crystals += 1;
+    hud.toast(`Found a crystal! You have ${game.crystals}.`);
+  },
+  exhausted: () => game.rocket.fuel >= game.rocket.fuelCapacity && game.rocket.soi?.resource !== 'crystals',
+};
 
 function rewardFirstLanding() {
   const body = game.rocket.soi;
@@ -762,7 +786,7 @@ function tick() {
   streamSectors(rocket.x, rocket.y);
   chartVisits();
   if (!rocket.landed && drillBusy(drill)) stopDrill(drill, play);
-  updateDrill(drill, rocket, STEP_TICKS, simTicks, play);
+  updateDrill(drill, drillWell, STEP_TICKS, simTicks, play);
   if (rocket.engineOn) power.panelsDeployed = false;
   chargeBatteries(power, rocket, STEP_TICKS);
   followRocket();
@@ -787,6 +811,13 @@ function warpNote(destinations, unchartedInRange) {
   return `Charge on board: ${totalCharge(power).toFixed(2)} batteries.`;
 }
 
+const UPGRADE_UNLOCKED_BY = {
+  telescope: () => game.ownsTelescope,
+  warpRange: () => game.ownsWarpDrive,
+};
+
+const upgradeUnlocked = (key) => UPGRADE_UNLOCKED_BY[key]?.() ?? true;
+
 function droneStatus() {
   const { drone } = game;
   if (!drone) return '';
@@ -805,15 +836,16 @@ function status() {
   const fuelFull = rocket.fuel > rocket.fuelCapacity - FUEL_PACK.amount;
   const planningWarp = game.panel === 'warp' && game.ownsWarpDrive && canWarpFrom(rocket);
   const destinations = planningWarp ? chartedDestinations() : [];
-  const unchartedInRange = planningWarp ? warpDestinations(rocket, power).length - destinations.length : 0;
+  const unchartedInRange = planningWarp ? warpDestinations(rocket, power, warpRange()).length - destinations.length : 0;
   return {
     galactokens: game.galactokens,
     fuel: rocket.fuel,
     fuelFraction: rocket.fuel / rocket.fuelCapacity,
-    upgrades: Object.keys(UPGRADES).filter((key) => key !== 'telescope' || game.ownsTelescope).map((key) => {
+    upgrades: Object.keys(UPGRADES).filter(upgradeUnlocked).map((key) => {
       const next = nextUpgrade(key, game.upgrades[key]);
-      return { key, current: upgradeValue(key, game.upgrades[key]), next, affordable: Boolean(next) && game.galactokens >= next.cost };
+      return { key, current: upgradeValue(key, game.upgrades[key]), next, affordable: Boolean(next) && canAfford(next, game.galactokens, game.crystals) };
     }),
+    crystals: game.crystals,
     bountyHere: body ? bountyWaiting(game.claimedBounties, body) : 0,
     timewarp: game.timewarp,
     timewarpBought: timewarpBought(),
@@ -904,7 +936,7 @@ function frame(time) {
     galaxyMap.draw({
       chart: game.starChart,
       rocket,
-      warpRange: game.ownsWarpDrive ? WARP_DRIVE.range : 0,
+      warpRange: game.ownsWarpDrive ? warpRange() : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
       routePath: routePath(),
@@ -935,6 +967,7 @@ function snapshot() {
     antennasInHold: game.antennasInHold,
     drone: game.drone && { ...game.drone, flight: game.drone.flight && { ...game.drone.flight, soi: null } },
     gold: game.gold,
+    crystals: game.crystals,
     upgrades: game.upgrades,
     claimedBounties: [...game.claimedBounties],
     starChart: [...game.starChart],
@@ -957,6 +990,8 @@ function restore(saved) {
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
   game.starChart = new Map(saved.starChart ?? []);
+  game.crystals = saved.crystals ?? 0;
+  for (const entry of game.starChart.values()) entry.crystals ??= crystalWorlds(systemAt(entry.x, entry.y)?.planets ?? []);
   game.ownsTelescope = saved.ownsTelescope ?? false;
   applyUpgrades(game.upgrades, rocket, power);
   outpostClock = saved.savedAt;

@@ -7,9 +7,9 @@ export const totalCharge = (power) => storedCharge(power.batteries);
 
 export const canWarpFrom = (rocket) => !rocket.destroyed && !rocket.landed && !rocket.soi;
 
-export function warpDestinations(rocket, power) {
+export function warpDestinations(rocket, power, range) {
   const charge = totalCharge(power);
-  return starsWithin(rocket.x, rocket.y, WARP_DRIVE.range)
+  return starsWithin(rocket.x, rocket.y, range)
     .map((star) => {
       const distance = Math.hypot(star.x - rocket.x, star.y - rocket.y);
       const cost = distance * WARP_DRIVE.chargePerUnit;

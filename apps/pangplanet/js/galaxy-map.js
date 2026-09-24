@@ -10,6 +10,7 @@ const PLANET_MIN_PX = 3;
 const PICK_REACH_PX = 14;
 const LABELS_ABOVE_PX_PER_SECTOR = 18;
 const BOUNTY_GOLD = '#ffc933';
+const CRYSTAL_CYAN = '#7df3ff';
 
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
@@ -94,6 +95,7 @@ export function createGalaxyMap(canvas) {
         context.lineWidth = 1.5;
         context.stroke();
       }
+      if (entry.crystals) ring(entry.x, entry.y, (STAR_DOT_PX + 2) / view.scale, CRYSTAL_CYAN, false);
       if (entry === selected) ring(entry.x, entry.y, (STAR_DOT_PX + 5) / view.scale, BOUNTY_GOLD, false);
       if (showLabels || entry === selected) label(entry.name, entry.x, entry.y, 15);
     }
@@ -109,6 +111,7 @@ export function createGalaxyMap(canvas) {
       const planetPx = Math.max(planet.radius * view.scale, PLANET_MIN_PX);
       disk(planet.x, planet.y, planetPx, planet.palette?.fill ?? '#9c9489');
       if (bountyWaiting(planet)) ring(planet.x, planet.y, (planetPx + 3) / view.scale, BOUNTY_GOLD, true);
+      if (planet.resource === 'crystals') ring(planet.x, planet.y, (planetPx + 9) / view.scale, CRYSTAL_CYAN, false);
       if (planet === selectedPlanet) ring(planet.x, planet.y, (planetPx + 6) / view.scale, BOUNTY_GOLD, false);
       label(planet.name, planet.x, planet.y, planetPx + 13);
     }

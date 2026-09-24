@@ -51,14 +51,14 @@ function pumpWait() {
   return (min + Math.random() * (max - min)) * TICKS_PER_SECOND;
 }
 
-function pump(drill, rocket, play) {
+function pump(drill, well, play) {
   play('blender');
-  rocket.fuel = Math.min(rocket.fuelCapacity, Math.floor(rocket.fuel) + 1);
+  well.pump();
   drill.timer = pumpWait();
 }
 
 // Animation runs on wall-clock ticks; the pumping wait runs on simulated ticks so time warp speeds it up.
-export function updateDrill(drill, rocket, wallTicks, simTicks, play) {
+export function updateDrill(drill, well, wallTicks, simTicks, play) {
   switch (drill.phase) {
     case 'extending':
       drill.timer += wallTicks;
@@ -69,16 +69,16 @@ export function updateDrill(drill, rocket, wallTicks, simTicks, play) {
       drill.timer += wallTicks;
       if (drill.timer >= PRIMING_TICKS) {
         drill.phase = 'pumping';
-        pump(drill, rocket, play);
+        pump(drill, well, play);
       }
       break;
     case 'pumping':
-      if (rocket.fuel >= rocket.fuelCapacity) {
+      if (well.exhausted()) {
         stopDrill(drill, play);
         break;
       }
       drill.timer -= simTicks;
-      if (drill.timer <= 0) pump(drill, rocket, play);
+      if (drill.timer <= 0) pump(drill, well, play);
       break;
     case 'retracting':
       drill.timer += wallTicks;

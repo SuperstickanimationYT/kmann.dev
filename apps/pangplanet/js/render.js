@@ -233,8 +233,10 @@ export function createRenderer(canvas, sprites) {
       const [sx, sy] = toScreen(body.x, body.y);
       const offset = Math.max(radius, 2) + (body.kind === 'wormhole' ? -8 : 14);
       const bounty = bountyWaiting(claimedBounties, body);
-      const label = bounty ? `${body.name} · ${bounty} bounty` : body.name;
-      if (onScreen(sx, sy, 40)) drawLabel(label, sx, sy + (body.kind === 'wormhole' ? -offset : offset), bounty ? 'rgba(255, 214, 110, 0.9)' : 'rgba(185, 214, 245, 0.8)');
+      const crystals = body.resource === 'crystals';
+      const label = [body.name, bounty && `${bounty} bounty`, crystals && 'crystals'].filter(Boolean).join(' · ');
+      const colour = bounty ? 'rgba(255, 214, 110, 0.9)' : crystals ? 'rgba(125, 243, 255, 0.9)' : 'rgba(185, 214, 245, 0.8)';
+      if (onScreen(sx, sy, 40)) drawLabel(label, sx, sy + (body.kind === 'wormhole' ? -offset : offset), colour);
     }
   }
 
