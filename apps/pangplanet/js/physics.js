@@ -22,6 +22,8 @@ export function sphereOfInfluence(x, y) {
   return bodies.findLast((body) => Math.hypot(x - body.x, y - body.y) <= body.soi) ?? null;
 }
 
+const SURFACE_SLACK = 0.001;
+
 export function surfaceClearance(body) {
   return body.radius + ROCKET_HEIGHT / 2;
 }
@@ -112,7 +114,7 @@ export function advance(rocket, dt) {
   const dx = body.x - rocket.x;
   const dy = body.y - rocket.y;
   const distance = Math.hypot(dx, dy);
-  if (distance <= surfaceClearance(body)) return touchDown(rocket, body);
+  if (distance <= surfaceClearance(body) + SURFACE_SLACK) return touchDown(rocket, body);
 
   const pull = (GRAVITATIONAL_CONSTANT * body.mass) / (distance * distance);
   rocket.vx += (dx / distance) * pull * dt;
