@@ -31,6 +31,7 @@ import {
 } from './outposts.js';
 import {
   createDrone,
+  dockFlight,
   finishRecording,
   flyDrone,
   inSignal,
@@ -44,6 +45,7 @@ import {
   routeProgress,
   startRecording,
   stowDrone,
+  traceRoute,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
 import { applyUpgrades, bountyWaiting, claimBounty, createUpgrades, nextUpgrade, upgradeValue } from './progression.js';
@@ -640,7 +642,7 @@ function rewardFirstLanding() {
 }
 
 const DRONE_ACTIONS = {
-  dock: (flight) => Object.assign(flight, { vx: 0, vy: 0, engineOn: false }),
+  dock: dockFlight,
   takeSatellite: (flight, drone) => {
     if (withinReach(flight, game.satellite, SATELLITE.dockingRange)) transferCharge(game.satellite.batteries, drone.batteries);
   },
@@ -671,6 +673,20 @@ function stepDrone() {
     hud.toast('Your drone crashed and was destroyed.');
   }
   if (outcome === 'lost') hud.toast('Your drone lost signal and is drifting. Fly out and pick it up.');
+}
+
+let tracedFor = '';
+let tracedPath = [];
+
+function routePath() {
+  const { drone, antennas } = game;
+  if (!drone?.route) return [];
+  const signature = [drone.route.steps, drone.pad.x, drone.pad.y, ...antennas.flatMap(({ x, y }) => [x, y])].join();
+  if (signature !== tracedFor) {
+    tracedFor = signature;
+    tracedPath = traceRoute(drone, antennas, STEP_TICKS);
+  }
+  return tracedPath;
 }
 
 function catchUpDrone(seconds) {
@@ -883,7 +899,7 @@ function frame(time) {
   const { rocket } = game;
   game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   catchUpOutposts();
-  renderer.draw(game);
+  renderer.draw(game, routePath());
   if (game.panel === 'map') {
     galaxyMap.draw({
       chart: game.starChart,
@@ -891,6 +907,8 @@ function frame(time) {
       warpRange: game.ownsWarpDrive ? WARP_DRIVE.range : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
+      routePath: routePath(),
+      drone: game.drone && (game.drone.flight ?? game.drone.pad),
     });
   }
   bakeNextTexture();

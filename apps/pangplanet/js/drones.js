@@ -93,4 +93,29 @@ export function flyDrone(drone, antennas, act, dt) {
   return 'done';
 }
 
+export const dockFlight = (flight) => Object.assign(flight, { vx: 0, vy: 0, engineOn: false });
+
+const PATH_SAMPLE_STEPS = 10;
+const WORMHOLE_JUMP = 10000;
+
+const moveOnly = (name, flight) => {
+  if (name === 'dock') dockFlight(flight);
+};
+
+export function traceRoute(drone, antennas, dt) {
+  const ghost = { ...drone, lost: false, batteries: [] };
+  launchDrone(ghost);
+  const segments = [[ghost.flight.x, ghost.flight.y]];
+  let { x, y } = ghost.flight;
+  while (ghost.flight) {
+    const flight = ghost.flight;
+    const outcome = flyDrone(ghost, antennas, moveOnly, dt);
+    if (Math.hypot(flight.x - x, flight.y - y) > WORMHOLE_JUMP) segments.push([]);
+    ({ x, y } = flight);
+    if (flight.step % PATH_SAMPLE_STEPS === 0 || outcome) segments.at(-1).push(x, y);
+    if (outcome && outcome !== 'done') break;
+  }
+  return segments;
+}
+
 export const routeProgress = (drone) => (drone.flight && drone.route ? drone.flight.step / drone.route.steps : 0);
