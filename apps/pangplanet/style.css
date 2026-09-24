@@ -104,6 +104,10 @@
   color: #7df3ff;
 }
 
+.pp-stardust {
+  color: #e2c9ff;
+}
+
 .pp-gold img {
   width: 24px;
   height: 24px;
@@ -649,9 +653,33 @@
 
   .pp-cargo {
     top: 50px;
+    right: 12px;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+
+  .pp-batteries {
+    gap: 3px;
+  }
+
+  .pp-battery {
+    width: 12px;
+    height: 22px;
+    border-width: 2px;
+  }
+
+  .pp-gold img {
+    width: 18px;
+    height: 18px;
   }
 
   .pp-warp-track {
     height: 100px;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 640px) {
+  .pp-stage .pp-telemetry {
+    top: 108px;
   }
 }

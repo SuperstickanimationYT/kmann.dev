@@ -80,6 +80,9 @@ export function createHud(root, actions) {
     crystalCounter: find('[data-crystal-counter]'),
     crystals: find('[data-crystals]'),
     sellCrystals: find('[data-sell-crystals]'),
+    stardustCounter: find('[data-stardust-counter]'),
+    stardust: find('[data-stardust]'),
+    sellStardust: find('[data-sell-stardust]'),
     buySatellite: find('[data-buy-satellite]'),
     prices: [...root.querySelectorAll('[data-price]')],
     satellitesInHold: find('[data-satellites-in-hold]'),
@@ -162,6 +165,7 @@ export function createHud(root, actions) {
     loadRig: actions.loadRig,
     collectGold: actions.collectGold,
     sellCrystals: actions.sellCrystals,
+    sellStardust: actions.sellStardust,
     buyBank: actions.buyBank,
     deployBank: actions.deployBank,
     depositInBank: actions.depositInBank,
@@ -239,7 +243,8 @@ export function createHud(root, actions) {
         button.dataset.upgrade = key;
         button.disabled = !affordable;
         const crystals = next?.crystals ? ` + ${next.crystals} crystals` : '';
-        button.textContent = next ? `${name}: ${describe(current)} → ${describe(next.value)} · ${next.cost}${crystals}` : `${name}: ${describe(current)} (max)`;
+        const stardust = next?.stardust ? ` + ${next.stardust} stardust` : '';
+        button.textContent = next ? `${name}: ${describe(current)} → ${describe(next.value)} · ${next.cost}${crystals}${stardust}` : `${name}: ${describe(current)} (max)`;
         return button;
       }),
     );
@@ -360,6 +365,9 @@ export function createHud(root, actions) {
     setHidden(parts.crystalCounter, status.crystals === 0);
     setText(parts.crystals, String(status.crystals));
     setHidden(parts.sellCrystals, status.crystals === 0);
+    setHidden(parts.stardustCounter, status.stardust === 0);
+    setText(parts.stardust, String(status.stardust));
+    setHidden(parts.sellStardust, status.stardust === 0);
     parts.buySatellite.disabled = !status.canBuySatellite;
     parts.prices.forEach((price) => setText(price, status.prices[price.dataset.price].toLocaleString()));
     setText(parts.satellitesInHold, String(status.satellitesInHold));

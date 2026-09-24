@@ -18,7 +18,8 @@ export const nextUpgrade = (key, level) => UPGRADES[key].levels[level] ?? null;
 
 export const risingPrice = (base, owned) => Math.round((base * PRICE_GROWTH ** owned) / 10) * 10;
 
-export const canAfford = (upgrade, galactokens, crystals) => galactokens >= upgrade.cost && crystals >= (upgrade.crystals ?? 0);
+export const canAfford = (upgrade, { galactokens, crystals, stardust }) =>
+  galactokens >= upgrade.cost && crystals >= (upgrade.crystals ?? 0) && stardust >= (upgrade.stardust ?? 0);
 
 export function applyUpgrades(upgrades, rocket, power) {
   power.slots = upgradeValue('batterySlots', upgrades.batterySlots);
