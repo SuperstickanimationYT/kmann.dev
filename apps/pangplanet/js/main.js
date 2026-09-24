@@ -48,6 +48,7 @@ import {
   traceRoute,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
+import { blast, createParticles, drift, exhaust } from './particles.js';
 import { applyUpgrades, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
 import { deleteSave, readSave, writeSave } from './save.js';
 import { chartVisitsNear, createStarChart, isCharted, scanFrom } from './starchart.js';
@@ -62,6 +63,7 @@ import {
   BATTERY_BANK,
   CRYSTALS,
   DRONE,
+  DRONE_SCALE,
   FUEL_PACK,
   FUEL_PER_PUMP,
   GOLD,
@@ -118,6 +120,8 @@ const game = {
   galactokens: STARTING_GALACTOKENS,
   timewarp: 1,
   explosion: null,
+  particles: createParticles(),
+  clock: 0,
   warp: null,
   ownsWarpDrive: false,
   satellites: [],
@@ -632,6 +636,7 @@ function steer() {
 function explode() {
   const { rocket, drill } = game;
   game.explosion = { x: rocket.x, y: rocket.y, size: 1, ghost: 0, ticks: 0 };
+  blast(game.particles, rocket);
   stopDrill(drill, play);
   stopRecording('Crashed. Recording stopped.');
   losePowerCargo(game.power);
@@ -816,11 +821,20 @@ function animateExplosion() {
   explosion.ticks += STEP_TICKS;
 }
 
+function puffExhaust(ticks) {
+  const { particles, rocket } = game;
+  game.clock += STEP_TICKS;
+  drift(particles, ticks);
+  exhaust(particles, rocket, STEP_TICKS);
+  for (const drone of game.drones) if (drone.flight) exhaust(particles, drone.flight, STEP_TICKS, DRONE_SCALE);
+}
+
 function advanceWarp() {
   const { warp, rocket, power } = game;
   warp.progress = Math.min(1, warp.progress + STEP_TICKS / WARP_TICKS);
   if (!warp.jumped && warp.progress >= 0.5) {
     jumpTo(rocket, power, warp.destination);
+    game.particles.length = 0;
     streamAround();
     const { star } = warp.destination;
     const standoff = Math.hypot(rocket.x - star.x, rocket.y - star.y);
@@ -847,6 +861,7 @@ function tick() {
   chargeBatteries(power, rocket, STEP_TICKS);
   followRocket();
   animateExplosion();
+  puffExhaust(simTicks || STEP_TICKS);
 }
 
 function marketNote() {

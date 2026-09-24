@@ -141,3 +141,11 @@ export function forecast(rocket, steps, dt) {
   }
   return { segments, ending };
 }
+
+export function rocketPoint(rocket, forward, sideways) {
+  const { heading } = rocket;
+  return [
+    rocket.x + Math.sin(heading) * forward + Math.cos(heading) * sideways,
+    rocket.y + Math.cos(heading) * forward - Math.sin(heading) * sideways,
+  ];
+}

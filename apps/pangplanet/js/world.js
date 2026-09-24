@@ -1,6 +1,8 @@
 export const TICKS_PER_SECOND = 30;
 export const GRAVITATIONAL_CONSTANT = 0.1;
 export const ROCKET_HEIGHT = 90;
+export const FLAME_OFFSET = 50;
+export const DRONE_SCALE = 0.6;
 export const CRASH_SPEED = 10;
 export const WORMHOLE_EXIT_GAP = 100;
 

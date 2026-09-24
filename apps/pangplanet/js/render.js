@@ -1,11 +1,11 @@
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
+import { rocketPoint } from './physics.js';
 import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
-import { ANTENNA, MARKET, ROCKET_HEIGHT } from './world.js';
+import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, MARKET, ROCKET_HEIGHT } from './world.js';
 
 const STAGE_HEIGHT_UNITS = 360;
-const FLAME_OFFSET = 50;
 const ROCK_COUNT = 72;
 const ROCK_LIFT = 5;
 const LABEL_BELOW_PX = 40;
@@ -22,8 +22,11 @@ const RIG_SHAPE = { base: 50, height: 80, besideRocket: 75 };
 const OUTPOST_DOT_BELOW_PX = 8;
 const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
-const DRONE_SCALE = 0.6;
 const SIGNAL_RING_MAX_PX = 50000;
+const FLICKER_WAVES = [[0.9, 0.07], [2.3, 0.05], [5.1, 0.03]];
+const FLAME_CORE = { length: 0.55, width: 0.5 };
+const FLAME_GLOW = { behind: 20, radius: 30, colour: 'rgba(255, 170, 60, 0.35)' };
+const SMOKE_ALPHA = 0.35;
 
 const LOOKS = {
   earth: { fill: '#2b6fb0', rock: '#3fbf2a', atmosphere: 'rgba(110, 180, 255, 0.35)' },
@@ -61,7 +64,9 @@ export function createRenderer(canvas, sprites) {
   const stars = scatterStars();
   const streaks = scatterStreaks();
   const view = { x: 0, y: 0, angle: 0, zoom: 1, width: 0, height: 0, ppu: 1, cos: 1, sin: 0 };
+  const flamePhases = new WeakMap();
   let ratio = 1;
+  let clock = 0;
 
   function resize() {
     ratio = window.devicePixelRatio || 1;
@@ -389,8 +394,7 @@ export function createRenderer(canvas, sprites) {
     }
     const scale = view.ppu * DRONE_SCALE;
     if (pose.engineOn && pose.throttle > 0) {
-      const [fx, fy] = toScreen(...rocketPoint(pose, -FLAME_OFFSET * DRONE_SCALE, 0));
-      withPose(fx, fy, pose.heading - Math.PI / 2, () => drawSprite(sprites.flame, (scale * pose.throttle) / 100, scale));
+      drawFlame(pose, DRONE_SCALE, drone);
     }
     withPose(sx, sy, pose.heading, () => drawSprite(sprites.rocket, scale));
     drawLabel(label, sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, 'rgba(255, 150, 90, 0.85)');
@@ -448,14 +452,6 @@ export function createRenderer(canvas, sprites) {
     context.stroke();
   }
 
-  function rocketPoint(rocket, forward, sideways) {
-    const { heading } = rocket;
-    return [
-      rocket.x + Math.sin(heading) * forward + Math.cos(heading) * sideways,
-      rocket.y + Math.cos(heading) * forward - Math.sin(heading) * sideways,
-    ];
-  }
-
   function drawDrill(rocket, drill) {
     if (drill.phase === 'idle') return;
     const [sx, sy] = toScreen(...rocketPoint(rocket, -drill.extension, DRILL_OFFSET_SIDEWAYS));
@@ -502,11 +498,58 @@ export function createRenderer(canvas, sprites) {
       });
       return;
     }
-    if (rocket.engineOn && rocket.throttle > 0) {
-      const [fx, fy] = toScreen(...rocketPoint(rocket, -FLAME_OFFSET, 0));
-      withPose(fx, fy, rocket.heading - Math.PI / 2, () => drawSprite(sprites.flame, (view.ppu * rocket.throttle) / 100, view.ppu));
-    }
+    if (rocket.engineOn && rocket.throttle > 0) drawFlame(rocket, 1, rocket);
     withPose(sx, sy, rocket.heading, () => drawSprite(sprites.rocket, view.ppu));
+  }
+
+  function flicker(phase) {
+    return FLICKER_WAVES.reduce((sum, [speed, depth]) => sum + Math.sin(clock * speed + phase * speed) * depth, 0);
+  }
+
+  function drawFlame(pose, size, identity) {
+    const phase = flamePhases.get(identity) ?? flamePhases.set(identity, Math.random() * 100).get(identity);
+    const scale = view.ppu * size;
+    const length = (scale * pose.throttle) / 100;
+    const [fx, fy] = toScreen(...rocketPoint(pose, -FLAME_OFFSET * size, 0));
+    const [gx, gy] = toScreen(...rocketPoint(pose, -(FLAME_OFFSET + FLAME_GLOW.behind * (pose.throttle / 100)) * size, 0));
+    const glowRadius = FLAME_GLOW.radius * scale * (1 + flicker(phase + 7) * 0.5);
+    const glow = context.createRadialGradient(gx, gy, 0, gx, gy, glowRadius);
+    glow.addColorStop(0, FLAME_GLOW.colour);
+    glow.addColorStop(1, 'rgba(255, 120, 30, 0)');
+    context.save();
+    context.globalCompositeOperation = 'lighter';
+    context.fillStyle = glow;
+    discPath(gx, gy, glowRadius);
+    context.fill();
+    context.restore();
+    withPose(fx, fy, pose.heading - Math.PI / 2, () => {
+      drawSprite(sprites.flame, length * (1 + flicker(phase)), scale * (1 + flicker(phase + 3) * 0.4));
+      context.globalCompositeOperation = 'lighter';
+      context.globalAlpha = 0.55 + flicker(phase + 5);
+      drawSprite(sprites.flame, length * FLAME_CORE.length * (1 + flicker(phase + 11)), scale * FLAME_CORE.width);
+    });
+  }
+
+  function drawParticles(particles) {
+    if (ROCKET_HEIGHT * view.ppu < 10) return;
+    context.save();
+    for (const particle of particles) {
+      const radius = particle.size * view.ppu;
+      if (radius < 0.3) continue;
+      const [sx, sy] = toScreen(particle.x, particle.y);
+      if (!onScreen(sx, sy, radius)) continue;
+      const fade = 1 - particle.age / particle.life;
+      if (particle.kind === 'spark') {
+        context.globalCompositeOperation = 'lighter';
+        context.fillStyle = `rgba(255, ${Math.round(120 + 120 * fade)}, ${Math.round(60 * fade)}, ${fade})`;
+      } else {
+        context.globalCompositeOperation = 'source-over';
+        context.fillStyle = `rgba(150, 150, 158, ${SMOKE_ALPHA * fade})`;
+      }
+      discPath(sx, sy, radius);
+      context.fill();
+    }
+    context.restore();
   }
 
   function drawExplosion(explosion) {
@@ -553,6 +596,8 @@ export function createRenderer(canvas, sprites) {
     drawSignal(scene.antennas);
     drawBodyLabels(scene.claimedBounties);
     drawPath(routePath, 'rgba(255, 150, 90, 0.55)', [8, 6]);
+    clock = scene.clock;
+    drawParticles(scene.particles);
     scene.drones.forEach(drawDrone);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
