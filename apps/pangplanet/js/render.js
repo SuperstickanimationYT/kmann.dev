@@ -396,6 +396,25 @@ export function createRenderer(canvas, sprites) {
     drawLabel(label, sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, 'rgba(255, 150, 90, 0.85)');
   }
 
+  function drawPath(segments, colour, dash) {
+    context.save();
+    context.strokeStyle = colour;
+    context.lineWidth = 1.5;
+    context.lineJoin = 'round';
+    context.setLineDash(dash);
+    for (const points of segments) {
+      if (points.length < 4) continue;
+      context.beginPath();
+      for (let i = 0; i < points.length; i += 2) {
+        const [sx, sy] = toScreen(points[i], points[i + 1]);
+        if (i === 0) context.moveTo(sx, sy);
+        else context.lineTo(sx, sy);
+      }
+      context.stroke();
+    }
+    context.restore();
+  }
+
   function drawForecast(forecast) {
     if (!forecast) return;
     context.strokeStyle = 'rgba(95, 227, 255, 0.45)';
@@ -519,7 +538,7 @@ export function createRenderer(canvas, sprites) {
     context.restore();
   }
 
-  function draw(scene) {
+  function draw(scene, routePath) {
     aim(scene.camera);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.fillStyle = '#000';
@@ -533,6 +552,7 @@ export function createRenderer(canvas, sprites) {
     scene.antennas.forEach(drawAntenna);
     drawSignal(scene.antennas);
     drawBodyLabels(scene.claimedBounties);
+    drawPath(routePath, 'rgba(255, 150, 90, 0.55)', [8, 6]);
     drawDrone(scene.drone);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);

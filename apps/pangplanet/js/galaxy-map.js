@@ -117,6 +117,28 @@ export function createGalaxyMap(canvas) {
     }
   }
 
+  function drawRoute(segments, drone) {
+    context.save();
+    context.strokeStyle = 'rgba(255, 150, 90, 0.8)';
+    context.lineWidth = 1.5;
+    context.setLineDash([4, 3]);
+    for (const points of segments) {
+      if (points.length < 4) continue;
+      context.beginPath();
+      for (let i = 0; i < points.length; i += 2) {
+        const [mx, my] = toMap(points[i], points[i + 1]);
+        if (i === 0) context.moveTo(mx, my);
+        else context.lineTo(mx, my);
+      }
+      context.stroke();
+    }
+    context.restore();
+    if (!drone) return;
+    const [mx, my] = toMap(drone.x, drone.y);
+    context.fillStyle = '#ff965a';
+    context.fillRect(mx - 2.5, my - 2.5, 5, 5);
+  }
+
   function drawRocket(rocket) {
     const [mx, my] = toMap(rocket.x, rocket.y);
     context.fillStyle = '#6dff8c';
@@ -128,7 +150,7 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting }) {
+  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, routePath, drone }) {
     if (canvas.clientWidth !== view.size) fit();
     context.fillStyle = '#02060d';
     context.fillRect(0, 0, view.size, view.size);
@@ -142,6 +164,7 @@ export function createGalaxyMap(canvas) {
       if (telescopeRange) ring(rocket.x, rocket.y, telescopeRange, 'rgba(63, 224, 208, 0.6)', true);
       drawStars(chart);
     }
+    drawRoute(routePath, drone);
     drawRocket(rocket);
   }
 
