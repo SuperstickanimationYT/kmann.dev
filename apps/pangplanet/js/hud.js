@@ -2,6 +2,7 @@ import { MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
 const TOAST_MS = 4500;
+const BECKON_MS = 6000;
 const UPGRADE_TEXT = {
   batterySlots: { name: 'Battery rack', describe: (value) => `${value} slots` },
   panels: { name: 'Solar panels', describe: (value) => `${value}× charging` },
@@ -308,6 +309,7 @@ export function createHud(root, actions) {
     );
   }
   find('[data-help-toggle]').addEventListener('click', actions.toggleHelp);
+  find('[data-start-tour]').addEventListener('click', actions.startTour);
   find('[data-restart]').addEventListener('click', actions.restart);
   find('[data-map-toggle]').addEventListener('click', actions.toggleMap);
   find('[data-map]').addEventListener('click', (event) => actions.pickOnMap(event.clientX, event.clientY));
@@ -454,5 +456,11 @@ export function createHud(root, actions) {
     setHidden(parts.finishRecording, !status.canFinishRecording);
   }
 
-  return { showPanel, update, toast };
+  function beckonHelp() {
+    const help = find('[data-help-toggle]');
+    help.classList.add('is-beckoning');
+    setTimeout(() => help.classList.remove('is-beckoning'), BECKON_MS);
+  }
+
+  return { showPanel, update, toast, beckonHelp };
 }

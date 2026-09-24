@@ -61,6 +61,7 @@ import { chartVisitsNear, createStarChart, isCharted, scanFrom } from './starcha
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
+import { createTour } from './tour.js';
 import { crystalWorlds, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
@@ -155,7 +156,8 @@ const game = {
   ownsTelescope: false,
   mapSelection: null,
   mapPlanet: null,
-  panel: 'help',
+  panel: null,
+  tourSeen: false,
   forecast: null,
 };
 
@@ -388,9 +390,22 @@ function openPanel(name) {
   hud.showPanel(name);
 }
 
+function startTour() {
+  openPanel(null);
+  tour.start();
+}
+
 const actions = {
-  closePanels: () => openPanel(null),
-  toggleHelp: () => openPanel(game.panel === 'help' ? null : 'help'),
+  closePanels: () => {
+    tour.stop();
+    openPanel(null);
+  },
+  toggleHelp: () => {
+    if (tour.running()) tour.stop();
+    else if (!game.tourSeen) startTour();
+    else openPanel(game.panel === 'help' ? null : 'help');
+  },
+  startTour,
   mine: () => {
     if (landedBody()?.kind !== 'planemo') return;
     deployDrill(game.drill, play);
@@ -698,6 +713,7 @@ const CHEATS = {
 };
 
 const hud = createHud(stage, actions);
+const tour = createTour(stage, { onEnd: () => (game.tourSeen = true), openGuide: () => openPanel('help') });
 const galaxyMap = createGalaxyMap(stage.querySelector('[data-map]'));
 
 function dock() {
@@ -1420,6 +1436,7 @@ function snapshot() {
     galactokens: game.galactokens,
     ownsWarpDrive: game.ownsWarpDrive,
     ownsRescueModule: game.ownsRescueModule,
+    tourSeen: game.tourSeen,
     timewarp: game.timewarp,
     zoom: camera.zoom,
     rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
@@ -1449,7 +1466,7 @@ function restore(saved) {
   const { rocket, power, camera } = game;
   Object.assign(rocket, saved.rocket, { engineOn: false });
   Object.assign(power, saved.power);
-  Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, ownsRescueModule: saved.ownsRescueModule ?? false, panel: null });
+  Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, ownsRescueModule: saved.ownsRescueModule ?? false, tourSeen: saved.tourSeen ?? false, panel: null });
   const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
   Object.assign(game, { satellites: listOf('satellites', 'satellite'), rig: saved.rig ?? null, gold: saved.gold ?? 0 });
   Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone'), haulers: saved.haulers ?? [] });
@@ -1493,6 +1510,7 @@ async function start() {
   renderer.resize();
   new ResizeObserver(() => renderer.resize()).observe(canvas);
   hud.showPanel(game.panel);
+  if (!game.tourSeen) hud.beckonHelp();
   window.requestAnimationFrame((time) => {
     lastTime = time;
     frame(time);
