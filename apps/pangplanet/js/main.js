@@ -30,12 +30,16 @@ import {
   withinReach,
 } from './outposts.js';
 import {
+  canRescue,
   createDrone,
   dockFlight,
+  dronePose,
+  flyRescue,
   finishRecording,
   flyDrone,
   inSignal,
   launchDrone,
+  launchRescue,
   noteControls,
   noteEvent,
   noteStep,
@@ -75,6 +79,7 @@ import {
   MARKET,
   MINING_RIG,
   OFFLINE_CATCH_UP_SECONDS,
+  RESCUE,
   SATELLITE,
   SOLAR_PANELS,
   STARDUST,
@@ -130,6 +135,7 @@ const game = {
   clock: 0,
   warp: null,
   ownsWarpDrive: false,
+  ownsRescueModule: false,
   satellites: [],
   rig: null,
   banks: [],
@@ -445,6 +451,11 @@ const actions = {
     if (galaxyMap.showingSystem()) game.mapPlanet = picked;
     else game.mapSelection = picked;
   },
+  buyRescueModule: () => {
+    if (game.ownsRescueModule || game.galactokens < RESCUE.cost) return;
+    game.ownsRescueModule = true;
+    game.galactokens -= RESCUE.cost;
+  },
   buyWarpDrive: () => {
     if (game.ownsWarpDrive || game.galactokens < WARP_DRIVE.cost) return;
     game.ownsWarpDrive = true;
@@ -700,7 +711,7 @@ function dock() {
   openPanel(target.kind);
 }
 
-const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map((drone) => drone.flight ?? drone.pad)]);
+const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map(dronePose)]);
 
 function advanceOutposts(seconds) {
   for (const satellite of game.satellites) chargeSatellite(satellite, seconds);
@@ -951,7 +962,7 @@ const DRONE_ACTIONS = {
 const droneAction = (name, flight, drone) => DRONE_ACTIONS[name](flight, drone);
 
 function stepDrone(drone) {
-  if (!drone.pad) return;
+  if (!drone.pad || drone.rescue) return;
   if (!drone.flight) {
     if (!drone.running || game.galactokens < refuelCost(drone)) return;
     game.galactokens -= refuelCost(drone);
@@ -967,6 +978,45 @@ function stepDrone(drone) {
 
 function stepDrones() {
   for (const drone of [...game.drones]) stepDrone(drone);
+}
+
+const needsRescue = () => game.ownsRescueModule && stranded() && inSignal(game.antennas, game.rocket.x, game.rocket.y);
+
+function dispatchRescue() {
+  const { rocket } = game;
+  const distanceTo = (drone) => Math.hypot(dronePose(drone).x - rocket.x, dronePose(drone).y - rocket.y);
+  const [nearest] = game.drones.filter(canRescue).sort((a, b) => distanceTo(a) - distanceTo(b));
+  if (!nearest) return;
+  launchRescue(nearest);
+  hud.toast('A rescue drone is on its way.');
+}
+
+function refuelFromRescue() {
+  const { rocket } = game;
+  const price = Math.ceil((rocket.fuelCapacity - rocket.fuel) * (FUEL_PACK.cost / FUEL_PACK.amount)) + RESCUE.fee;
+  const paid = Math.min(price, game.galactokens);
+  game.galactokens -= paid;
+  rocket.fuel = rocket.fuelCapacity;
+  hud.toast(`Rescue drone refuelled you for ${paid} galactokens.`);
+}
+
+function stepRescue() {
+  const { rocket } = game;
+  const rescuer = game.drones.find((drone) => drone.rescue);
+  if (!rescuer) {
+    if (needsRescue()) dispatchRescue();
+    return;
+  }
+  const { rescue } = rescuer;
+  if (rescue.returning) {
+    if (flyRescue(rescuer, rescuer.pad, RESCUE.speed, STEP_TICKS)) rescuer.rescue = null;
+    return;
+  }
+  if (rocket.fuel > 0 || rocket.destroyed || rocket.landed) rescue.returning = true;
+  else if (flyRescue(rescuer, rocket, Math.hypot(rocket.vx, rocket.vy) + RESCUE.speed, STEP_TICKS)) {
+    refuelFromRescue();
+    rescue.returning = true;
+  }
 }
 
 const rehearsals = new WeakMap();
@@ -1051,7 +1101,7 @@ function catchUp(seconds) {
   const busySeconds = Math.min(seconds, OFFLINE_CATCH_UP_SECONDS);
   streamAround();
   const runs = game.drones
-    .filter((drone) => drone.pad && drone.route && !drone.lost)
+    .filter((drone) => drone.pad && drone.route && !drone.lost && !drone.rescue)
     .map((drone) => ({
       drone,
       rehearsal: rehearsalOf(drone),
@@ -1078,6 +1128,7 @@ function simulate() {
     if (hit === 'land') rewardFirstLanding();
     if (game.recording && !inSignal(game.antennas, rocket.x, rocket.y)) stopRecording('Out of antenna range. Recording stopped.');
     stepDrones();
+    stepRescue();
     simTicks += STEP_TICKS;
     game.timewarp = Math.min(game.timewarp, timewarpCap());
   }
@@ -1292,6 +1343,8 @@ function status() {
     marketNote: marketNote(),
     ownsWarpDrive: game.ownsWarpDrive,
     canBuyWarpDrive: !game.ownsWarpDrive && game.galactokens >= WARP_DRIVE.cost,
+    offersRescueModule: !game.ownsRescueModule && game.drones.length > 0,
+    canBuyRescueModule: !game.ownsRescueModule && game.galactokens >= RESCUE.cost,
     warpDestinations: destinations,
     warpNote: warpNote(destinations, unchartedInRange),
     ownsTelescope: game.ownsTelescope,
@@ -1350,7 +1403,7 @@ function frame(time) {
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
       routePath: routePaths(),
-      drones: [...parkedDrones().map((drone) => drone.flight ?? drone.pad), ...game.haulers.map(haulerPose)],
+      drones: [...parkedDrones().map(dronePose), ...game.haulers.map(haulerPose)],
     });
   }
   bakeNextTexture();
@@ -1366,6 +1419,7 @@ function snapshot() {
   return {
     galactokens: game.galactokens,
     ownsWarpDrive: game.ownsWarpDrive,
+    ownsRescueModule: game.ownsRescueModule,
     timewarp: game.timewarp,
     zoom: camera.zoom,
     rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
@@ -1395,7 +1449,7 @@ function restore(saved) {
   const { rocket, power, camera } = game;
   Object.assign(rocket, saved.rocket, { engineOn: false });
   Object.assign(power, saved.power);
-  Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, panel: null });
+  Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, ownsRescueModule: saved.ownsRescueModule ?? false, panel: null });
   const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
   Object.assign(game, { satellites: listOf('satellites', 'satellite'), rig: saved.rig ?? null, gold: saved.gold ?? 0 });
   Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone'), haulers: saved.haulers ?? [] });

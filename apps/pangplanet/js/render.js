@@ -448,9 +448,9 @@ export function createRenderer(canvas, sprites) {
   }
 
   function drawDrone(drone) {
-    const pose = drone?.flight ?? drone?.pad;
+    const pose = drone?.rescue ?? drone?.flight ?? drone?.pad;
     if (!pose) return;
-    const label = drone.lost ? 'Drone · no signal' : 'Drone';
+    const label = drone.lost ? 'Drone · no signal' : drone.rescue ? 'Drone · rescue' : 'Drone';
     const [sx, sy] = toScreen(...rocketPoint(pose, (-ROCKET_HEIGHT * (1 - DRONE_SCALE)) / 2, 0));
     if (ROCKET_HEIGHT * DRONE_SCALE * view.ppu < 10) {
       drawMarker(sx, sy, pose.heading, '#ff965a', 4);

@@ -1,20 +1,20 @@
 import { advance } from './physics.js';
-import { ANTENNA, DRONE, FUEL_PACK } from './world.js';
+import { ANTENNA, DRONE, FUEL_PACK, RESCUE } from './world.js';
 
 export const inSignal = (antennas, x, y) => antennas.some((antenna) => Math.hypot(x - antenna.x, y - antenna.y) <= ANTENNA.range);
 
 export function createDrone() {
-  return { pad: null, route: null, running: false, fuel: 0, flight: null, lost: false, batteries: Array(DRONE.batteries).fill(0) };
+  return { pad: null, route: null, running: false, fuel: 0, flight: null, lost: false, rescue: null, batteries: Array(DRONE.batteries).fill(0) };
 }
 
 export const poseOf = (craft) => ({ x: craft.x, y: craft.y, heading: craft.heading, site: craft.soi.name });
 
 export function parkDrone(drone, rocket) {
-  Object.assign(drone, { pad: poseOf(rocket), route: null, running: false, flight: null, lost: false });
+  Object.assign(drone, { pad: poseOf(rocket), route: null, running: false, flight: null, lost: false, rescue: null });
 }
 
 export function stowDrone(drone) {
-  Object.assign(drone, { pad: null, route: null, running: false, flight: null, lost: false });
+  Object.assign(drone, { pad: null, route: null, running: false, flight: null, lost: false, rescue: null });
 }
 
 export function startRecording(drone, rocket) {
@@ -125,6 +125,29 @@ export function rehearseRoute(drone, antennas, dt) {
 export function replayFlight(drone, antennas, steps, dt) {
   launchDrone(drone);
   for (let i = 0; i < steps; i++) flyDrone(drone, antennas, moveOnly, dt);
+}
+
+export const dronePose = (drone) => drone.rescue ?? drone.flight ?? drone.pad;
+
+export const canRescue = (drone) => Boolean(drone.pad) && !drone.lost && !drone.rescue;
+
+export function launchRescue(drone) {
+  const { x, y, heading } = drone.flight ?? drone.pad;
+  Object.assign(drone, { flight: null, rescue: { x, y, heading, returning: false } });
+}
+
+export function flyRescue(drone, target, speed, dt) {
+  const { rescue } = drone;
+  const dx = target.x - rescue.x;
+  const dy = target.y - rescue.y;
+  const distance = Math.hypot(dx, dy);
+  const stride = speed * dt;
+  if (distance <= Math.max(stride, RESCUE.reach)) {
+    Object.assign(rescue, { x: target.x, y: target.y });
+    return true;
+  }
+  Object.assign(rescue, { x: rescue.x + (dx / distance) * stride, y: rescue.y + (dy / distance) * stride, heading: Math.atan2(dx, dy) });
+  return false;
 }
 
 export const routeProgress = (drone) => (drone.flight && drone.route ? drone.flight.step / drone.route.steps : 0);
