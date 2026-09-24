@@ -1,4 +1,4 @@
-import { UPGRADES } from './world.js';
+import { PRICE_GROWTH, UPGRADES } from './world.js';
 
 const bodyKey = (body) => `${body.name}@${Math.round(body.x)},${Math.round(body.y)}`;
 
@@ -15,6 +15,8 @@ export const createUpgrades = () => Object.fromEntries(Object.keys(UPGRADES).map
 export const upgradeValue = (key, level) => (level === 0 ? UPGRADES[key].base : UPGRADES[key].levels[level - 1].value);
 
 export const nextUpgrade = (key, level) => UPGRADES[key].levels[level] ?? null;
+
+export const risingPrice = (base, owned) => Math.round((base * PRICE_GROWTH ** owned) / 10) * 10;
 
 export const canAfford = (upgrade, galactokens, crystals) => galactokens >= upgrade.cost && crystals >= (upgrade.crystals ?? 0);
 

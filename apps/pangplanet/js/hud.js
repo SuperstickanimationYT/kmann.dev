@@ -81,6 +81,10 @@ export function createHud(root, actions) {
     crystals: find('[data-crystals]'),
     sellCrystals: find('[data-sell-crystals]'),
     buySatellite: find('[data-buy-satellite]'),
+    prices: [...root.querySelectorAll('[data-price]')],
+    satellitesInHold: find('[data-satellites-in-hold]'),
+    banksInHold: find('[data-banks-in-hold]'),
+    dronesInHold: find('[data-drones-in-hold]'),
     buyRig: find('[data-buy-rig]'),
     sellGold: find('[data-sell-gold]'),
     deploySatellite: find('[data-deploy-satellite]'),
@@ -281,8 +285,11 @@ export function createHud(root, actions) {
     setHidden(parts.crystalCounter, status.crystals === 0);
     setText(parts.crystals, String(status.crystals));
     setHidden(parts.sellCrystals, status.crystals === 0);
-    setHidden(parts.buySatellite, Boolean(status.satellite));
     parts.buySatellite.disabled = !status.canBuySatellite;
+    parts.prices.forEach((price) => setText(price, status.prices[price.dataset.price].toLocaleString()));
+    setText(parts.satellitesInHold, String(status.satellitesInHold));
+    setText(parts.banksInHold, String(status.banksInHold));
+    setText(parts.dronesInHold, String(status.dronesInHold));
     setHidden(parts.buyRig, Boolean(status.rig));
     parts.buyRig.disabled = !status.canBuyRig;
     setHidden(parts.sellGold, !status.rig && status.gold === 0);
@@ -326,7 +333,6 @@ export function createHud(root, actions) {
   }
 
   function updateBank({ bank, canBuyBank, canDeployBank, canDepositInBank, canTakeFromBank }) {
-    setHidden(parts.buyBank, Boolean(bank));
     parts.buyBank.disabled = !canBuyBank;
     setHidden(parts.deployBank, !canDeployBank);
     if (!bank) return;
@@ -342,7 +348,6 @@ export function createHud(root, actions) {
     setText(parts.antennasInHold, String(status.antennasInHold));
     setHidden(parts.pickUpAntenna, !status.canPickUpAntenna);
     setHidden(parts.openDrone, !status.nearDrone);
-    setHidden(parts.buyDrone, status.ownsDrone);
     parts.buyDrone.disabled = !status.canBuyDrone;
     setHidden(parts.deployDrone, !status.canDeployDrone);
     setText(parts.droneStatus, status.droneStatus);

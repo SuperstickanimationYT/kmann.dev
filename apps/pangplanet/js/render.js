@@ -546,14 +546,14 @@ export function createRenderer(canvas, sprites) {
     drawStars();
     bodies.forEach(drawBody);
     drawMarket();
-    drawSatellite(scene.satellite);
+    scene.satellites.forEach(drawSatellite);
     drawRig(scene.rig);
-    drawBank(scene.bank);
+    scene.banks.forEach(drawBank);
     scene.antennas.forEach(drawAntenna);
     drawSignal(scene.antennas);
     drawBodyLabels(scene.claimedBounties);
     drawPath(routePath, 'rgba(255, 150, 90, 0.55)', [8, 6]);
-    drawDrone(scene.drone);
+    scene.drones.forEach(drawDrone);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);
