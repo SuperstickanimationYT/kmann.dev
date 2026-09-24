@@ -713,11 +713,14 @@ function advanceUnattended(seconds) {
 }
 
 let unattendedClock = Date.now();
+const PAUSED_AFTER_SECONDS = 1;
 
 function catchUpToNow() {
   const now = Date.now();
-  runTimeline((now - unattendedClock) / 1000);
+  const seconds = (now - unattendedClock) / 1000;
   unattendedClock = now;
+  if (seconds > PAUSED_AFTER_SECONDS) catchUp(seconds);
+  else runTimeline(seconds);
 }
 
 function respawn() {
