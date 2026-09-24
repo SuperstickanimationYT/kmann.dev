@@ -251,8 +251,13 @@
 .pp-recording {
   top: 64px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  white-space: normal;
   border: 1px solid #ff5b4a;
 }
 
@@ -597,6 +602,11 @@
 
   .pp-corner-buttons {
     bottom: 96px;
+  }
+
+  .pp-stage .pp-recording {
+    top: auto;
+    bottom: 144px;
   }
 
   .pp-stage .pp-telemetry {
