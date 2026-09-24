@@ -58,6 +58,7 @@ export function createHud(root, actions) {
     engineButton: find('[data-engine-button]'),
     dockPrompt: find('[data-dock-prompt]'),
     crash: find('[data-crash]'),
+    abandon: find('[data-abandon]'),
     mine: find('[data-mine]'),
     stopDrill: find('[data-stop-drill]'),
     drillHint: find('[data-drill-hint]'),
@@ -340,6 +341,7 @@ export function createHud(root, actions) {
     parts.engineButton.classList.toggle('is-on', status.engineOn);
     setHidden(parts.dockPrompt, !status.canDock);
     setHidden(parts.crash, !status.destroyed);
+    setHidden(parts.abandon, !status.stranded);
     setHidden(parts.mine, !status.canMine);
     setHidden(parts.stopDrill, !status.drillBusy);
     setHidden(parts.drillHint, !status.drillAwaitingClick);

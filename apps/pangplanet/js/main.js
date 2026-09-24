@@ -751,6 +751,7 @@ const KEY_ACTIONS = {
   m: actions.toggleMap,
   t: actions.scan,
   c: respawn,
+  x: abandonShip,
   h: actions.toggleHelp,
   '?': actions.toggleHelp,
   Escape: actions.closePanels,
@@ -829,6 +830,17 @@ function explode() {
   stopRecording('Crashed. Recording stopped.');
   losePowerCargo(game.power);
   if (game.panel === 'rocket') openPanel(null);
+}
+
+const stranded = () => {
+  const { rocket } = game;
+  return !rocket.destroyed && rocket.fuel <= 0 && !rocket.soi && !canDock();
+};
+
+function abandonShip() {
+  if (!stranded()) return;
+  game.rocket.destroyed = true;
+  explode();
 }
 
 const telescopeRange = () => upgradeValue('telescope', game.upgrades.telescope);
@@ -1262,6 +1274,7 @@ function status() {
     canTakeSatelliteCharge: Boolean(dockedOf('satellite')) && roomToCharge(power.batteries) > 0 && storedCharge(dockedOf('satellite').batteries) > 0,
     canLoadRig: Boolean(game.rig) && game.rig.charge < MINING_RIG.batterySlots && storedCharge(power.batteries) > 0,
     destroyed: rocket.destroyed,
+    stranded: stranded(),
     canMine: landedBody()?.kind === 'planemo' && !drillBusy(drill),
     drillBusy: drillBusy(drill),
     drillAwaitingClick: drillAwaitingClick(drill),
