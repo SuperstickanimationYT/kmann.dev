@@ -2,7 +2,7 @@ import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
 import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
-import { MARKET, ROCKET_HEIGHT } from './world.js';
+import { ANTENNA, MARKET, ROCKET_HEIGHT } from './world.js';
 
 const STAGE_HEIGHT_UNITS = 360;
 const FLAME_OFFSET = 50;
@@ -20,6 +20,10 @@ const SOLAR_PANEL = { reach: 55, width: 22, inset: 12, cells: 4 };
 const SATELLITE_SHAPE = { core: 30, panelReach: 60, panelWidth: 18 };
 const RIG_SHAPE = { base: 50, height: 80, besideRocket: 75 };
 const OUTPOST_DOT_BELOW_PX = 8;
+const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
+const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
+const DRONE_SCALE = 0.6;
+const SIGNAL_RING_MAX_PX = 50000;
 
 const LOOKS = {
   earth: { fill: '#2b6fb0', rock: '#3fbf2a', atmosphere: 'rgba(110, 180, 255, 0.35)' },
@@ -303,6 +307,93 @@ export function createRenderer(canvas, sprites) {
     });
   }
 
+  function drawSignal(antennas) {
+    const radius = ANTENNA.range * view.ppu;
+    if (radius > SIGNAL_RING_MAX_PX) return;
+    context.save();
+    context.strokeStyle = 'rgba(255, 150, 90, 0.35)';
+    context.lineWidth = 1.5;
+    context.setLineDash([6, 6]);
+    for (const antenna of antennas) {
+      const [sx, sy] = toScreen(antenna.x, antenna.y);
+      discPath(sx, sy, radius);
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  function drawAntenna(antenna) {
+    const [sx, sy] = toScreen(...rocketPoint(antenna, -ROCKET_HEIGHT / 2, ANTENNA_SHAPE.besideRocket));
+    const { height, dish } = ANTENNA_SHAPE;
+    const scale = view.ppu;
+    if (!onScreen(sx, sy, height * scale + 20)) return;
+    if (height * scale < OUTPOST_DOT_BELOW_PX) {
+      drawOutpostDot(sx, sy, 'Antenna');
+      return;
+    }
+    withPose(sx, sy, antenna.heading, () => {
+      context.strokeStyle = '#d9dde3';
+      context.lineWidth = Math.max(1, 4 * scale);
+      context.beginPath();
+      context.moveTo(0, 0);
+      context.lineTo(0, -height * scale);
+      context.stroke();
+      context.strokeStyle = '#ff965a';
+      context.beginPath();
+      context.arc(0, (-height + dish) * scale, dish * scale, Math.PI * 1.15, Math.PI * 1.85);
+      context.stroke();
+    });
+  }
+
+  function drawBank(bank) {
+    if (!bank?.deployed) return;
+    const [sx, sy] = toScreen(bank.x, bank.y);
+    const { width, height, cells } = BANK_SHAPE;
+    const scale = view.ppu;
+    if (!onScreen(sx, sy, width * scale + 20)) return;
+    if (width * scale < OUTPOST_DOT_BELOW_PX) {
+      drawOutpostDot(sx, sy, 'Battery bank');
+      return;
+    }
+    withPose(sx, sy, 0, () => {
+      context.fillStyle = '#d9dde3';
+      context.fillRect((-width / 2) * scale, (-height / 2) * scale, width * scale, height * scale);
+      const stored = bank.batteries.reduce((sum, charge) => sum + charge, 0) / bank.batteries.length;
+      const cellWidth = width / cells;
+      for (let i = 0; i < cells; i++) {
+        context.fillStyle = (i + 0.5) / cells <= stored ? '#6dff8c' : '#2c3a33';
+        context.fillRect((-width / 2 + i * cellWidth + 3) * scale, (-height / 2 + 5) * scale, (cellWidth - 6) * scale, (height - 10) * scale);
+      }
+    });
+  }
+
+  function drawDrone(drone) {
+    const pose = drone?.flight ?? drone?.pad;
+    if (!pose) return;
+    const label = drone.lost ? 'Drone · no signal' : 'Drone';
+    const [sx, sy] = toScreen(...rocketPoint(pose, (-ROCKET_HEIGHT * (1 - DRONE_SCALE)) / 2, 0));
+    if (ROCKET_HEIGHT * DRONE_SCALE * view.ppu < 10) {
+      withPose(sx, sy, pose.heading, () => {
+        context.fillStyle = '#ff965a';
+        context.beginPath();
+        context.moveTo(0, -5);
+        context.lineTo(4, 4);
+        context.lineTo(-4, 4);
+        context.closePath();
+        context.fill();
+      });
+      drawLabel(label, sx, sy + 16, 'rgba(255, 150, 90, 0.85)');
+      return;
+    }
+    const scale = view.ppu * DRONE_SCALE;
+    if (pose.engineOn && pose.throttle > 0) {
+      const [fx, fy] = toScreen(...rocketPoint(pose, -FLAME_OFFSET * DRONE_SCALE, 0));
+      withPose(fx, fy, pose.heading - Math.PI / 2, () => drawSprite(sprites.flame, (scale * pose.throttle) / 100, scale));
+    }
+    withPose(sx, sy, pose.heading, () => drawSprite(sprites.rocket, scale));
+    drawLabel(label, sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, 'rgba(255, 150, 90, 0.85)');
+  }
+
   function drawForecast(forecast) {
     if (!forecast) return;
     context.strokeStyle = 'rgba(95, 227, 255, 0.45)';
@@ -436,7 +527,11 @@ export function createRenderer(canvas, sprites) {
     drawMarket();
     drawSatellite(scene.satellite);
     drawRig(scene.rig);
+    drawBank(scene.bank);
+    scene.antennas.forEach(drawAntenna);
+    drawSignal(scene.antennas);
     drawBodyLabels(scene.claimedBounties);
+    drawDrone(scene.drone);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);

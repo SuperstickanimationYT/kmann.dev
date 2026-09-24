@@ -1,5 +1,5 @@
-import { chargeRate, drainBatteries, fillBatteries, roomToCharge, storedCharge, sunlight } from './solar.js';
-import { MINING_RIG, SATELLITE } from './world.js';
+import { chargeRate, drainBatteries, fillBatteries, storedCharge, sunlight, transferCharge } from './solar.js';
+import { BATTERY_BANK, MINING_RIG, SATELLITE } from './world.js';
 
 export function createSatellite() {
   return { deployed: false, x: 0, y: 0, light: 0, batteries: Array(SATELLITE.batteries).fill(0) };
@@ -14,8 +14,15 @@ export function chargeSatellite(satellite, seconds) {
 }
 
 export function takeSatelliteCharge(satellite, power) {
-  const wanted = Math.min(roomToCharge(power.batteries), storedCharge(satellite.batteries));
-  fillBatteries(power.batteries, drainBatteries(satellite.batteries, wanted));
+  transferCharge(satellite.batteries, power.batteries);
+}
+
+export function createBank() {
+  return { deployed: false, x: 0, y: 0, batteries: Array(BATTERY_BANK.batteries).fill(0) };
+}
+
+export function deployBank(bank, rocket) {
+  Object.assign(bank, { deployed: true, x: rocket.x, y: rocket.y });
 }
 
 export function createRig() {

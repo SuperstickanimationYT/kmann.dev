@@ -244,6 +244,23 @@
   cursor: pointer;
 }
 
+.pp-recording {
+  top: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #ff5b4a;
+}
+
+.pp-recording .pp-action {
+  padding: 3px 10px;
+  font-size: 14px;
+}
+
+.pp-recording-hint {
+  color: #ffb3a8;
+}
+
 .pp-crash {
   top: calc(50% - 20px);
   border: 1px solid #ff5b4a;

@@ -50,6 +50,10 @@ export function drainBatteries(batteries, amount) {
 export const storedCharge = (batteries) => batteries.reduce((sum, charge) => sum + charge, 0);
 export const roomToCharge = (batteries) => batteries.length - storedCharge(batteries);
 
+export function transferCharge(from, to) {
+  fillBatteries(to, drainBatteries(from, Math.min(roomToCharge(to), storedCharge(from))));
+}
+
 // Runs on wall-clock ticks so time warp cannot shortcut a trip to the star.
 export function chargeBatteries(power, rocket, wallTicks) {
   if (!power.panelsDeployed) return;
