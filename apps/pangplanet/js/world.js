@@ -92,15 +92,16 @@ export const SATELLITE = { cost: 450, batteries: 3, dockingRange: 1500 };
 export const MINING_RIG = { cost: 1000, batterySlots: 6, secondsPerBattery: 1800, goldPerMinute: 1, reach: 1500 };
 export const GOLD = { sellPrice: 10 };
 export const CRYSTALS = { sellPrice: 80, chancePerPump: 0.25 };
+export const STARDUST = { sellPrice: 500, chancePerPump: 0.05 };
 export const FUEL_PER_PUMP = { gas: 2, other: 1 };
 export const UPGRADES = {
-  batterySlots: { base: BATTERY.slots, levels: [{ cost: 150, value: 4 }, { cost: 400, value: 5 }, { cost: 900, value: 6 }, { cost: 2000, crystals: 4, value: 8 }] },
-  panels: { base: 1, levels: [{ cost: 250, value: 1.5 }, { cost: 700, value: 2 }, { cost: 1500, crystals: 4, value: 3 }] },
-  tank: { base: MAX_FUEL, levels: [{ cost: 120, value: 150 }, { cost: 450, value: 200 }, { cost: 1200, crystals: 3, value: 300 }] },
-  engine: { base: 1, levels: [{ cost: 200, value: 1.25 }, { cost: 600, value: 1.5 }, { cost: 1500, crystals: 4, value: 2 }] },
-  telescope: { base: 4.5e7, levels: [{ cost: 800, value: 9e7 }, { cost: 2000, value: 1.5e8 }, { cost: 4000, crystals: 5, value: 3e8 }] },
-  warpRange: { base: 2e7, levels: [{ cost: 3000, crystals: 3, value: 3.5e7 }, { cost: 6000, crystals: 8, value: 5e7 }] },
-  timewarp: { base: 5, levels: [{ cost: 500, value: 10 }, { cost: 1500, value: 20 }, { cost: 4000, value: 30 }] },
+  batterySlots: { base: BATTERY.slots, levels: [{ cost: 150, value: 4 }, { cost: 400, value: 5 }, { cost: 900, value: 6 }, { cost: 2000, crystals: 4, value: 8 }, { cost: 5000, stardust: 3, value: 10 }] },
+  panels: { base: 1, levels: [{ cost: 250, value: 1.5 }, { cost: 700, value: 2 }, { cost: 1500, crystals: 4, value: 3 }, { cost: 4000, stardust: 3, value: 4 }] },
+  tank: { base: MAX_FUEL, levels: [{ cost: 120, value: 150 }, { cost: 450, value: 200 }, { cost: 1200, crystals: 3, value: 300 }, { cost: 3000, stardust: 2, value: 400 }] },
+  engine: { base: 1, levels: [{ cost: 200, value: 1.25 }, { cost: 600, value: 1.5 }, { cost: 1500, crystals: 4, value: 2 }, { cost: 4000, stardust: 3, value: 2.5 }] },
+  telescope: { base: 4.5e7, levels: [{ cost: 800, value: 9e7 }, { cost: 2000, value: 1.5e8 }, { cost: 4000, crystals: 5, value: 3e8 }, { cost: 8000, stardust: 4, value: 4.5e8 }] },
+  warpRange: { base: 2e7, levels: [{ cost: 3000, crystals: 3, value: 3.5e7 }, { cost: 6000, crystals: 8, value: 5e7 }, { cost: 12000, stardust: 5, value: 8e7 }] },
+  timewarp: { base: 5, levels: [{ cost: 500, value: 10 }, { cost: 1500, value: 20 }, { cost: 4000, value: 30 }, { cost: 8000, stardust: 3, value: 50 }] },
 };
 export const TELESCOPE = { cost: 600 };
 export const PRICE_GROWTH = 1.5;

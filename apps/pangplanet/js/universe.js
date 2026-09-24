@@ -16,6 +16,7 @@ const FIRST_ORBIT_IN_STAR_RADII = 4;
 const ORBIT_GAP = [150000, 350000];
 const GAS_GIANT_CHANCE = 0.3;
 const CRYSTAL_CHANCE = 0.15;
+const STARDUST_CHANCE = 0.05;
 const STAR_GRAVITY = [2, 6];
 const ROCKY = { radius: [2000, 14000], gravity: [0.05, 0.4] };
 const GAS_GIANT = { radius: [16000, 30000], gravity: [0.3, 0.7] };
@@ -72,7 +73,9 @@ function bountyForGravity(surfaceGravity) {
 
 function resourceFor(gasGiant, seed, index) {
   if (gasGiant) return 'gas';
-  return createRandom(seed ^ Math.imul(index + 1, 0x9e3779b1)).next() < CRYSTAL_CHANCE ? 'crystals' : null;
+  const random = createRandom(seed ^ Math.imul(index + 1, 0x9e3779b1));
+  if (random.next() < CRYSTAL_CHANCE) return 'crystals';
+  return random.next() < STARDUST_CHANCE ? 'stardust' : null;
 }
 
 function generatePlanet(next, star, orbit, index, seed) {
@@ -157,7 +160,9 @@ export function systemAt(x, y) {
   return systemBodies.length ? describeSystem(systemBodies) : null;
 }
 
-export const crystalWorlds = (planets) => planets.filter((planet) => planet.resource === 'crystals').length;
+const worldsWith = (resource) => (planets) => planets.filter((planet) => planet.resource === resource).length;
+export const crystalWorlds = worldsWith('crystals');
+export const stardustWorlds = worldsWith('stardust');
 
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));
 

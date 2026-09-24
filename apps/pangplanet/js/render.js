@@ -27,6 +27,10 @@ const SIGNAL_RING_MAX_PX = 50000;
 const HAULER_SCALE = 0.8;
 const HAULER_LOOKS = { hauler: { label: 'Hauler', colour: '#6dff8c' }, builder: { label: 'Builder', colour: '#ffc933' } };
 const FLICKER_WAVES = [[0.9, 0.07], [2.3, 0.05], [5.1, 0.03]];
+const RESOURCE_LABELS = {
+  crystals: { text: 'crystals', colour: 'rgba(125, 243, 255, 0.9)' },
+  stardust: { text: 'stardust', colour: 'rgba(226, 201, 255, 0.9)' },
+};
 const FLAME_CORE = { length: 0.55, width: 0.5 };
 const FLAME_GLOW = { behind: 20, radius: 30, colour: 'rgba(255, 170, 60, 0.35)' };
 const SMOKE_ALPHA = 0.35;
@@ -241,9 +245,9 @@ export function createRenderer(canvas, sprites) {
       const [sx, sy] = toScreen(body.x, body.y);
       const offset = Math.max(radius, 2) + (body.kind === 'wormhole' ? -8 : 14);
       const bounty = bountyWaiting(claimedBounties, body);
-      const crystals = body.resource === 'crystals';
-      const label = [body.name, bounty && `${bounty} bounty`, crystals && 'crystals'].filter(Boolean).join(' · ');
-      const colour = bounty ? 'rgba(255, 214, 110, 0.9)' : crystals ? 'rgba(125, 243, 255, 0.9)' : 'rgba(185, 214, 245, 0.8)';
+      const find = RESOURCE_LABELS[body.resource];
+      const label = [body.name, bounty && `${bounty} bounty`, find?.text].filter(Boolean).join(' · ');
+      const colour = bounty ? 'rgba(255, 214, 110, 0.9)' : (find?.colour ?? 'rgba(185, 214, 245, 0.8)');
       if (onScreen(sx, sy, 40)) drawLabel(label, sx, sy + (body.kind === 'wormhole' ? -offset : offset), colour);
     }
   }

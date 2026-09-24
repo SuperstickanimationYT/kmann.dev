@@ -42,6 +42,7 @@
       <div class="pp-batteries" data-batteries title="Batteries"></div>
       <span class="pp-gold" data-gold-counter title="Gold" hidden><img src="img/gold.svg" alt="Gold"> <span data-gold>0</span></span>
       <span class="pp-gold pp-crystals" data-crystal-counter title="Crystals" hidden><img src="img/crystal.svg" alt="Crystals"> <span data-crystals>0</span></span>
+      <span class="pp-gold pp-stardust" data-stardust-counter title="Stardust" hidden><img src="img/stardust.svg" alt="Stardust"> <span data-stardust>0</span></span>
     </div>
     <div class="pp-counter pp-fuel" title="Fuel">
       <span class="pp-fuel-bar" data-fuel-bar></span>
@@ -188,6 +189,10 @@
           <img src="img/crystal.svg" alt=""> Sell crystals, 80
           <img src="img/galactokens.svg" alt="galactokens"> each
         </button>
+        <button type="button" class="pp-action pp-sell" data-sell-stardust>
+          <img src="img/stardust.svg" alt=""> Sell stardust, 500
+          <img src="img/galactokens.svg" alt="galactokens"> each
+        </button>
         <button type="button" class="pp-action pp-warp-button" data-buy-warp-drive>
           Warp drive for 10,000
           <img src="img/galactokens.svg" alt="galactokens">
@@ -324,7 +329,7 @@
         <button type="button" class="pp-action" data-map-zoom="out" aria-label="Zoom out">&minus;</button>
       </div>
       <p data-map-info></p>
-      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a visited star, then Close up to see its planets. Dashed gold: bounty waiting. Cyan: crystals. Orange dashes: your drone's route.</p>
+      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a visited star, then Close up to see its planets. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found only by visiting. Orange dashes: your drone's route.</p>
     </section>
 
     <section class="pp-panel" data-panel="cheats" hidden aria-label="Cheats">
@@ -353,7 +358,7 @@
       <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board.</p>
       <p>Explore: the first landing on each planet or moon pays a bounty, shown in gold next to its name. Spend earnings on upgrades at the market.</p>
       <p>Earn faster: park a satellite by a star to charge batteries while you travel, and power a mining rig on any planet to dig gold for the market.</p>
-      <p>Go further: rocky worlds around other stars sometimes hold crystals that the fuel drill brings up. Scan with a telescope to see which systems have them. Crystals sell well and pay for the best upgrades. Gas giants pump double fuel.</p>
+      <p>Go further: rocky worlds around other stars sometimes hold crystals that the fuel drill brings up. Scan with a telescope to see which systems have them. Crystals sell well and pay for the best upgrades. Much rarer stardust hides on a few rocky worlds, invisible to telescopes: visit a system to find it. It pays for the very top upgrades. Gas giants pump double fuel.</p>
       <p>Automate: set up antennas on planets and moons around any star, park a drone in range, then record a route by flying it yourself. The drone repeats the route, carrying charge between satellites, battery banks and mining rigs. Later, buy a hauler and give it a route of your outposts (Rocket, then Haulers), and it flies that route between stars with no antennas. A builder also parks satellites and battery banks from your hold near any star on your map.</p>
       <dl class="pp-keys pp-touch-only">
         <div><dt>Engine</dt><dd>Engine on / off</dd></div>
