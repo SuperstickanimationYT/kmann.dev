@@ -385,6 +385,9 @@ function canFinishRecording() {
   return Boolean(recording) && recording.steps > 0 && rocket.landed && distanceFromRocket(recording.drone.pad) < DRONE.padReach;
 }
 
+const fuelPrice = (amount) => Math.ceil(amount * (FUEL_PACK.cost / FUEL_PACK.amount));
+const fillTankCost = () => fuelPrice(game.rocket.fuelCapacity - game.rocket.fuel);
+
 function openPanel(name) {
   game.panel = name;
   hud.showPanel(name);
@@ -417,6 +420,12 @@ const actions = {
     if (game.galactokens < FUEL_PACK.cost || rocket.fuel > rocket.fuelCapacity - FUEL_PACK.amount) return;
     rocket.fuel += FUEL_PACK.amount;
     game.galactokens -= FUEL_PACK.cost;
+  },
+  fillTank: () => {
+    const cost = fillTankCost();
+    if (cost === 0 || game.galactokens < cost) return;
+    game.rocket.fuel = game.rocket.fuelCapacity;
+    game.galactokens -= cost;
   },
   togglePanels: () => togglePanels(game.power, game.rocket),
   buyPanels: () => {
@@ -1009,7 +1018,7 @@ function dispatchRescue() {
 
 function refuelFromRescue() {
   const { rocket } = game;
-  const price = Math.ceil((rocket.fuelCapacity - rocket.fuel) * (FUEL_PACK.cost / FUEL_PACK.amount)) + RESCUE.fee;
+  const price = fillTankCost() + RESCUE.fee;
   const paid = Math.min(price, game.galactokens);
   game.galactokens -= paid;
   rocket.fuel = rocket.fuelCapacity;
@@ -1349,6 +1358,8 @@ function status() {
     drillBusy: drillBusy(drill),
     drillAwaitingClick: drillAwaitingClick(drill),
     canBuy: game.galactokens >= FUEL_PACK.cost && !fuelFull,
+    fillTankCost: fillTankCost(),
+    canFillTank: fillTankCost() > 0 && game.galactokens >= fillTankCost(),
     sunlight: sunlight(rocket.x, rocket.y),
     batteries: power.batteries,
     ownsPanels: power.ownsPanels,

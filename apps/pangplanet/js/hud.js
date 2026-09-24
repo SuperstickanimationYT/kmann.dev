@@ -64,6 +64,8 @@ export function createHud(root, actions) {
     stopDrill: find('[data-stop-drill]'),
     drillHint: find('[data-drill-hint]'),
     buy: find('[data-buy]'),
+    fillTank: find('[data-fill-tank]'),
+    fillTankCost: find('[data-fill-tank-cost]'),
     marketNote: find('[data-market-note]'),
     sunlight: find('[data-sunlight]'),
     batteryCells: createBatteryCells(find('[data-batteries]')),
@@ -152,6 +154,7 @@ export function createHud(root, actions) {
   parts.mine.addEventListener('click', actions.mine);
   parts.stopDrill.addEventListener('click', actions.stopDrill);
   parts.buy.addEventListener('click', actions.buyFuel);
+  parts.fillTank.addEventListener('click', actions.fillTank);
   parts.panelsToggle.addEventListener('click', actions.togglePanels);
   parts.buyPanels.addEventListener('click', actions.buyPanels);
   parts.buyBattery.addEventListener('click', actions.buyBattery);
@@ -350,6 +353,8 @@ export function createHud(root, actions) {
     setHidden(parts.stopDrill, !status.drillBusy);
     setHidden(parts.drillHint, !status.drillAwaitingClick);
     parts.buy.disabled = !status.canBuy;
+    parts.fillTank.disabled = !status.canFillTank;
+    setText(parts.fillTankCost, status.fillTankCost.toLocaleString());
     setText(parts.marketNote, status.marketNote);
     setText(parts.sunlight, `${Math.round(status.sunlight * 100)}%`);
     parts.batteryCells.forEach((cell, slot) => {
