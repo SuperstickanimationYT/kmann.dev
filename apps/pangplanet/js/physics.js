@@ -23,6 +23,7 @@ export function sphereOfInfluence(x, y) {
 }
 
 const SURFACE_SLACK = 0.001;
+const FATAL_KINDS = new Set(['star', 'blackhole']);
 
 export function surfaceClearance(body) {
   return body.radius + ROCKET_HEIGHT / 2;
@@ -74,7 +75,7 @@ function touchDown(rocket, body) {
     passThroughWormhole(rocket, body);
     return 'wormhole';
   }
-  if (body.kind === 'star' || Math.hypot(rocket.vx, rocket.vy) > CRASH_SPEED) {
+  if (FATAL_KINDS.has(body.kind) || Math.hypot(rocket.vx, rocket.vy) > CRASH_SPEED) {
     rocket.destroyed = true;
     rocket.engineOn = false;
     return 'crash';

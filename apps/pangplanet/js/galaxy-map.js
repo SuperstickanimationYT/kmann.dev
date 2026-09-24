@@ -104,8 +104,13 @@ export function createGalaxyMap(canvas) {
   }
 
   function drawSystem(bountyWaiting) {
-    const { star, planets } = system;
+    const { star, planets, blackHoles } = system;
     for (const planet of planets) ring(star.x, star.y, distanceBetween(star, planet), 'rgba(140, 170, 255, 0.18)', false);
+    for (const hole of blackHoles) {
+      ring(hole.x, hole.y, hole.soi, 'rgba(255, 150, 60, 0.35)', false);
+      disk(hole.x, hole.y, PLANET_MIN_PX, '#ff963c');
+      label(hole.name, hole.x, hole.y, PLANET_MIN_PX + 13);
+    }
     const starPx = Math.max(star.radius * view.scale, SYSTEM_STAR_MIN_PX);
     disk(star.x, star.y, starPx, star.palette?.fill ?? '#fff7dc');
     label(star.name, star.x, star.y, starPx + 13);
