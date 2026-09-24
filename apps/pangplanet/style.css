@@ -279,6 +279,10 @@
   border: 1px solid #ff5b4a;
 }
 
+.pp-prompt.pp-stranded {
+  border: 1px solid #ff5b4a;
+}
+
 .pp-panel {
   position: absolute;
   left: 50%;

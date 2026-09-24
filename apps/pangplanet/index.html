@@ -88,6 +88,10 @@
       Rocket destroyed. <span class="pp-keyboard-only">Press <kbd>C</kbd> to respawn.</span>
       <span class="pp-touch-only">Tap to respawn.</span>
     </button>
+    <button type="button" class="pp-prompt pp-stranded" data-abandon data-tap="x" hidden>
+      Out of fuel. <span class="pp-keyboard-only">Press <kbd>X</kbd> to abandon ship.</span>
+      <span class="pp-touch-only">Tap to abandon ship.</span>
+    </button>
 
     <div class="pp-touch-controls">
       <div class="pp-touch-group">
@@ -355,7 +359,7 @@
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
       <p>Take off from Earth, reach the Moon, find the wormhole to the Sun and dock at the market for fuel.</p>
-      <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board.</p>
+      <p>Earn galactokens: buy solar panels and empty batteries at the market, charge them close to the Sun, then sell them back. Crashing destroys every battery on board. Run dry in deep space and you can abandon ship: that counts as a crash, and you respawn at home.</p>
       <p>Explore: the first landing on each planet or moon pays a bounty, shown in gold next to its name. Spend earnings on upgrades at the market.</p>
       <p>Earn faster: park a satellite by a star to charge batteries while you travel, and power a mining rig on any planet to dig gold for the market.</p>
       <p>Go further: rocky worlds around other stars sometimes hold crystals that the fuel drill brings up. Scan with a telescope to see which systems have them. Crystals sell well and pay for the best upgrades. Much rarer stardust hides on a few rocky worlds, invisible to telescopes: visit a system to find it. It pays for the very top upgrades. Gas giants pump double fuel.</p>
@@ -384,6 +388,7 @@
         <div><dt><kbd>M</kbd></dt><dd>Galaxy map</dd></div>
         <div><dt><kbd>T</kbd></dt><dd>Scan with telescope, once bought</dd></div>
         <div><dt><kbd>C</kbd></dt><dd>Respawn after a crash</dd></div>
+        <div><dt><kbd>X</kbd></dt><dd>Abandon ship when out of fuel in deep space</dd></div>
         <div><dt><kbd>H</kbd></dt><dd>Show this again</dd></div>
       </dl>
       <p class="pp-hint">Touch down slower than 10 or the rocket explodes. The blue line shows where you will coast with the engine off.</p>
