@@ -45,7 +45,8 @@ import {
   routeProgress,
   startRecording,
   stowDrone,
-  traceRoute,
+  rehearseRoute,
+  replayFlight,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
 import { blast, createParticles, drift, exhaust } from './particles.js';
@@ -487,10 +488,7 @@ const CHEATS = {
   chargeBatteries: () => {
     game.power.batteries = Array(game.power.slots).fill(1);
   },
-  skipTenMinutes: () => {
-    advanceOutposts(CHEAT_SKIP_SECONDS);
-    catchUpDrones(CHEAT_SKIP_SECONDS);
-  },
+  skipTenMinutes: () => catchUp(CHEAT_SKIP_SECONDS),
   revealNearby: () => scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE),
   goHome: () => {
     const { rocket, drill } = game;
@@ -758,25 +756,92 @@ function stepDrones() {
   for (const drone of [...game.drones]) stepDrone(drone);
 }
 
-const traced = new WeakMap();
+const rehearsals = new WeakMap();
 
-function routePath(drone) {
-  if (!drone.route) return [];
+function rehearsalOf(drone) {
   const signature = [drone.route.steps, drone.pad.x, drone.pad.y, ...game.antennas.flatMap(({ x, y }) => [x, y])].join();
-  const cached = traced.get(drone);
-  if (cached?.signature === signature) return cached.path;
-  const path = traceRoute(drone, game.antennas, STEP_TICKS);
-  traced.set(drone, { signature, path });
-  return path;
+  const cached = rehearsals.get(drone);
+  if (cached?.signature === signature) return cached.rehearsal;
+  const rehearsal = rehearseRoute(drone, game.antennas, STEP_TICKS);
+  rehearsals.set(drone, { signature, rehearsal });
+  return rehearsal;
 }
 
-const routePaths = () => game.drones.flatMap(routePath);
+const routePaths = () => game.drones.flatMap((drone) => (drone.route ? rehearsalOf(drone).segments : []));
 
-function catchUpDrones(seconds) {
-  if (game.drones.length === 0) return;
+function nextMoment(run, now) {
+  if (run.finished) return null;
+  if (run.start === null) return now;
+  const { handoffs, steps } = run.rehearsal;
+  const step = run.next < handoffs.length ? handoffs[run.next].step : Math.max(1, steps);
+  return Math.max(now, run.start + step * STEP_SECONDS);
+}
+
+function launchRun(run, now) {
+  const { drone } = run;
+  if (!drone.running || game.galactokens < refuelCost(drone)) {
+    run.finished = true;
+    return;
+  }
+  game.galactokens -= refuelCost(drone);
+  drone.fuel = drone.route.fuel;
+  Object.assign(run, { start: now, next: 0 });
+}
+
+function endRun(run) {
+  const { drone, rehearsal } = run;
+  if (rehearsal.outcome === 'done') {
+    Object.assign(drone, { fuel: rehearsal.fuelLeft, flight: null });
+    run.start = null;
+    return;
+  }
+  run.finished = true;
+  if (rehearsal.outcome === 'crash') {
+    game.drones.splice(game.drones.indexOf(drone), 1);
+    hud.toast('A drone crashed and was destroyed.');
+    return;
+  }
+  Object.assign(drone, { lost: true, flight: { ...rehearsal.flight, soi: null } });
+  hud.toast('A drone lost signal and is drifting. Fly out and pick it up.');
+}
+
+function settleRun(run, now) {
+  if (run.start === null) launchRun(run, now);
+  else if (run.next < run.rehearsal.handoffs.length) {
+    const { name, at } = run.rehearsal.handoffs[run.next++];
+    droneAction(name, { ...at }, run.drone);
+  } else endRun(run);
+}
+
+function catchUp(seconds) {
+  const droneSeconds = Math.min(seconds, DRONE.catchUpSeconds);
   streamAround();
-  const steps = (Math.min(seconds, DRONE.catchUpSeconds) * TICKS_PER_SECOND) / STEP_TICKS;
-  for (let i = 0; i < steps; i++) stepDrones();
+  const runs = game.drones
+    .filter((drone) => drone.pad && drone.route && !drone.lost)
+    .map((drone) => ({
+      drone,
+      rehearsal: rehearsalOf(drone),
+      start: drone.flight ? -drone.flight.step * STEP_SECONDS : null,
+      next: drone.flight?.nextEvent ?? 0,
+      finished: false,
+    }));
+  let now = 0;
+  for (;;) {
+    let soonest = null;
+    let soonestAt = droneSeconds;
+    for (const run of runs) {
+      const at = nextMoment(run, now);
+      if (at !== null && at <= soonestAt) [soonest, soonestAt] = [run, at];
+    }
+    if (!soonest) break;
+    advanceOutposts(soonestAt - now);
+    now = soonestAt;
+    settleRun(soonest, now);
+  }
+  advanceOutposts(seconds - now);
+  for (const run of runs) {
+    if (!run.finished && run.start !== null) replayFlight(run.drone, game.antennas, Math.round((droneSeconds - run.start) / STEP_SECONDS), STEP_TICKS);
+  }
 }
 
 function simulate() {
@@ -1069,7 +1134,6 @@ function restore(saved) {
   for (const entry of game.starChart.values()) entry.crystals ??= crystalWorlds(systemAt(entry.x, entry.y)?.planets ?? []);
   game.ownsTelescope = saved.ownsTelescope ?? false;
   applyUpgrades(game.upgrades, rocket, power);
-  outpostClock = saved.savedAt;
   camera.zoom = saved.zoom;
   streamAround();
   rocket.soi = sphereOfInfluence(rocket.x, rocket.y);
@@ -1085,12 +1149,14 @@ function startAutosave() {
 
 async function start() {
   const saved = readSave();
-  if (saved) restore(saved);
+  if (saved) {
+    restore(saved);
+    catchUp((Date.now() - saved.savedAt) / 1000);
+  }
   startAutosave();
   const [sprites] = await Promise.all([loadSprites(), loadTextureStamps()]);
   renderer = createRenderer(canvas, sprites);
   streamAround();
-  if (saved) catchUpDrones((Date.now() - saved.savedAt) / 1000);
   chartVisitsNear(game.starChart, game.rocket.x, game.rocket.y);
   renderer.resize();
   new ResizeObserver(() => renderer.resize()).observe(canvas);

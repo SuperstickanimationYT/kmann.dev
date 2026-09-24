@@ -102,20 +102,29 @@ const moveOnly = (name, flight) => {
   if (name === 'dock') dockFlight(flight);
 };
 
-export function traceRoute(drone, antennas, dt) {
+export function rehearseRoute(drone, antennas, dt) {
   const ghost = { ...drone, lost: false, batteries: [] };
   launchDrone(ghost);
   const segments = [[ghost.flight.x, ghost.flight.y]];
+  const handoffs = [];
+  const noteHandoff = (name, flight) => {
+    moveOnly(name, flight);
+    handoffs.push({ step: flight.step, name, at: { x: flight.x, y: flight.y } });
+  };
   let { x, y } = ghost.flight;
-  while (ghost.flight) {
+  for (;;) {
     const flight = ghost.flight;
-    const outcome = flyDrone(ghost, antennas, moveOnly, dt);
+    const outcome = flyDrone(ghost, antennas, noteHandoff, dt);
     if (Math.hypot(flight.x - x, flight.y - y) > WORMHOLE_JUMP) segments.push([]);
     ({ x, y } = flight);
     if (flight.step % PATH_SAMPLE_STEPS === 0 || outcome) segments.at(-1).push(x, y);
-    if (outcome && outcome !== 'done') break;
+    if (outcome) return { segments, handoffs, outcome, steps: flight.step, flight, fuelLeft: ghost.fuel };
   }
-  return segments;
+}
+
+export function replayFlight(drone, antennas, steps, dt) {
+  launchDrone(drone);
+  for (let i = 0; i < steps; i++) flyDrone(drone, antennas, moveOnly, dt);
 }
 
 export const routeProgress = (drone) => (drone.flight && drone.route ? drone.flight.step / drone.route.steps : 0);
