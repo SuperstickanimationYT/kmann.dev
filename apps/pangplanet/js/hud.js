@@ -9,6 +9,7 @@ const UPGRADE_TEXT = {
   engine: { name: 'Engine', describe: (value) => `${value}× thrust` },
   telescope: { name: 'Telescope', describe: (value) => `${abbreviate(value)} range` },
   timewarp: { name: 'Time warp', describe: (value) => `up to ${value}x` },
+  warpRange: { name: 'Warp range', describe: (value) => `${abbreviate(value)} jumps` },
 };
 
 const SUFFIXES = ['', 'K', 'M', 'B', 'T'];
@@ -76,6 +77,9 @@ export function createHud(root, actions) {
     dockActions: [...root.querySelectorAll('[data-dock-action]')],
     goldCounter: find('[data-gold-counter]'),
     gold: find('[data-gold]'),
+    crystalCounter: find('[data-crystal-counter]'),
+    crystals: find('[data-crystals]'),
+    sellCrystals: find('[data-sell-crystals]'),
     buySatellite: find('[data-buy-satellite]'),
     buyRig: find('[data-buy-rig]'),
     sellGold: find('[data-sell-gold]'),
@@ -139,6 +143,7 @@ export function createHud(root, actions) {
     takeCharge: actions.takeSatelliteCharge,
     loadRig: actions.loadRig,
     collectGold: actions.collectGold,
+    sellCrystals: actions.sellCrystals,
     buyBank: actions.buyBank,
     deployBank: actions.deployBank,
     depositInBank: actions.depositInBank,
@@ -192,7 +197,8 @@ export function createHud(root, actions) {
         button.className = 'pp-action pp-upgrade';
         button.dataset.upgrade = key;
         button.disabled = !affordable;
-        button.textContent = next ? `${name}: ${describe(current)} → ${describe(next.value)} · ${next.cost}` : `${name}: ${describe(current)} (max)`;
+        const crystals = next?.crystals ? ` + ${next.crystals} crystals` : '';
+        button.textContent = next ? `${name}: ${describe(current)} → ${describe(next.value)} · ${next.cost}${crystals}` : `${name}: ${describe(current)} (max)`;
         return button;
       }),
     );
@@ -272,6 +278,9 @@ export function createHud(root, actions) {
     parts.dockActions.forEach((action) => setText(action, status.dockAction));
     setHidden(parts.goldCounter, status.gold === 0 && !status.rig);
     setText(parts.gold, String(status.gold));
+    setHidden(parts.crystalCounter, status.crystals === 0);
+    setText(parts.crystals, String(status.crystals));
+    setHidden(parts.sellCrystals, status.crystals === 0);
     setHidden(parts.buySatellite, Boolean(status.satellite));
     parts.buySatellite.disabled = !status.canBuySatellite;
     setHidden(parts.buyRig, Boolean(status.rig));
