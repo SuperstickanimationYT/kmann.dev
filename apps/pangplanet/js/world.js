@@ -99,6 +99,7 @@ export const UPGRADES = {
   timewarp: { base: 5, levels: [{ cost: 500, value: 10 }, { cost: 1500, value: 20 }, { cost: 4000, value: 30 }] },
 };
 export const TELESCOPE = { cost: 600 };
+export const PRICE_GROWTH = 1.5;
 export const ANTENNA = { cost: 800, range: 6e5, reach: 1500 };
 export const DRONE = { cost: 1500, batteries: 3, padReach: 1500, fuelMargin: 0.05, catchUpSeconds: 3600 };
 export const BATTERY_BANK = { cost: 600, batteries: 10, dockingRange: 1500 };

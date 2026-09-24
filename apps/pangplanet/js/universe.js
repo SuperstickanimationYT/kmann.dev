@@ -161,20 +161,22 @@ export const crystalWorlds = (planets) => planets.filter((planet) => planet.reso
 
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));
 
-export function streamSectors(x, y) {
-  const [sectorX, sectorY] = sectorOf(x, y);
+export function streamSectors(anchors) {
+  const centres = anchors.map(({ x, y }) => sectorOf(x, y));
   let changed = false;
   for (const [key, sector] of loadedSectors) {
-    if (sectorGap(sector, sectorX, sectorY) <= UNLOAD_REACH) continue;
+    if (centres.some(([sectorX, sectorY]) => sectorGap(sector, sectorX, sectorY) <= UNLOAD_REACH)) continue;
     loadedSectors.delete(key);
     changed = true;
   }
-  for (let dx = -LOAD_REACH; dx <= LOAD_REACH; dx++) {
-    for (let dy = -LOAD_REACH; dy <= LOAD_REACH; dy++) {
-      const key = `${sectorX + dx},${sectorY + dy}`;
-      if (loadedSectors.has(key)) continue;
-      loadedSectors.set(key, { x: sectorX + dx, y: sectorY + dy, bodies: generateSystem(sectorX + dx, sectorY + dy) });
-      changed = true;
+  for (const [sectorX, sectorY] of centres) {
+    for (let dx = -LOAD_REACH; dx <= LOAD_REACH; dx++) {
+      for (let dy = -LOAD_REACH; dy <= LOAD_REACH; dy++) {
+        const key = `${sectorX + dx},${sectorY + dy}`;
+        if (loadedSectors.has(key)) continue;
+        loadedSectors.set(key, { x: sectorX + dx, y: sectorY + dy, bodies: generateSystem(sectorX + dx, sectorY + dy) });
+        changed = true;
+      }
     }
   }
   if (changed) bodies.splice(0, bodies.length, ...HOME_SYSTEM, ...[...loadedSectors.values()].flatMap((sector) => sector.bodies));

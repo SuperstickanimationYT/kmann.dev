@@ -48,7 +48,7 @@ import {
   traceRoute,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
-import { applyUpgrades, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, upgradeValue } from './progression.js';
+import { applyUpgrades, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
 import { deleteSave, readSave, writeSave } from './save.js';
 import { chartVisitsNear, createStarChart, isCharted, scanFrom } from './starchart.js';
 import { loadSprites } from './sprites.js';
@@ -66,7 +66,6 @@ import {
   FUEL_PER_PUMP,
   GOLD,
   HOME_BODY,
-  HOME_SYSTEM,
   MARKET,
   MINING_RIG,
   SATELLITE,
@@ -121,13 +120,14 @@ const game = {
   explosion: null,
   warp: null,
   ownsWarpDrive: false,
-  satellite: null,
+  satellites: [],
   rig: null,
-  bank: null,
+  banks: [],
   antennas: [],
   antennasInHold: 0,
-  drone: null,
+  drones: [],
   recording: null,
+  docked: null,
   gold: 0,
   crystals: 0,
   upgrades: createUpgrades(),
@@ -150,53 +150,93 @@ function landedBody() {
   return rocket.landed ? rocket.soi : null;
 }
 
+function nearestWithin(items, spot, range) {
+  let nearest = null;
+  let nearestDistance = range;
+  for (const item of items) {
+    const distance = Math.hypot(item.x - spot.x, item.y - spot.y);
+    if (distance < nearestDistance) {
+      nearest = item;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
+const deployed = (items) => items.filter((item) => item.deployed);
+const inHold = (items) => items.filter((item) => !item.deployed);
+
 function dockTarget() {
   const { rocket } = game;
   if (rocket.destroyed || game.warp) return null;
-  if (Math.hypot(rocket.x - MARKET.x, rocket.y - MARKET.y) < MARKET.dockingRange) return 'market';
-  if (withinReach(rocket, game.satellite, SATELLITE.dockingRange)) return 'satellite';
-  if (withinReach(rocket, game.bank, BATTERY_BANK.dockingRange)) return 'bank';
-  if (rocket.landed && withinReach(rocket, game.rig, MINING_RIG.reach)) return 'rig';
-  if (nearDrone()) return 'drone';
+  if (Math.hypot(rocket.x - MARKET.x, rocket.y - MARKET.y) < MARKET.dockingRange) return { kind: 'market' };
+  const satellite = nearestWithin(deployed(game.satellites), rocket, SATELLITE.dockingRange);
+  if (satellite) return { kind: 'satellite', item: satellite };
+  const bank = nearestWithin(deployed(game.banks), rocket, BATTERY_BANK.dockingRange);
+  if (bank) return { kind: 'bank', item: bank };
+  if (rocket.landed && withinReach(rocket, game.rig, MINING_RIG.reach)) return { kind: 'rig' };
+  const drone = nearDrone();
+  if (drone) return { kind: 'drone', item: drone };
   return null;
 }
 
 const distanceFromRocket = (spot) => Math.hypot(game.rocket.x - spot.x, game.rocket.y - spot.y);
-const nearestAntenna = () => (game.rocket.landed ? game.antennas.find((antenna) => distanceFromRocket(antenna) < ANTENNA.reach) : null);
+const nearestAntenna = () => (game.rocket.landed ? nearestWithin(game.antennas, game.rocket, ANTENNA.reach) : null);
 
 function nearDrone() {
-  const { rocket, drone } = game;
-  if (!drone?.pad || game.recording) return false;
-  if (drone.lost) return distanceFromRocket(drone.flight) < DRONE.padReach;
-  return rocket.landed && distanceFromRocket(drone.pad) < DRONE.padReach;
+  if (game.recording) return null;
+  const reachable = (drone) => {
+    if (drone.lost) return distanceFromRocket(drone.flight) < DRONE.padReach;
+    return Boolean(drone.pad) && game.rocket.landed && distanceFromRocket(drone.pad) < DRONE.padReach;
+  };
+  return game.drones.find(reachable) ?? null;
 }
 
 function canDock() {
   const target = dockTarget();
-  return Boolean(target) && game.panel !== target;
+  return Boolean(target) && game.panel !== target.kind;
 }
 
-const canDeploySatellite = () => game.satellite && !game.satellite.deployed && !game.rocket.soi && !game.rocket.destroyed;
-const canDeployRig = () => game.rig && !game.rig.deployed && landedBody()?.kind === 'planemo';
-const onHomeGround = () => landedBody()?.kind === 'planemo' && HOME_SYSTEM.includes(landedBody());
-const canDeployAntenna = () => game.antennasInHold > 0 && onHomeGround();
-const canDeployDrone = () => game.drone && !game.drone.pad && onHomeGround() && inSignal(game.antennas, game.rocket.x, game.rocket.y);
-const canDeployBank = () => game.bank && !game.bank.deployed && !game.rocket.soi && !game.rocket.destroyed;
+const dockedOf = (kind) => (game.panel === kind ? game.docked : null);
+const inOpenSpace = () => !game.rocket.soi && !game.rocket.destroyed;
+const onGround = () => landedBody()?.kind === 'planemo';
+const parkedDrones = () => game.drones.filter((drone) => drone.pad);
+const droneInHold = () => game.drones.find((drone) => !drone.pad);
+const canDeploySatellite = () => inHold(game.satellites).length > 0 && inOpenSpace();
+const canDeployRig = () => game.rig && !game.rig.deployed && onGround();
+const canDeployAntenna = () => game.antennasInHold > 0 && onGround();
+const canDeployDrone = () => Boolean(droneInHold()) && onGround() && inSignal(game.antennas, game.rocket.x, game.rocket.y);
+const canDeployBank = () => inHold(game.banks).length > 0 && inOpenSpace();
+
+const PRICES = {
+  satellite: () => risingPrice(SATELLITE.cost, game.satellites.length),
+  bank: () => risingPrice(BATTERY_BANK.cost, game.banks.length),
+  antenna: () => risingPrice(ANTENNA.cost, game.antennas.length + game.antennasInHold),
+  drone: () => risingPrice(DRONE.cost, game.drones.length),
+};
+
+function pay(kind) {
+  const price = PRICES[kind]();
+  if (game.galactokens < price) return false;
+  game.galactokens -= price;
+  return true;
+}
 
 function noteRecording(name) {
   if (game.recording) noteEvent(game.recording, name);
 }
 
 function stopRecording(message) {
-  if (!game.recording) return;
+  const { recording } = game;
+  if (!recording) return;
   game.recording = null;
-  game.drone.running = Boolean(game.drone.route);
+  recording.drone.running = Boolean(recording.drone.route);
   hud.toast(message);
 }
 
 function canFinishRecording() {
-  const { recording, rocket, drone } = game;
-  return Boolean(recording) && recording.steps > 0 && rocket.landed && distanceFromRocket(drone.pad) < DRONE.padReach;
+  const { recording, rocket } = game;
+  return Boolean(recording) && recording.steps > 0 && rocket.landed && distanceFromRocket(recording.drone.pad) < DRONE.padReach;
 }
 
 function openPanel(name) {
@@ -291,23 +331,23 @@ const actions = {
   toggleCheats: () => openPanel(game.panel === 'cheats' ? null : 'cheats'),
   cheat: (name) => CHEATS[name]?.(),
   buySatellite: () => {
-    if (game.satellite || game.galactokens < SATELLITE.cost) return;
-    game.satellite = createSatellite();
-    game.galactokens -= SATELLITE.cost;
+    if (pay('satellite')) game.satellites.push(createSatellite());
   },
   deploySatellite: () => {
     if (!canDeploySatellite()) return;
-    deploySatellite(game.satellite, game.rocket);
+    deploySatellite(inHold(game.satellites)[0], game.rocket);
     openPanel(null);
   },
   takeSatelliteCharge: () => {
-    if (!game.satellite) return;
-    takeSatelliteCharge(game.satellite, game.power);
+    const satellite = dockedOf('satellite');
+    if (!satellite) return;
+    takeSatelliteCharge(satellite, game.power);
     noteRecording('takeSatellite');
   },
   pickUpSatellite: () => {
-    if (!game.satellite) return;
-    game.satellite.deployed = false;
+    const satellite = dockedOf('satellite');
+    if (!satellite) return;
+    satellite.deployed = false;
     openPanel(null);
   },
   buyRig: () => {
@@ -339,34 +379,33 @@ const actions = {
     game.gold = 0;
   },
   buyBank: () => {
-    if (game.bank || game.galactokens < BATTERY_BANK.cost) return;
-    game.bank = createBank();
-    game.galactokens -= BATTERY_BANK.cost;
+    if (pay('bank')) game.banks.push(createBank());
   },
   deployBank: () => {
     if (!canDeployBank()) return;
-    deployBank(game.bank, game.rocket);
+    deployBank(inHold(game.banks)[0], game.rocket);
     openPanel(null);
   },
   depositInBank: () => {
-    if (!game.bank) return;
-    transferCharge(game.power.batteries, game.bank.batteries);
+    const bank = dockedOf('bank');
+    if (!bank) return;
+    transferCharge(game.power.batteries, bank.batteries);
     noteRecording('depositInBank');
   },
   takeFromBank: () => {
-    if (!game.bank) return;
-    transferCharge(game.bank.batteries, game.power.batteries);
+    const bank = dockedOf('bank');
+    if (!bank) return;
+    transferCharge(bank.batteries, game.power.batteries);
     noteRecording('takeFromBank');
   },
   pickUpBank: () => {
-    if (!game.bank) return;
-    game.bank.deployed = false;
+    const bank = dockedOf('bank');
+    if (!bank) return;
+    bank.deployed = false;
     openPanel(null);
   },
   buyAntenna: () => {
-    if (game.galactokens < ANTENNA.cost) return;
-    game.antennasInHold += 1;
-    game.galactokens -= ANTENNA.cost;
+    if (pay('antenna')) game.antennasInHold += 1;
   },
   deployAntenna: () => {
     if (!canDeployAntenna()) return;
@@ -382,37 +421,39 @@ const actions = {
     openPanel(null);
   },
   buyDrone: () => {
-    if (game.drone || game.galactokens < DRONE.cost) return;
-    game.drone = createDrone();
-    game.galactokens -= DRONE.cost;
+    if (pay('drone')) game.drones.push(createDrone());
   },
   deployDrone: () => {
     if (!canDeployDrone()) return;
-    parkDrone(game.drone, game.rocket);
+    parkDrone(droneInHold(), game.rocket);
     openPanel(null);
   },
   recordRoute: () => {
-    const { drone, rocket } = game;
+    const drone = dockedOf('drone');
+    const { rocket } = game;
     if (!drone?.pad || drone.flight || !rocket.landed) return;
-    game.recording = startRecording(drone, rocket);
+    game.recording = { ...startRecording(drone, rocket), drone };
     openPanel(null);
   },
   finishRecording: () => {
     if (!canFinishRecording()) return;
-    finishRecording(game.drone, game.recording);
+    finishRecording(game.recording.drone, game.recording);
     game.recording = null;
     hud.toast('Route saved. The drone flies it on repeat.');
   },
   cancelRecording: () => stopRecording('Recording cancelled.'),
   openDrone: () => {
-    if (nearDrone()) openPanel('drone');
+    const drone = nearDrone();
+    if (!drone) return;
+    game.docked = drone;
+    openPanel('drone');
   },
   toggleDroneRuns: () => {
-    const { drone } = game;
+    const drone = dockedOf('drone');
     if (drone?.route && !drone.lost) drone.running = !drone.running;
   },
   pickUpDrone: () => {
-    const { drone } = game;
+    const drone = dockedOf('drone');
     if (!drone || (drone.flight && !drone.lost)) return;
     stowDrone(drone);
     openPanel(null);
@@ -444,7 +485,7 @@ const CHEATS = {
   },
   skipTenMinutes: () => {
     advanceOutposts(CHEAT_SKIP_SECONDS);
-    catchUpDrone(CHEAT_SKIP_SECONDS);
+    catchUpDrones(CHEAT_SKIP_SECONDS);
   },
   revealNearby: () => scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE),
   goHome: () => {
@@ -454,7 +495,7 @@ const CHEATS = {
     placeOnSurface(rocket, HOME_BODY, 0);
     Object.assign(rocket, { soi: HOME_BODY, destroyed: false, engineOn: false });
     game.explosion = null;
-    streamSectors(rocket.x, rocket.y);
+    streamAround();
   },
 };
 
@@ -467,11 +508,15 @@ function dock() {
     Object.assign(game.rocket, { vx: 0, vy: 0, engineOn: false });
     noteRecording('dock');
   }
-  openPanel(dockTarget());
+  const target = dockTarget();
+  game.docked = target.item ?? null;
+  openPanel(target.kind);
 }
 
+const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map((drone) => drone.flight ?? drone.pad)]);
+
 function advanceOutposts(seconds) {
-  chargeSatellite(game.satellite, seconds);
+  for (const satellite of game.satellites) chargeSatellite(satellite, seconds);
   runRig(game.rig, seconds);
 }
 
@@ -665,16 +710,22 @@ function rewardFirstLanding() {
   hud.toast(`First landing on ${body.name}! +${bounty} galactokens`);
 }
 
+const satelliteBy = (flight) => nearestWithin(deployed(game.satellites), flight, SATELLITE.dockingRange);
+const bankBy = (flight) => nearestWithin(deployed(game.banks), flight, BATTERY_BANK.dockingRange);
+
 const DRONE_ACTIONS = {
   dock: dockFlight,
   takeSatellite: (flight, drone) => {
-    if (withinReach(flight, game.satellite, SATELLITE.dockingRange)) transferCharge(game.satellite.batteries, drone.batteries);
+    const satellite = satelliteBy(flight);
+    if (satellite) transferCharge(satellite.batteries, drone.batteries);
   },
   takeFromBank: (flight, drone) => {
-    if (withinReach(flight, game.bank, BATTERY_BANK.dockingRange)) transferCharge(game.bank.batteries, drone.batteries);
+    const bank = bankBy(flight);
+    if (bank) transferCharge(bank.batteries, drone.batteries);
   },
   depositInBank: (flight, drone) => {
-    if (withinReach(flight, game.bank, BATTERY_BANK.dockingRange)) transferCharge(drone.batteries, game.bank.batteries);
+    const bank = bankBy(flight);
+    if (bank) transferCharge(drone.batteries, bank.batteries);
   },
   loadRig: (flight, drone) => {
     if (withinReach(flight, game.rig, MINING_RIG.reach)) loadRig(game.rig, drone);
@@ -683,9 +734,8 @@ const DRONE_ACTIONS = {
 
 const droneAction = (name, flight, drone) => DRONE_ACTIONS[name](flight, drone);
 
-function stepDrone() {
-  const { drone } = game;
-  if (!drone?.pad) return;
+function stepDrone(drone) {
+  if (!drone.pad) return;
   if (!drone.flight) {
     if (!drone.running || game.galactokens < refuelCost(drone)) return;
     game.galactokens -= refuelCost(drone);
@@ -693,29 +743,35 @@ function stepDrone() {
   }
   const outcome = flyDrone(drone, game.antennas, droneAction, STEP_TICKS);
   if (outcome === 'crash') {
-    game.drone = null;
-    hud.toast('Your drone crashed and was destroyed.');
+    game.drones.splice(game.drones.indexOf(drone), 1);
+    hud.toast('A drone crashed and was destroyed.');
   }
-  if (outcome === 'lost') hud.toast('Your drone lost signal and is drifting. Fly out and pick it up.');
+  if (outcome === 'lost') hud.toast('A drone lost signal and is drifting. Fly out and pick it up.');
 }
 
-let tracedFor = '';
-let tracedPath = [];
-
-function routePath() {
-  const { drone, antennas } = game;
-  if (!drone?.route) return [];
-  const signature = [drone.route.steps, drone.pad.x, drone.pad.y, ...antennas.flatMap(({ x, y }) => [x, y])].join();
-  if (signature !== tracedFor) {
-    tracedFor = signature;
-    tracedPath = traceRoute(drone, antennas, STEP_TICKS);
-  }
-  return tracedPath;
+function stepDrones() {
+  for (const drone of [...game.drones]) stepDrone(drone);
 }
 
-function catchUpDrone(seconds) {
+const traced = new WeakMap();
+
+function routePath(drone) {
+  if (!drone.route) return [];
+  const signature = [drone.route.steps, drone.pad.x, drone.pad.y, ...game.antennas.flatMap(({ x, y }) => [x, y])].join();
+  const cached = traced.get(drone);
+  if (cached?.signature === signature) return cached.path;
+  const path = traceRoute(drone, game.antennas, STEP_TICKS);
+  traced.set(drone, { signature, path });
+  return path;
+}
+
+const routePaths = () => game.drones.flatMap(routePath);
+
+function catchUpDrones(seconds) {
+  if (game.drones.length === 0) return;
+  streamAround();
   const steps = (Math.min(seconds, DRONE.catchUpSeconds) * TICKS_PER_SECOND) / STEP_TICKS;
-  for (let i = 0; i < steps && game.drone; i++) stepDrone();
+  for (let i = 0; i < steps; i++) stepDrones();
 }
 
 function simulate() {
@@ -729,7 +785,7 @@ function simulate() {
     if (hit === 'crash') explode();
     if (hit === 'land') rewardFirstLanding();
     if (game.recording && !inSignal(game.antennas, rocket.x, rocket.y)) stopRecording('Out of antenna range. Recording stopped.');
-    stepDrone();
+    stepDrones();
     simTicks += STEP_TICKS;
     game.timewarp = Math.min(game.timewarp, timewarpCap());
   }
@@ -765,7 +821,7 @@ function advanceWarp() {
   warp.progress = Math.min(1, warp.progress + STEP_TICKS / WARP_TICKS);
   if (!warp.jumped && warp.progress >= 0.5) {
     jumpTo(rocket, power, warp.destination);
-    streamSectors(rocket.x, rocket.y);
+    streamAround();
     const { star } = warp.destination;
     const standoff = Math.hypot(rocket.x - star.x, rocket.y - star.y);
     game.camera.zoom = clamp(renderer.zoomShowing(standoff * ARRIVAL_VIEW_IN_STANDOFFS), ZOOM_LIMITS);
@@ -783,7 +839,7 @@ function tick() {
   steer();
   const simTicks = simulate();
   const { rocket, drill, power } = game;
-  streamSectors(rocket.x, rocket.y);
+  streamAround();
   chartVisits();
   if (!rocket.landed && drillBusy(drill)) stopDrill(drill, play);
   updateDrill(drill, drillWell, STEP_TICKS, simTicks, play);
@@ -819,7 +875,7 @@ const UPGRADE_UNLOCKED_BY = {
 const upgradeUnlocked = (key) => UPGRADE_UNLOCKED_BY[key]?.() ?? true;
 
 function droneStatus() {
-  const { drone } = game;
+  const drone = dockedOf('drone');
   if (!drone) return '';
   if (drone.lost) return 'No signal. The drone is drifting; fly close and pick it up.';
   if (!drone.route) return 'No route yet. Record one: fly the trip yourself from here, then land back beside the drone.';
@@ -863,15 +919,18 @@ function status() {
         bank: 'use the battery bank',
         rig: 'use the mining rig',
         drone: 'use the drone',
-      }[dockTarget()] ?? '',
+      }[dockTarget()?.kind] ?? '',
     gold: game.gold,
-    satellite: game.satellite,
+    satellite: dockedOf('satellite'),
+    prices: Object.fromEntries(Object.entries(PRICES).map(([kind, price]) => [kind, price()])),
+    satellitesInHold: inHold(game.satellites).length,
+    banksInHold: inHold(game.banks).length,
     rig: game.rig && { ...game.rig, secondsLeft: rigSecondsLeft(game.rig) },
-    canBuySatellite: !game.satellite && game.galactokens >= SATELLITE.cost,
+    canBuySatellite: game.galactokens >= PRICES.satellite(),
     canBuyRig: !game.rig && game.galactokens >= MINING_RIG.cost,
     canDeploySatellite: Boolean(canDeploySatellite()),
     canDeployRig: Boolean(canDeployRig()),
-    canTakeSatelliteCharge: Boolean(game.satellite) && roomToCharge(power.batteries) > 0 && storedCharge(game.satellite.batteries) > 0,
+    canTakeSatelliteCharge: Boolean(dockedOf('satellite')) && roomToCharge(power.batteries) > 0 && storedCharge(dockedOf('satellite').batteries) > 0,
     canLoadRig: Boolean(game.rig) && game.rig.charge < MINING_RIG.batterySlots && storedCharge(power.batteries) > 0,
     destroyed: rocket.destroyed,
     canMine: landedBody()?.kind === 'planemo' && !drillBusy(drill),
@@ -894,24 +953,24 @@ function status() {
     canBuyTelescope: !game.ownsTelescope && game.galactokens >= TELESCOPE.cost,
     mapInfo: mapInfo(),
     canCloseUp: Boolean(game.mapSelection?.visited) && !galaxyMap.showingSystem(),
-    bank: game.bank,
-    canBuyBank: !game.bank && game.galactokens >= BATTERY_BANK.cost,
+    bank: dockedOf('bank'),
+    canBuyBank: game.galactokens >= PRICES.bank(),
     canDeployBank: Boolean(canDeployBank()),
-    canDepositInBank: Boolean(game.bank) && storedCharge(power.batteries) > 0 && roomToCharge(game.bank.batteries) > 0,
-    canTakeFromBank: Boolean(game.bank) && roomToCharge(power.batteries) > 0 && storedCharge(game.bank.batteries) > 0,
+    canDepositInBank: Boolean(dockedOf('bank')) && storedCharge(power.batteries) > 0 && roomToCharge(dockedOf('bank').batteries) > 0,
+    canTakeFromBank: Boolean(dockedOf('bank')) && roomToCharge(power.batteries) > 0 && storedCharge(dockedOf('bank').batteries) > 0,
     canPickUpAntenna: Boolean(nearestAntenna()),
-    nearDrone: nearDrone(),
+    nearDrone: Boolean(nearDrone()),
     antennasInHold: game.antennasInHold,
-    canBuyAntenna: game.galactokens >= ANTENNA.cost,
+    canBuyAntenna: game.galactokens >= PRICES.antenna(),
     canDeployAntenna: Boolean(canDeployAntenna()),
-    ownsDrone: Boolean(game.drone),
-    canBuyDrone: !game.drone && game.galactokens >= DRONE.cost,
+    dronesInHold: game.drones.filter((drone) => !drone.pad).length,
+    canBuyDrone: game.galactokens >= PRICES.drone(),
     canDeployDrone: Boolean(canDeployDrone()),
     droneStatus: droneStatus(),
-    canRecordRoute: Boolean(game.drone?.pad) && !game.drone.flight && rocket.landed,
-    canToggleDroneRuns: Boolean(game.drone?.route) && !game.drone.lost,
-    droneRunning: Boolean(game.drone?.running),
-    canPickUpDrone: Boolean(game.drone) && (!game.drone.flight || game.drone.lost),
+    canRecordRoute: Boolean(dockedOf('drone')?.pad) && !dockedOf('drone').flight && rocket.landed,
+    canToggleDroneRuns: Boolean(dockedOf('drone')?.route) && !dockedOf('drone').lost,
+    droneRunning: Boolean(dockedOf('drone')?.running),
+    canPickUpDrone: Boolean(dockedOf('drone')) && (!dockedOf('drone').flight || dockedOf('drone').lost),
     recordingSeconds: game.recording ? game.recording.steps * STEP_SECONDS : null,
     canFinishRecording: canFinishRecording(),
   };
@@ -931,7 +990,7 @@ function frame(time) {
   const { rocket } = game;
   game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   catchUpOutposts();
-  renderer.draw(game, routePath());
+  renderer.draw(game, routePaths());
   if (game.panel === 'map') {
     galaxyMap.draw({
       chart: game.starChart,
@@ -939,8 +998,8 @@ function frame(time) {
       warpRange: game.ownsWarpDrive ? warpRange() : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
-      routePath: routePath(),
-      drone: game.drone && (game.drone.flight ?? game.drone.pad),
+      routePath: routePaths(),
+      drones: parkedDrones().map((drone) => drone.flight ?? drone.pad),
     });
   }
   bakeNextTexture();
@@ -960,12 +1019,12 @@ function snapshot() {
     zoom: camera.zoom,
     rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
     power: { ownsPanels: power.ownsPanels, panelsDeployed: power.panelsDeployed, batteries: power.batteries },
-    satellite: game.satellite,
+    satellites: game.satellites,
     rig: game.rig,
-    bank: game.bank,
+    banks: game.banks,
     antennas: game.antennas,
     antennasInHold: game.antennasInHold,
-    drone: game.drone && { ...game.drone, flight: game.drone.flight && { ...game.drone.flight, soi: null } },
+    drones: game.drones.map((drone) => ({ ...drone, flight: drone.flight && { ...drone.flight, soi: null } })),
     gold: game.gold,
     crystals: game.crystals,
     upgrades: game.upgrades,
@@ -984,8 +1043,9 @@ function restore(saved) {
   Object.assign(rocket, saved.rocket, { engineOn: false });
   Object.assign(power, saved.power);
   Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, panel: null });
-  Object.assign(game, { satellite: saved.satellite ?? null, rig: saved.rig ?? null, gold: saved.gold ?? 0 });
-  Object.assign(game, { bank: saved.bank ?? null, antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drone: saved.drone ?? null });
+  const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
+  Object.assign(game, { satellites: listOf('satellites', 'satellite'), rig: saved.rig ?? null, gold: saved.gold ?? 0 });
+  Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone') });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
@@ -996,7 +1056,7 @@ function restore(saved) {
   applyUpgrades(game.upgrades, rocket, power);
   outpostClock = saved.savedAt;
   camera.zoom = saved.zoom;
-  streamSectors(rocket.x, rocket.y);
+  streamAround();
   rocket.soi = sphereOfInfluence(rocket.x, rocket.y);
 }
 
@@ -1014,8 +1074,8 @@ async function start() {
   startAutosave();
   const [sprites] = await Promise.all([loadSprites(), loadTextureStamps()]);
   renderer = createRenderer(canvas, sprites);
-  streamSectors(game.rocket.x, game.rocket.y);
-  if (saved) catchUpDrone((Date.now() - saved.savedAt) / 1000);
+  streamAround();
+  if (saved) catchUpDrones((Date.now() - saved.savedAt) / 1000);
   chartVisitsNear(game.starChart, game.rocket.x, game.rocket.y);
   renderer.resize();
   new ResizeObserver(() => renderer.resize()).observe(canvas);
