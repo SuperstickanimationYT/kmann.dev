@@ -8,7 +8,6 @@ const SPRITES = {
   market: { src: 'img/market.svg', pivot: [98.7, 158.36] },
   drill: { src: 'img/drill.svg', pivot: [8.12, 23.46] },
   wormhole: { src: 'img/wormhole.svg', pivot: [180.34, 180.34] },
-  earth: { src: 'img/earth.webp' },
   moon: { src: 'img/moon.webp' },
 };
 
