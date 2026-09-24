@@ -13,7 +13,9 @@ function linkWormholes(mouth, exit) {
   return [mouth, exit];
 }
 
-export const HOME_BODY = { name: 'Earth', x: 0, y: -10000, radius: 10000, soi: 12000, mass: 1e8, kind: 'planemo', look: 'earth' };
+const EARTH_SURFACE = { seed: 3303, baseColor: '#1f6fd1', variation: 15, darkness: 35, polarCap: 30, bands: 0, craters: 0, land: true, landColor: '#3fbf2a', landCover: 45, clouds: 35 };
+
+export const HOME_BODY = { name: 'Earth', x: 0, y: -10000, radius: 10000, soi: 12000, mass: 1e8, kind: 'planemo', look: 'earth', planet: EARTH_SURFACE };
 
 const SUN = { name: 'Sun', x: 1000000, y: -1000000, radius: 50000, soi: 52000, mass: 1e11, kind: 'star', look: 'sun' };
 
