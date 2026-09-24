@@ -6,6 +6,7 @@ const SPARK = { speed: 7, spread: 0.18, life: 14, size: 5, growth: -0.2 };
 const SMOKE = { speed: 3.5, spread: 0.35, life: 70, size: 9, growth: 0.45, drag: 0.97 };
 const SPARKS_PER_TICK = 1.2;
 const SMOKE_PER_TICK = 0.5;
+const DEPTH_INTO_FULL_FLAME = 14;
 const BLAST = { sparks: 70, smoke: 35, sparkSpeed: 9, smokeSpeed: 3 };
 
 export const createParticles = () => [];
@@ -18,7 +19,7 @@ function spawn(particles, particle) {
 }
 
 function spewFrom(particles, pose, kind, look, scale, strength) {
-  const [x, y] = rocketPoint(pose, -FLAME_OFFSET * scale, 0);
+  const [x, y] = rocketPoint(pose, -(FLAME_OFFSET + DEPTH_INTO_FULL_FLAME * strength) * scale, 0);
   const bearing = pose.heading + Math.PI + jitter(look.spread);
   const speed = look.speed * scale * strength * (0.7 + Math.random() * 0.6);
   spawn(particles, {
