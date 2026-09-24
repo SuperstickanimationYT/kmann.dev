@@ -1,4 +1,5 @@
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
+import { haulerPose } from './haulers.js';
 import { rocketPoint } from './physics.js';
 import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
@@ -23,6 +24,8 @@ const OUTPOST_DOT_BELOW_PX = 8;
 const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
 const SIGNAL_RING_MAX_PX = 50000;
+const HAULER_SCALE = 0.8;
+const HAULER_COLOUR = '#6dff8c';
 const FLICKER_WAVES = [[0.9, 0.07], [2.3, 0.05], [5.1, 0.03]];
 const FLAME_CORE = { length: 0.55, width: 0.5 };
 const FLAME_GLOW = { behind: 20, radius: 30, colour: 'rgba(255, 170, 60, 0.35)' };
@@ -374,21 +377,40 @@ export function createRenderer(canvas, sprites) {
     });
   }
 
+  function drawMarker(sx, sy, heading, colour, size) {
+    withPose(sx, sy, heading, () => {
+      context.fillStyle = colour;
+      context.beginPath();
+      context.moveTo(0, -1.3 * size);
+      context.lineTo(size, size);
+      context.lineTo(-size, size);
+      context.closePath();
+      context.fill();
+    });
+  }
+
+  function drawHauler(hauler) {
+    const pose = haulerPose(hauler);
+    const [sx, sy] = toScreen(pose.x, pose.y);
+    const scale = view.ppu * HAULER_SCALE;
+    if (!onScreen(sx, sy, ROCKET_HEIGHT * scale + 60)) return;
+    if (ROCKET_HEIGHT * scale < 10) {
+      drawMarker(sx, sy, pose.heading, HAULER_COLOUR, 4);
+      drawLabel('Hauler', sx, sy + 16, HAULER_COLOUR);
+      return;
+    }
+    if (pose.flying) drawFlame({ ...pose, throttle: 100 }, HAULER_SCALE, hauler);
+    withPose(sx, sy, pose.heading, () => drawSprite(sprites.rocket, scale));
+    drawLabel('Hauler', sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, HAULER_COLOUR);
+  }
+
   function drawDrone(drone) {
     const pose = drone?.flight ?? drone?.pad;
     if (!pose) return;
     const label = drone.lost ? 'Drone · no signal' : 'Drone';
     const [sx, sy] = toScreen(...rocketPoint(pose, (-ROCKET_HEIGHT * (1 - DRONE_SCALE)) / 2, 0));
     if (ROCKET_HEIGHT * DRONE_SCALE * view.ppu < 10) {
-      withPose(sx, sy, pose.heading, () => {
-        context.fillStyle = '#ff965a';
-        context.beginPath();
-        context.moveTo(0, -5);
-        context.lineTo(4, 4);
-        context.lineTo(-4, 4);
-        context.closePath();
-        context.fill();
-      });
+      drawMarker(sx, sy, pose.heading, '#ff965a', 4);
       drawLabel(label, sx, sy + 16, 'rgba(255, 150, 90, 0.85)');
       return;
     }
@@ -487,15 +509,7 @@ export function createRenderer(canvas, sprites) {
     if (rocket.destroyed) return;
     const [sx, sy] = toScreen(rocket.x, rocket.y);
     if (ROCKET_HEIGHT * view.ppu < 10) {
-      withPose(sx, sy, rocket.heading, () => {
-        context.fillStyle = '#e2effd';
-        context.beginPath();
-        context.moveTo(0, -7);
-        context.lineTo(5, 5);
-        context.lineTo(-5, 5);
-        context.closePath();
-        context.fill();
-      });
+      drawMarker(sx, sy, rocket.heading, '#e2effd', 5);
       return;
     }
     if (rocket.engineOn && rocket.throttle > 0) drawFlame(rocket, 1, rocket);
@@ -599,6 +613,7 @@ export function createRenderer(canvas, sprites) {
     clock = scene.clock;
     drawParticles(scene.particles);
     scene.drones.forEach(drawDrone);
+    scene.haulers.forEach(drawHauler);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);

@@ -125,6 +125,14 @@ export function createHud(root, actions) {
     recordingTime: find('[data-recording-time]'),
     recordingHint: find('[data-recording-hint]'),
     finishRecording: find('[data-finish-recording]'),
+    openHaulers: find('[data-open-haulers]'),
+    buyHauler: find('[data-buy-hauler]'),
+    haulerTitle: find('[data-hauler-title]'),
+    haulerStatus: find('[data-hauler-status]'),
+    haulerStops: find('[data-hauler-stops]'),
+    toggleHauler: find('[data-toggle-hauler]'),
+    cycleHauler: [...root.querySelectorAll('[data-cycle-hauler]')],
+    addHaulerStop: [...root.querySelectorAll('[data-add-hauler-stop]')],
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -160,6 +168,9 @@ export function createHud(root, actions) {
     toggleDroneRuns: actions.toggleDroneRuns,
     pickUpDrone: actions.pickUpDrone,
     finishRecording: actions.finishRecording,
+    openHaulers: actions.openHaulers,
+    buyHauler: actions.buyHauler,
+    toggleHauler: actions.toggleHauler,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
@@ -168,6 +179,12 @@ export function createHud(root, actions) {
   parts.pickUpAntenna.addEventListener('click', actions.pickUpAntenna);
   parts.openDrone.addEventListener('click', actions.openDrone);
   find('[data-cancel-recording]').addEventListener('click', actions.cancelRecording);
+  parts.cycleHauler.forEach((button) => button.addEventListener('click', () => actions.cycleHauler(Number(button.dataset.cycleHauler))));
+  parts.addHaulerStop.forEach((button) => button.addEventListener('click', () => actions.addHaulerStop(button.dataset.addHaulerStop)));
+  parts.haulerStops.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-stop]');
+    if (button) actions.removeHaulerStop(Number(button.dataset.removeStop));
+  });
   parts.destinations.addEventListener('click', (event) => {
     const button = event.target.closest('[data-star]');
     if (button) actions.warpTo(button.dataset.star);
@@ -180,6 +197,7 @@ export function createHud(root, actions) {
   });
   let shownDestinations = '';
   let shownUpgrades = '';
+  let shownStops = '';
   let toastTimer = 0;
 
   function toast(text) {
@@ -206,6 +224,39 @@ export function createHud(root, actions) {
         return button;
       }),
     );
+  }
+
+  function showStops(stops) {
+    const signature = stops.map(({ label, next, missing }) => `${label}:${next}:${missing}`).join('|');
+    if (signature === shownStops) return;
+    shownStops = signature;
+    parts.haulerStops.replaceChildren(
+      ...stops.map(({ label, next, missing }, index) => {
+        const item = document.createElement('li');
+        item.classList.toggle('is-next', next);
+        item.classList.toggle('is-missing', missing);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'pp-action';
+        remove.dataset.removeStop = String(index);
+        remove.textContent = 'Remove';
+        item.append(label, remove);
+        return item;
+      }),
+    );
+  }
+
+  function updateHaulers({ hauler, canBuyHauler, haulerStopsHere }) {
+    parts.buyHauler.disabled = !canBuyHauler;
+    setHidden(parts.openHaulers, !hauler);
+    parts.addHaulerStop.forEach((button) => setHidden(button, !haulerStopsHere.includes(button.dataset.addHaulerStop)));
+    if (!hauler) return;
+    setText(parts.haulerTitle, hauler.title);
+    setText(parts.haulerStatus, hauler.status);
+    showStops(hauler.stops);
+    setText(parts.toggleHauler, hauler.running ? 'Pause' : 'Start');
+    parts.toggleHauler.disabled = hauler.stops.length === 0;
+    parts.cycleHauler.forEach((button) => setHidden(button, hauler.count < 2));
   }
 
   function showDestinations(destinations) {
@@ -308,6 +359,7 @@ export function createHud(root, actions) {
     updateRig(status);
     updateBank(status);
     updateDrones(status);
+    updateHaulers(status);
     showDestinations(status.warpDestinations);
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;

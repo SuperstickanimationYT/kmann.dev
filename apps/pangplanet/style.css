@@ -444,6 +444,29 @@
   color: #fff;
 }
 
+.pp-stops {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+
+.pp-stops li {
+  margin-bottom: 4px;
+}
+
+.pp-stops li.is-next {
+  font-weight: 700;
+}
+
+.pp-stops li.is-missing {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.pp-stops .pp-action {
+  margin-left: 8px;
+  padding: 2px 8px;
+}
+
 .pp-restart {
   background: #7a1010;
   color: #fff;
