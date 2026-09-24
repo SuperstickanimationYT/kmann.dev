@@ -63,6 +63,7 @@ import {
   ANTENNA,
   BATTERY,
   BATTERY_BANK,
+  BUILDER,
   CRYSTALS,
   DRONE,
   DRONE_SCALE,
@@ -223,26 +224,36 @@ const PRICES = {
   bank: () => risingPrice(BATTERY_BANK.cost, game.banks.length),
   antenna: () => risingPrice(ANTENNA.cost, game.antennas.length + game.antennasInHold),
   drone: () => risingPrice(DRONE.cost, game.drones.length),
-  hauler: () => risingPrice(HAULER.cost, game.haulers.length),
+  hauler: () => risingPrice(HAULER.cost, game.haulers.filter((hauler) => !hauler.builds).length),
+  builder: () => risingPrice(BUILDER.cost, game.haulers.filter((hauler) => hauler.builds).length),
 };
 
 const deployedOrNull = (outpost) => (outpost?.deployed ? outpost : null);
+
+function nearStar(outpost) {
+  if (!outpost?.deployed) return '';
+  let nearest = null;
+  for (const entry of game.starChart.values()) {
+    if (!nearest || Math.hypot(entry.x - outpost.x, entry.y - outpost.y) < Math.hypot(nearest.x - outpost.x, nearest.y - outpost.y)) nearest = entry;
+  }
+  return nearest ? ` near ${nearest.name}` : '';
+}
 
 const STOP_KINDS = {
   satellite: {
     locate: ({ index }) => deployedOrNull(game.satellites[index]),
     act: ({ index }, hauler) => transferCharge(game.satellites[index].batteries, hauler.batteries),
-    describe: ({ index }) => `Satellite ${index + 1}: take charge`,
+    describe: ({ index }) => `Satellite ${index + 1}${nearStar(game.satellites[index])}: take charge`,
   },
   bankTake: {
     locate: ({ index }) => deployedOrNull(game.banks[index]),
     act: ({ index }, hauler) => transferCharge(game.banks[index].batteries, hauler.batteries),
-    describe: ({ index }) => `Battery bank ${index + 1}: take charge`,
+    describe: ({ index }) => `Battery bank ${index + 1}${nearStar(game.banks[index])}: take charge`,
   },
   bankDeposit: {
     locate: ({ index }) => deployedOrNull(game.banks[index]),
     act: ({ index }, hauler, keep) => transferCharge(hauler.batteries, game.banks[index].batteries, keep),
-    describe: ({ index }) => `Battery bank ${index + 1}: deposit charge`,
+    describe: ({ index }) => `Battery bank ${index + 1}${nearStar(game.banks[index])}: deposit charge`,
   },
   rig: {
     locate: () => deployedOrNull(game.rig),
@@ -251,6 +262,18 @@ const STOP_KINDS = {
       hauler.gold += collectGold(game.rig);
     },
     describe: () => `Mining rig on ${game.rig?.site || 'nowhere'}: load batteries, collect gold`,
+  },
+  buildSatellite: {
+    locate: (stop) => stop,
+    act: (stop) => buildFromHold(stop, game.satellites, deploySatellite),
+    describe: (stop) => `Build a satellite near ${stop.starName}`,
+    missing: 'satellite',
+  },
+  buildBank: {
+    locate: (stop) => stop,
+    act: (stop) => buildFromHold(stop, game.banks, deployBank),
+    describe: (stop) => `Build a battery bank near ${stop.starName}`,
+    missing: 'battery bank',
   },
   market: {
     locate: () => MARKET,
@@ -263,6 +286,50 @@ const STOP_KINDS = {
 };
 
 const describeStop = (stop) => STOP_KINDS[stop.kind].describe(stop);
+
+const stopValue = ({ kind, index }) => `${kind}:${index ?? ''}`;
+
+function stopFromValue(value) {
+  const [kind, index] = value.split(':');
+  return index === '' ? { kind } : { kind, index: Number(index) };
+}
+
+function remoteStops() {
+  const stops = [];
+  game.satellites.forEach((satellite, index) => satellite.deployed && stops.push({ kind: 'satellite', index }));
+  game.banks.forEach((bank, index) => bank.deployed && stops.push({ kind: 'bankTake', index }, { kind: 'bankDeposit', index }));
+  if (game.rig?.deployed) stops.push({ kind: 'rig' });
+  stops.push({ kind: 'market' });
+  return stops;
+}
+
+const nearbyOutposts = (star, range) => [...deployed(game.satellites), ...deployed(game.banks)].filter((item) => Math.hypot(item.x - star.x, item.y - star.y) < range);
+const pendingBuildsAt = (key) => game.haulers.flatMap((hauler) => hauler.stops).filter((stop) => stop.star === key).length;
+
+function buildSite(key) {
+  const entry = game.starChart.get(key);
+  const system = entry && systemAt(entry.x, entry.y);
+  if (!system) return null;
+  const { star, planets } = system;
+  const reach = Math.max(star.radius * BUILDER.siteInStarRadii, star.soi + BUILDER.siteSpacing);
+  const clear = (x, y) => planets.every((planet) => Math.hypot(x - planet.x, y - planet.y) > planet.soi) && !sphereOfInfluence(x, y);
+  const taken = nearbyOutposts(star, reach * 2).length + pendingBuildsAt(key);
+  for (let slot = taken; slot < taken + BUILDER.siteTries; slot++) {
+    const bearing = (slot * BUILDER.siteSpacing) / reach;
+    const x = star.x + Math.sin(bearing) * reach;
+    const y = star.y + Math.cos(bearing) * reach;
+    if (clear(x, y)) return { star: key, starName: entry.name, x, y, light: Math.min(1, (star.radius / reach) ** 2) };
+  }
+  return null;
+}
+
+function buildFromHold(stop, items, deploy) {
+  const item = inHold(items)[0];
+  if (!item) return false;
+  deploy(item, stop);
+  if ('light' in item) item.light = stop.light;
+  return true;
+}
 
 const haulerWorld = {
   locate: (stop) => STOP_KINDS[stop.kind].locate(stop),
@@ -531,7 +598,28 @@ const actions = {
     if (!pay('hauler')) return;
     game.haulers.push(createHauler(MARKET));
     game.haulerIndex = game.haulers.length - 1;
-    hud.toast('Hauler waiting at the market. Dock at your outposts to add stops to its route.');
+    hud.toast('Hauler waiting at the market. Add stops from Rocket → Haulers.');
+  },
+  buyBuilder: () => {
+    if (!pay('builder')) return;
+    game.haulers.push(createHauler(MARKET, true));
+    game.haulerIndex = game.haulers.length - 1;
+    hud.toast('Builder waiting at the market. Give it build stops from Rocket → Haulers.');
+  },
+  addRemoteStop: (value) => {
+    const hauler = selectedHauler();
+    if (!hauler || !remoteStops().some((choice) => stopValue(choice) === value)) return;
+    hauler.stops.push(stopFromValue(value));
+  },
+  addBuildStop: (kind, key) => {
+    const hauler = selectedHauler();
+    if (!hauler?.builds || !['buildSatellite', 'buildBank'].includes(kind)) return;
+    const site = buildSite(key);
+    if (!site) {
+      hud.toast('No clear spot near that star.');
+      return;
+    }
+    hauler.stops.push({ kind, ...site });
   },
   openHaulers: () => openPanel(game.panel === 'hauler' ? null : 'hauler'),
   cycleHauler: (step) => {
@@ -1075,7 +1163,7 @@ function formatDuration(seconds) {
 }
 
 function haulerStatus(hauler) {
-  if (hauler.stops.length === 0) return 'No stops yet. Dock at a satellite, battery bank, mining rig or the market and add it to this route.';
+  if (hauler.stops.length === 0) return 'No stops yet. Pick one below, or dock at an outpost and add it from there.';
   const cargo = `Carrying ${storedCharge(hauler.batteries).toFixed(2)} of ${HAULER.batteries} batteries and ${hauler.gold} gold.`;
   const target = describeStop(hauler.stops[hauler.next]);
   const { leg, stalled } = hauler;
@@ -1083,16 +1171,27 @@ function haulerStatus(hauler) {
   if (leg) return `${leg.warp ? 'Warping' : 'Flying'} to ${target}, ${formatDuration(leg.left)} left. ${cargo}`;
   if (stalled?.kind === 'tokens') return `Waiting for ${stalled.amount} galactokens of fuel to reach ${target}. ${cargo}`;
   if (stalled?.kind === 'charge') return `Needs ${stalled.amount.toFixed(2)} batteries of charge to warp to ${target}. ${cargo}`;
+  const missing = STOP_KINDS[hauler.stops[hauler.next].kind].missing;
+  if (stalled?.kind === 'idle' && missing) return `No ${missing} in your hold to build. Buy one at the market; it tries again in ${formatDuration(hauler.wait)}. ${cargo}`;
   if (stalled?.kind === 'idle') return `Nothing to carry on its last loop. Trying again in ${formatDuration(hauler.wait)}. ${cargo}`;
   if (stalled?.kind === 'stops') return `None of its stops are set up right now. Redeploy them or change the route. ${cargo}`;
   return `Setting off. ${cargo}`;
+}
+
+function buildChoices(builder) {
+  const distance = (entry) => Math.hypot(entry.x - builder.x, entry.y - builder.y);
+  return [...game.starChart.entries()]
+    .sort(([, a], [, b]) => distance(a) - distance(b))
+    .slice(0, BUILDER.starChoices)
+    .map(([key, entry]) => ({ value: key, label: `${entry.name} · ${abbreviate(distance(entry), 0)} away` }));
 }
 
 function haulerInfo() {
   const hauler = selectedHauler();
   if (!hauler) return null;
   return {
-    title: `Hauler ${game.haulerIndex + 1} of ${game.haulers.length}`,
+    title: `${hauler.builds ? 'Builder' : 'Hauler'} ${game.haulerIndex + 1} of ${game.haulers.length}`,
+    builds: hauler.builds,
     count: game.haulers.length,
     status: haulerStatus(hauler),
     running: hauler.running,
@@ -1190,6 +1289,9 @@ function status() {
     canBuyHauler: game.galactokens >= PRICES.hauler(),
     hauler: haulerInfo(),
     haulerStopsHere: Object.keys(STOP_KINDS).filter((kind) => selectedHauler() && stopHere(kind)),
+    canBuyBuilder: game.galactokens >= PRICES.builder(),
+    stopChoices: game.panel === 'hauler' ? remoteStops().map((stop) => ({ value: stopValue(stop), label: describeStop(stop) })) : [],
+    buildChoices: game.panel === 'hauler' && selectedHauler()?.builds ? buildChoices(selectedHauler()) : [],
   };
 }
 

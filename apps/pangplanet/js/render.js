@@ -25,7 +25,7 @@ const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
 const SIGNAL_RING_MAX_PX = 50000;
 const HAULER_SCALE = 0.8;
-const HAULER_COLOUR = '#6dff8c';
+const HAULER_LOOKS = { hauler: { label: 'Hauler', colour: '#6dff8c' }, builder: { label: 'Builder', colour: '#ffc933' } };
 const FLICKER_WAVES = [[0.9, 0.07], [2.3, 0.05], [5.1, 0.03]];
 const FLAME_CORE = { length: 0.55, width: 0.5 };
 const FLAME_GLOW = { behind: 20, radius: 30, colour: 'rgba(255, 170, 60, 0.35)' };
@@ -391,17 +391,18 @@ export function createRenderer(canvas, sprites) {
 
   function drawHauler(hauler) {
     const pose = haulerPose(hauler);
+    const { label, colour } = HAULER_LOOKS[hauler.builds ? 'builder' : 'hauler'];
     const [sx, sy] = toScreen(pose.x, pose.y);
     const scale = view.ppu * HAULER_SCALE;
     if (!onScreen(sx, sy, ROCKET_HEIGHT * scale + 60)) return;
     if (ROCKET_HEIGHT * scale < 10) {
-      drawMarker(sx, sy, pose.heading, HAULER_COLOUR, 4);
-      drawLabel('Hauler', sx, sy + 16, HAULER_COLOUR);
+      drawMarker(sx, sy, pose.heading, colour, 4);
+      drawLabel(label, sx, sy + 16, colour);
       return;
     }
     if (pose.flying) drawFlame({ ...pose, throttle: 100 }, HAULER_SCALE, hauler);
     withPose(sx, sy, pose.heading, () => drawSprite(sprites.rocket, scale));
-    drawLabel('Hauler', sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, HAULER_COLOUR);
+    drawLabel(label, sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, colour);
   }
 
   function drawDrone(drone) {
