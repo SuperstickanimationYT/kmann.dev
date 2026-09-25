@@ -103,7 +103,8 @@ presetPicker.addEventListener('change', () => {
   if (presetPicker.value) load(PRESETS[presetPicker.value].planet);
 });
 
-form.addEventListener('input', () => {
+form.addEventListener('input', (event) => {
+  if (event.target === presetPicker) return;
   presetPicker.value = '';
   update();
 });
