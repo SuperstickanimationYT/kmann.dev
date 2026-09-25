@@ -153,7 +153,9 @@ function settleHomeworld(star, planets, seed) {
   const random = createRandom(seed ^ HOMEWORLD_SALT);
   const rocky = planets.filter((planet) => planet.resource !== 'gas');
   if (!rocky.length || random.next() >= ALIENS.homeworldChance) return;
-  rocky[random.integer(0, rocky.length - 1)].species = speciesAt(star.x, star.y).key;
+  const { key } = speciesAt(star.x, star.y);
+  for (const planet of planets) planet.territory = key;
+  rocky[random.integer(0, rocky.length - 1)].species = key;
 }
 
 function blackHolesBetween(star, orbits, seed) {
