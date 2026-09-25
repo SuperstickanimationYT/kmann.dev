@@ -1,3 +1,4 @@
+import { speciesByKey } from './aliens.js';
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
 import { haulerPose } from './haulers.js';
 import { rocketPoint } from './physics.js';
@@ -286,8 +287,9 @@ export function createRenderer(canvas, sprites) {
       const offset = Math.max(radius, 2) + (body.kind === 'wormhole' ? -8 : 14);
       const bounty = bountyWaiting(claimedBounties, body);
       const find = RESOURCE_LABELS[body.resource];
-      const label = [body.name, bounty && `${bounty} bounty`, find?.text].filter(Boolean).join(' · ');
-      const colour = bounty ? 'rgba(255, 214, 110, 0.9)' : (find?.colour ?? 'rgba(185, 214, 245, 0.8)');
+      const species = speciesByKey[body.species];
+      const label = [body.name, bounty && `${bounty} bounty`, find?.text, species && `${species.name} homeworld`].filter(Boolean).join(' · ');
+      const colour = bounty ? 'rgba(255, 214, 110, 0.9)' : (species?.colour ?? find?.colour ?? 'rgba(185, 214, 245, 0.8)');
       if (onScreen(sx, sy, 40)) drawLabel(label, sx, sy + (body.kind === 'wormhole' ? -offset : offset), colour);
     }
   }
