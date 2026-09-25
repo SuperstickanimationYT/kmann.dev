@@ -1,6 +1,7 @@
 import { randomPlanet } from '../../planet-textures/js/presets.js';
 import { createRandom } from '../../planet-textures/js/random.js';
-import { GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, blackHole, massFor } from './world.js';
+import { SPECIES } from './aliens.js';
+import { ALIENS, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, blackHole, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
 export const SECTOR_SIZE = 1.5e7;
@@ -20,6 +21,7 @@ const STARDUST_CHANCE = 0.05;
 const BLACK_HOLE_CHANCE = 0.25;
 const BLACK_HOLE_COUNT = [1, 3];
 const BLACK_HOLE_SALT = 0xb1ac4;
+const HOMEWORLD_SALT = 0xa11e5;
 const STAR_GRAVITY = [2, 6];
 const ROCKY = { radius: [2000, 14000], gravity: [0.05, 0.4] };
 const GAS_GIANT = { radius: [16000, 30000], gravity: [0.3, 0.7] };
@@ -42,6 +44,16 @@ export const GALAXY = {
   y: GALAXY_CENTER_IN_SECTORS[1] * SECTOR_SIZE,
   radius: GALAXY_RADIUS_IN_SECTORS * SECTOR_SIZE,
 };
+
+const FULL_TURN = Math.PI * 2;
+const TERRITORY_ARC = FULL_TURN / SPECIES.length;
+const HOME_BEARING = Math.atan2(-GALAXY.y, -GALAXY.x);
+
+function speciesAt(x, y) {
+  const turnFromHome = Math.atan2(y - GALAXY.y, x - GALAXY.x) - HOME_BEARING + TERRITORY_ARC / 2;
+  const wrapped = ((turnFromHome % FULL_TURN) + FULL_TURN) % FULL_TURN;
+  return SPECIES[Math.floor(wrapped / TERRITORY_ARC)];
+}
 
 export const outsideGalaxy = (x, y) => Math.hypot(x - GALAXY.x, y - GALAXY.y) > GALAXY.radius;
 
@@ -133,7 +145,15 @@ function generateSystem(sectorX, sectorY) {
     orbits.push(orbit);
     planets.push(generatePlanet(next, star, orbit, index, seed));
   }
+  settleHomeworld(star, planets, seed);
   return [star, ...blackHolesBetween(star, orbits, seed), ...planets];
+}
+
+function settleHomeworld(star, planets, seed) {
+  const random = createRandom(seed ^ HOMEWORLD_SALT);
+  const rocky = planets.filter((planet) => planet.resource !== 'gas');
+  if (!rocky.length || random.next() >= ALIENS.homeworldChance) return;
+  rocky[random.integer(0, rocky.length - 1)].species = speciesAt(star.x, star.y).key;
 }
 
 function blackHolesBetween(star, orbits, seed) {

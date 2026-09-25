@@ -230,6 +230,21 @@
       <p class="pp-hint" data-market-note></p>
     </section>
 
+    <section class="pp-panel" data-panel="aliens" hidden aria-label="Aliens">
+      <header>
+        <h3 data-alien-name></h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p data-alien-mood></p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-ask-for-tip>
+          <img src="img/stardust.svg" alt=""> Ask where stardust is for <span data-tip-price></span>
+          <img src="img/science.svg" alt="science">
+        </button>
+      </div>
+      <p class="pp-hint" data-alien-note>They only share what they know with friends.</p>
+    </section>
+
     <section class="pp-panel" data-panel="warp" hidden aria-label="Warp drive">
       <header>
         <h3>Warp drive</h3>
@@ -352,7 +367,7 @@
         <button type="button" class="pp-action" data-map-zoom="out" aria-label="Zoom out">&minus;</button>
       </div>
       <p data-map-info></p>
-      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a visited star, then Close up to see its planets. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found only by visiting. Orange dashes: your drone's route.</p>
+      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a visited star, then Close up to see its planets. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found by visiting or from friendly aliens. Orange dashes: your drone's route.</p>
     </section>
 
     <section class="pp-panel" data-panel="cheats" hidden aria-label="Cheats">
@@ -393,7 +408,8 @@
       <ul>
         <li>Gas giants pump double fuel.</li>
         <li>Crystals: some rocky worlds around other stars have them, and the fuel drill brings them up. A telescope shows which systems.</li>
-        <li>Stardust: much rarer and invisible to telescopes. Visit a system to find it. It pays for the top upgrades.</li>
+        <li>Stardust: much rarer and invisible to telescopes. Visit a system or ask friendly aliens to find it. It pays for the top upgrades.</li>
+        <li>Aliens live on some worlds around other stars. Land on one to meet them. Friendly aliens tell you where stardust is, for science.</li>
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
       </ul>
       <h4>Science</h4>

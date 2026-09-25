@@ -38,3 +38,12 @@ export const chartVisitsNear = (chart, x, y) => chartSystems(chart, systemsWithi
 export const scanFrom = (chart, x, y, range) => chartSystems(chart, systemsWithin(x, y, range), false);
 
 export const isCharted = (chart, star) => chart.has(starKey(star));
+
+export function stardustTip(chart, homeworld, range) {
+  const unknownStardust = ({ star, planets }) => stardustWorlds(planets) > 0 && !chart.get(starKey(star))?.stardust;
+  const system = systemsWithin(homeworld.x, homeworld.y, range).find(unknownStardust);
+  if (!system) return null;
+  const key = starKey(system.star);
+  chart.set(key, { ...(chart.get(key) ?? chartEntry(system, false)), stardust: stardustWorlds(system.planets) });
+  return system.star.name;
+}

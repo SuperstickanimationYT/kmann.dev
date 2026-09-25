@@ -154,6 +154,11 @@ export function createHud(root, actions) {
     buildPicker: find('[data-build-picker]'),
     buildKind: find('[data-build-kind]'),
     buildStar: find('[data-build-star]'),
+    alienName: find('[data-alien-name]'),
+    alienMood: find('[data-alien-mood]'),
+    askForTip: find('[data-ask-for-tip]'),
+    tipPrice: find('[data-tip-price]'),
+    alienNote: find('[data-alien-note]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -199,6 +204,7 @@ export function createHud(root, actions) {
     buyHauler: actions.buyHauler,
     buyBuilder: actions.buyBuilder,
     toggleHauler: actions.toggleHauler,
+    askForTip: actions.askForTip,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
@@ -424,6 +430,7 @@ export function createHud(root, actions) {
     updateBank(status);
     updateDrones(status);
     updateHaulers(status);
+    updateAlien(status.alien);
     showDestinations(status.warpDestinations);
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;
@@ -478,6 +485,17 @@ export function createHud(root, actions) {
     setText(parts.recordingTime, `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
     setHidden(parts.recordingHint, status.canFinishRecording);
     setHidden(parts.finishRecording, !status.canFinishRecording);
+  }
+
+  function updateAlien(alien) {
+    if (!alien) return;
+    const signed = alien.relation > 0 ? `+${alien.relation}` : String(alien.relation);
+    setText(parts.alienName, alien.name);
+    setText(parts.alienMood, `The ${alien.name} are ${alien.mood} toward you (${signed}).`);
+    setHidden(parts.askForTip, !alien.friendly);
+    parts.askForTip.disabled = !alien.canAskForTip;
+    setText(parts.tipPrice, String(alien.tipPrice));
+    setHidden(parts.alienNote, alien.friendly);
   }
 
   function beckonHelp() {

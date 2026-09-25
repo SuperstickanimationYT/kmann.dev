@@ -1,3 +1,4 @@
+import { mood, speciesByKey, startingRelations, tipPrice } from './aliens.js';
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
 import { abbreviate, createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, sphereOfInfluence, wrapAngle } from './physics.js';
@@ -72,14 +73,15 @@ import {
   systemsPassed,
 } from './science.js';
 import { deleteSave, readSave, writeSave } from './save.js';
-import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, starKey } from './starchart.js';
+import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, stardustTip, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
-import { crystalWorlds, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
+import { SECTOR_SIZE, crystalWorlds, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
+  ALIENS,
   ANTENNA,
   BATTERY,
   BATTERY_BANK,
@@ -175,6 +177,7 @@ const game = {
   claimedBounties: new Set(),
   starChart: createStarChart(),
   ownsTelescope: false,
+  relations: startingRelations(),
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -217,6 +220,7 @@ function dockTarget() {
   const bank = nearestWithin(deployed(game.banks), rocket, BATTERY_BANK.dockingRange);
   if (bank) return { kind: 'bank', item: bank };
   if (rocket.landed && withinReach(rocket, game.rig, MINING_RIG.reach)) return { kind: 'rig' };
+  if (rocket.landed && rocket.soi?.species) return { kind: 'aliens', item: rocket.soi };
   const drone = nearDrone();
   if (drone) return { kind: 'drone', item: drone };
   return null;
@@ -724,6 +728,18 @@ const actions = {
     game.galactokens += game.stardust * STARDUST.sellPrice;
     game.stardust = 0;
   },
+  askForTip: () => {
+    const homeworld = dockedOf('aliens');
+    const alien = homeworld && alienInfo(homeworld);
+    if (!alien?.canAskForTip) return;
+    const found = stardustTip(game.starChart, homeworld, ALIENS.tip.rangeInSectors * SECTOR_SIZE);
+    if (!found) {
+      hud.toast(`The ${alien.name} know of no more stardust nearby.`);
+      return;
+    }
+    game.science -= alien.tipPrice;
+    hud.toast(`The ${alien.name} say ${found} has stardust. It's marked on your galaxy map.`);
+  },
   sellBatteries: () => {
     const { power } = game;
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
@@ -771,6 +787,18 @@ function dock() {
   const target = dockTarget();
   game.docked = target.item ?? null;
   openPanel(target.kind);
+  if (target.kind === 'aliens') {
+    const { name } = speciesByKey[target.item.species];
+    earnScience(`contact:${target.item.species}`, SCIENCE.contact, `first contact with the ${name}`);
+  }
+}
+
+function alienInfo(homeworld) {
+  const { name } = speciesByKey[homeworld.species];
+  const relation = game.relations[homeworld.species];
+  const friendly = mood(relation) === 'friendly';
+  const price = tipPrice(relation);
+  return { name, mood: mood(relation), relation, friendly, tipPrice: price, canAskForTip: friendly && game.science >= price };
 }
 
 const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map(dronePose)]);
@@ -949,6 +977,7 @@ function planetInfo(planet) {
     planet.resource === 'crystals' ? 'crystals' : null,
     planet.resource === 'stardust' ? 'stardust' : null,
     planet.resource === 'gas' ? 'gas giant: double fuel' : null,
+    planet.species ? `${speciesByKey[planet.species].name} homeworld` : null,
     waiting ? `${waiting} bounty waiting` : null,
     planet.bounty && !waiting ? 'bounty claimed' : null,
     `${abbreviate(Math.hypot(planet.x - game.rocket.x, planet.y - game.rocket.y))} away`,
@@ -1397,6 +1426,20 @@ function haulerInfo() {
   };
 }
 
+function dockAction() {
+  const target = dockTarget();
+  if (target?.kind === 'aliens') return `meet the ${speciesByKey[target.item.species].name}`;
+  return (
+    {
+      market: 'enter the market',
+      satellite: 'dock with the satellite',
+      bank: 'use the battery bank',
+      rig: 'use the mining rig',
+      drone: 'use the drone',
+    }[target?.kind] ?? ''
+  );
+}
+
 function status() {
   const { rocket, drill, power } = game;
   const body = rocket.soi;
@@ -1430,14 +1473,8 @@ function status() {
     throttle: rocket.throttle,
     engineOn: rocket.engineOn,
     canDock: canDock(),
-    dockAction:
-      {
-        market: 'enter the market',
-        satellite: 'dock with the satellite',
-        bank: 'use the battery bank',
-        rig: 'use the mining rig',
-        drone: 'use the drone',
-      }[dockTarget()?.kind] ?? '',
+    dockAction: dockAction(),
+    alien: dockedOf('aliens') && alienInfo(dockedOf('aliens')),
     gold: game.gold,
     satellite: dockedOf('satellite'),
     prices: Object.fromEntries(Object.entries(PRICES).map(([kind, price]) => [kind, price()])),
@@ -1568,6 +1605,7 @@ function snapshot() {
     claimedBounties: [...game.claimedBounties],
     starChart: [...game.starChart],
     ownsTelescope: game.ownsTelescope,
+    relations: game.relations,
   };
 }
 
@@ -1596,6 +1634,7 @@ function restore(saved) {
     entry.stardust ??= entry.visited ? stardustWorlds(planets) : 0;
   }
   game.ownsTelescope = saved.ownsTelescope ?? false;
+  game.relations = { ...startingRelations(), ...saved.relations };
   applyUpgrades(game.upgrades, rocket, power);
   camera.zoom = saved.zoom;
   streamAround();
