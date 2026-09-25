@@ -116,7 +116,7 @@ export function createGalaxyMap(canvas) {
       label(hole.name, hole.x, hole.y, PLANET_MIN_PX + 13);
     }
     const starPx = Math.max(star.radius * view.scale, SYSTEM_STAR_MIN_PX);
-    disk(star.x, star.y, starPx, star.palette?.fill ?? '#fff7dc');
+    disk(star.x, star.y, starPx, star.palette?.fill ?? star.mapFill ?? '#fff7dc');
     label(star.name, star.x, star.y, starPx + 13);
     for (const planet of planets) {
       const planetPx = Math.max(planet.radius * view.scale, PLANET_MIN_PX);

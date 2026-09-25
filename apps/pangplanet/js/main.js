@@ -79,7 +79,7 @@ import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
-import { SECTOR_SIZE, crystalWorlds, homeworldNear, homeworldSpecies, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
+import { SECTOR_SIZE, coreGate, crystalWorlds, homeworldNear, homeworldSpecies, openGateway, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   ALIENS,
@@ -186,6 +186,7 @@ const game = {
   tollSettledAt: null,
   ship: null,
   shipClock: nextShipDelayTicks(),
+  gatewayOpen: false,
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -1183,10 +1184,19 @@ const drillWell = {
   exhausted: () => game.rocket.fuel >= game.rocket.fuelCapacity && !DRILL_FINDS[game.rocket.soi?.resource],
 };
 
+function wakeGateway() {
+  if (game.gatewayOpen) return;
+  game.gatewayOpen = true;
+  openGateway();
+  ticksSinceCharting = CHART_EVERY_TICKS;
+  chartVisits();
+  hud.toast('The Core Gateway woke up. It now links the galactic core and the Sun, both ways.');
+}
+
 function rewardFirstLanding() {
   const body = game.rocket.soi;
   const bounty = claimBounty(game.claimedBounties, body);
-  const science = study(game.studies, `landing:${bodyKey(body)}`, SCIENCE.landing);
+  const science = study(game.studies, `landing:${bodyKey(body)}`, body.landingScience ?? SCIENCE.landing);
   game.galactokens += bounty;
   game.science += science;
   const rewards = [bounty && `+${bounty} galactokens`, science && `+${science} science`].filter(Boolean);
@@ -1205,7 +1215,7 @@ function studySurroundings() {
   const { rocket } = game;
   for (const { star } of systemsWithin(rocket.x, rocket.y, VISIT_RANGE)) earnScience(`visit:${starKey(star)}`, SCIENCE.visit, `surveyed the ${star.name} system`);
   const body = rocket.soi;
-  if (body?.kind === 'blackhole') earnScience(`blackhole:${bodyKey(body)}`, SCIENCE.blackHole, `studied ${body.name}`);
+  if (body?.kind === 'blackhole') earnScience(`blackhole:${bodyKey(body)}`, body.science ?? SCIENCE.blackHole, `studied ${body.name}`);
 }
 
 const sailTargets = () =>
@@ -1432,6 +1442,7 @@ function simulate() {
     if (game.recording) noteStep(game.recording, fuelBefore, rocket);
     if (hit === 'crash') explode();
     if (hit === 'land') rewardFirstLanding();
+    if (hit === 'wormhole' && rocket.soi === coreGate) wakeGateway();
     if (game.recording && !inSignal(game.antennas, rocket.x, rocket.y)) stopRecording('Out of antenna range. Recording stopped.');
     stepDrones();
     stepRescue();
@@ -1799,6 +1810,7 @@ function snapshot() {
     ownsTelescope: game.ownsTelescope,
     relations: game.relations,
     tollSettledAt: game.tollSettledAt,
+    gatewayOpen: game.gatewayOpen,
   };
 }
 
@@ -1832,6 +1844,8 @@ function restore(saved) {
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };
   game.tollSettledAt = saved.tollSettledAt ?? null;
+  game.gatewayOpen = saved.gatewayOpen ?? false;
+  if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);
   camera.zoom = saved.zoom;
   streamAround();

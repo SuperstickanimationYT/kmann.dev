@@ -103,6 +103,33 @@ export const HOME_SYSTEM = [
   ...SOLAR_MOONS,
 ];
 
+export const CORE = {
+  blackHole: { radius: 60000, soi: 160000, mass: 1e12, science: 1000, rings: { inner: 1.4, outer: 2.6, colour: 'rgba(255, 190, 110, 0.6)' } },
+  relicOrbit: 700000,
+  gateOrbit: 500000,
+  richness: { radiusInSectors: 25, crystals: 3, stardust: 6 },
+};
+
+const GATEWAY = { name: 'Core Gateway', radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' };
+
+export function coreSystem(center) {
+  const core = { name: 'Galactic Core', ...center, ...CORE.blackHole, kind: 'blackhole', look: 'blackhole', anchorsSystem: true, mapFill: '#ff963c' };
+  const relic = {
+    ...surfaceBody({
+      name: 'Origin',
+      ...orbiting(center, CORE.relicOrbit, 200),
+      radius: 8000,
+      gravityInEarths: 1.2,
+      bounty: 5000,
+      seed: 9909,
+      surface: { baseColor: '#5a5670', variation: 25, darkness: 45, craters: 10 },
+    }),
+    landingScience: 2000,
+  };
+  const [coreGate, solarGate] = linkWormholes({ ...GATEWAY, ...orbiting(center, CORE.gateOrbit, 20) }, { ...GATEWAY, ...orbiting(SUN, 200000, -60) });
+  return { bodies: [core, relic, coreGate], coreGate, solarGate };
+}
+
 export const MARKET = { x: 1000, y: -50000, scale: 3, dockingRange: 1000 };
 
 export const STARTING_GALACTOKENS = 200;

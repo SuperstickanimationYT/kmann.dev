@@ -12,7 +12,7 @@ function chartEntry({ star, planets }, visited) {
     name: star.name,
     x: star.x,
     y: star.y,
-    fill: star.palette?.fill ?? SUN_FILL,
+    fill: star.palette?.fill ?? star.mapFill ?? SUN_FILL,
     planets: planets.length,
     bounty: planets.reduce((sum, planet) => sum + (planet.bounty ?? 0), 0),
     crystals: crystalWorlds(planets),

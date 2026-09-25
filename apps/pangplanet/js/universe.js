@@ -1,7 +1,7 @@
 import { randomPlanet } from '../../planet-textures/js/presets.js';
 import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
-import { ALIENS, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, blackHole, massFor } from './world.js';
+import { ALIENS, CORE, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, blackHole, coreSystem, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
 export const SECTOR_SIZE = 1.5e7;
@@ -58,6 +58,22 @@ function speciesAt(x, y) {
   return SPECIES[Math.floor(wrapped / TERRITORY_ARC)];
 }
 
+const CORE_SYSTEM = coreSystem({ x: GALAXY.x, y: GALAXY.y });
+const unlockedBodies = [];
+
+export const coreGate = CORE_SYSTEM.coreGate;
+
+export function openGateway() {
+  if (unlockedBodies.includes(CORE_SYSTEM.solarGate)) return;
+  unlockedBodies.push(CORE_SYSTEM.solarGate);
+  bodies.push(CORE_SYSTEM.solarGate);
+}
+
+function coreRichness(x, y) {
+  const closeness = Math.max(0, 1 - Math.hypot(x - GALAXY.x, y - GALAXY.y) / (CORE.richness.radiusInSectors * SECTOR_SIZE));
+  return { crystals: 1 + (CORE.richness.crystals - 1) * closeness, stardust: 1 + (CORE.richness.stardust - 1) * closeness };
+}
+
 export const outsideGalaxy = (x, y) => Math.hypot(x - GALAXY.x, y - GALAXY.y) > GALAXY.radius;
 
 export function galacticPull(x, y) {
@@ -89,14 +105,14 @@ function bountyForGravity(surfaceGravity) {
   return Math.round((min + difficulty * (max - min)) / step) * step;
 }
 
-function resourceFor(gasGiant, seed, index) {
+function resourceFor(gasGiant, seed, index, richness) {
   if (gasGiant) return 'gas';
   const random = createRandom(seed ^ Math.imul(index + 1, 0x9e3779b1));
-  if (random.next() < CRYSTAL_CHANCE) return 'crystals';
-  return random.next() < STARDUST_CHANCE ? 'stardust' : null;
+  if (random.next() < CRYSTAL_CHANCE * richness.crystals) return 'crystals';
+  return random.next() < STARDUST_CHANCE * richness.stardust ? 'stardust' : null;
 }
 
-function generatePlanet(next, star, orbit, index, seed) {
+function generatePlanet(next, star, orbit, index, seed, richness) {
   const gasGiant = next() < GAS_GIANT_CHANCE;
   const shape = gasGiant ? GAS_GIANT : ROCKY;
   const radius = within(next, shape.radius);
@@ -114,12 +130,13 @@ function generatePlanet(next, star, orbit, index, seed) {
     palette: { fill: planet.baseColor },
     planet,
     bounty: bountyForGravity(surfaceGravity),
-    resource: resourceFor(gasGiant, seed, index),
+    resource: resourceFor(gasGiant, seed, index, richness),
   };
 }
 
 function generateSystem(sectorX, sectorY) {
   if (sectorX === 0 && sectorY === 0) return [];
+  if (sectorX === GALAXY_CENTER_IN_SECTORS[0] && sectorY === GALAXY_CENTER_IN_SECTORS[1]) return CORE_SYSTEM.bodies;
   if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return [];
   const seed = sectorSeed(sectorX, sectorY);
   const { next, integer } = createRandom(seed);
@@ -143,10 +160,11 @@ function generateSystem(sectorX, sectorY) {
   const orbits = [];
   let orbit = radius * FIRST_ORBIT_IN_STAR_RADII;
   const count = integer(...PLANET_COUNT);
+  const richness = coreRichness(star.x, star.y);
   for (let index = 0; index < count; index++) {
     orbit += within(next, ORBIT_GAP);
     orbits.push(orbit);
-    planets.push(generatePlanet(next, star, orbit, index, seed));
+    planets.push(generatePlanet(next, star, orbit, index, seed, richness));
   }
   settleHomeworld(star, planets, seed);
   star.biosignature = Boolean(homeworldSpecies(planets)) || createRandom(seed ^ BIOSIGNATURE_SALT).next() < FALSE_BIOSIGNATURE_CHANCE;
@@ -175,9 +193,9 @@ function blackHolesBetween(star, orbits, seed) {
 }
 
 const describeSystem = (systemBodies) => ({
-  star: systemBodies.find((body) => body.kind === 'star'),
+  star: systemBodies.find((body) => body.kind === 'star' || body.anchorsSystem),
   planets: systemBodies.filter((body) => body.kind === 'planemo'),
-  blackHoles: systemBodies.filter((body) => body.kind === 'blackhole'),
+  blackHoles: systemBodies.filter((body) => body.kind === 'blackhole' && !body.anchorsSystem),
 });
 
 export function systemsWithin(x, y, range) {
@@ -237,5 +255,5 @@ export function streamSectors(anchors) {
       }
     }
   }
-  if (changed) bodies.splice(0, bodies.length, ...HOME_SYSTEM, ...[...loadedSectors.values()].flatMap((sector) => sector.bodies));
+  if (changed) bodies.splice(0, bodies.length, ...HOME_SYSTEM, ...unlockedBodies, ...[...loadedSectors.values()].flatMap((sector) => sector.bodies));
 }
