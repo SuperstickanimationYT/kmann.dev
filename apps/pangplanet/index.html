@@ -133,9 +133,12 @@
         <button type="button" class="pp-action pp-outpost" data-deploy-drone>Park drone here (<span data-drones-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-open-drone>Drone controls</button>
         <button type="button" class="pp-action pp-outpost" data-open-haulers>Haulers</button>
+        <button type="button" class="pp-action pp-outpost" data-place-mouth></button>
         <button type="button" class="pp-action pp-outpost" data-launch-sail>Launch solar sail (<span data-sails-in-hold></span> in hold)</button>
       </div>
       <p class="pp-hint" data-sail-note hidden></p>
+      <p class="pp-hint" data-mouth-note hidden></p>
+      <p class="pp-hint" data-wormhole-note hidden></p>
       <p class="pp-hint" data-outpost-ban hidden></p>
     </section>
 
@@ -191,6 +194,10 @@
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-builder>
           Builder for <span data-price="builder"></span>
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-wormhole>
+          Wormhole pair for <span data-price="wormhole"></span>
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action pp-outpost" data-add-hauler-stop="market">Add to hauler route: sell gold</button>
@@ -457,6 +464,7 @@
         <li>Alien freighters sometimes pass through the system you're in, including the Solar System. Fly within 1.5K of one and match its speed to under 10 to meet it: trade, ask for tips, or raid it for its cargo. Raiding angers that species and pleases its rival.</li>
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
         <li>Wormholes: some star systems beyond the Sun's neighbourhood have one, orbiting past the outermost planet. Each links to another system 10 to 30 sectors away. You find out where by going through; the galaxy map remembers the link.</li>
+        <li>Your own wormholes: buy a pair at the market, place the first mouth in open space, then carry the second one anywhere and place it. Each trip costs 5 galactokens per sector between the mouths; haulers use them too. A wormhole nobody goes through for 6 hours of play collapses.</li>
         <li>A supermassive black hole sits at the galaxy's center, 100 sectors from the Sun. Stars near it hold more crystals and stardust. Something orbiting it is worth the trip.</li>
       </ul>
       <h4>Science</h4>
