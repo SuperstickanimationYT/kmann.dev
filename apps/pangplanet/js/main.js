@@ -290,7 +290,7 @@ const PRICES = {
   builder: () => risingPrice(BUILDER.cost, game.haulers.filter((hauler) => hauler.builds).length),
 };
 
-const WANTED_GOODS = {
+const TRADE_GOODS = {
   gold: {
     label: 'gold',
     icon: 'img/gold.svg',
@@ -311,6 +311,20 @@ const WANTED_GOODS = {
     marketPrice: BATTERY.sellPrice,
     count: () => chargedBatteries(game.power),
     handOver: () => (game.power.batteries = game.power.batteries.filter((charge) => charge < 1)),
+  },
+  stardust: {
+    label: 'stardust',
+    icon: 'img/stardust.svg',
+    marketPrice: STARDUST.sellPrice,
+    count: () => game.stardust,
+    handOver: () => (game.stardust = 0),
+  },
+  science: {
+    label: 'science',
+    icon: 'img/science.svg',
+    marketPrice: SCIENCE.sellPrice,
+    count: () => game.science,
+    handOver: () => (game.science = 0),
   },
 };
 
@@ -841,11 +855,36 @@ const actions = {
     shiftRelation(game.relations, due.species, -ALIENS.toll.refusalAnger);
     settleToll(`Refused the ${speciesByKey[due.species].name} toll. Relations -${ALIENS.toll.refusalAnger}.`);
   },
+  alienBuyFuel: () => {
+    const market = dockedMarket();
+    const { rocket } = game;
+    if (!market?.canBuyFuel) return;
+    game.galactokens -= market.fuelPackCost;
+    rocket.fuel = Math.min(rocket.fuelCapacity, rocket.fuel + FUEL_PACK.amount);
+  },
+  alienFillTank: () => {
+    const market = dockedMarket();
+    if (!market?.canFillTank) return;
+    game.galactokens -= market.fillTankCost;
+    game.rocket.fuel = game.rocket.fuelCapacity;
+  },
+  alienBuyBattery: () => {
+    const market = dockedMarket();
+    if (!market?.canBuyBattery) return;
+    game.galactokens -= market.batteryCost;
+    game.power.batteries.push(0);
+  },
+  alienSell: (key) => {
+    const offer = dockedMarket()?.offers.find((candidate) => candidate.key === key);
+    if (!offer?.count) return;
+    TRADE_GOODS[key].handOver();
+    game.galactokens += offer.count * offer.price;
+  },
   sellToAliens: () => {
     const homeworld = dockedOf('aliens');
     const alien = homeworld && alienInfo(homeworld);
     if (!alien?.canSell) return;
-    const goods = WANTED_GOODS[alien.wants];
+    const goods = TRADE_GOODS[alien.wants];
     const count = goods.count();
     goods.handOver();
     game.galactokens += count * alien.sellPrice;
@@ -924,7 +963,7 @@ function alienInfo(homeworld) {
   const relation = game.relations[homeworld.species];
   const friendly = mood(relation) === 'friendly';
   const price = tipPrice(relation);
-  const goods = WANTED_GOODS[wants];
+  const goods = TRADE_GOODS[wants];
   return {
     name,
     mood: mood(relation),
@@ -937,11 +976,40 @@ function alienInfo(homeworld) {
     wantsIcon: goods.icon,
     sellPrice: priceFromAliens(relation, goods.marketPrice),
     canSell: goods.count() > 0,
+    market: homeworld === game.ship ? null : homeworldMarket(homeworld, wants),
+    refusesTrade: homeworld !== game.ship && mood(relation) === 'hostile',
     title: alienTitle(homeworld),
     raidable: homeworld === game.ship,
     raidCost: `${name} -${ALIENS.ships.raidAnger}, ${speciesByKey[rival].name} +${ALIENS.ships.rivalGoodwill}`,
   };
 }
+
+function homeworldMarket(homeworld, wants) {
+  const rates = ALIENS.market[mood(game.relations[homeworld.species])];
+  if (!rates) return null;
+  const { rocket, power, galactokens } = game;
+  const markUp = (price) => Math.ceil(price * rates.buy);
+  const fuelPackCost = markUp(FUEL_PACK.cost);
+  const fillTankCost = markUp(fuelPrice(rocket.fuelCapacity - rocket.fuel));
+  const batteryCost = markUp(BATTERY.cost);
+  const offers = Object.entries(TRADE_GOODS)
+    .filter(([key]) => key !== wants)
+    .map(([key, goods]) => ({ key, label: goods.label, icon: goods.icon, price: Math.round(goods.marketPrice * rates.sell), count: goods.count() }));
+  return {
+    fuelPackCost,
+    fillTankCost,
+    batteryCost,
+    canBuyFuel: galactokens >= fuelPackCost && rocket.fuel <= rocket.fuelCapacity - FUEL_PACK.amount,
+    canFillTank: fillTankCost > 0 && galactokens >= fillTankCost,
+    canBuyBattery: freeBatterySlots(power) > 0 && galactokens >= batteryCost,
+    offers,
+  };
+}
+
+const dockedMarket = () => {
+  const homeworld = dockedOf('aliens');
+  return homeworld && homeworld !== game.ship ? homeworldMarket(homeworld, speciesByKey[homeworld.species].wants) : null;
+};
 
 function angerOwners(body, resource) {
   const anger = ALIENS.miningAnger[resource];
