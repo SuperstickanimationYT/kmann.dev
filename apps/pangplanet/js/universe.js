@@ -209,6 +209,14 @@ export const crystalWorlds = worldsWith('crystals');
 export const stardustWorlds = worldsWith('stardust');
 export const homeworldSpecies = (planets) => planets.find((planet) => planet.species)?.species ?? null;
 
+export function homeworldNear(x, y, range) {
+  for (const { star, planets } of systemsWithin(x, y, range)) {
+    const species = homeworldSpecies(planets);
+    if (species) return { species, star };
+  }
+  return null;
+}
+
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));
 
 export function streamSectors(anchors) {

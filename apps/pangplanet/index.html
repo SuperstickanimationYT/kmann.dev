@@ -135,6 +135,7 @@
         <button type="button" class="pp-action pp-outpost" data-launch-sail>Launch solar sail (<span data-sails-in-hold></span> in hold)</button>
       </div>
       <p class="pp-hint" data-sail-note hidden></p>
+      <p class="pp-hint" data-outpost-ban hidden></p>
     </section>
 
     <section class="pp-panel" data-panel="market" hidden aria-label="Market">
@@ -248,6 +249,21 @@
       </div>
       <p class="pp-hint" data-alien-note>They only share what they know with friends.</p>
       <p class="pp-hint">Selling them what they want improves relations. Friends pay 1.5× the market price. Mining crystals or stardust in their home system angers them.</p>
+    </section>
+
+    <section class="pp-panel" data-panel="toll" hidden aria-label="Toll">
+      <header>
+        <h3>Toll</h3>
+        <button type="button" class="pp-close" data-close aria-label="Refuse">X</button>
+      </header>
+      <p data-toll-demand></p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-pay-toll>
+          Pay 300
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action" data-refuse-toll>Refuse</button>
+      </div>
     </section>
 
     <section class="pp-panel" data-panel="warp" hidden aria-label="Warp drive">
@@ -414,7 +430,7 @@
         <li>Gas giants pump double fuel.</li>
         <li>Crystals: some rocky worlds around other stars have them, and the fuel drill brings them up. A telescope shows which systems.</li>
         <li>Stardust: much rarer and invisible to telescopes. Visit a system or ask friendly aliens to find it. It pays for the top upgrades.</li>
-        <li>Aliens live on some worlds around other stars. Telescopes spot possible biosignatures; 3 in 4 are real homeworlds, and no homeworld goes unflagged. Land on one to meet them. Friendly aliens tell you where stardust is, for science. Each species wants gold, crystals or charged batteries; selling to them wins them over. Mining crystals or stardust in their home system angers them.</li>
+        <li>Aliens live on some worlds around other stars. Telescopes spot possible biosignatures; 3 in 4 are real homeworlds, and no homeworld goes unflagged. Land on one to meet them. Friendly aliens tell you where stardust is, for science. Each species wants gold, crystals or charged batteries; selling to them wins them over. Mining crystals or stardust in their home system angers them. Hostile aliens charge a toll to enter their system, ban new outposts there, and raid haulers that stop there.</li>
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
       </ul>
       <h4>Science</h4>

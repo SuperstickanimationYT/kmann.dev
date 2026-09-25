@@ -50,10 +50,16 @@ Hostile species refuse to give tips. They never sell false ones.
 
 ## Hostile effects
 
-- Toll to enter the SOI of one of their systems. Refusing drops relations.
-- Haulers routed through their systems sometimes lose cargo (new stall kind `raided`).
+A hostile species' system is the space within 4M of its homeworld star, the range that
+counts as visiting.
+
+- **Toll**: entering their system opens a toll panel: pay 300 galactokens, or refuse for
+  -10 relation. Closing the panel refuses. Asked once per visit; leaving resets it.
+- **Hauler raids**: a hauler arriving at a stop in their system has a 30% chance of losing
+  half its gold and charge, then pauses 60s (stall kind `raided`).
+- **No outposts**: satellites, banks, rigs, antennas and drones can't be deployed in their
+  system, and builders refuse build stops there. Outposts already there stay.
 - No tips.
-- No outposts in their territory.
 
 ## Alien ships and raids
 
@@ -74,4 +80,3 @@ Hostile species refuse to give tips. They never sell false ones.
 3. Tolls and hauler raids
 4. Alien ships and player raids
 
-Toll size and raid rates get tuned in play during phase 3.

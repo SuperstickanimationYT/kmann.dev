@@ -1,6 +1,6 @@
 import { bearingBetween } from './physics.js';
 import { drainBatteries, storedCharge } from './solar.js';
-import { HAULER, WARP_DRIVE } from './world.js';
+import { ALIENS, HAULER, WARP_DRIVE } from './world.js';
 
 export function createHauler(at, builds = false) {
   return { builds, x: at.x, y: at.y, stops: [], next: 0, running: false, leg: null, wait: 0, stalled: null, movedThisLoop: false, batteries: Array(HAULER.batteries).fill(0), gold: 0 };
@@ -57,12 +57,14 @@ function chargeForNextWarp(hauler, locate) {
   return cost?.warp ? cost.charge : 0;
 }
 
-function arrive(hauler, { locate, act }) {
+function arrive(hauler, { locate, act, raid }) {
   const { to } = hauler.leg;
   Object.assign(hauler, { x: to.x, y: to.y, leg: null });
   const stop = hauler.stops[hauler.next];
   const spot = stop && locate(stop);
   if (!spot || spot.x !== to.x || spot.y !== to.y) return;
+  const raider = raid(spot, hauler);
+  if (raider) stall(hauler, { kind: 'raided', species: raider }, ALIENS.raid.pauseSeconds);
   const before = cargoOf(hauler);
   const finished = act(stop, hauler, chargeForNextWarp(hauler, locate));
   if (cargoOf(hauler) !== before || finished) hauler.movedThisLoop = true;
@@ -73,6 +75,7 @@ function arrive(hauler, { locate, act }) {
 
 export function settleHauler(hauler, world) {
   const loopDone = hauler.leg && arrive(hauler, world);
+  if (hauler.stalled?.kind === 'raided' && hauler.wait > 0) return;
   if (loopDone && !hauler.movedThisLoop) {
     stall(hauler, { kind: 'idle' }, HAULER.idleSeconds);
     return;
