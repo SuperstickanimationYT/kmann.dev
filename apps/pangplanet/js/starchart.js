@@ -14,7 +14,6 @@ function chartEntry({ star, planets, wormholes }, visited) {
     y: star.y,
     fill: star.palette?.fill ?? star.mapFill ?? SUN_FILL,
     planets: planets.length,
-    bounty: planets.reduce((sum, planet) => sum + (planet.bounty ?? 0), 0),
     crystals: crystalWorlds(planets),
     stardust: visited ? stardustWorlds(planets) : 0,
     biosignature: Boolean(star.biosignature),

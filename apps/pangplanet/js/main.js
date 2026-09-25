@@ -1237,7 +1237,7 @@ function mapInfo() {
   const details = [
     entry.name,
     `${entry.planets} planet${entry.planets === 1 ? '' : 's'}`,
-    entry.bounty ? `up to ${entry.bounty} in bounties` : null,
+    bountyNote(entry),
     entry.visited ? 'visited' : 'seen through telescope',
     `${abbreviate(distance)} away`,
     entry.crystals ? `${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'}` : null,
@@ -1247,6 +1247,16 @@ function mapInfo() {
     game.ownsWarpDrive && distance <= warpRange() ? 'in warp range' : null,
   ];
   return details.filter(Boolean).join(' · ');
+}
+
+function bountyNote(entry) {
+  const planets = systemAt(entry.x, entry.y)?.planets ?? [];
+  const total = planets.reduce((sum, planet) => sum + (planet.bounty ?? 0), 0);
+  const unclaimed = planets.reduce((sum, planet) => sum + bountyWaiting(game.claimedBounties, planet), 0);
+  if (!total) return null;
+  if (unclaimed === total) return `up to ${total} in bounties`;
+  if (unclaimed === 0) return `all ${total} in bounties claimed`;
+  return `${unclaimed} of ${total} in bounties unclaimed`;
 }
 
 function lifeNote(entry) {
