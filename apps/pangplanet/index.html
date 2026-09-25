@@ -43,6 +43,7 @@
       <span class="pp-gold" data-gold-counter title="Gold" hidden><img src="img/gold.svg" alt="Gold"> <span data-gold>0</span></span>
       <span class="pp-gold pp-crystals" data-crystal-counter title="Crystals" hidden><img src="img/crystal.svg" alt="Crystals"> <span data-crystals>0</span></span>
       <span class="pp-gold pp-stardust" data-stardust-counter title="Stardust" hidden><img src="img/stardust.svg" alt="Stardust"> <span data-stardust>0</span></span>
+      <span class="pp-gold pp-science" data-science-counter title="Science" hidden><img src="img/science.svg" alt="Science"> <span data-science>0</span></span>
     </div>
     <div class="pp-counter pp-fuel" title="Fuel">
       <span class="pp-fuel-bar" data-fuel-bar></span>
@@ -131,7 +132,9 @@
         <button type="button" class="pp-action pp-outpost" data-deploy-drone>Park drone here (<span data-drones-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-open-drone>Drone controls</button>
         <button type="button" class="pp-action pp-outpost" data-open-haulers>Haulers</button>
+        <button type="button" class="pp-action pp-outpost" data-launch-sail>Launch solar sail (<span data-sails-in-hold></span> in hold)</button>
       </div>
+      <p class="pp-hint" data-sail-note hidden></p>
     </section>
 
     <section class="pp-panel" data-panel="market" hidden aria-label="Market">
@@ -200,6 +203,14 @@
         <button type="button" class="pp-action pp-sell" data-sell-stardust>
           <img src="img/stardust.svg" alt=""> Sell stardust, 500
           <img src="img/galactokens.svg" alt="galactokens"> each
+        </button>
+        <button type="button" class="pp-action pp-sell" data-sell-science>
+          <img src="img/science.svg" alt=""> Sell science, 5
+          <img src="img/galactokens.svg" alt="galactokens"> each
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-sail>
+          Solar sail for 250
+          <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action" data-buy-rescue-module hidden>
           Rescue module for 2,500
@@ -384,6 +395,11 @@
         <li>Crystals: some rocky worlds around other stars have them, and the fuel drill brings them up. A telescope shows which systems.</li>
         <li>Stardust: much rarer and invisible to telescopes. Visit a system to find it. It pays for the top upgrades.</li>
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
+      </ul>
+      <h4>Science</h4>
+      <ul>
+        <li>Earn it the first time you visit a star system, land on a world, drill a sample or enter a black hole's pull. Sell it at the market.</li>
+        <li>Solar sails fly straight out from the star lighting them. Launch one from the rocket menu with a charted star ahead of you; it sends back a little science as it flies past.</li>
       </ul>
       <h4>Automate</h4>
       <ul>

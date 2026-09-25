@@ -1,6 +1,6 @@
 import { PRICE_GROWTH, UPGRADES } from './world.js';
 
-const bodyKey = (body) => `${body.name}@${Math.round(body.x)},${Math.round(body.y)}`;
+export const bodyKey = (body) => `${body.name}@${Math.round(body.x)},${Math.round(body.y)}`;
 
 export const bountyWaiting = (claimed, body) => (body.bounty && !claimed.has(bodyKey(body)) ? body.bounty : 0);
 

@@ -3,6 +3,7 @@ import { abbreviate, createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, sphereOfInfluence, wrapAngle } from './physics.js';
 import { createRenderer } from './render.js';
 import {
+  brightestStar,
   chargeBatteries,
   chargedBatteries,
   createPower,
@@ -55,14 +56,15 @@ import {
 import { createGalaxyMap } from './galaxy-map.js';
 import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
 import { blast, createParticles, drift, exhaust } from './particles.js';
-import { applyUpgrades, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
+import { applyUpgrades, bodyKey, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
+import { advanceSails, createStudies, cruiseSpeed, flybyScience, launchSail, sailPose, sampleScience, starAhead, study } from './science.js';
 import { deleteSave, readSave, writeSave } from './save.js';
-import { chartVisitsNear, createStarChart, isCharted, scanFrom } from './starchart.js';
+import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
-import { crystalWorlds, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt } from './universe.js';
+import { crystalWorlds, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   ANTENNA,
@@ -82,7 +84,9 @@ import {
   OFFLINE_CATCH_UP_SECONDS,
   RESCUE,
   SATELLITE,
+  SCIENCE,
   SOLAR_PANELS,
+  SOLAR_SAIL,
   STARDUST,
   STARTING_GALACTOKENS,
   TELESCOPE,
@@ -149,6 +153,10 @@ const game = {
   docked: null,
   gold: 0,
   crystals: 0,
+  science: 0,
+  studies: createStudies(),
+  sails: [],
+  sailsInHold: 0,
   stardust: 0,
   upgrades: createUpgrades(),
   claimedBounties: new Set(),
@@ -683,6 +691,22 @@ const actions = {
     game.galactokens += game.crystals * CRYSTALS.sellPrice;
     game.crystals = 0;
   },
+  sellScience: () => {
+    game.galactokens += game.science * SCIENCE.sellPrice;
+    game.science = 0;
+  },
+  buySail: () => {
+    if (game.galactokens < SOLAR_SAIL.cost) return;
+    game.galactokens -= SOLAR_SAIL.cost;
+    game.sailsInHold += 1;
+  },
+  launchSail: () => {
+    const plan = sailPlan();
+    if (!canLaunchSail(plan)) return;
+    game.sails.push(launchSail(plan.star, game.rocket, plan.target));
+    game.sailsInHold -= 1;
+    hud.toast(`Solar sail launched toward ${plan.target.name}.`);
+  },
   sellStardust: () => {
     game.galactokens += game.stardust * STARDUST.sellPrice;
     game.stardust = 0;
@@ -745,6 +769,7 @@ function advanceOutposts(seconds) {
 
 function advanceUnattended(seconds) {
   advanceOutposts(seconds);
+  advanceSailing(seconds);
   for (const hauler of game.haulers) passTime(hauler, seconds);
 }
 
@@ -898,6 +923,7 @@ function chartVisits() {
   ticksSinceCharting = 0;
   const { rocket } = game;
   if (chartVisitsNear(game.starChart, rocket.x, rocket.y)) hud.toast('New star system added to your galaxy map.');
+  studySurroundings();
 }
 
 const closeUpSystem = () => (game.mapSelection?.visited ? systemAt(game.mapSelection.x, game.mapSelection.y) : null);
@@ -946,6 +972,7 @@ const drillWell = {
     const { rocket } = game;
     const { resource } = rocket.soi;
     rocket.fuel = Math.min(rocket.fuelCapacity, Math.floor(rocket.fuel) + (FUEL_PER_PUMP[resource] ?? FUEL_PER_PUMP.other));
+    earnScience(`sample:${bodyKey(rocket.soi)}`, sampleScience(resource), `drilled a sample on ${rocket.soi.name}`);
     const find = DRILL_FINDS[resource];
     if (!find || Math.random() >= find.chancePerPump) return;
     game[resource] += 1;
@@ -957,9 +984,50 @@ const drillWell = {
 function rewardFirstLanding() {
   const body = game.rocket.soi;
   const bounty = claimBounty(game.claimedBounties, body);
-  if (!bounty) return;
+  const science = study(game.studies, `landing:${bodyKey(body)}`, SCIENCE.landing);
   game.galactokens += bounty;
-  hud.toast(`First landing on ${body.name}! +${bounty} galactokens`);
+  game.science += science;
+  const rewards = [bounty && `+${bounty} galactokens`, science && `+${science} science`].filter(Boolean);
+  if (rewards.length) hud.toast(`First landing on ${body.name}! ${rewards.join(', ')}`);
+}
+
+function earnScience(key, amount, what) {
+  const gained = study(game.studies, key, amount);
+  if (!gained) return;
+  game.science += gained;
+  hud.toast(`+${gained} science: ${what}.`);
+}
+
+function studySurroundings() {
+  const { rocket } = game;
+  for (const { star } of systemsWithin(rocket.x, rocket.y, VISIT_RANGE)) earnScience(`visit:${starKey(star)}`, SCIENCE.visit, `surveyed the ${star.name} system`);
+  const body = rocket.soi;
+  if (body?.kind === 'blackhole') earnScience(`blackhole:${bodyKey(body)}`, SCIENCE.blackHole, `studied ${body.name}`);
+}
+
+const sailTargets = () =>
+  [...game.starChart.values()].filter((entry) => !game.studies.has(`flyby:${starKey(entry)}`) && !game.sails.some(({ to }) => starKey(to) === starKey(entry)));
+
+function sailPlan() {
+  const { rocket } = game;
+  const star = brightestStar(rocket.x, rocket.y);
+  if (!star || sunlight(rocket.x, rocket.y) < SOLAR_SAIL.minLight) return { note: 'Too dark to sail. Get closer to a star.' };
+  const target = starAhead(sailTargets(), star, rocket);
+  if (!target) return { note: `No charted star ahead. Sails fly straight out from ${star.name}: move around it to aim.` };
+  const seconds = Math.hypot(target.x - rocket.x, target.y - rocket.y) / cruiseSpeed(star, rocket);
+  return { star, target, note: `Ahead: ${target.name}, arriving in ${formatDuration(seconds)}.` };
+}
+
+const canLaunchSail = (plan) => game.sailsInHold > 0 && Boolean(plan.target) && !game.rocket.landed && !game.rocket.destroyed;
+
+function advanceSailing(seconds) {
+  const { flying, arrived } = advanceSails(game.sails, seconds);
+  game.sails = flying;
+  for (const { to } of arrived) {
+    scanFrom(game.starChart, to.x, to.y, 1);
+    const planets = systemAt(to.x, to.y)?.planets.length ?? 0;
+    earnScience(`flyby:${starKey(to)}`, flybyScience(planets), `solar sail flew past ${to.name}`);
+  }
 }
 
 const satelliteBy = (flight) => nearestWithin(deployed(game.satellites), flight, SATELLITE.dockingRange);
@@ -1309,6 +1377,7 @@ function status() {
   const { rocket, drill, power } = game;
   const body = rocket.soi;
   const fuelFull = rocket.fuel > rocket.fuelCapacity - FUEL_PACK.amount;
+  const sail = sailPlan();
   const planningWarp = game.panel === 'warp' && game.ownsWarpDrive && canWarpFrom(rocket);
   const destinations = planningWarp ? chartedDestinations() : [];
   const unchartedInRange = planningWarp ? warpDestinations(rocket, power, warpRange()).length - destinations.length : 0;
@@ -1322,6 +1391,11 @@ function status() {
     }),
     crystals: game.crystals,
     stardust: game.stardust,
+    science: game.science,
+    sailsInHold: game.sailsInHold,
+    sailNote: sail.note,
+    canLaunchSail: canLaunchSail(sail),
+    canBuySail: game.galactokens >= SOLAR_SAIL.cost,
     bountyHere: body ? bountyWaiting(game.claimedBounties, body) : 0,
     timewarp: game.timewarp,
     timewarpBought: timewarpBought(),
@@ -1430,7 +1504,7 @@ function frame(time) {
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
       routePath: routePaths(),
-      drones: [...parkedDrones().map(dronePose), ...game.haulers.map(haulerPose)],
+      drones: [...parkedDrones().map(dronePose), ...game.haulers.map(haulerPose), ...game.sails.map(sailPose)],
     });
   }
   bakeNextTexture();
@@ -1462,6 +1536,10 @@ function snapshot() {
     gold: game.gold,
     crystals: game.crystals,
     stardust: game.stardust,
+    science: game.science,
+    studies: [...game.studies],
+    sails: game.sails,
+    sailsInHold: game.sailsInHold,
     upgrades: game.upgrades,
     claimedBounties: [...game.claimedBounties],
     starChart: [...game.starChart],
@@ -1487,6 +1565,7 @@ function restore(saved) {
   game.starChart = new Map(saved.starChart ?? []);
   game.crystals = saved.crystals ?? 0;
   game.stardust = saved.stardust ?? 0;
+  Object.assign(game, { science: saved.science ?? 0, studies: new Set(saved.studies ?? []), sails: saved.sails ?? [], sailsInHold: saved.sailsInHold ?? 0 });
   for (const entry of game.starChart.values()) {
     const planets = systemAt(entry.x, entry.y)?.planets ?? [];
     entry.crystals ??= crystalWorlds(planets);

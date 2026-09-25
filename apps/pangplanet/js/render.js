@@ -5,6 +5,7 @@ import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
 import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, MARKET, ROCKET_HEIGHT } from './world.js';
+import { sailPose } from './science.js';
 
 const STAGE_HEIGHT_UNITS = 360;
 const ROCK_COUNT = 72;
@@ -30,6 +31,7 @@ const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
 const SIGNAL_RING_MAX_PX = 50000;
 const HAULER_SCALE = 0.8;
+const SAIL_COLOUR = '#9dffb0';
 const HAULER_LOOKS = { hauler: { label: 'Hauler', colour: '#6dff8c' }, builder: { label: 'Builder', colour: '#ffc933' } };
 const FLICKER_WAVES = [[0.9, 0.07], [2.3, 0.05], [5.1, 0.03]];
 const RESOURCE_LABELS = {
@@ -431,6 +433,14 @@ export function createRenderer(canvas, sprites) {
     });
   }
 
+  function drawSail(sail) {
+    const pose = sailPose(sail);
+    const [sx, sy] = toScreen(pose.x, pose.y);
+    if (!onScreen(sx, sy, 40)) return;
+    drawMarker(sx, sy, pose.heading, SAIL_COLOUR, 4);
+    drawLabel(`Solar sail · ${sail.to.name}`, sx, sy + 16, SAIL_COLOUR);
+  }
+
   function drawHauler(hauler) {
     const pose = haulerPose(hauler);
     const { label, colour } = HAULER_LOOKS[hauler.builds ? 'builder' : 'hauler'];
@@ -663,6 +673,7 @@ export function createRenderer(canvas, sprites) {
     drawParticles(scene.particles);
     scene.drones.forEach(drawDrone);
     scene.haulers.forEach(drawHauler);
+    scene.sails.forEach(drawSail);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);

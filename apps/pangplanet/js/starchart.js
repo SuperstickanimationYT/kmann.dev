@@ -1,6 +1,6 @@
 import { crystalWorlds, stardustWorlds, systemsWithin } from './universe.js';
 
-const VISIT_RANGE = 4e6;
+export const VISIT_RANGE = 4e6;
 const SUN_FILL = '#fff7dc';
 
 export const starKey = (star) => `${star.name}@${Math.round(star.x)},${Math.round(star.y)}`;
