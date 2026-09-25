@@ -25,7 +25,7 @@ const WARP_STREAKS = 90;
 const RING_BANDS = [[0, 1], [0.35, 1], [0.4, 0], [0.45, 1], [0.8, 1], [1, 0]];
 const STAR_TILE = 640;
 const STAR_PARALLAX = 0.04;
-const SOLAR_PANEL = { reach: 55, width: 22, inset: 12, cells: 4 };
+const SOLAR_PANEL = { reach: 55, width: 22, inset: 8, cells: 4 };
 const SATELLITE_SHAPE = { core: 30, panelReach: 60, panelWidth: 18 };
 const RIG_SHAPE = { base: 50, height: 80, besideRocket: 75 };
 const OUTPOST_DOT_BELOW_PX = 8;
@@ -475,7 +475,7 @@ export function createRenderer(canvas, sprites) {
       drawLabel(label, sx, sy + 16, colour);
       return;
     }
-    withPose(sx, sy, shipHeading(ship), () => drawSprite(sprites.rocket, scale));
+    withPose(sx, sy, shipHeading(ship), () => drawSprite(sprites.freighters[ship.species], scale));
     drawLabel(label, sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, colour);
   }
 
