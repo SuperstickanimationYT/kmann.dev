@@ -55,6 +55,7 @@ import {
   replayFlight,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
+import { flyShip, launchShip, nextShipDelayTicks, relativeSpeed, shipGone } from './ships.js';
 import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
 import { blast, createParticles, drift, exhaust } from './particles.js';
 import { applyUpgrades, bodyKey, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
@@ -86,6 +87,7 @@ import {
   BATTERY,
   BATTERY_BANK,
   BUILDER,
+  CRASH_SPEED,
   CRYSTALS,
   DRONE,
   DRONE_SCALE,
@@ -128,6 +130,7 @@ const ARRIVAL_VIEW_IN_STANDOFFS = 3;
 const CHEAT_GALACTOKENS = 10000;
 const CHEAT_SKIP_SECONDS = 600;
 const CHEAT_REVEAL_RANGE = 1.5e8;
+const CHEAT_SHIP_GAP = 800;
 const CHART_EVERY_TICKS = 30;
 
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
@@ -181,6 +184,8 @@ const game = {
   hostileHere: null,
   tollDue: null,
   tollSettledAt: null,
+  ship: null,
+  shipClock: nextShipDelayTicks(),
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -218,6 +223,7 @@ function dockTarget() {
   const { rocket } = game;
   if (rocket.destroyed || game.warp) return null;
   if (Math.hypot(rocket.x - MARKET.x, rocket.y - MARKET.y) < MARKET.dockingRange) return { kind: 'market' };
+  if (canMeetShip()) return { kind: 'aliens', item: game.ship };
   const satellite = nearestWithin(deployed(game.satellites), rocket, SATELLITE.dockingRange);
   if (satellite) return { kind: 'satellite', item: satellite };
   const bank = nearestWithin(deployed(game.banks), rocket, BATTERY_BANK.dockingRange);
@@ -791,6 +797,21 @@ const actions = {
     game.science -= alien.tipPrice;
     hud.toast(`The ${alien.name} say ${found} has stardust. It's marked on your galaxy map.`);
   },
+  raidShip: () => {
+    const { ship } = game;
+    if (!ship || dockedOf('aliens') !== ship) return;
+    const { name, rival } = speciesByKey[ship.species];
+    const { galactokens, crystals, stardust } = ship.cargo;
+    game.galactokens += galactokens;
+    game.crystals += crystals;
+    game.stardust += stardust;
+    shiftRelation(game.relations, ship.species, -ALIENS.ships.raidAnger);
+    shiftRelation(game.relations, rival, ALIENS.ships.rivalGoodwill);
+    game.ship = null;
+    openPanel(null);
+    const loot = [`${galactokens} galactokens`, crystals && `${crystals} crystal${crystals === 1 ? '' : 's'}`, stardust && `${stardust} stardust`].filter(Boolean).join(', ');
+    hud.toast(`Raided the ${name} freighter: ${loot}. ${name} -${ALIENS.ships.raidAnger}, ${speciesByKey[rival].name} +${ALIENS.ships.rivalGoodwill}.`);
+  },
   payToll: () => {
     const due = game.tollDue;
     if (!due || game.galactokens < ALIENS.toll.galactokens) return;
@@ -837,6 +858,11 @@ const CHEATS = {
     game.power.batteries = Array(game.power.slots).fill(1);
   },
   skipTenMinutes: () => catchUp(CHEAT_SKIP_SECONDS),
+  summonShip: () => {
+    summonShip();
+    const { ship, rocket } = game;
+    if (ship) Object.assign(ship, { x: rocket.x + CHEAT_SHIP_GAP, y: rocket.y, vx: rocket.vx, vy: rocket.vy });
+  },
   revealNearby: () => scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE),
   goHome: () => {
     const { rocket, drill } = game;
@@ -853,13 +879,19 @@ const hud = createHud(stage, actions);
 const tour = createTour(stage, { onEnd: () => (game.tourSeen = true), openGuide: () => openPanel('help') });
 const galaxyMap = createGalaxyMap(stage.querySelector('[data-map]'));
 
+function canMeetShip() {
+  const { ship, rocket } = game;
+  return Boolean(ship) && !rocket.landed && distanceFromRocket(ship) < ALIENS.ships.reach && relativeSpeed(ship, rocket) < CRASH_SPEED;
+}
+
 function dock() {
   if (!canDock()) return;
+  const target = dockTarget();
   if (!game.rocket.landed) {
-    Object.assign(game.rocket, { vx: 0, vy: 0, engineOn: false });
+    const drift = target.item === game.ship ? { vx: game.ship.vx, vy: game.ship.vy } : { vx: 0, vy: 0 };
+    Object.assign(game.rocket, drift, { engineOn: false });
     noteRecording('dock');
   }
-  const target = dockTarget();
   game.docked = target.item ?? null;
   openPanel(target.kind);
   if (target.kind === 'aliens') {
@@ -868,8 +900,10 @@ function dock() {
   }
 }
 
+const alienTitle = (host) => `${speciesByKey[host.species].name}${host === game.ship ? ' freighter' : ''}`;
+
 function alienInfo(homeworld) {
-  const { name, wants } = speciesByKey[homeworld.species];
+  const { name, wants, rival } = speciesByKey[homeworld.species];
   const relation = game.relations[homeworld.species];
   const friendly = mood(relation) === 'friendly';
   const price = tipPrice(relation);
@@ -886,6 +920,9 @@ function alienInfo(homeworld) {
     wantsIcon: goods.icon,
     sellPrice: priceFromAliens(relation, goods.marketPrice),
     canSell: goods.count() > 0,
+    title: alienTitle(homeworld),
+    raidable: homeworld === game.ship,
+    raidCost: `${name} -${ALIENS.ships.raidAnger}, ${speciesByKey[rival].name} +${ALIENS.ships.rivalGoodwill}`,
   };
 }
 
@@ -1398,10 +1435,38 @@ function simulate() {
     if (game.recording && !inSignal(game.antennas, rocket.x, rocket.y)) stopRecording('Out of antenna range. Recording stopped.');
     stepDrones();
     stepRescue();
+    stepShip();
     simTicks += STEP_TICKS;
     game.timewarp = Math.min(game.timewarp, timewarpCap());
   }
   return simTicks;
+}
+
+function stepShip() {
+  if (game.ship) {
+    flyShip(game.ship, STEP_TICKS);
+    if (shipGone(game.ship)) shipLeaves();
+    return;
+  }
+  game.shipClock -= STEP_TICKS;
+  if (game.shipClock > 0) return;
+  game.shipClock = nextShipDelayTicks();
+  summonShip();
+}
+
+function summonShip() {
+  const { rocket } = game;
+  const here = systemsWithin(rocket.x, rocket.y, VISIT_RANGE)[0];
+  const home = here && homeworldNear(here.star.x, here.star.y, ALIENS.ships.reachInSectors * SECTOR_SIZE);
+  if (!home) return;
+  game.ship = launchShip(home.species, here.star, VISIT_RANGE);
+  hud.toast(`A ${speciesByKey[home.species].name} freighter is passing through the ${here.star.name} system. Match its speed to meet it.`);
+}
+
+function shipLeaves() {
+  if (dockedOf('aliens') === game.ship) openPanel(null);
+  hud.toast(`The ${speciesByKey[game.ship.species].name} freighter left the ${game.ship.starName} system.`);
+  game.ship = null;
 }
 
 function cameraTarget() {
@@ -1552,7 +1617,7 @@ function haulerInfo() {
 
 function dockAction() {
   const target = dockTarget();
-  if (target?.kind === 'aliens') return `meet the ${speciesByKey[target.item.species].name}`;
+  if (target?.kind === 'aliens') return `meet the ${alienTitle(target.item)}`;
   return (
     {
       market: 'enter the market',
@@ -1692,6 +1757,7 @@ function frame(time) {
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
       routePath: routePaths(),
       drones: [...parkedDrones().map(dronePose), ...game.haulers.map(haulerPose), ...game.sails.map(sailPose)],
+      ship: game.ship && { x: game.ship.x, y: game.ship.y, colour: speciesByKey[game.ship.species].colour },
     });
   }
   bakeNextTexture();
