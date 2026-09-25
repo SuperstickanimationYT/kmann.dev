@@ -57,7 +57,20 @@ import { createGalaxyMap } from './galaxy-map.js';
 import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
 import { blast, createParticles, drift, exhaust } from './particles.js';
 import { applyUpgrades, bodyKey, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
-import { advanceSails, createStudies, cruiseSpeed, flybyScience, launchSail, sailPose, sampleScience, starAhead, study } from './science.js';
+import {
+  createStudies,
+  cruiseSpeed,
+  flybyScience,
+  flySail,
+  launchSail,
+  sailDead,
+  sailFromOldSave,
+  sailPose,
+  sampleScience,
+  starAhead,
+  study,
+  systemsPassed,
+} from './science.js';
 import { deleteSave, readSave, writeSave } from './save.js';
 import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
@@ -703,9 +716,9 @@ const actions = {
   launchSail: () => {
     const plan = sailPlan();
     if (!canLaunchSail(plan)) return;
-    game.sails.push(launchSail(plan.star, game.rocket, plan.target));
+    game.sails.push(launchSail(plan.star, game.rocket, starKey(plan.star), plan.target));
     game.sailsInHold -= 1;
-    hud.toast(`Solar sail launched toward ${plan.target.name}.`);
+    hud.toast(plan.target ? `Solar sail launched toward ${plan.target.name}.` : 'Solar sail launched. It will scout ahead for 12 hours.');
   },
   sellStardust: () => {
     game.galactokens += game.stardust * STARDUST.sellPrice;
@@ -993,9 +1006,10 @@ function rewardFirstLanding() {
 
 function earnScience(key, amount, what) {
   const gained = study(game.studies, key, amount);
-  if (!gained) return;
+  if (!gained) return 0;
   game.science += gained;
   hud.toast(`+${gained} science: ${what}.`);
+  return gained;
 }
 
 function studySurroundings() {
@@ -1006,28 +1020,38 @@ function studySurroundings() {
 }
 
 const sailTargets = () =>
-  [...game.starChart.values()].filter((entry) => !game.studies.has(`flyby:${starKey(entry)}`) && !game.sails.some(({ to }) => starKey(to) === starKey(entry)));
+  [...game.starChart.values()].filter((entry) => !game.studies.has(`flyby:${starKey(entry)}`) && !game.sails.some((sail) => sail.target === entry.name));
 
 function sailPlan() {
   const { rocket } = game;
   const star = brightestStar(rocket.x, rocket.y);
   if (!star || sunlight(rocket.x, rocket.y) < SOLAR_SAIL.minLight) return { note: 'Too dark to sail. Get closer to a star.' };
   const target = starAhead(sailTargets(), star, rocket);
-  if (!target) return { note: `No charted star ahead. Sails fly straight out from ${star.name}: move around it to aim.` };
+  if (!target) return { star, note: `Nothing charted ahead. The sail will scout blind, straight out from ${star.name}, for 12 hours.` };
   const seconds = Math.hypot(target.x - rocket.x, target.y - rocket.y) / cruiseSpeed(star, rocket);
-  return { star, target, note: `Ahead: ${target.name}, arriving in ${formatDuration(seconds)}.` };
+  return { star, target, note: `Ahead: ${target.name}, arriving in ${formatDuration(seconds)}, then it scouts on until its battery dies.` };
 }
 
-const canLaunchSail = (plan) => game.sailsInHold > 0 && Boolean(plan.target) && !game.rocket.landed && !game.rocket.destroyed;
+const canLaunchSail = (plan) => game.sailsInHold > 0 && Boolean(plan.star) && !game.rocket.landed && !game.rocket.destroyed;
+
+function scoutWithSail(sail) {
+  for (const { star, planets, distance } of systemsPassed(sail)) {
+    if (starKey(star) === sail.launchStarKey) continue;
+    if (scanFrom(game.starChart, star.x, star.y, 1)) sail.charted += 1;
+    const science = distance <= SOLAR_SAIL.flybyRadius && earnScience(`flyby:${starKey(star)}`, flybyScience(planets.length), `solar sail flew past ${star.name}`);
+    if (science) sail.flybys += 1;
+  }
+}
 
 function advanceSailing(seconds) {
-  const { flying, arrived } = advanceSails(game.sails, seconds);
-  game.sails = flying;
-  for (const { to } of arrived) {
-    scanFrom(game.starChart, to.x, to.y, 1);
-    const planets = systemAt(to.x, to.y)?.planets.length ?? 0;
-    earnScience(`flyby:${starKey(to)}`, flybyScience(planets), `solar sail flew past ${to.name}`);
+  for (const sail of game.sails) {
+    flySail(sail, seconds);
+    scoutWithSail(sail);
   }
+  for (const { charted, flybys } of game.sails.filter(sailDead)) {
+    hud.toast(`A solar sail went dark after charting ${charted} new star${charted === 1 ? '' : 's'} and flying past ${flybys}.`);
+  }
+  game.sails = game.sails.filter((sail) => !sailDead(sail));
 }
 
 const satelliteBy = (flight) => nearestWithin(deployed(game.satellites), flight, SATELLITE.dockingRange);
@@ -1565,7 +1589,7 @@ function restore(saved) {
   game.starChart = new Map(saved.starChart ?? []);
   game.crystals = saved.crystals ?? 0;
   game.stardust = saved.stardust ?? 0;
-  Object.assign(game, { science: saved.science ?? 0, studies: new Set(saved.studies ?? []), sails: saved.sails ?? [], sailsInHold: saved.sailsInHold ?? 0 });
+  Object.assign(game, { science: saved.science ?? 0, studies: new Set(saved.studies ?? []), sails: (saved.sails ?? []).map(sailFromOldSave), sailsInHold: saved.sailsInHold ?? 0 });
   for (const entry of game.starChart.values()) {
     const planets = systemAt(entry.x, entry.y)?.planets ?? [];
     entry.crystals ??= crystalWorlds(planets);

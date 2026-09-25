@@ -438,7 +438,7 @@ export function createRenderer(canvas, sprites) {
     const [sx, sy] = toScreen(pose.x, pose.y);
     if (!onScreen(sx, sy, 40)) return;
     drawMarker(sx, sy, pose.heading, SAIL_COLOUR, 4);
-    drawLabel(`Solar sail · ${sail.to.name}`, sx, sy + 16, SAIL_COLOUR);
+    drawLabel('Solar sail', sx, sy + 16, SAIL_COLOUR);
   }
 
   function drawHauler(hauler) {
