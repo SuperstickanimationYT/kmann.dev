@@ -169,6 +169,12 @@ export function createHud(root, actions) {
     refuseToll: find('[data-refuse-toll]'),
     outpostBan: find('[data-outpost-ban]'),
     raidShip: find('[data-raid-ship]'),
+    alienMarket: find('[data-alien-market]'),
+    alienRefusal: find('[data-alien-refusal]'),
+    alienBuyFuel: find('[data-alien-buy-fuel]'),
+    alienFillTank: find('[data-alien-fill-tank]'),
+    alienBuyBattery: find('[data-alien-buy-battery]'),
+    alienSells: find('[data-alien-sells]'),
     raidCost: find('[data-raid-cost]'),
     alienWantsIcon: find('[data-alien-wants-icon]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
@@ -221,6 +227,9 @@ export function createHud(root, actions) {
     payToll: actions.payToll,
     refuseToll: actions.refuseToll,
     raidShip: actions.raidShip,
+    alienBuyFuel: actions.alienBuyFuel,
+    alienFillTank: actions.alienFillTank,
+    alienBuyBattery: actions.alienBuyBattery,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
@@ -243,12 +252,17 @@ export function createHud(root, actions) {
   });
   parts.buyTelescope.addEventListener('click', actions.buyTelescope);
   parts.scan.addEventListener('click', actions.scan);
+  parts.alienSells.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-alien-sell]');
+    if (button) actions.alienSell(button.dataset.alienSell);
+  });
   parts.upgrades.addEventListener('click', (event) => {
     const button = event.target.closest('[data-upgrade]');
     if (button) actions.buyUpgrade(button.dataset.upgrade);
   });
   let shownDestinations = '';
   let shownUpgrades = '';
+  let shownAlienSells = '';
   let shownStops = '';
   const shownOptions = new Map();
 
@@ -544,6 +558,41 @@ export function createHud(root, actions) {
     setText(parts.alienOffer, `Sell ${alien.wantsLabel}, ${alien.sellPrice}`);
     if (parts.alienWantsIcon.getAttribute('src') !== alien.wantsIcon) parts.alienWantsIcon.src = alien.wantsIcon;
     parts.sellToAliens.disabled = !alien.canSell;
+    setHidden(parts.alienRefusal, !alien.refusesTrade);
+    setText(parts.alienRefusal, `The ${alien.name} won't trade with you, except for ${alien.wantsLabel}.`);
+    updateAlienMarket(alien.market);
+  }
+
+  function updateAlienMarket(market) {
+    setHidden(parts.alienMarket, !market);
+    if (!market) return;
+    setText(parts.alienBuyFuel, `Buy 5 fuel for ${market.fuelPackCost}`);
+    parts.alienBuyFuel.disabled = !market.canBuyFuel;
+    setText(parts.alienFillTank, `Fill tank for ${market.fillTankCost.toLocaleString()}`);
+    parts.alienFillTank.disabled = !market.canFillTank;
+    setText(parts.alienBuyBattery, `Empty battery for ${market.batteryCost}`);
+    parts.alienBuyBattery.disabled = !market.canBuyBattery;
+    showAlienSells(market.offers);
+  }
+
+  function showAlienSells(offers) {
+    const signature = offers.map(({ key, price, count }) => `${key}:${price}:${count > 0}`).join('|');
+    if (signature === shownAlienSells) return;
+    shownAlienSells = signature;
+    parts.alienSells.replaceChildren(
+      ...offers.map(({ key, label, icon, price, count }) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pp-action pp-sell';
+        button.dataset.alienSell = key;
+        button.disabled = count === 0;
+        const image = document.createElement('img');
+        image.src = icon;
+        image.alt = '';
+        button.append(image, ` Sell ${label}, ${price} each`);
+        return button;
+      }),
+    );
   }
 
   function updateToll(toll) {
