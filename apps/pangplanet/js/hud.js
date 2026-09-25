@@ -165,6 +165,8 @@ export function createHud(root, actions) {
     payToll: find('[data-pay-toll]'),
     refuseToll: find('[data-refuse-toll]'),
     outpostBan: find('[data-outpost-ban]'),
+    raidShip: find('[data-raid-ship]'),
+    raidCost: find('[data-raid-cost]'),
     alienWantsIcon: find('[data-alien-wants-icon]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
@@ -215,6 +217,7 @@ export function createHud(root, actions) {
     sellToAliens: actions.sellToAliens,
     payToll: actions.payToll,
     refuseToll: actions.refuseToll,
+    raidShip: actions.raidShip,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
@@ -503,7 +506,9 @@ export function createHud(root, actions) {
   function updateAlien(alien) {
     if (!alien) return;
     const signed = alien.relation > 0 ? `+${alien.relation}` : String(alien.relation);
-    setText(parts.alienName, alien.name);
+    setText(parts.alienName, alien.title);
+    setHidden(parts.raidShip, !alien.raidable);
+    setText(parts.raidCost, `Raid it (${alien.raidCost})`);
     setText(parts.alienMood, `The ${alien.name} are ${alien.mood} toward you (${signed}).`);
     setHidden(parts.askForTip, !alien.friendly);
     parts.askForTip.disabled = !alien.canAskForTip;

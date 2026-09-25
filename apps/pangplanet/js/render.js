@@ -7,6 +7,7 @@ import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
 import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, MARKET, ROCKET_HEIGHT } from './world.js';
 import { sailPose } from './science.js';
+import { relativeSpeed, shipHeading } from './ships.js';
 
 const STAGE_HEIGHT_UNITS = 360;
 const ROCK_COUNT = 72;
@@ -32,6 +33,8 @@ const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
 const SIGNAL_RING_MAX_PX = 50000;
 const HAULER_SCALE = 0.8;
+const SHIP_SCALE = 1.4;
+const SHIP_SPEED_SHOWN_WITHIN = 60000;
 const SAIL_COLOUR = '#9dffb0';
 const HAULER_LOOKS = { hauler: { label: 'Hauler', colour: '#6dff8c' }, builder: { label: 'Builder', colour: '#ffc933' } };
 const FLICKER_WAVES = [[0.9, 0.07], [2.3, 0.05], [5.1, 0.03]];
@@ -459,6 +462,23 @@ export function createRenderer(canvas, sprites) {
     drawLabel(label, sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, colour);
   }
 
+  function drawShip(ship, rocket) {
+    if (!ship) return;
+    const [sx, sy] = toScreen(ship.x, ship.y);
+    const scale = view.ppu * SHIP_SCALE;
+    if (!onScreen(sx, sy, ROCKET_HEIGHT * scale + 60)) return;
+    const { name, colour } = speciesByKey[ship.species];
+    const nearby = Math.hypot(ship.x - rocket.x, ship.y - rocket.y) < SHIP_SPEED_SHOWN_WITHIN;
+    const label = nearby ? `${name} freighter · relative speed ${Math.round(relativeSpeed(ship, rocket))}` : `${name} freighter`;
+    if (ROCKET_HEIGHT * scale < 10) {
+      drawMarker(sx, sy, shipHeading(ship), colour, 5);
+      drawLabel(label, sx, sy + 16, colour);
+      return;
+    }
+    withPose(sx, sy, shipHeading(ship), () => drawSprite(sprites.rocket, scale));
+    drawLabel(label, sx, sy + (ROCKET_HEIGHT / 2) * scale + 16, colour);
+  }
+
   function drawDrone(drone) {
     const pose = drone?.rescue ?? drone?.flight ?? drone?.pad;
     if (!pose) return;
@@ -676,6 +696,7 @@ export function createRenderer(canvas, sprites) {
     scene.drones.forEach(drawDrone);
     scene.haulers.forEach(drawHauler);
     scene.sails.forEach(drawSail);
+    drawShip(scene.ship, scene.rocket);
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);

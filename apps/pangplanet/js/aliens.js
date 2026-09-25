@@ -1,9 +1,9 @@
 import { ALIENS } from './world.js';
 
 export const SPECIES = [
-  { key: 'zorani', name: 'Zorani', colour: 'rgba(141, 255, 193, 0.9)', startingRelation: 40, wants: 'gold' },
-  { key: 'quillith', name: 'Quillith', colour: 'rgba(255, 211, 110, 0.9)', startingRelation: 0, wants: 'crystals' },
-  { key: 'vessk', name: 'Vessk', colour: 'rgba(255, 122, 138, 0.9)', startingRelation: -40, wants: 'batteries' },
+  { key: 'zorani', name: 'Zorani', colour: 'rgba(141, 255, 193, 0.9)', startingRelation: 40, wants: 'gold', rival: 'vessk' },
+  { key: 'quillith', name: 'Quillith', colour: 'rgba(255, 211, 110, 0.9)', startingRelation: 0, wants: 'crystals', rival: 'vessk' },
+  { key: 'vessk', name: 'Vessk', colour: 'rgba(255, 122, 138, 0.9)', startingRelation: -40, wants: 'batteries', rival: 'zorani' },
 ];
 
 export const speciesByKey = Object.fromEntries(SPECIES.map((species) => [species.key, species]));

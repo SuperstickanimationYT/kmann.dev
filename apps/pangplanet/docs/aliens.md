@@ -63,15 +63,17 @@ counts as visiting.
 
 ## Alien ships and raids
 
-- Each species sometimes sends a ship from its homeworld through nearby systems, the
-  Solar System included. Ships fly straight legs at constant speed, like haulers, and a
-  toast announces one when it enters your system.
-- **Raid** by matching its velocity: get within range at a relative speed under 10, the
-  same rule as landing. The cargo is galactokens and crystals, with a small chance of 1
-  stardust.
-- A raid costs -25 relation with the ship's species and gives +10 with its rival. The
-  toast shows both before you commit.
-- Meeting a friendly ship the same way opens trade or a tip instead.
+- While you're in a star system, a freighter arrives on average every 10 game-minutes,
+  one at a time. It belongs to the species with the nearest homeworld within 6 sectors of
+  that star; with none in reach, no ships come. The Solar System gets Zorani ships.
+- A freighter crosses the system in a straight line at 20–40 per tick, entering and
+  leaving 4M from the star. Ships aren't saved; a reload clears the current one.
+- **Meeting** a freighter: within 1.5K at a relative speed under 10 (the landing rule).
+  Docking matches your velocity to its own. The panel offers the same trade and tips as
+  its homeworld, with tips searched around the ship.
+- **Raid**: the cargo is 200–600 galactokens, 0–3 crystals and a 10% chance of 1
+  stardust. It costs -25 relation with the ship's species and gives +10 with its rival
+  (Zorani and Quillith: Vessk; Vessk: Zorani). The button shows both before you commit.
 
 ## Rollout
 

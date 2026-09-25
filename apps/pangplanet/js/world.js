@@ -166,5 +166,5 @@ export const HAULER = { cost: 8000, batteries: 6, speed: 2000, tokensPerUnit: 1 
 export const BUILDER = { cost: 15000, siteInStarRadii: 1.5, siteSpacing: 800, siteTries: 200, starChoices: 40 };
 export const BATTERY_BANK = { cost: 600, batteries: 10, dockingRange: 1500 };
 export const MAX_BATTERY_SLOTS = UPGRADES.batterySlots.levels.at(-1).value;
-export const ALIENS = { homeworldChance: 1 / 8, friendlyAt: 30, hostileAt: -30, limit: 100, friendlyPremium: 1.5, tokensPerRelation: 50, miningAnger: { crystals: 5, stardust: 15 }, tip: { science: 200, maxDiscount: 0.5, rangeInSectors: 5 }, toll: { galactokens: 300, refusalAnger: 10 }, raid: { chance: 0.3, share: 0.5, pauseSeconds: 60 } };
+export const ALIENS = { homeworldChance: 1 / 8, friendlyAt: 30, hostileAt: -30, limit: 100, friendlyPremium: 1.5, tokensPerRelation: 50, miningAnger: { crystals: 5, stardust: 15 }, tip: { science: 200, maxDiscount: 0.5, rangeInSectors: 5 }, toll: { galactokens: 300, refusalAnger: 10 }, raid: { chance: 0.3, share: 0.5, pauseSeconds: 60 }, ships: { meanGapTicks: 18000, reachInSectors: 6, speed: [20, 40], reach: 1500, raidAnger: 25, rivalGoodwill: 10, cargo: { galactokens: [200, 600], crystals: [0, 4], stardustChance: 0.1 } } };
 export const GENERATED_BOUNTY = { min: 100, max: 250, step: 10 };
