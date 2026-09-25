@@ -1,4 +1,4 @@
-import { crystalWorlds, stardustWorlds, systemsWithin } from './universe.js';
+import { crystalWorlds, homeworldSpecies, stardustWorlds, systemsWithin } from './universe.js';
 
 export const VISIT_RANGE = 4e6;
 const SUN_FILL = '#fff7dc';
@@ -17,6 +17,8 @@ function chartEntry({ star, planets }, visited) {
     bounty: planets.reduce((sum, planet) => sum + (planet.bounty ?? 0), 0),
     crystals: crystalWorlds(planets),
     stardust: visited ? stardustWorlds(planets) : 0,
+    biosignature: Boolean(star.biosignature),
+    aliens: visited ? homeworldSpecies(planets) : null,
     visited,
   };
 }
