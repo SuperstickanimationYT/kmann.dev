@@ -139,6 +139,8 @@ export function createHud(root, actions, { cheats }) {
     droneStatus: find('[data-drone-status]'),
     recordRoute: find('[data-record-route]'),
     toggleDroneRuns: find('[data-toggle-drone-runs]'),
+    droneWaitPicker: find('[data-drone-wait-picker]'),
+    droneWait: find('[data-drone-wait]'),
     pickUpDrone: find('[data-pick-up-drone]'),
     recording: find('[data-recording]'),
     recordingTime: find('[data-recording-time]'),
@@ -265,6 +267,7 @@ export function createHud(root, actions, { cheats }) {
   });
   parts.buyTelescope.addEventListener('click', actions.buyTelescope);
   parts.scan.addEventListener('click', actions.scan);
+  parts.droneWait.addEventListener('change', () => actions.setDroneWait(Number(parts.droneWait.value)));
   parts.alienSells.addEventListener('click', (event) => {
     const button = event.target.closest('[data-alien-sell]');
     if (button) actions.alienSell(button.dataset.alienSell);
@@ -568,6 +571,8 @@ export function createHud(root, actions, { cheats }) {
     parts.recordRoute.disabled = !status.canRecordRoute;
     setHidden(parts.toggleDroneRuns, !status.canToggleDroneRuns);
     setText(parts.toggleDroneRuns, status.droneRunning ? 'Pause runs' : 'Start runs');
+    setHidden(parts.droneWaitPicker, status.droneWaitSeconds === null);
+    if (status.droneWaitSeconds !== null && document.activeElement !== parts.droneWait) parts.droneWait.value = String(status.droneWaitSeconds);
     parts.pickUpDrone.disabled = !status.canPickUpDrone;
     const recording = status.recordingSeconds !== null;
     setHidden(parts.recording, !recording);

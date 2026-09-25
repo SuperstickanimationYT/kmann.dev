@@ -781,6 +781,12 @@ const actions = {
     game.docked = drone;
     openPanel('drone');
   },
+  setDroneWait: (seconds) => {
+    const drone = dockedOf('drone');
+    if (!drone || !(seconds >= 0)) return;
+    drone.waitSeconds = seconds;
+    drone.resting = Math.min(drone.resting, seconds);
+  },
   toggleDroneRuns: () => {
     const drone = dockedOf('drone');
     if (drone?.route && !drone.lost) drone.running = !drone.running;
@@ -1553,11 +1559,16 @@ const droneAction = (name, flight, drone) => DRONE_ACTIONS[name](flight, drone);
 function stepDrone(drone) {
   if (!drone.pad || drone.rescue) return;
   if (!drone.flight) {
+    if (drone.resting > 0) {
+      drone.resting = Math.max(0, drone.resting - STEP_SECONDS);
+      return;
+    }
     if (!drone.running || game.galactokens < refuelCost(drone)) return;
     game.galactokens -= refuelCost(drone);
     launchDrone(drone);
   }
   const outcome = flyDrone(drone, game.antennas, droneAction, STEP_TICKS);
+  if (outcome === 'done') drone.resting = drone.waitSeconds;
   if (outcome === 'crash') {
     game.drones.splice(game.drones.indexOf(drone), 1);
     hud.toast('A drone crashed and was destroyed.');
@@ -1623,7 +1634,7 @@ const routePaths = () => game.drones.flatMap((drone) => (drone.route ? rehearsal
 
 function nextMoment(run, now) {
   if (run.finished) return null;
-  if (run.start === null) return now;
+  if (run.start === null) return Math.max(now, run.readyAt);
   const { handoffs, steps } = run.rehearsal;
   const step = run.next < handoffs.length ? handoffs[run.next].step : Math.max(1, steps);
   return Math.max(now, run.start + step * STEP_SECONDS);
@@ -1640,11 +1651,11 @@ function launchRun(run, now) {
   Object.assign(run, { start: now, next: 0 });
 }
 
-function endRun(run) {
+function endRun(run, now) {
   const { drone, rehearsal } = run;
   if (rehearsal.outcome === 'done') {
     Object.assign(drone, { fuel: rehearsal.fuelLeft, flight: null });
-    run.start = null;
+    Object.assign(run, { start: null, readyAt: now + drone.waitSeconds });
     return;
   }
   run.finished = true;
@@ -1662,7 +1673,7 @@ function settleRun(run, now) {
   else if (run.next < run.rehearsal.handoffs.length) {
     const { name, at } = run.rehearsal.handoffs[run.next++];
     droneAction(name, { ...at }, run.drone);
-  } else endRun(run);
+  } else endRun(run, now);
 }
 
 function runTimeline(seconds, runs = []) {
@@ -1695,6 +1706,7 @@ function catchUp(seconds) {
       drone,
       rehearsal: rehearsalOf(drone),
       start: drone.flight ? -drone.flight.step * STEP_SECONDS : null,
+      readyAt: drone.flight ? 0 : drone.resting,
       next: drone.flight?.nextEvent ?? 0,
       finished: false,
     }));
@@ -1702,6 +1714,7 @@ function catchUp(seconds) {
   advanceOutposts(seconds - busySeconds);
   for (const run of runs) {
     if (!run.finished && run.start !== null) replayFlight(run.drone, game.antennas, Math.round((busySeconds - run.start) / STEP_SECONDS), STEP_TICKS);
+    if (!run.finished && run.start === null) run.drone.resting = Math.max(0, run.readyAt - busySeconds);
   }
 }
 
@@ -1854,6 +1867,7 @@ function droneStatus() {
   const fuel = `Each run burns ${drone.route.fuel.toFixed(1)} fuel, bought for 1 galactoken each.`;
   if (drone.flight) return `Flying its route, ${Math.round(routeProgress(drone) * 100)}% done${drone.running ? '' : ', then parking'}. ${carrying} ${fuel}`;
   if (!drone.running) return `Parked. ${carrying} ${fuel}`;
+  if (drone.resting > 0) return `Resting, next run in ${formatDuration(drone.resting)}. ${carrying} ${fuel}`;
   return `Waiting for ${refuelCost(drone)} galactokens to refuel. ${carrying} ${fuel}`;
 }
 
@@ -2008,6 +2022,7 @@ function status() {
     canRecordRoute: Boolean(dockedOf('drone')?.pad) && !dockedOf('drone').flight && rocket.landed,
     canToggleDroneRuns: Boolean(dockedOf('drone')?.route) && !dockedOf('drone').lost,
     droneRunning: Boolean(dockedOf('drone')?.running),
+    droneWaitSeconds: dockedOf('drone')?.waitSeconds ?? null,
     canPickUpDrone: Boolean(dockedOf('drone')) && (!dockedOf('drone').flight || dockedOf('drone').lost),
     recordingSeconds: game.recording ? game.recording.steps * STEP_SECONDS : null,
     canFinishRecording: canFinishRecording(),
@@ -2113,7 +2128,7 @@ function restore(saved) {
   Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, ownsRescueModule: saved.ownsRescueModule ?? false, tourSeen: saved.tourSeen ?? false, panel: null });
   const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
   Object.assign(game, { satellites: listOf('satellites', 'satellite'), rig: saved.rig ?? null, gold: saved.gold ?? 0 });
-  Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone'), haulers: saved.haulers ?? [] });
+  Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone').map((drone) => ({ waitSeconds: 0, resting: 0, ...drone })), haulers: saved.haulers ?? [] });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
