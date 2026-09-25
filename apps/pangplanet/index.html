@@ -244,6 +244,13 @@
           <img src="img/science.svg" alt="science">
         </button>
         <button type="button" class="pp-action" data-raid-ship hidden><span data-raid-cost></span></button>
+        <button type="button" class="pp-action" data-ask-to-sample hidden>
+          <img src="img/science.svg" alt=""> Ask to drill a sample
+        </button>
+        <button type="button" class="pp-action pp-buy" data-pay-sample-fee hidden>
+          Pay <span data-sample-fee></span>
+          <img src="img/galactokens.svg" alt="galactokens"> to drill a sample
+        </button>
         <button type="button" class="pp-action pp-sell" data-sell-to-aliens>
           <img data-alien-wants-icon src="img/gold.svg" alt=""> <span data-alien-offer></span>
           <img src="img/galactokens.svg" alt="galactokens"> each
@@ -259,6 +266,7 @@
         <div class="pp-actions" data-alien-sells></div>
         <p class="pp-hint">Friends charge 2× Solar prices for fuel and batteries and pay 80% for goods; wary species charge 3× and pay 60%. Upgrades, outposts and the warp drive are only sold at the Solar market.</p>
       </div>
+      <p class="pp-hint" data-sample-note hidden></p>
       <p class="pp-hint" data-alien-refusal hidden></p>
       <p class="pp-hint" data-alien-note>They only share what they know with friends.</p>
       <p class="pp-hint">Selling them what they want improves relations. Friends pay 1.5× the market price. Mining crystals or stardust in their home system angers them.</p>

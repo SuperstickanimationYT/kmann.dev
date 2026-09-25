@@ -18,6 +18,16 @@ hostility plays out through the economy and logistics. There is no combat.
 - Land on a homeworld to open that species' panel.
 - The first contact with each species pays science (`contact:<species>` study).
 
+## Homeworld samples
+
+- The first sample drilled on a homeworld pays 200 science instead of the usual 20–150.
+  Like every sample, it pays once per planet.
+- Drilling it without permission costs 10 relation.
+- The homeworld panel offers to ask first. The answer is rolled once per homeworld and
+  saved: 15% yes, 75% for a 100 galactoken fee, 10% no. The fee stays well under the
+  sample's 1000 galactoken resale value.
+- Freighters can't grant permission; only the homeworld can.
+
 ## Biosignatures
 
 - Life means an alien homeworld; there are no bacteria-only worlds.
