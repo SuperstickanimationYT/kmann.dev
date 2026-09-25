@@ -187,6 +187,7 @@ const game = {
   ship: null,
   shipClock: nextShipDelayTicks(),
   gatewayOpen: false,
+  wormholeLinks: new Map(),
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -1169,6 +1170,7 @@ function mapInfo() {
     entry.crystals ? `${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'}` : null,
     entry.stardust ? `${entry.stardust} stardust world${entry.stardust === 1 ? '' : 's'}` : null,
     lifeNote(entry),
+    entry.wormhole ? 'wormhole' : null,
     game.ownsWarpDrive && distance <= warpRange() ? 'in warp range' : null,
   ];
   return details.filter(Boolean).join(' · ');
@@ -1198,6 +1200,14 @@ const drillWell = {
   },
   exhausted: () => game.rocket.fuel >= game.rocket.fuelCapacity && !DRILL_FINDS[game.rocket.soi?.resource],
 };
+
+function throughWormhole(mouth) {
+  if (mouth === coreGate) wakeGateway();
+  if (!mouth.partnerSector) return;
+  const ends = [mouth.star, mouth.exit.star].sort((a, b) => a.x - b.x || a.y - b.y);
+  game.wormholeLinks.set(ends.map(({ x, y }) => `${Math.round(x)},${Math.round(y)}`).join('>'), ends);
+  earnScience(`wormhole:${bodyKey(mouth)}`, SCIENCE.wormhole, `went through the ${mouth.name}`);
+}
 
 function wakeGateway() {
   if (game.gatewayOpen) return;
@@ -1455,7 +1465,7 @@ function simulate() {
     if (game.recording) noteStep(game.recording, fuelBefore, rocket);
     if (hit === 'crash') explode();
     if (hit === 'land') rewardFirstLanding();
-    if (hit === 'wormhole' && rocket.soi === coreGate) wakeGateway();
+    if (hit === 'wormhole') throughWormhole(rocket.soi);
     if (game.recording && !inSignal(game.antennas, rocket.x, rocket.y)) stopRecording('Out of antenna range. Recording stopped.');
     stepDrones();
     stepRescue();
@@ -1783,6 +1793,7 @@ function frame(time) {
       routePath: routePaths(),
       drones: [...parkedDrones().map(dronePose), ...game.haulers.map(haulerPose), ...game.sails.map(sailPose)],
       ship: game.ship && { x: game.ship.x, y: game.ship.y, colour: speciesByKey[game.ship.species].colour },
+      wormholeLinks: [...game.wormholeLinks.values()],
     });
   }
   bakeNextTexture();
@@ -1825,6 +1836,7 @@ function snapshot() {
     relations: game.relations,
     tollSettledAt: game.tollSettledAt,
     gatewayOpen: game.gatewayOpen,
+    wormholeLinks: [...game.wormholeLinks],
   };
 }
 
@@ -1858,11 +1870,13 @@ function restore(saved) {
     entry.stardust ??= entry.visited ? stardustWorlds(planets) : 0;
     entry.biosignature ??= Boolean(system?.star.biosignature);
     entry.aliens ??= entry.visited ? homeworldSpecies(planets) : null;
+    entry.wormhole ??= entry.visited && system.wormholes.length > 0;
   }
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };
   game.tollSettledAt = saved.tollSettledAt ?? null;
   game.gatewayOpen = saved.gatewayOpen ?? false;
+  game.wormholeLinks = new Map(saved.wormholeLinks ?? []);
   if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);
   camera.zoom = saved.zoom;

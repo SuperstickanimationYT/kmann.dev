@@ -1,7 +1,7 @@
 import { randomPlanet } from '../../planet-textures/js/presets.js';
 import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
-import { ALIENS, CORE, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, blackHole, coreSystem, massFor } from './world.js';
+import { ALIENS, CORE, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
 const MIRROR_SALT = 0x3a7c9e1;
@@ -23,6 +23,12 @@ const BLACK_HOLE_CHANCE = 0.25;
 const BLACK_HOLE_COUNT = [1, 3];
 const BLACK_HOLE_SALT = 0xb1ac4;
 const HOMEWORLD_SALT = 0xa11e5;
+const WORMHOLE_SALT = 0x77e11;
+const WORMHOLE_BLOCK_IN_SECTORS = 40;
+const STARS_PER_WORMHOLE_MOUTH = 40;
+const WORMHOLE_REACH_IN_SECTORS = [10, 30];
+const WORMHOLE_CLEAR_OF_HOME_IN_SECTORS = 6;
+const WORMHOLE_BEYOND_PLANETS = 150000;
 const BIOSIGNATURE_SALT = 0xb105;
 const BIOSIGNATURE_ACCURACY = 0.75;
 const FALSE_BIOSIGNATURE_CHANCE = (ALIENS.homeworldChance * (1 - BIOSIGNATURE_ACCURACY)) / (BIOSIGNATURE_ACCURACY * (1 - ALIENS.homeworldChance));
@@ -139,13 +145,16 @@ function generatePlanet(next, star, orbit, index, seed, richness) {
   };
 }
 
+const rollsStar = (next) => next() <= STAR_CHANCE;
+const isCoreSector = (sectorX, sectorY) => sectorX === GALAXY_CENTER_IN_SECTORS[0] && sectorY === GALAXY_CENTER_IN_SECTORS[1];
+
 function generateSystem(sectorX, sectorY) {
   if (sectorX === 0 && sectorY === 0) return [];
-  if (sectorX === GALAXY_CENTER_IN_SECTORS[0] && sectorY === GALAXY_CENTER_IN_SECTORS[1]) return CORE_SYSTEM.bodies;
+  if (isCoreSector(sectorX, sectorY)) return CORE_SYSTEM.bodies;
   if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return [];
   const seed = sectorSeed(sectorX, sectorY);
   const { next, integer } = createRandom(seed);
-  if (next() > STAR_CHANCE) return [];
+  if (!rollsStar(next)) return [];
 
   const type = pick(next, STAR_TYPES);
   const radius = within(next, type.radius);
@@ -173,7 +182,82 @@ function generateSystem(sectorX, sectorY) {
   }
   settleHomeworld(star, planets, seed);
   star.biosignature = Boolean(homeworldSpecies(planets)) || createRandom(seed ^ BIOSIGNATURE_SALT).next() < FALSE_BIOSIGNATURE_CHANCE;
-  return [star, ...blackHolesBetween(star, orbits, seed), ...planets];
+  return [star, ...blackHolesBetween(star, orbits, seed), ...wormholeMouth(star, orbits, seed, sectorX, sectorY), ...planets];
+}
+
+function canHostWormhole(sectorX, sectorY) {
+  if (Math.max(Math.abs(sectorX), Math.abs(sectorY)) <= WORMHOLE_CLEAR_OF_HOME_IN_SECTORS || isCoreSector(sectorX, sectorY)) return false;
+  if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return false;
+  return rollsStar(createRandom(sectorSeed(sectorX, sectorY)).next);
+}
+
+const pairsByBlock = new Map();
+
+function wormholePairsIn(blockX, blockY) {
+  const blockKey = `${blockX},${blockY}`;
+  if (pairsByBlock.has(blockKey)) return pairsByBlock.get(blockKey);
+  const hosts = [];
+  for (let dx = 0; dx < WORMHOLE_BLOCK_IN_SECTORS; dx++) {
+    for (let dy = 0; dy < WORMHOLE_BLOCK_IN_SECTORS; dy++) {
+      const sector = [blockX * WORMHOLE_BLOCK_IN_SECTORS + dx, blockY * WORMHOLE_BLOCK_IN_SECTORS + dy];
+      if (canHostWormhole(...sector)) hosts.push(sector);
+    }
+  }
+  const random = createRandom(sectorSeed(blockX, blockY) ^ WORMHOLE_SALT);
+  for (let i = hosts.length - 1; i > 0; i--) {
+    const j = random.integer(0, i);
+    [hosts[i], hosts[j]] = [hosts[j], hosts[i]];
+  }
+  const partners = new Map();
+  const wanted = Math.floor(hosts.length / STARS_PER_WORMHOLE_MOUTH / 2);
+  const [nearest, farthest] = WORMHOLE_REACH_IN_SECTORS;
+  for (let i = 0; i < hosts.length && partners.size < wanted * 2; i++) {
+    if (partners.has(`${hosts[i]}`)) continue;
+    const partner = hosts.slice(i + 1).find((other) => {
+      const gap = Math.hypot(other[0] - hosts[i][0], other[1] - hosts[i][1]);
+      return !partners.has(`${other}`) && gap >= nearest && gap <= farthest;
+    });
+    if (!partner) continue;
+    partners.set(`${hosts[i]}`, partner);
+    partners.set(`${partner}`, hosts[i]);
+  }
+  pairsByBlock.set(blockKey, partners);
+  return partners;
+}
+
+const wormholePartnerOf = (sectorX, sectorY) =>
+  wormholePairsIn(Math.floor(sectorX / WORMHOLE_BLOCK_IN_SECTORS), Math.floor(sectorY / WORMHOLE_BLOCK_IN_SECTORS)).get(`${sectorX},${sectorY}`);
+
+const mouthsBySector = new Map();
+
+function wormholeMouthIn(sectorX, sectorY) {
+  const key = `${sectorX},${sectorY}`;
+  if (!mouthsBySector.has(key)) {
+    const systemBodies = loadedSectors.get(key)?.bodies ?? generateSystem(sectorX, sectorY);
+    mouthsBySector.set(key, systemBodies.find((body) => body.partnerSector));
+  }
+  return mouthsBySector.get(key);
+}
+
+function wormholeMouth(star, orbits, seed, sectorX, sectorY) {
+  const partnerSector = wormholePartnerOf(sectorX, sectorY);
+  if (!partnerSector) return [];
+  const random = createRandom(seed ^ WORMHOLE_SALT);
+  const distance = (orbits.at(-1) ?? star.radius * FIRST_ORBIT_IN_STAR_RADII) + WORMHOLE_BEYOND_PLANETS;
+  const bearing = random.next() * Math.PI * 2;
+  return [
+    {
+      name: `${star.name} Wormhole`,
+      x: star.x + Math.sin(bearing) * distance,
+      y: star.y + Math.cos(bearing) * distance,
+      ...WORMHOLE_MOUTH,
+      star: { name: star.name, x: star.x, y: star.y },
+      partnerSector,
+      get exit() {
+        return wormholeMouthIn(...partnerSector);
+      },
+    },
+  ];
 }
 
 function settleHomeworld(star, planets, seed) {
@@ -201,6 +285,7 @@ const describeSystem = (systemBodies) => ({
   star: systemBodies.find((body) => body.kind === 'star' || body.anchorsSystem),
   planets: systemBodies.filter((body) => body.kind === 'planemo'),
   blackHoles: systemBodies.filter((body) => body.kind === 'blackhole' && !body.anchorsSystem),
+  wormholes: systemBodies.filter((body) => body.kind === 'wormhole'),
 });
 
 export function systemsWithin(x, y, range) {

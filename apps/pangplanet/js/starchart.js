@@ -7,7 +7,7 @@ export const starKey = (star) => `${star.name}@${Math.round(star.x)},${Math.roun
 
 export const createStarChart = () => new Map();
 
-function chartEntry({ star, planets }, visited) {
+function chartEntry({ star, planets, wormholes }, visited) {
   return {
     name: star.name,
     x: star.x,
@@ -19,6 +19,7 @@ function chartEntry({ star, planets }, visited) {
     stardust: visited ? stardustWorlds(planets) : 0,
     biosignature: Boolean(star.biosignature),
     aliens: visited ? homeworldSpecies(planets) : null,
+    wormhole: visited && wormholes.length > 0,
     visited,
   };
 }
