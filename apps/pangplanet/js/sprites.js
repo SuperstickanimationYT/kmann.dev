@@ -1,4 +1,7 @@
+import { SPECIES } from './aliens.js';
+
 const RASTER_SIZE = 1024;
+const FREIGHTER = { src: 'img/freighter.svg', tintPlaceholder: 'SPECIES' };
 
 // Pivots are the original Scratch costume rotation centres, in costume pixels.
 const SPRITES = {
@@ -29,6 +32,23 @@ async function rasterize(image) {
   return { bitmap: await createImageBitmap(canvas), width, height };
 }
 
+const centred = (sprite, pivot) => ({ ...sprite, pivot: pivot ?? [sprite.width / 2, sprite.height / 2] });
+
+async function loadTinted(svgText, colour) {
+  const url = URL.createObjectURL(new Blob([svgText.replaceAll(FREIGHTER.tintPlaceholder, colour)], { type: 'image/svg+xml' }));
+  try {
+    return centred(await rasterize(await loadImage(url)));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function loadFreighters() {
+  const svgText = await (await fetch(FREIGHTER.src)).text();
+  const tinted = await Promise.all(SPECIES.map(async ({ key, colour }) => [key, await loadTinted(svgText, colour)]));
+  return Object.fromEntries(tinted);
+}
+
 export async function loadSprites() {
   const entries = await Promise.all(
     Object.entries(SPRITES).map(async ([name, { src, pivot }]) => {
@@ -36,8 +56,8 @@ export async function loadSprites() {
       const sprite = src.endsWith('.svg')
         ? await rasterize(image)
         : { bitmap: image, width: image.naturalWidth, height: image.naturalHeight };
-      return [name, { ...sprite, pivot: pivot ?? [sprite.width / 2, sprite.height / 2] }];
+      return [name, centred(sprite, pivot)];
     }),
   );
-  return Object.fromEntries(entries);
+  return { ...Object.fromEntries(entries), freighters: await loadFreighters() };
 }
