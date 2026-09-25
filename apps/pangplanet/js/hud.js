@@ -45,7 +45,7 @@ function createBatteryCells(container) {
   });
 }
 
-export function createHud(root, actions) {
+export function createHud(root, actions, { cheats }) {
   const find = (selector) => root.querySelector(selector);
   const parts = {
     tokens: find('[data-tokens]'),
@@ -401,7 +401,8 @@ export function createHud(root, actions) {
   parts.mapCloseUp.addEventListener('click', actions.mapCloseUp);
   root.querySelectorAll('[data-map-zoom]').forEach((button) => button.addEventListener('click', () => actions.mapZoom(button.dataset.mapZoom)));
   const cheatsToggle = find('[data-cheats-toggle]');
-  cheatsToggle.hidden = !new URLSearchParams(window.location.search).has('cheats');
+  cheatsToggle.hidden = !cheats;
+  find('[data-open-worlds]').addEventListener('click', actions.openWorlds);
   cheatsToggle.addEventListener('click', actions.toggleCheats);
   root.querySelectorAll('[data-cheat]').forEach((button) => button.addEventListener('click', () => actions.cheat(button.dataset.cheat)));
   find('[data-fullscreen]').addEventListener('click', () => {
