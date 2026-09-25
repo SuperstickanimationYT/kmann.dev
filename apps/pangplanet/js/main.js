@@ -220,11 +220,11 @@ function nearestWithin(items, spot, range) {
 const deployed = (items) => items.filter((item) => item.deployed);
 const inHold = (items) => items.filter((item) => !item.deployed);
 
-function dockTarget() {
+function targetInReach() {
   const { rocket } = game;
   if (rocket.destroyed || game.warp) return null;
   if (Math.hypot(rocket.x - MARKET.x, rocket.y - MARKET.y) < MARKET.dockingRange) return { kind: 'market' };
-  if (canMeetShip()) return { kind: 'aliens', item: game.ship };
+  if (shipInReach()) return { kind: 'aliens', item: game.ship };
   const satellite = nearestWithin(deployed(game.satellites), rocket, SATELLITE.dockingRange);
   if (satellite) return { kind: 'satellite', item: satellite };
   const bank = nearestWithin(deployed(game.banks), rocket, BATTERY_BANK.dockingRange);
@@ -234,6 +234,16 @@ function dockTarget() {
   const drone = nearDrone();
   if (drone) return { kind: 'drone', item: drone };
   return null;
+}
+
+function closingSpeed(target) {
+  const { rocket } = game;
+  return target.item === game.ship ? relativeSpeed(game.ship, rocket) : Math.hypot(rocket.vx, rocket.vy);
+}
+
+function dockTarget() {
+  const target = targetInReach();
+  return target && closingSpeed(target) < CRASH_SPEED ? target : null;
 }
 
 const distanceFromRocket = (spot) => Math.hypot(game.rocket.x - spot.x, game.rocket.y - spot.y);
@@ -251,6 +261,11 @@ function nearDrone() {
 function canDock() {
   const target = dockTarget();
   return Boolean(target) && game.panel !== target.kind;
+}
+
+function tooFastToDock() {
+  const target = targetInReach();
+  return Boolean(target) && !dockTarget() && game.panel !== target.kind;
 }
 
 const dockedOf = (kind) => (game.panel === kind ? game.docked : null);
@@ -880,9 +895,9 @@ const hud = createHud(stage, actions);
 const tour = createTour(stage, { onEnd: () => (game.tourSeen = true), openGuide: () => openPanel('help') });
 const galaxyMap = createGalaxyMap(stage.querySelector('[data-map]'));
 
-function canMeetShip() {
+function shipInReach() {
   const { ship, rocket } = game;
-  return Boolean(ship) && !rocket.landed && distanceFromRocket(ship) < ALIENS.ships.reach && relativeSpeed(ship, rocket) < CRASH_SPEED;
+  return Boolean(ship) && !rocket.landed && distanceFromRocket(ship) < ALIENS.ships.reach;
 }
 
 function dock() {
@@ -1188,8 +1203,6 @@ function wakeGateway() {
   if (game.gatewayOpen) return;
   game.gatewayOpen = true;
   openGateway();
-  ticksSinceCharting = CHART_EVERY_TICKS;
-  chartVisits();
   hud.toast('The Core Gateway woke up. It now links the galactic core and the Sun, both ways.');
 }
 
@@ -1627,7 +1640,7 @@ function haulerInfo() {
 }
 
 function dockAction() {
-  const target = dockTarget();
+  const target = targetInReach();
   if (target?.kind === 'aliens') return `meet the ${alienTitle(target.item)}`;
   return (
     {
@@ -1673,6 +1686,7 @@ function status() {
     throttle: rocket.throttle,
     engineOn: rocket.engineOn,
     canDock: canDock(),
+    tooFastToDock: tooFastToDock(),
     dockAction: dockAction(),
     alien: dockedOf('aliens') && alienInfo(dockedOf('aliens')),
     toll: game.tollDue && { name: speciesByKey[game.tollDue.species].name, price: ALIENS.toll.galactokens, canPay: game.galactokens >= ALIENS.toll.galactokens },

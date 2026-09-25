@@ -2,6 +2,8 @@ import { MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
 const TOAST_MS = 4500;
+const QUEUED_TOAST_MS = 2500;
+const MAX_QUEUED_TOASTS = 3;
 const BECKON_MS = 6000;
 const UPGRADE_TEXT = {
   batterySlots: { name: 'Battery rack', describe: (value) => `${value} slots` },
@@ -58,6 +60,7 @@ export function createHud(root, actions) {
     engine: find('[data-engine]'),
     engineButton: find('[data-engine-button]'),
     dockPrompt: find('[data-dock-prompt]'),
+    dockSlow: find('[data-dock-slow]'),
     crash: find('[data-crash]'),
     abandon: find('[data-abandon]'),
     mine: find('[data-mine]'),
@@ -258,12 +261,35 @@ export function createHud(root, actions) {
     if (choices.some(({ value }) => value === picked)) select.value = picked;
   }
   let toastTimer = 0;
+  let toastShownAt = 0;
+  const toastQueue = [];
 
-  function toast(text) {
+  function hideToastAfter(ms) {
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(showNextToast, ms);
+  }
+
+  function showToast(text) {
     setText(parts.toast, text);
     setHidden(parts.toast, false);
-    window.clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => setHidden(parts.toast, true), TOAST_MS);
+    toastShownAt = Date.now();
+    hideToastAfter(toastQueue.length ? QUEUED_TOAST_MS : TOAST_MS);
+  }
+
+  function showNextToast() {
+    if (toastQueue.length) showToast(toastQueue.shift());
+    else setHidden(parts.toast, true);
+  }
+
+  function toast(text) {
+    if (parts.toast.hidden) {
+      showToast(text);
+      return;
+    }
+    if (text === parts.toast.textContent || toastQueue.includes(text)) return;
+    toastQueue.push(text);
+    if (toastQueue.length > MAX_QUEUED_TOASTS) toastQueue.shift();
+    hideToastAfter(Math.max(0, QUEUED_TOAST_MS - (Date.now() - toastShownAt)));
   }
 
   function showUpgrades(upgrades) {
@@ -376,6 +402,7 @@ export function createHud(root, actions) {
     parts.engine.classList.toggle('is-on', status.engineOn);
     parts.engineButton.classList.toggle('is-on', status.engineOn);
     setHidden(parts.dockPrompt, !status.canDock);
+    setHidden(parts.dockSlow, !status.tooFastToDock);
     setHidden(parts.crash, !status.destroyed);
     setHidden(parts.abandon, !status.stranded);
     setHidden(parts.mine, !status.canMine);
