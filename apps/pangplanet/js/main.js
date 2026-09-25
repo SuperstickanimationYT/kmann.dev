@@ -1346,7 +1346,7 @@ function mapInfo() {
   const distance = Math.hypot(entry.x - rocket.x, entry.y - rocket.y);
   const details = [
     entry.name,
-    `${entry.planets} planet${entry.planets === 1 ? '' : 's'}`,
+    worldsNote(entry),
     bountyNote(entry),
     entry.visited ? 'visited' : 'seen through telescope',
     `${abbreviate(distance)} away`,
@@ -1357,6 +1357,14 @@ function mapInfo() {
     game.ownsWarpDrive && distance <= warpRange() ? 'in warp range' : null,
   ];
   return details.filter(Boolean).join(' · ');
+}
+
+function worldsNote(entry) {
+  const bodies = systemAt(entry.x, entry.y)?.planets ?? [];
+  const moons = bodies.filter((body) => body.moon).length;
+  const planets = bodies.length - moons;
+  const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  return moons ? `${counted(planets, 'planet')}, ${counted(moons, 'moon')}` : counted(planets, 'planet');
 }
 
 function bountyNote(entry) {

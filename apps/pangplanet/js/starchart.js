@@ -13,7 +13,6 @@ function chartEntry({ star, planets, wormholes }, visited) {
     x: star.x,
     y: star.y,
     fill: star.palette?.fill ?? star.mapFill ?? SUN_FILL,
-    planets: planets.length,
     crystals: crystalWorlds(planets),
     stardust: visited ? stardustWorlds(planets) : 0,
     biosignature: Boolean(star.biosignature),
