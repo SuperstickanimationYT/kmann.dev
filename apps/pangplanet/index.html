@@ -423,6 +423,17 @@
         <button type="button" class="pp-action" data-toggle-drone-runs></button>
         <button type="button" class="pp-action" data-pick-up-drone>Pick up drone</button>
       </div>
+      <label class="pp-picker" data-drone-wait-picker hidden>
+        Wait between runs
+        <select data-drone-wait>
+          <option value="0">No wait</option>
+          <option value="60">1 min</option>
+          <option value="300">5 min</option>
+          <option value="900">15 min</option>
+          <option value="3600">1 hour</option>
+        </select>
+      </label>
+      <p class="pp-hint">Every run pays for its fuel, even one that moves only a little charge. A wait between runs saves galactokens.</p>
     </section>
 
     <section class="pp-panel pp-map-panel" data-panel="map" hidden aria-label="Galaxy map">

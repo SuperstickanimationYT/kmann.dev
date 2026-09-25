@@ -4,17 +4,17 @@ import { ANTENNA, DRONE, FUEL_PACK, RESCUE } from './world.js';
 export const inSignal = (antennas, x, y) => antennas.some((antenna) => Math.hypot(x - antenna.x, y - antenna.y) <= ANTENNA.range);
 
 export function createDrone() {
-  return { pad: null, route: null, running: false, fuel: 0, flight: null, lost: false, rescue: null, batteries: Array(DRONE.batteries).fill(0) };
+  return { pad: null, route: null, running: false, fuel: 0, flight: null, lost: false, rescue: null, batteries: Array(DRONE.batteries).fill(0), waitSeconds: 0, resting: 0 };
 }
 
 export const poseOf = (craft) => ({ x: craft.x, y: craft.y, heading: craft.heading, site: craft.soi.name });
 
 export function parkDrone(drone, rocket) {
-  Object.assign(drone, { pad: poseOf(rocket), route: null, running: false, flight: null, lost: false, rescue: null });
+  Object.assign(drone, { pad: poseOf(rocket), route: null, running: false, flight: null, lost: false, rescue: null, resting: 0 });
 }
 
 export function stowDrone(drone) {
-  Object.assign(drone, { pad: null, route: null, running: false, flight: null, lost: false, rescue: null });
+  Object.assign(drone, { pad: null, route: null, running: false, flight: null, lost: false, rescue: null, resting: 0 });
 }
 
 export function startRecording(drone, rocket) {
