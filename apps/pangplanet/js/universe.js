@@ -22,6 +22,9 @@ const BLACK_HOLE_CHANCE = 0.25;
 const BLACK_HOLE_COUNT = [1, 3];
 const BLACK_HOLE_SALT = 0xb1ac4;
 const HOMEWORLD_SALT = 0xa11e5;
+const BIOSIGNATURE_SALT = 0xb105;
+const BIOSIGNATURE_ACCURACY = 0.75;
+const FALSE_BIOSIGNATURE_CHANCE = (ALIENS.homeworldChance * (1 - BIOSIGNATURE_ACCURACY)) / (BIOSIGNATURE_ACCURACY * (1 - ALIENS.homeworldChance));
 const STAR_GRAVITY = [2, 6];
 const ROCKY = { radius: [2000, 14000], gravity: [0.05, 0.4] };
 const GAS_GIANT = { radius: [16000, 30000], gravity: [0.3, 0.7] };
@@ -146,6 +149,7 @@ function generateSystem(sectorX, sectorY) {
     planets.push(generatePlanet(next, star, orbit, index, seed));
   }
   settleHomeworld(star, planets, seed);
+  star.biosignature = Boolean(homeworldSpecies(planets)) || createRandom(seed ^ BIOSIGNATURE_SALT).next() < FALSE_BIOSIGNATURE_CHANCE;
   return [star, ...blackHolesBetween(star, orbits, seed), ...planets];
 }
 
@@ -201,6 +205,7 @@ export function systemAt(x, y) {
 const worldsWith = (resource) => (planets) => planets.filter((planet) => planet.resource === resource).length;
 export const crystalWorlds = worldsWith('crystals');
 export const stardustWorlds = worldsWith('stardust');
+export const homeworldSpecies = (planets) => planets.find((planet) => planet.species)?.species ?? null;
 
 const sectorGap = (sector, sectorX, sectorY) => Math.max(Math.abs(sector.x - sectorX), Math.abs(sector.y - sectorY));
 

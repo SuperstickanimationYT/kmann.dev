@@ -17,6 +17,15 @@ hostility plays out through the economy and logistics. There is no combat.
 - Land on a homeworld to open that species' panel.
 - The first contact with each species pays science (`contact:<species>` study).
 
+## Biosignatures
+
+- Life means an alien homeworld; there are no bacteria-only worlds.
+- The telescope (and solar sails) flag possible biosignatures on the stars they chart. No
+  homeworld goes unflagged, and 3 flags in 4 are real. The false alarm chance per lifeless
+  system is derived from the homeworld chance (1 in 21 at 1 in 8).
+- Flags are seeded per system, so rescanning never changes them. Visiting settles it: the
+  map shows the species' colour, or notes the false alarm.
+
 ## Relations
 
 - One number per species, from -100 to +100. Friendly at +30 and above, hostile at -30 and

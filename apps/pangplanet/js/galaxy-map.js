@@ -1,3 +1,4 @@
+import { speciesByKey } from './aliens.js';
 import { GALAXY, SECTOR_SIZE } from './universe.js';
 
 const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08 };
@@ -12,6 +13,7 @@ const LABELS_ABOVE_PX_PER_SECTOR = 18;
 const BOUNTY_GOLD = '#ffc933';
 const CRYSTAL_CYAN = '#7df3ff';
 const STARDUST_VIOLET = '#e2c9ff';
+const LIFE_GREEN = '#8dffc1';
 
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
@@ -98,6 +100,8 @@ export function createGalaxyMap(canvas) {
       }
       if (entry.crystals) ring(entry.x, entry.y, (STAR_DOT_PX + 2) / view.scale, CRYSTAL_CYAN, false);
       if (entry.stardust) ring(entry.x, entry.y, (STAR_DOT_PX + 8) / view.scale, STARDUST_VIOLET, false);
+      if (entry.aliens) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, speciesByKey[entry.aliens].colour, false);
+      else if (entry.biosignature && !entry.visited) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, LIFE_GREEN, true);
       if (entry === selected) ring(entry.x, entry.y, (STAR_DOT_PX + 5) / view.scale, BOUNTY_GOLD, false);
       if (showLabels || entry === selected) label(entry.name, entry.x, entry.y, 15);
     }

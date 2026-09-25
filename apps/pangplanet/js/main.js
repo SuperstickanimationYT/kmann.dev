@@ -78,7 +78,7 @@ import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
-import { SECTOR_SIZE, crystalWorlds, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
+import { SECTOR_SIZE, crystalWorlds, homeworldSpecies, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   ALIENS,
@@ -999,9 +999,16 @@ function mapInfo() {
     `${abbreviate(distance)} away`,
     entry.crystals ? `${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'}` : null,
     entry.stardust ? `${entry.stardust} stardust world${entry.stardust === 1 ? '' : 's'}` : null,
+    lifeNote(entry),
     game.ownsWarpDrive && distance <= warpRange() ? 'in warp range' : null,
   ];
   return details.filter(Boolean).join(' · ');
+}
+
+function lifeNote(entry) {
+  if (entry.aliens) return `${speciesByKey[entry.aliens].name} homeworld`;
+  if (!entry.biosignature) return null;
+  return entry.visited ? 'biosignature was a false alarm' : 'possible biosignature';
 }
 
 const DRILL_FINDS = {
@@ -1629,9 +1636,12 @@ function restore(saved) {
   game.stardust = saved.stardust ?? 0;
   Object.assign(game, { science: saved.science ?? 0, studies: new Set(saved.studies ?? []), sails: (saved.sails ?? []).map(sailFromOldSave), sailsInHold: saved.sailsInHold ?? 0 });
   for (const entry of game.starChart.values()) {
-    const planets = systemAt(entry.x, entry.y)?.planets ?? [];
+    const system = systemAt(entry.x, entry.y);
+    const planets = system?.planets ?? [];
     entry.crystals ??= crystalWorlds(planets);
     entry.stardust ??= entry.visited ? stardustWorlds(planets) : 0;
+    entry.biosignature ??= Boolean(system?.star.biosignature);
+    entry.aliens ??= entry.visited ? homeworldSpecies(planets) : null;
   }
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };
