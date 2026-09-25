@@ -107,7 +107,7 @@ export const CORE = {
   blackHole: { radius: 60000, soi: 160000, mass: 1e12, science: 1000, rings: { inner: 1.4, outer: 2.6, colour: 'rgba(255, 190, 110, 0.6)' } },
   relicOrbit: 700000,
   gateOrbit: 500000,
-  richness: { radiusInSectors: 25, crystals: 3, stardust: 6 },
+  richness: { radiusInSectors: 25, crystals: 3, stardust: 6, deposit: 2 },
 };
 
 export const WORMHOLE_MOUTH = { radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' };
@@ -131,6 +131,8 @@ export function coreSystem(center) {
   const [coreGate, solarGate] = linkWormholes({ ...GATEWAY, ...orbiting(center, CORE.gateOrbit, 20) }, { ...GATEWAY, ...orbiting(SUN, 200000, -60) });
   return { bodies: [core, relic, coreGate], coreGate, solarGate };
 }
+
+export const DEPOSITS = { crystals: [10, 25], stardust: [3, 8] };
 
 export const MARKET = { x: 1000, y: -50000, scale: 3, dockingRange: 1000 };
 
