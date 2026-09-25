@@ -9,7 +9,7 @@ export function study(studies, key, amount) {
   return amount;
 }
 
-export const sampleScience = (resource) => SCIENCE.sample[resource] ?? SCIENCE.sample.other;
+export const sampleScience = (body) => (body.species ? SCIENCE.sample.life : (SCIENCE.sample[body.resource] ?? SCIENCE.sample.other));
 export const flybyScience = (planets) => SCIENCE.flyby.base + SCIENCE.flyby.perPlanet * planets;
 
 export function cruiseSpeed(star, from) {

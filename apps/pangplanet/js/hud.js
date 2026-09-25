@@ -177,6 +177,10 @@ export function createHud(root, actions) {
     alienSells: find('[data-alien-sells]'),
     raidCost: find('[data-raid-cost]'),
     alienWantsIcon: find('[data-alien-wants-icon]'),
+    askToSample: find('[data-ask-to-sample]'),
+    paySampleFee: find('[data-pay-sample-fee]'),
+    sampleFee: find('[data-sample-fee]'),
+    sampleNote: find('[data-sample-note]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -230,6 +234,8 @@ export function createHud(root, actions) {
     alienBuyFuel: actions.alienBuyFuel,
     alienFillTank: actions.alienFillTank,
     alienBuyBattery: actions.alienBuyBattery,
+    askToSample: actions.askToSample,
+    paySampleFee: actions.paySampleFee,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
@@ -561,6 +567,25 @@ export function createHud(root, actions) {
     setHidden(parts.alienRefusal, !alien.refusesTrade);
     setText(parts.alienRefusal, `The ${alien.name} won't trade with you, except for ${alien.wantsLabel}.`);
     updateAlienMarket(alien.market);
+    updateSampleTerms(alien.name, alien.sample);
+  }
+
+  function sampleNote(name, { answer, fee, anger }) {
+    const unasked = `Drilling without permission: relations -${anger}.`;
+    if (answer === 'granted') return `The ${name} let you drill a sample here.`;
+    if (answer === 'fee') return `The ${name} want ${fee} galactokens first. ${unasked}`;
+    if (answer === 'refused') return `The ${name} refused. ${unasked}`;
+    return `Life here makes a sample worth far more science. ${unasked}`;
+  }
+
+  function updateSampleTerms(name, sample) {
+    setHidden(parts.askToSample, !sample || sample.answer !== null);
+    setHidden(parts.paySampleFee, sample?.answer !== 'fee');
+    setHidden(parts.sampleNote, !sample);
+    if (!sample) return;
+    setText(parts.sampleFee, String(sample.fee));
+    parts.paySampleFee.disabled = !sample.canPay;
+    setText(parts.sampleNote, sampleNote(name, sample));
   }
 
   function updateAlienMarket(market) {

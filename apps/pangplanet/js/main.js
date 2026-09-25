@@ -189,6 +189,7 @@ const game = {
   gatewayOpen: false,
   wormholeLinks: new Map(),
   mined: new Map(),
+  samplePermits: new Map(),
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -829,6 +830,19 @@ const actions = {
     game.science -= alien.tipPrice;
     hud.toast(`The ${alien.name} say ${found} has stardust. It's marked on your galaxy map.`);
   },
+  askToSample: () => {
+    const homeworld = dockedOf('aliens');
+    const terms = homeworld && sampleTerms(homeworld);
+    if (!terms || terms.answer) return;
+    game.samplePermits.set(bodyKey(homeworld), rollSampleAnswer());
+  },
+  paySampleFee: () => {
+    const homeworld = dockedOf('aliens');
+    const terms = homeworld && sampleTerms(homeworld);
+    if (terms?.answer !== 'fee' || !terms.canPay) return;
+    game.galactokens -= terms.fee;
+    game.samplePermits.set(bodyKey(homeworld), 'granted');
+  },
   raidShip: () => {
     const { ship } = game;
     if (!ship || dockedOf('aliens') !== ship) return;
@@ -982,6 +996,7 @@ function alienInfo(homeworld) {
     title: alienTitle(homeworld),
     raidable: homeworld === game.ship,
     raidCost: `${name} -${ALIENS.ships.raidAnger}, ${speciesByKey[rival].name} +${ALIENS.ships.rivalGoodwill}`,
+    sample: sampleTerms(homeworld),
   };
 }
 
@@ -1011,6 +1026,27 @@ const dockedMarket = () => {
   const homeworld = dockedOf('aliens');
   return homeworld && homeworld !== game.ship ? homeworldMarket(homeworld, speciesByKey[homeworld.species].wants) : null;
 };
+
+function trespass(body) {
+  if (!body.species || game.samplePermits.get(bodyKey(body)) === 'granted') return '';
+  const { anger } = ALIENS.sampling;
+  shiftRelation(game.relations, body.species, -anger);
+  return ` without permission. The ${speciesByKey[body.species].name} noticed: relations -${anger}`;
+}
+
+function rollSampleAnswer() {
+  const { refuseChance, feeChance } = ALIENS.sampling;
+  const roll = Math.random();
+  if (roll < refuseChance) return 'refused';
+  return roll < refuseChance + feeChance ? 'fee' : 'granted';
+}
+
+function sampleTerms(homeworld) {
+  const key = bodyKey(homeworld);
+  if (homeworld === game.ship || game.studies.has(`sample:${key}`)) return null;
+  const { fee, anger } = ALIENS.sampling;
+  return { answer: game.samplePermits.get(key) ?? null, fee, anger, canPay: game.galactokens >= fee };
+}
 
 function angerOwners(body, resource) {
   const anger = ALIENS.miningAnger[resource];
@@ -1294,7 +1330,8 @@ const drillWell = {
     const body = rocket.soi;
     const { resource } = body;
     rocket.fuel = Math.min(rocket.fuelCapacity, Math.floor(rocket.fuel) + (FUEL_PER_PUMP[resource] ?? FUEL_PER_PUMP.other));
-    earnScience(`sample:${bodyKey(body)}`, sampleScience(resource), `drilled a sample on ${body.name}`);
+    const sampleKey = `sample:${bodyKey(body)}`;
+    if (!game.studies.has(sampleKey)) earnScience(sampleKey, sampleScience(body), `drilled a sample on ${body.name}${trespass(body)}`);
     const find = DRILL_FINDS[resource];
     if (findsLeft(body) <= 0 || Math.random() >= find.chancePerPump) return;
     game[resource] += 1;
@@ -1941,6 +1978,7 @@ function snapshot() {
     gatewayOpen: game.gatewayOpen,
     wormholeLinks: [...game.wormholeLinks],
     mined: [...game.mined],
+    samplePermits: [...game.samplePermits],
   };
 }
 
@@ -1982,6 +2020,7 @@ function restore(saved) {
   game.gatewayOpen = saved.gatewayOpen ?? false;
   game.wormholeLinks = new Map(saved.wormholeLinks ?? []);
   game.mined = new Map(saved.mined ?? []);
+  game.samplePermits = new Map(saved.samplePermits ?? []);
   if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);
   camera.zoom = saved.zoom;
