@@ -78,7 +78,7 @@ import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
-import { SECTOR_SIZE, crystalWorlds, homeworldSpecies, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
+import { SECTOR_SIZE, crystalWorlds, homeworldNear, homeworldSpecies, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   ALIENS,
@@ -178,6 +178,9 @@ const game = {
   starChart: createStarChart(),
   ownsTelescope: false,
   relations: startingRelations(),
+  hostileHere: null,
+  tollDue: null,
+  tollSettledAt: null,
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -248,11 +251,12 @@ const inOpenSpace = () => !game.rocket.soi && !game.rocket.destroyed;
 const onGround = () => landedBody()?.kind === 'planemo';
 const parkedDrones = () => game.drones.filter((drone) => drone.pad);
 const droneInHold = () => game.drones.find((drone) => !drone.pad);
-const canDeploySatellite = () => inHold(game.satellites).length > 0 && inOpenSpace();
-const canDeployRig = () => game.rig && !game.rig.deployed && onGround();
-const canDeployAntenna = () => game.antennasInHold > 0 && onGround();
-const canDeployDrone = () => Boolean(droneInHold()) && onGround() && inSignal(game.antennas, game.rocket.x, game.rocket.y);
-const canDeployBank = () => inHold(game.banks).length > 0 && inOpenSpace();
+const outpostsWelcome = () => !game.hostileHere;
+const canDeploySatellite = () => inHold(game.satellites).length > 0 && inOpenSpace() && outpostsWelcome();
+const canDeployRig = () => game.rig && !game.rig.deployed && onGround() && outpostsWelcome();
+const canDeployAntenna = () => game.antennasInHold > 0 && onGround() && outpostsWelcome();
+const canDeployDrone = () => Boolean(droneInHold()) && onGround() && inSignal(game.antennas, game.rocket.x, game.rocket.y) && outpostsWelcome();
+const canDeployBank = () => inHold(game.banks).length > 0 && inOpenSpace() && outpostsWelcome();
 
 const PRICES = {
   satellite: () => risingPrice(SATELLITE.cost, game.satellites.length),
@@ -398,7 +402,21 @@ const haulerWorld = {
     game.galactokens -= tokens;
     return true;
   },
+  raid: (spot, hauler) => {
+    const hostile = hostileNear(spot);
+    if (!hostile || Math.random() >= ALIENS.raid.chance) return null;
+    const kept = 1 - ALIENS.raid.share;
+    hauler.gold = Math.floor(hauler.gold * kept);
+    hauler.batteries = hauler.batteries.map((charge) => charge * kept);
+    hud.toast(`The ${speciesByKey[hostile.species].name} raided hauler ${game.haulers.indexOf(hauler) + 1} and took half its cargo.`);
+    return hostile.species;
+  },
 };
+
+function hostileNear(spot) {
+  const home = homeworldNear(spot.x, spot.y, VISIT_RANGE);
+  return home && mood(game.relations[home.species]) === 'hostile' ? home : null;
+}
 
 const selectedHauler = () => game.haulers[game.haulerIndex] ?? null;
 
@@ -449,6 +467,10 @@ function startTour() {
 
 const actions = {
   closePanels: () => {
+    if (game.panel === 'toll') {
+      actions.refuseToll();
+      return;
+    }
     tour.stop();
     openPanel(null);
   },
@@ -706,6 +728,11 @@ const actions = {
       hud.toast('No clear spot near that star.');
       return;
     }
+    const hostile = hostileNear(site);
+    if (hostile) {
+      hud.toast(`The ${speciesByKey[hostile.species].name} won't allow outposts near ${site.starName}.`);
+      return;
+    }
     hauler.stops.push({ kind, ...site });
   },
   openHaulers: () => openPanel(game.panel === 'hauler' ? null : 'hauler'),
@@ -763,6 +790,18 @@ const actions = {
     }
     game.science -= alien.tipPrice;
     hud.toast(`The ${alien.name} say ${found} has stardust. It's marked on your galaxy map.`);
+  },
+  payToll: () => {
+    const due = game.tollDue;
+    if (!due || game.galactokens < ALIENS.toll.galactokens) return;
+    game.galactokens -= ALIENS.toll.galactokens;
+    settleToll(`Paid the ${speciesByKey[due.species].name} ${ALIENS.toll.galactokens} galactokens to pass.`);
+  },
+  refuseToll: () => {
+    const due = game.tollDue;
+    if (!due) return;
+    shiftRelation(game.relations, due.species, -ALIENS.toll.refusalAnger);
+    settleToll(`Refused the ${speciesByKey[due.species].name} toll. Relations -${ALIENS.toll.refusalAnger}.`);
   },
   sellToAliens: () => {
     const homeworld = dockedOf('aliens');
@@ -1021,6 +1060,26 @@ function chartVisits() {
   const { rocket } = game;
   if (chartVisitsNear(game.starChart, rocket.x, rocket.y)) hud.toast('New star system added to your galaxy map.');
   studySurroundings();
+  surveyTerritory();
+}
+
+function surveyTerritory() {
+  const { rocket } = game;
+  game.hostileHere = rocket.destroyed ? null : hostileNear(rocket);
+  if (!game.hostileHere) {
+    game.tollSettledAt = null;
+    return;
+  }
+  if (game.warp || game.panel === 'toll' || game.tollSettledAt === starKey(game.hostileHere.star)) return;
+  game.tollDue = game.hostileHere;
+  openPanel('toll');
+}
+
+function settleToll(message) {
+  game.tollSettledAt = starKey(game.tollDue.star);
+  game.tollDue = null;
+  openPanel(null);
+  hud.toast(message);
 }
 
 const closeUpSystem = () => (game.mapSelection?.visited ? systemAt(game.mapSelection.x, game.mapSelection.y) : null);
@@ -1465,6 +1524,7 @@ function haulerStatus(hauler) {
   const missing = STOP_KINDS[hauler.stops[hauler.next].kind].missing;
   if (stalled?.kind === 'idle' && missing) return `No ${missing} in your hold to build. Buy one at the market; it tries again in ${formatDuration(hauler.wait)}. ${cargo}`;
   if (stalled?.kind === 'idle') return `Nothing to carry on its last loop. Trying again in ${formatDuration(hauler.wait)}. ${cargo}`;
+  if (stalled?.kind === 'raided') return `Raided by the ${speciesByKey[stalled.species].name}, who took half its cargo. Moving on in ${formatDuration(hauler.wait)}. ${cargo}`;
   if (stalled?.kind === 'stops') return `None of its stops are set up right now. Redeploy them or change the route. ${cargo}`;
   return `Setting off. ${cargo}`;
 }
@@ -1539,6 +1599,8 @@ function status() {
     canDock: canDock(),
     dockAction: dockAction(),
     alien: dockedOf('aliens') && alienInfo(dockedOf('aliens')),
+    toll: game.tollDue && { name: speciesByKey[game.tollDue.species].name, price: ALIENS.toll.galactokens, canPay: game.galactokens >= ALIENS.toll.galactokens },
+    outpostBan: game.hostileHere ? `The ${speciesByKey[game.hostileHere.species].name} won't let you build outposts here.` : '',
     gold: game.gold,
     satellite: dockedOf('satellite'),
     prices: Object.fromEntries(Object.entries(PRICES).map(([kind, price]) => [kind, price()])),
@@ -1670,6 +1732,7 @@ function snapshot() {
     starChart: [...game.starChart],
     ownsTelescope: game.ownsTelescope,
     relations: game.relations,
+    tollSettledAt: game.tollSettledAt,
   };
 }
 
@@ -1702,6 +1765,7 @@ function restore(saved) {
   }
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };
+  game.tollSettledAt = saved.tollSettledAt ?? null;
   applyUpgrades(game.upgrades, rocket, power);
   camera.zoom = saved.zoom;
   streamAround();

@@ -161,6 +161,10 @@ export function createHud(root, actions) {
     alienNote: find('[data-alien-note]'),
     sellToAliens: find('[data-sell-to-aliens]'),
     alienOffer: find('[data-alien-offer]'),
+    tollDemand: find('[data-toll-demand]'),
+    payToll: find('[data-pay-toll]'),
+    refuseToll: find('[data-refuse-toll]'),
+    outpostBan: find('[data-outpost-ban]'),
     alienWantsIcon: find('[data-alien-wants-icon]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
@@ -209,6 +213,8 @@ export function createHud(root, actions) {
     toggleHauler: actions.toggleHauler,
     askForTip: actions.askForTip,
     sellToAliens: actions.sellToAliens,
+    payToll: actions.payToll,
+    refuseToll: actions.refuseToll,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
@@ -435,6 +441,9 @@ export function createHud(root, actions) {
     updateDrones(status);
     updateHaulers(status);
     updateAlien(status.alien);
+    updateToll(status.toll);
+    setText(parts.outpostBan, status.outpostBan);
+    setHidden(parts.outpostBan, !status.outpostBan);
     showDestinations(status.warpDestinations);
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;
@@ -503,6 +512,12 @@ export function createHud(root, actions) {
     setText(parts.alienOffer, `Sell ${alien.wantsLabel}, ${alien.sellPrice}`);
     if (parts.alienWantsIcon.getAttribute('src') !== alien.wantsIcon) parts.alienWantsIcon.src = alien.wantsIcon;
     parts.sellToAliens.disabled = !alien.canSell;
+  }
+
+  function updateToll(toll) {
+    if (!toll) return;
+    setText(parts.tollDemand, `The ${toll.name} demand ${toll.price} galactokens to pass through their system. Refusing angers them.`);
+    parts.payToll.disabled = !toll.canPay;
   }
 
   function beckonHelp() {
