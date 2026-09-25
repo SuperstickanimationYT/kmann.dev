@@ -1,7 +1,7 @@
 import { randomPlanet } from '../../planet-textures/js/presets.js';
 import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
-import { ALIENS, CORE, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, massFor } from './world.js';
+import { ALIENS, CORE, DEPOSITS, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
 const MIRROR_SALT = 0x3a7c9e1;
@@ -23,6 +23,7 @@ const BLACK_HOLE_CHANCE = 0.25;
 const BLACK_HOLE_COUNT = [1, 3];
 const BLACK_HOLE_SALT = 0xb1ac4;
 const HOMEWORLD_SALT = 0xa11e5;
+const DEPOSIT_SALT = 0xde9051;
 const WORMHOLE_SALT = 0x77e11;
 const WORMHOLE_BLOCK_IN_SECTORS = 40;
 const STARS_PER_WORMHOLE_MOUTH = 40;
@@ -78,7 +79,8 @@ export function openGateway() {
 
 function coreRichness(x, y) {
   const closeness = Math.max(0, 1 - Math.hypot(x - GALAXY.x, y - GALAXY.y) / (CORE.richness.radiusInSectors * SECTOR_SIZE));
-  return { crystals: 1 + (CORE.richness.crystals - 1) * closeness, stardust: 1 + (CORE.richness.stardust - 1) * closeness };
+  const boost = (factor) => 1 + (factor - 1) * closeness;
+  return { crystals: boost(CORE.richness.crystals), stardust: boost(CORE.richness.stardust), deposit: boost(CORE.richness.deposit) };
 }
 
 export const outsideGalaxy = (x, y) => Math.hypot(x - GALAXY.x, y - GALAXY.y) > GALAXY.radius;
@@ -123,8 +125,16 @@ function resourceFor(gasGiant, seed, index, richness) {
   return random.next() < STARDUST_CHANCE * richness.stardust ? 'stardust' : null;
 }
 
+function depositFor(resource, seed, index, richness) {
+  const range = DEPOSITS[resource];
+  if (!range) return null;
+  const random = createRandom(seed ^ Math.imul(index + 1, DEPOSIT_SALT));
+  return Math.round(random.integer(...range) * richness.deposit);
+}
+
 function generatePlanet(next, star, orbit, index, seed, richness) {
   const gasGiant = next() < GAS_GIANT_CHANCE;
+  const resource = resourceFor(gasGiant, seed, index, richness);
   const shape = gasGiant ? GAS_GIANT : ROCKY;
   const radius = within(next, shape.radius);
   const bearing = next() * Math.PI * 2;
@@ -141,7 +151,8 @@ function generatePlanet(next, star, orbit, index, seed, richness) {
     palette: { fill: planet.baseColor },
     planet,
     bounty: bountyForGravity(surfaceGravity),
-    resource: resourceFor(gasGiant, seed, index, richness),
+    resource,
+    deposit: depositFor(resource, seed, index, richness),
   };
 }
 

@@ -188,6 +188,7 @@ const game = {
   shipClock: nextShipDelayTicks(),
   gatewayOpen: false,
   wormholeLinks: new Map(),
+  mined: new Map(),
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -1138,13 +1139,17 @@ function settleToll(message) {
 
 const closeUpSystem = () => (game.mapSelection?.visited ? systemAt(game.mapSelection.x, game.mapSelection.y) : null);
 
+function depositNote(planet) {
+  const left = findsLeft(planet);
+  return left > 0 ? `${planet.resource}: ${left} left` : `${planet.resource}: mined out`;
+}
+
 function planetInfo(planet) {
   const waiting = bountyWaiting(game.claimedBounties, planet);
   const details = [
     planet.name,
     `${abbreviate(planet.radius)} radius`,
-    planet.resource === 'crystals' ? 'crystals' : null,
-    planet.resource === 'stardust' ? 'stardust' : null,
+    DRILL_FINDS[planet.resource] ? depositNote(planet) : null,
     planet.resource === 'gas' ? 'gas giant: double fuel' : null,
     planet.species ? `${speciesByKey[planet.species].name} homeworld` : null,
     planet.territory && !planet.species ? `${speciesByKey[planet.territory].name} territory` : null,
@@ -1187,18 +1192,37 @@ const DRILL_FINDS = {
   stardust: { chancePerPump: STARDUST.chancePerPump, found: (count) => `Found stardust! You have ${count}.` },
 };
 
+const findsLeft = (body) => (DRILL_FINDS[body?.resource] ? body.deposit - (game.mined.get(bodyKey(body)) ?? 0) : 0);
+
+function takeFind(body) {
+  const key = bodyKey(body);
+  game.mined.set(key, (game.mined.get(key) ?? 0) + 1);
+  if (findsLeft(body) > 0) return '';
+  recountDeposits(body);
+  return ` That was the last of it on ${body.name}.`;
+}
+
+function recountDeposits(body) {
+  const system = systemAt(body.x, body.y);
+  const entry = system && game.starChart.get(starKey(system.star));
+  if (!entry) return;
+  const withFindsLeft = (resource) => system.planets.filter((planet) => planet.resource === resource && findsLeft(planet) > 0).length;
+  Object.assign(entry, { crystals: withFindsLeft('crystals'), stardust: entry.visited ? withFindsLeft('stardust') : entry.stardust });
+}
+
 const drillWell = {
   pump: () => {
     const { rocket } = game;
-    const { resource } = rocket.soi;
+    const body = rocket.soi;
+    const { resource } = body;
     rocket.fuel = Math.min(rocket.fuelCapacity, Math.floor(rocket.fuel) + (FUEL_PER_PUMP[resource] ?? FUEL_PER_PUMP.other));
-    earnScience(`sample:${bodyKey(rocket.soi)}`, sampleScience(resource), `drilled a sample on ${rocket.soi.name}`);
+    earnScience(`sample:${bodyKey(body)}`, sampleScience(resource), `drilled a sample on ${body.name}`);
     const find = DRILL_FINDS[resource];
-    if (!find || Math.random() >= find.chancePerPump) return;
+    if (findsLeft(body) <= 0 || Math.random() >= find.chancePerPump) return;
     game[resource] += 1;
-    hud.toast(find.found(game[resource]) + angerOwners(rocket.soi, resource));
+    hud.toast(find.found(game[resource]) + takeFind(body) + angerOwners(body, resource));
   },
-  exhausted: () => game.rocket.fuel >= game.rocket.fuelCapacity && !DRILL_FINDS[game.rocket.soi?.resource],
+  exhausted: () => game.rocket.fuel >= game.rocket.fuelCapacity && findsLeft(game.rocket.soi) <= 0,
 };
 
 function throughWormhole(mouth) {
@@ -1790,6 +1814,7 @@ function frame(time) {
       warpRange: game.ownsWarpDrive ? warpRange() : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
+      findsLeft,
       routePath: routePaths(),
       drones: [...parkedDrones().map(dronePose), ...game.haulers.map(haulerPose), ...game.sails.map(sailPose)],
       ship: game.ship && { x: game.ship.x, y: game.ship.y, colour: speciesByKey[game.ship.species].colour },
@@ -1837,6 +1862,7 @@ function snapshot() {
     tollSettledAt: game.tollSettledAt,
     gatewayOpen: game.gatewayOpen,
     wormholeLinks: [...game.wormholeLinks],
+    mined: [...game.mined],
   };
 }
 
@@ -1877,6 +1903,7 @@ function restore(saved) {
   game.tollSettledAt = saved.tollSettledAt ?? null;
   game.gatewayOpen = saved.gatewayOpen ?? false;
   game.wormholeLinks = new Map(saved.wormholeLinks ?? []);
+  game.mined = new Map(saved.mined ?? []);
   if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);
   camera.zoom = saved.zoom;
