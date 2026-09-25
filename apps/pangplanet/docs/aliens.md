@@ -9,8 +9,9 @@ hostility plays out through the economy and logistics. There is no combat.
   species whose wedge holds the Solar System is the home species.
 - About 1 in 8 generated star systems has a homeworld: one of its planets carries a
   `species` tag. The placement is seeded, so a galaxy always has the same aliens.
-- Each species has a name, a colour, a rival, and one resource it wants (gas, crystals,
-  gold or science).
+- Each species has a name, a colour, a rival, and one resource it wants: Zorani gold,
+  Quillith crystals, Vessk charged batteries. Science stays the tip currency.
+- A homeworld's star system is that species' territory.
 
 ## Contact
 
@@ -32,8 +33,9 @@ hostility plays out through the economy and logistics. There is no combat.
   below, wary in between.
 - Starting moods: home species +40, one neutral species at 0, and the home species' rival
   at -40.
-- Relations rise when you sell a species what it wants or give gifts. They fall when you
-  mine on worlds in its territory.
+- Selling a species what it wants raises relations by 1 per 50 galactokens of market
+  value.
+- Each crystal found in its territory costs 5 relation, each stardust 15.
 
 ## Friendly perks
 
@@ -41,8 +43,8 @@ hostility plays out through the economy and logistics. There is no combat.
   that you haven't visited, within 5 sectors of its homeworld. The system is charted with
   its stardust count filled in, so the violet ring shows on the galaxy map. The price
   starts at 200 science and drops as the species gets friendlier.
-- Better prices on the resource they want.
-- Permission to build outposts in their systems.
+- They pay 1.5× the market price for the resource they want. Everyone else pays the
+  market price.
 
 Hostile species refuse to give tips. They never sell false ones.
 
@@ -51,6 +53,7 @@ Hostile species refuse to give tips. They never sell false ones.
 - Toll to enter the SOI of one of their systems. Refusing drops relations.
 - Haulers routed through their systems sometimes lose cargo (new stall kind `raided`).
 - No tips.
+- No outposts in their territory.
 
 ## Alien ships and raids
 
@@ -67,7 +70,7 @@ Hostile species refuse to give tips. They never sell false ones.
 ## Rollout
 
 1. Homeworlds, contact science, stardust tips
-2. Relations change, wanted resources, better prices
+2. Wanted resources, trade prices, mining anger
 3. Tolls and hauler raids
 4. Alien ships and player raids
 

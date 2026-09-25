@@ -159,6 +159,9 @@ export function createHud(root, actions) {
     askForTip: find('[data-ask-for-tip]'),
     tipPrice: find('[data-tip-price]'),
     alienNote: find('[data-alien-note]'),
+    sellToAliens: find('[data-sell-to-aliens]'),
+    alienOffer: find('[data-alien-offer]'),
+    alienWantsIcon: find('[data-alien-wants-icon]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -205,6 +208,7 @@ export function createHud(root, actions) {
     buyBuilder: actions.buyBuilder,
     toggleHauler: actions.toggleHauler,
     askForTip: actions.askForTip,
+    sellToAliens: actions.sellToAliens,
   };
   for (const [part, action] of Object.entries(clicks)) parts[part].addEventListener('click', action);
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
@@ -496,6 +500,9 @@ export function createHud(root, actions) {
     parts.askForTip.disabled = !alien.canAskForTip;
     setText(parts.tipPrice, String(alien.tipPrice));
     setHidden(parts.alienNote, alien.friendly);
+    setText(parts.alienOffer, `Sell ${alien.wantsLabel}, ${alien.sellPrice}`);
+    if (parts.alienWantsIcon.getAttribute('src') !== alien.wantsIcon) parts.alienWantsIcon.src = alien.wantsIcon;
+    parts.sellToAliens.disabled = !alien.canSell;
   }
 
   function beckonHelp() {

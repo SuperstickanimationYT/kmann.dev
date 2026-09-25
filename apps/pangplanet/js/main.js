@@ -1,4 +1,4 @@
-import { mood, speciesByKey, startingRelations, tipPrice } from './aliens.js';
+import { goodwillFor, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
 import { abbreviate, createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, sphereOfInfluence, wrapAngle } from './physics.js';
@@ -261,6 +261,30 @@ const PRICES = {
   drone: () => risingPrice(DRONE.cost, game.drones.length),
   hauler: () => risingPrice(HAULER.cost, game.haulers.filter((hauler) => !hauler.builds).length),
   builder: () => risingPrice(BUILDER.cost, game.haulers.filter((hauler) => hauler.builds).length),
+};
+
+const WANTED_GOODS = {
+  gold: {
+    label: 'gold',
+    icon: 'img/gold.svg',
+    marketPrice: GOLD.sellPrice,
+    count: () => game.gold,
+    handOver: () => (game.gold = 0),
+  },
+  crystals: {
+    label: 'crystals',
+    icon: 'img/crystal.svg',
+    marketPrice: CRYSTALS.sellPrice,
+    count: () => game.crystals,
+    handOver: () => (game.crystals = 0),
+  },
+  batteries: {
+    label: 'charged batteries',
+    icon: 'img/battery.svg',
+    marketPrice: BATTERY.sellPrice,
+    count: () => chargedBatteries(game.power),
+    handOver: () => (game.power.batteries = game.power.batteries.filter((charge) => charge < 1)),
+  },
 };
 
 const deployedOrNull = (outpost) => (outpost?.deployed ? outpost : null);
@@ -740,6 +764,18 @@ const actions = {
     game.science -= alien.tipPrice;
     hud.toast(`The ${alien.name} say ${found} has stardust. It's marked on your galaxy map.`);
   },
+  sellToAliens: () => {
+    const homeworld = dockedOf('aliens');
+    const alien = homeworld && alienInfo(homeworld);
+    if (!alien?.canSell) return;
+    const goods = WANTED_GOODS[alien.wants];
+    const count = goods.count();
+    goods.handOver();
+    game.galactokens += count * alien.sellPrice;
+    const goodwill = goodwillFor(count * goods.marketPrice);
+    shiftRelation(game.relations, homeworld.species, goodwill);
+    hud.toast(`The ${alien.name} took ${count} ${goods.label}. Relations +${goodwill.toFixed(1)}.`);
+  },
   sellBatteries: () => {
     const { power } = game;
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
@@ -794,11 +830,31 @@ function dock() {
 }
 
 function alienInfo(homeworld) {
-  const { name } = speciesByKey[homeworld.species];
+  const { name, wants } = speciesByKey[homeworld.species];
   const relation = game.relations[homeworld.species];
   const friendly = mood(relation) === 'friendly';
   const price = tipPrice(relation);
-  return { name, mood: mood(relation), relation, friendly, tipPrice: price, canAskForTip: friendly && game.science >= price };
+  const goods = WANTED_GOODS[wants];
+  return {
+    name,
+    mood: mood(relation),
+    relation: Math.round(relation),
+    friendly,
+    tipPrice: price,
+    canAskForTip: friendly && game.science >= price,
+    wants,
+    wantsLabel: goods.label,
+    wantsIcon: goods.icon,
+    sellPrice: priceFromAliens(relation, goods.marketPrice),
+    canSell: goods.count() > 0,
+  };
+}
+
+function angerOwners(body, resource) {
+  const anger = ALIENS.miningAnger[resource];
+  if (!body.territory || !anger) return '';
+  shiftRelation(game.relations, body.territory, -anger);
+  return ` The ${speciesByKey[body.territory].name} noticed: relations -${anger}.`;
 }
 
 const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map(dronePose)]);
@@ -978,6 +1034,7 @@ function planetInfo(planet) {
     planet.resource === 'stardust' ? 'stardust' : null,
     planet.resource === 'gas' ? 'gas giant: double fuel' : null,
     planet.species ? `${speciesByKey[planet.species].name} homeworld` : null,
+    planet.territory && !planet.species ? `${speciesByKey[planet.territory].name} territory` : null,
     waiting ? `${waiting} bounty waiting` : null,
     planet.bounty && !waiting ? 'bounty claimed' : null,
     `${abbreviate(Math.hypot(planet.x - game.rocket.x, planet.y - game.rocket.y))} away`,
@@ -1025,7 +1082,7 @@ const drillWell = {
     const find = DRILL_FINDS[resource];
     if (!find || Math.random() >= find.chancePerPump) return;
     game[resource] += 1;
-    hud.toast(find.found(game[resource]));
+    hud.toast(find.found(game[resource]) + angerOwners(rocket.soi, resource));
   },
   exhausted: () => game.rocket.fuel >= game.rocket.fuelCapacity && !DRILL_FINDS[game.rocket.soi?.resource],
 };
