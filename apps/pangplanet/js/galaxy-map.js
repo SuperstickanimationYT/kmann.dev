@@ -123,7 +123,7 @@ export function createGalaxyMap(canvas) {
     context.restore();
   }
 
-  function drawSystem(bountyWaiting) {
+  function drawSystem(bountyWaiting, findsLeft) {
     const { star, planets, blackHoles, wormholes } = system;
     for (const mouth of wormholes) {
       disk(mouth.x, mouth.y, PLANET_MIN_PX, WORMHOLE_PURPLE);
@@ -142,8 +142,9 @@ export function createGalaxyMap(canvas) {
       const planetPx = Math.max(planet.radius * view.scale, PLANET_MIN_PX);
       disk(planet.x, planet.y, planetPx, planet.palette?.fill ?? '#9c9489');
       if (bountyWaiting(planet)) ring(planet.x, planet.y, (planetPx + 3) / view.scale, BOUNTY_GOLD, true);
-      if (planet.resource === 'crystals') ring(planet.x, planet.y, (planetPx + 9) / view.scale, CRYSTAL_CYAN, false);
-      if (planet.resource === 'stardust') ring(planet.x, planet.y, (planetPx + 9) / view.scale, STARDUST_VIOLET, false);
+      const depositLeft = findsLeft(planet) > 0;
+      if (depositLeft && planet.resource === 'crystals') ring(planet.x, planet.y, (planetPx + 9) / view.scale, CRYSTAL_CYAN, false);
+      if (depositLeft && planet.resource === 'stardust') ring(planet.x, planet.y, (planetPx + 9) / view.scale, STARDUST_VIOLET, false);
       if (planet === selectedPlanet) ring(planet.x, planet.y, (planetPx + 6) / view.scale, BOUNTY_GOLD, false);
       label(planet.name, planet.x, planet.y, planetPx + 13);
     }
@@ -183,13 +184,13 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, routePath, drones, ship, wormholeLinks }) {
+  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
     if (canvas.clientWidth !== view.size) fit();
     context.fillStyle = '#02060d';
     context.fillRect(0, 0, view.size, view.size);
     if (view.mode === 'system') {
       frameOn(system.star, systemRadius(system));
-      drawSystem(bountyWaiting);
+      drawSystem(bountyWaiting, findsLeft);
     } else {
       frameOn(view.mode === 'nearby' ? rocket : GALAXY, VIEW_RADIUS[view.mode]);
       drawGalaxy();
