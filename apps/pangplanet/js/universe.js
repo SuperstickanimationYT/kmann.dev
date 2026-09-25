@@ -4,6 +4,7 @@ import { SPECIES } from './aliens.js';
 import { ALIENS, CORE, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, blackHole, coreSystem, massFor } from './world.js';
 
 const GALAXY_SEED = 0x9a1a7;
+const MIRROR_SALT = 0x3a7c9e1;
 export const SECTOR_SIZE = 1.5e7;
 const GALAXY_CENTER_IN_SECTORS = [100, 0];
 const GALAXY_RADIUS_IN_SECTORS = 150;
@@ -82,8 +83,12 @@ export function galacticPull(x, y) {
   return [((GALAXY.x - x) / distance) * GALACTIC_PULL, ((GALAXY.y - y) / distance) * GALACTIC_PULL];
 }
 
+const onMirroredSide = (sectorX, sectorY) => sectorX < 0 || (sectorX === 0 && sectorY < 0);
+const sharesSeedWithMirror = (sectorX, sectorY) => onMirroredSide(sectorX, sectorY) && (sectorX + sectorY) % 2 === 0;
+
 function sectorSeed(sectorX, sectorY) {
   let hash = GALAXY_SEED ^ Math.imul(sectorX, 0x27d4eb2d) ^ Math.imul(sectorY, 0x165667b1);
+  if (sharesSeedWithMirror(sectorX, sectorY)) hash ^= MIRROR_SALT;
   hash = Math.imul(hash ^ (hash >>> 15), 0x85ebca6b);
   hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35);
   return (hash ^ (hash >>> 16)) >>> 0;
