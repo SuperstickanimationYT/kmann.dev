@@ -32,6 +32,19 @@ const WORMHOLE_REACH_IN_SECTORS = [10, 30];
 const WORMHOLE_CLEAR_OF_HOME_IN_SECTORS = 6;
 const WORMHOLE_BEYOND_PLANETS = 150000;
 const BIOSIGNATURE_SALT = 0xb105;
+const MOON_SALT = 0x6d0015;
+const MOON = {
+  countAroundGasGiant: [0, 3],
+  countAroundBigRocky: [0, 1],
+  bigRockyRadius: 9000,
+  radius: [800, 2500],
+  gravity: [0.01, 0.15],
+  bounty: [100, 150],
+  outerReach: 60000,
+  icyCrystalChance: 0.2,
+  depositShare: 0.5,
+};
+const MOON_NUMERALS = ['I', 'II', 'III'];
 const BIOSIGNATURE_ACCURACY = 0.75;
 const FALSE_BIOSIGNATURE_CHANCE = (ALIENS.homeworldChance * (1 - BIOSIGNATURE_ACCURACY)) / (BIOSIGNATURE_ACCURACY * (1 - ALIENS.homeworldChance));
 const STAR_GRAVITY = [2, 6];
@@ -209,7 +222,51 @@ function generateSystem(sectorX, sectorY) {
   }
   settleHomeworld(star, planets, seed);
   star.biosignature = Boolean(homeworldSpecies(planets)) || createRandom(seed ^ BIOSIGNATURE_SALT).next() < FALSE_BIOSIGNATURE_CHANCE;
-  return [star, ...blackHolesBetween(star, orbits, seed), ...wormholeMouth(star, orbits, seed, sectorX, sectorY), ...planets];
+  const blackHoles = blackHolesBetween(star, orbits, seed);
+  const moons = planets.flatMap((planet, index) => moonsOf(planet, index, seed, richness)).filter((moon) => clearOf(blackHoles, moon));
+  return [star, ...blackHoles, ...wormholeMouth(star, orbits, seed, sectorX, sectorY), ...planets, ...moons];
+}
+
+const clearOf = (bodies, moon) => bodies.every((body) => Math.hypot(body.x - moon.x, body.y - moon.y) > body.soi + moon.soi);
+
+function moonCount(planet, integer) {
+  if (planet.resource === 'gas') return integer(...MOON.countAroundGasGiant);
+  return planet.radius >= MOON.bigRockyRadius ? integer(...MOON.countAroundBigRocky) : 0;
+}
+
+function moonResource(icy, next, richness) {
+  if (next() < (icy ? MOON.icyCrystalChance : CRYSTAL_CHANCE) * richness.crystals) return 'crystals';
+  return next() < STARDUST_CHANCE * richness.stardust ? 'stardust' : null;
+}
+
+function moonsOf(planet, index, seed, richness) {
+  const { next, integer } = createRandom(seed ^ Math.imul(index + 1, MOON_SALT));
+  const count = moonCount(planet, integer);
+  const lane = (MOON.outerReach - planet.soi) / Math.max(count, 1);
+  return Array.from({ length: count }, (_, moonIndex) => {
+    const radius = within(next, MOON.radius);
+    const distance = planet.soi + lane * (moonIndex + 0.5);
+    const bearing = next() * Math.PI * 2;
+    const resource = moonResource(planet.resource === 'gas', next, richness);
+    const range = DEPOSITS[resource];
+    const surface = randomPlanet(next, false);
+    return {
+      name: `${planet.name} ${MOON_NUMERALS[moonIndex]}`,
+      x: planet.x + Math.sin(bearing) * distance,
+      y: planet.y + Math.cos(bearing) * distance,
+      radius,
+      soi: radius + SOI_MARGIN,
+      mass: massFor(radius, within(next, MOON.gravity)),
+      kind: 'planemo',
+      moon: true,
+      palette: { fill: surface.baseColor },
+      planet: surface,
+      bounty: Math.round(within(next, MOON.bounty) / 10) * 10,
+      resource,
+      deposit: range ? Math.max(1, Math.round(integer(...range) * richness.deposit * MOON.depositShare)) : null,
+      territory: planet.territory,
+    };
+  });
 }
 
 function canHostWormhole(sectorX, sectorY) {
