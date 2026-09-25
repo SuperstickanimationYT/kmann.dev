@@ -20,13 +20,33 @@ function stall(hauler, reason, seconds = HAULER.retrySeconds) {
 
 const cargoOf = (hauler) => storedCharge(hauler.batteries) + hauler.gold;
 
-function tripCost(from, to) {
-  const distance = Math.hypot(to.x - from.x, to.y - from.y);
-  if (distance >= WARP_DRIVE.minimumJump) return { charge: distance * WARP_DRIVE.chargePerUnit, seconds: HAULER.stopSeconds + HAULER.warpSeconds, warp: true };
-  return { tokens: Math.ceil(distance * HAULER.tokensPerUnit), seconds: HAULER.stopSeconds + distance / HAULER.speed, warp: false };
+const distance = (from, to) => Math.hypot(to.x - from.x, to.y - from.y);
+
+function hopCost(from, to) {
+  const gap = distance(from, to);
+  if (gap >= WARP_DRIVE.minimumJump) return { charge: gap * WARP_DRIVE.chargePerUnit, tokens: 0, seconds: HAULER.stopSeconds + HAULER.warpSeconds, warp: true };
+  return { charge: 0, tokens: Math.ceil(gap * HAULER.tokensPerUnit), seconds: HAULER.stopSeconds + gap / HAULER.speed, warp: false };
 }
 
-function depart(hauler, { locate, spend }) {
+function throughLink(from, to, link, [entry, exit]) {
+  const [inbound, outbound] = [hopCost(from, entry), hopCost(exit, to)];
+  return {
+    charge: inbound.charge + outbound.charge,
+    tokens: inbound.tokens + outbound.tokens + link.fare,
+    seconds: inbound.seconds + outbound.seconds - HAULER.stopSeconds,
+    warp: true,
+    link,
+    travelled: distance(from, entry) + distance(exit, to),
+  };
+}
+
+function tripCost(from, to, links) {
+  const routes = links.flatMap((link) => [link.ends, [...link.ends].reverse()].map((ends) => throughLink(from, to, link, ends)));
+  const direct = { ...hopCost(from, to), link: null, travelled: distance(from, to) };
+  return routes.reduce((best, route) => (route.travelled < best.travelled ? route : best), direct);
+}
+
+function depart(hauler, { locate, spend, wormholes }) {
   const { stops } = hauler;
   let target = null;
   for (let tries = 0; tries < stops.length && !target; tries++) {
@@ -37,27 +57,28 @@ function depart(hauler, { locate, spend }) {
     stall(hauler, { kind: 'stops' });
     return;
   }
-  const cost = tripCost(hauler, target);
-  if (cost.warp && storedCharge(hauler.batteries) < cost.charge) {
+  const cost = tripCost(hauler, target, wormholes());
+  if (storedCharge(hauler.batteries) < cost.charge) {
     stall(hauler, { kind: 'charge', amount: cost.charge });
     return;
   }
-  if (!cost.warp && !spend(cost.tokens)) {
+  if (cost.tokens && !spend(cost.tokens)) {
     stall(hauler, { kind: 'tokens', amount: cost.tokens });
     return;
   }
-  if (cost.warp) drainBatteries(hauler.batteries, cost.charge);
+  drainBatteries(hauler.batteries, cost.charge);
+  cost.link?.use();
   hauler.stalled = null;
-  hauler.leg = { from: { x: hauler.x, y: hauler.y }, to: { x: target.x, y: target.y }, total: cost.seconds, left: cost.seconds, warp: cost.warp };
+  hauler.leg = { from: { x: hauler.x, y: hauler.y }, to: { x: target.x, y: target.y }, total: cost.seconds, left: cost.seconds, warp: cost.warp, wormhole: Boolean(cost.link) };
 }
 
-function chargeForNextWarp(hauler, locate) {
+function chargeForNextWarp(hauler, { locate, wormholes }) {
   const after = locate(hauler.stops[(hauler.next + 1) % hauler.stops.length]);
-  const cost = after && tripCost(hauler, after);
-  return cost?.warp ? cost.charge : 0;
+  return after ? tripCost(hauler, after, wormholes()).charge : 0;
 }
 
-function arrive(hauler, { locate, act, raid }) {
+function arrive(hauler, world) {
+  const { locate, act, raid } = world;
   const { to } = hauler.leg;
   Object.assign(hauler, { x: to.x, y: to.y, leg: null });
   const stop = hauler.stops[hauler.next];
@@ -66,7 +87,7 @@ function arrive(hauler, { locate, act, raid }) {
   const raider = raid(spot, hauler);
   if (raider) stall(hauler, { kind: 'raided', species: raider }, ALIENS.raid.pauseSeconds);
   const before = cargoOf(hauler);
-  const finished = act(stop, hauler, chargeForNextWarp(hauler, locate));
+  const finished = act(stop, hauler, chargeForNextWarp(hauler, world));
   if (cargoOf(hauler) !== before || finished) hauler.movedThisLoop = true;
   if (finished) removeStop(hauler, hauler.next);
   else hauler.next = (hauler.next + 1) % hauler.stops.length;

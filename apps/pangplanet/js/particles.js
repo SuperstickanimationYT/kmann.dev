@@ -8,6 +8,7 @@ const SPARKS_PER_TICK = 1.2;
 const SMOKE_PER_TICK = 0.5;
 const DEPTH_INTO_FULL_FLAME = 14;
 const BLAST = { sparks: 70, smoke: 35, sparkSpeed: 9, smokeSpeed: 3 };
+const COLLAPSE_FLASH = { sparks: 160, speedPerRadius: 0.04, sizePerRadius: 0.25 };
 
 export const createParticles = () => [];
 
@@ -66,6 +67,11 @@ function burst(particles, { x, y }, kind, count, speed, look) {
 export function blast(particles, at) {
   burst(particles, at, 'spark', BLAST.sparks, BLAST.sparkSpeed, SPARK);
   burst(particles, at, 'smoke', BLAST.smoke, BLAST.smokeSpeed, SMOKE);
+}
+
+export function flash(particles, at, radius) {
+  const size = radius * COLLAPSE_FLASH.sizePerRadius;
+  burst(particles, at, 'spark', COLLAPSE_FLASH.sparks, radius * COLLAPSE_FLASH.speedPerRadius, { ...SPARK, size, growth: -size / SPARK.life });
 }
 
 export function drift(particles, ticks) {

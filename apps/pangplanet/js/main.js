@@ -57,7 +57,7 @@ import {
 import { createGalaxyMap } from './galaxy-map.js';
 import { flyShip, launchShip, nextShipDelayTicks, relativeSpeed, shipGone } from './ships.js';
 import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
-import { blast, createParticles, drift, exhaust } from './particles.js';
+import { blast, createParticles, drift, exhaust, flash } from './particles.js';
 import { applyUpgrades, bodyKey, bountyWaiting, canAfford, claimBounty, createUpgrades, nextUpgrade, risingPrice, upgradeValue } from './progression.js';
 import {
   createStudies,
@@ -79,14 +79,41 @@ import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
-import { SECTOR_SIZE, coreGate, crystalWorlds, homeworldNear, homeworldSpecies, openGateway, outsideGalaxy, stardustWorlds, starsWithin, streamSectors, systemAt, systemsWithin } from './universe.js';
+import {
+  SECTOR_SIZE,
+  coreGate,
+  crystalWorlds,
+  homeworldNear,
+  homeworldSpecies,
+  openGateway,
+  outsideGalaxy,
+  setBuiltMouths,
+  stardustWorlds,
+  starsWithin,
+  streamSectors,
+  systemAt,
+  systemsWithin,
+} from './universe.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
+import {
+  ageWormholes,
+  fareFor,
+  farEnoughFromPending,
+  haulerLinks,
+  isLinked,
+  mouthBodies,
+  mouthSpot,
+  pendingWormhole,
+  placeMouth,
+  secondsUntilCollapse,
+} from './wormholes.js';
 import {
   ALIENS,
   ANTENNA,
   BATTERY,
   BATTERY_BANK,
   BUILDER,
+  BUILT_WORMHOLE,
   CRASH_SPEED,
   CRYSTALS,
   DRONE,
@@ -110,6 +137,7 @@ import {
   TICKS_PER_SECOND,
   UPGRADES,
   WARP_DRIVE,
+  WORMHOLE_MOUTH,
 } from './world.js';
 
 const STEP_TICKS = 0.5;
@@ -190,6 +218,8 @@ const game = {
   wormholeLinks: new Map(),
   mined: new Map(),
   samplePermits: new Map(),
+  builtWormholes: [],
+  wormholesInHold: 0,
   mapSelection: null,
   mapPlanet: null,
   panel: null,
@@ -282,6 +312,15 @@ const canDeployRig = () => game.rig && !game.rig.deployed && onGround() && outpo
 const canDeployAntenna = () => game.antennasInHold > 0 && onGround() && outpostsWelcome();
 const canDeployDrone = () => Boolean(droneInHold()) && onGround() && inSignal(game.antennas, game.rocket.x, game.rocket.y) && outpostsWelcome();
 const canDeployBank = () => inHold(game.banks).length > 0 && inOpenSpace() && outpostsWelcome();
+const hasMouthToPlace = () => game.wormholesInHold > 0 || Boolean(pendingWormhole(game.builtWormholes));
+
+function mouthPlacement() {
+  if (!hasMouthToPlace() || !inOpenSpace() || !outpostsWelcome()) return null;
+  const spot = mouthSpot(game.rocket);
+  if (!farEnoughFromPending(game.builtWormholes, spot)) return { blocker: 'Too close to the first mouth. Fly farther away.' };
+  if (sphereOfInfluence(spot.x, spot.y)) return { blocker: 'Too close to another body. Move into open space.' };
+  return { blocker: null };
+}
 
 const PRICES = {
   satellite: () => risingPrice(SATELLITE.cost, game.satellites.length),
@@ -290,6 +329,7 @@ const PRICES = {
   drone: () => risingPrice(DRONE.cost, game.drones.length),
   hauler: () => risingPrice(HAULER.cost, game.haulers.filter((hauler) => !hauler.builds).length),
   builder: () => risingPrice(BUILDER.cost, game.haulers.filter((hauler) => hauler.builds).length),
+  wormhole: () => risingPrice(BUILT_WORMHOLE.cost, game.builtWormholes.length + game.wormholesInHold),
 };
 
 const TRADE_GOODS = {
@@ -450,6 +490,7 @@ const haulerWorld = {
     hud.toast(`The ${speciesByKey[hostile.species].name} raided hauler ${game.haulers.indexOf(hauler) + 1} and took half its cargo.`);
     return hostile.species;
   },
+  wormholes: () => haulerLinks(game.builtWormholes),
 };
 
 function hostileNear(spot) {
@@ -747,6 +788,20 @@ const actions = {
     game.haulers.push(createHauler(MARKET));
     game.haulerIndex = game.haulers.length - 1;
     hud.toast('Hauler waiting at the market. Add stops from Rocket → Haulers.');
+  },
+  buyWormhole: () => {
+    if (!pay('wormhole')) return;
+    game.wormholesInHold += 1;
+    hud.toast('Wormhole pair in the hold. Place the first mouth in open space, then carry the second to where you want the link.');
+  },
+  placeMouth: () => {
+    if (mouthPlacement()?.blocker !== null) return;
+    const opening = Boolean(pendingWormhole(game.builtWormholes));
+    if (!opening) game.wormholesInHold -= 1;
+    placeMouth(game.builtWormholes, mouthSpot(game.rocket));
+    syncMouths();
+    openPanel(null);
+    hud.toast(opening ? 'The wormhole is open. Each trip pays its fare.' : 'First mouth placed. Carry the second one to the other end.');
   },
   buyBuilder: () => {
     if (!pay('builder')) return;
@@ -1075,8 +1130,12 @@ function catchUpToNow() {
   const now = Date.now();
   const seconds = (now - unattendedClock) / 1000;
   unattendedClock = now;
-  if (seconds > PAUSED_AFTER_SECONDS) catchUp(seconds);
-  else runTimeline(seconds);
+  if (seconds > PAUSED_AFTER_SECONDS) {
+    catchUp(seconds);
+    return;
+  }
+  runTimeline(seconds);
+  ageBuiltWormholes(seconds);
 }
 
 function respawn() {
@@ -1340,7 +1399,51 @@ const drillWell = {
   exhausted: () => game.rocket.fuel >= game.rocket.fuelCapacity && findsLeft(game.rocket.soi) <= 0,
 };
 
+function syncMouths() {
+  setBuiltMouths(mouthBodies(game.builtWormholes, (fare) => game.galactokens >= fare));
+}
+
+const nearestStarName = ({ x, y }) => starsWithin(x, y, SECTOR_SIZE)[0]?.name ?? 'deep space';
+
+function wormholePlaces({ ends }) {
+  const [from, to] = ends.map(nearestStarName);
+  return from === to ? `near ${from}` : `between ${from} and ${to}`;
+}
+
+function throughBuiltWormhole({ wormhole }) {
+  const fare = fareFor(wormhole);
+  if (!isLinked(wormhole)) {
+    hud.toast('The other mouth is not placed yet, so the wormhole threw you back out.');
+    return;
+  }
+  if (game.galactokens < fare) {
+    hud.toast(`The fare is ${fare} galactokens and you can't pay it, so the wormhole threw you back out.`);
+    return;
+  }
+  game.galactokens -= fare;
+  wormhole.idleSeconds = 0;
+  hud.toast(`Paid a ${fare} galactoken wormhole fare.`);
+}
+
+function ageBuiltWormholes(seconds) {
+  const collapsed = ageWormholes(game.builtWormholes, seconds);
+  if (!collapsed.length) return;
+  for (const wormhole of collapsed) {
+    for (const end of wormhole.ends) flash(game.particles, end, WORMHOLE_MOUTH.radius);
+    hud.toast(`Your wormhole ${wormholePlaces(wormhole)} went unused too long and collapsed in a flash of light.`);
+  }
+  syncMouths();
+}
+
+function wormholeNote() {
+  return game.builtWormholes
+    .filter(isLinked)
+    .map((wormhole) => `Wormhole ${wormholePlaces(wormhole)}: fare ${fareFor(wormhole)}, collapses after ${formatDuration(secondsUntilCollapse(wormhole))} unused.`)
+    .join(' ');
+}
+
 function throughWormhole(mouth) {
+  if (mouth.wormhole) throughBuiltWormhole(mouth);
   if (mouth === coreGate) wakeGateway();
   if (!mouth.partnerSector) return;
   const ends = [mouth.star, mouth.exit.star].sort((a, b) => a.x - b.x || a.y - b.y);
@@ -1747,7 +1850,9 @@ function droneStatus() {
 }
 
 function formatDuration(seconds) {
-  return seconds < 60 ? `${Math.ceil(seconds)} s` : `${Math.ceil(seconds / 60)} min`;
+  if (seconds < 60) return `${Math.ceil(seconds)} s`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
 function haulerStatus(hauler) {
@@ -1756,7 +1861,7 @@ function haulerStatus(hauler) {
   const target = describeStop(hauler.stops[hauler.next]);
   const { leg, stalled } = hauler;
   if (!hauler.running) return `Paused. ${cargo}`;
-  if (leg) return `${leg.warp ? 'Warping' : 'Flying'} to ${target}, ${formatDuration(leg.left)} left. ${cargo}`;
+  if (leg) return `${leg.wormhole ? 'Taking a wormhole' : leg.warp ? 'Warping' : 'Flying'} to ${target}, ${formatDuration(leg.left)} left. ${cargo}`;
   if (stalled?.kind === 'tokens') return `Waiting for ${stalled.amount} galactokens of fuel to reach ${target}. ${cargo}`;
   if (stalled?.kind === 'charge') return `Needs ${stalled.amount.toFixed(2)} batteries of charge to warp to ${target}. ${cargo}`;
   const missing = STOP_KINDS[hauler.stops[hauler.next].kind].missing;
@@ -1902,6 +2007,11 @@ function status() {
     hauler: haulerInfo(),
     haulerStopsHere: Object.keys(STOP_KINDS).filter((kind) => selectedHauler() && stopHere(kind)),
     canBuyBuilder: game.galactokens >= PRICES.builder(),
+    canBuyWormhole: game.galactokens >= PRICES.wormhole(),
+    mouthPlacement: mouthPlacement(),
+    placingSecondMouth: Boolean(pendingWormhole(game.builtWormholes)),
+    wormholesInHold: game.wormholesInHold,
+    wormholeNote: wormholeNote(),
     stopChoices: game.panel === 'hauler' ? remoteStops().map((stop) => ({ value: stopValue(stop), label: describeStop(stop) })) : [],
     buildChoices: game.panel === 'hauler' && selectedHauler()?.builds ? buildChoices(selectedHauler()) : [],
   };
@@ -1933,7 +2043,7 @@ function frame(time) {
       routePath: routePaths(),
       drones: [...parkedDrones().map(dronePose), ...game.haulers.map(haulerPose), ...game.sails.map(sailPose)],
       ship: game.ship && { x: game.ship.x, y: game.ship.y, colour: speciesByKey[game.ship.species].colour },
-      wormholeLinks: [...game.wormholeLinks.values()],
+      wormholeLinks: [...game.wormholeLinks.values(), ...game.builtWormholes.filter(isLinked).map(({ ends }) => ends)],
     });
   }
   bakeNextTexture();
@@ -1979,6 +2089,8 @@ function snapshot() {
     wormholeLinks: [...game.wormholeLinks],
     mined: [...game.mined],
     samplePermits: [...game.samplePermits],
+    builtWormholes: game.builtWormholes,
+    wormholesInHold: game.wormholesInHold,
   };
 }
 
@@ -2021,6 +2133,9 @@ function restore(saved) {
   game.wormholeLinks = new Map(saved.wormholeLinks ?? []);
   game.mined = new Map(saved.mined ?? []);
   game.samplePermits = new Map(saved.samplePermits ?? []);
+  game.builtWormholes = saved.builtWormholes ?? [];
+  game.wormholesInHold = saved.wormholesInHold ?? 0;
+  syncMouths();
   if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);
   camera.zoom = saved.zoom;

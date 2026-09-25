@@ -152,6 +152,10 @@ export function createHud(root, actions) {
     cycleHauler: [...root.querySelectorAll('[data-cycle-hauler]')],
     addHaulerStop: [...root.querySelectorAll('[data-add-hauler-stop]')],
     buyBuilder: find('[data-buy-builder]'),
+    buyWormhole: find('[data-buy-wormhole]'),
+    placeMouth: find('[data-place-mouth]'),
+    mouthNote: find('[data-mouth-note]'),
+    wormholeNote: find('[data-wormhole-note]'),
     builderNote: find('[data-builder-note]'),
     stopChoice: find('[data-stop-choice]'),
     buildPicker: find('[data-build-picker]'),
@@ -225,6 +229,8 @@ export function createHud(root, actions) {
     openHaulers: actions.openHaulers,
     buyHauler: actions.buyHauler,
     buyBuilder: actions.buyBuilder,
+    buyWormhole: actions.buyWormhole,
+    placeMouth: actions.placeMouth,
     toggleHauler: actions.toggleHauler,
     askForTip: actions.askForTip,
     sellToAliens: actions.sellToAliens,
@@ -490,6 +496,7 @@ export function createHud(root, actions) {
     updateBank(status);
     updateDrones(status);
     updateHaulers(status);
+    updateWormholes(status);
     updateAlien(status.alien);
     updateToll(status.toll);
     setText(parts.outpostBan, status.outpostBan);
@@ -516,6 +523,18 @@ export function createHud(root, actions) {
     setText(parts.rigStatus, `Power: ${rig.charge.toFixed(2)} batteries (${minutesLeft} min left). Gold waiting: ${Math.floor(rig.gold)}.`);
     parts.loadRig.disabled = !canLoadRig;
     parts.collectGold.disabled = rig.gold < 1;
+  }
+
+  function updateWormholes({ canBuyWormhole, mouthPlacement, placingSecondMouth, wormholesInHold, wormholeNote }) {
+    const blocker = mouthPlacement?.blocker ?? null;
+    parts.buyWormhole.disabled = !canBuyWormhole;
+    setHidden(parts.placeMouth, !mouthPlacement);
+    parts.placeMouth.disabled = Boolean(blocker);
+    setText(parts.placeMouth, placingSecondMouth ? 'Place the second wormhole mouth here' : `Place a wormhole mouth here (${wormholesInHold} in hold)`);
+    setHidden(parts.mouthNote, !blocker);
+    setText(parts.mouthNote, blocker ?? '');
+    setHidden(parts.wormholeNote, !wormholeNote);
+    setText(parts.wormholeNote, wormholeNote);
   }
 
   function updateBank({ bank, canBuyBank, canDeployBank, canDepositInBank, canTakeFromBank }) {

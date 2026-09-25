@@ -74,7 +74,18 @@ export const coreGate = CORE_SYSTEM.coreGate;
 export function openGateway() {
   if (unlockedBodies.includes(CORE_SYSTEM.solarGate)) return;
   unlockedBodies.push(CORE_SYSTEM.solarGate);
-  bodies.push(CORE_SYSTEM.solarGate);
+  rebuildBodies();
+}
+
+const builtMouths = [];
+
+export function setBuiltMouths(mouths) {
+  builtMouths.splice(0, builtMouths.length, ...mouths);
+  rebuildBodies();
+}
+
+function rebuildBodies() {
+  bodies.splice(0, bodies.length, ...HOME_SYSTEM, ...unlockedBodies, ...builtMouths, ...[...loadedSectors.values()].flatMap((sector) => sector.bodies));
 }
 
 function coreRichness(x, y) {
@@ -356,5 +367,5 @@ export function streamSectors(anchors) {
       }
     }
   }
-  if (changed) bodies.splice(0, bodies.length, ...HOME_SYSTEM, ...unlockedBodies, ...[...loadedSectors.values()].flatMap((sector) => sector.bodies));
+  if (changed) rebuildBodies();
 }
