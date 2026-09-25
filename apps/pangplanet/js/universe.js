@@ -3,7 +3,8 @@ import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
 import { ALIENS, CORE, DEPOSITS, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, massFor } from './world.js';
 
-const GALAXY_SEED = 0x9a1a7;
+export const DEFAULT_GALAXY_SEED = 0x9a1a7;
+let galaxySeed = DEFAULT_GALAXY_SEED;
 const MIRROR_SALT = 0x3a7c9e1;
 export const SECTOR_SIZE = 1.5e7;
 const GALAXY_CENTER_IN_SECTORS = [100, 0];
@@ -45,6 +46,10 @@ const STAR_TYPES = [
 const SYLLABLES = ['ka', 've', 'tri', 'nor', 'zu', 'lo', 'mi', 'xan', 'dar', 'the', 'ol', 'py', 'rho', 'qui', 'sel', 'bra', 'on', 'ix'];
 
 export const bodies = [...HOME_SYSTEM];
+
+export function setGalaxySeed(seed) {
+  galaxySeed = seed;
+}
 const loadedSectors = new Map();
 
 export const sectorOf = (x, y) => [Math.round(x / SECTOR_SIZE), Math.round(y / SECTOR_SIZE)];
@@ -106,7 +111,7 @@ const onMirroredSide = (sectorX, sectorY) => sectorX < 0 || (sectorX === 0 && se
 const sharesSeedWithMirror = (sectorX, sectorY) => onMirroredSide(sectorX, sectorY) && (sectorX + sectorY) % 2 === 0;
 
 function sectorSeed(sectorX, sectorY) {
-  let hash = GALAXY_SEED ^ Math.imul(sectorX, 0x27d4eb2d) ^ Math.imul(sectorY, 0x165667b1);
+  let hash = galaxySeed ^ Math.imul(sectorX, 0x27d4eb2d) ^ Math.imul(sectorY, 0x165667b1);
   if (sharesSeedWithMirror(sectorX, sectorY)) hash ^= MIRROR_SALT;
   hash = Math.imul(hash ^ (hash >>> 15), 0x85ebca6b);
   hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35);

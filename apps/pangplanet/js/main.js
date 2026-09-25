@@ -73,13 +73,15 @@ import {
   study,
   systemsPassed,
 } from './science.js';
-import { deleteSave, readSave, writeSave } from './save.js';
+import { deleteSave, findWorld, markPlayed, readSave, writeSave } from './save.js';
+import { showWorldMenu } from './menu.js';
 import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, stardustTip, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, loadTextureStamps } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
 import {
+  DEFAULT_GALAXY_SEED,
   SECTOR_SIZE,
   coreGate,
   crystalWorlds,
@@ -88,6 +90,7 @@ import {
   openGateway,
   outsideGalaxy,
   setBuiltMouths,
+  setGalaxySeed,
   stardustWorlds,
   starsWithin,
   streamSectors,
@@ -171,6 +174,7 @@ function play(name) {
 
 const clamp = (value, { min, max }) => Math.min(max, Math.max(min, value));
 
+const world = findWorld(new URLSearchParams(window.location.search).get('world'));
 const stage = document.querySelector('[data-stage]');
 const canvas = stage.querySelector('canvas');
 
@@ -650,11 +654,15 @@ const actions = {
   restart: () => {
     if (!window.confirm('Start over from the beginning? Your saved progress will be deleted.')) return;
     restarting = true;
-    deleteSave();
+    deleteSave(world.id);
     window.location.reload();
   },
-  toggleCheats: () => openPanel(game.panel === 'cheats' ? null : 'cheats'),
-  cheat: (name) => CHEATS[name]?.(),
+  toggleCheats: () => world.cheats && openPanel(game.panel === 'cheats' ? null : 'cheats'),
+  cheat: (name) => world.cheats && CHEATS[name]?.(),
+  openWorlds: () => {
+    save();
+    window.location.search = '';
+  },
   buySatellite: () => {
     if (pay('satellite')) game.satellites.push(createSatellite());
   },
@@ -1001,7 +1009,7 @@ const CHEATS = {
   },
 };
 
-const hud = createHud(stage, actions);
+const hud = createHud(stage, actions, { cheats: Boolean(world?.cheats) });
 const tour = createTour(stage, { onEnd: () => (game.tourSeen = true), openGuide: () => openPanel('help') });
 const galaxyMap = createGalaxyMap(stage.querySelector('[data-map]'));
 
@@ -1189,7 +1197,7 @@ const PHYSICAL_KEY_ACTIONS = {
 const GAME_KEYS = new Set([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 window.addEventListener('keydown', (event) => {
-  if (event.target instanceof HTMLInputElement) return;
+  if (!world || event.target instanceof HTMLInputElement) return;
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   if (GAME_KEYS.has(key)) event.preventDefault();
   held.add(key);
@@ -2095,7 +2103,7 @@ function snapshot() {
 }
 
 function save() {
-  if (!restarting) writeSave(snapshot());
+  if (!restarting) writeSave(world.id, snapshot());
 }
 
 function restore(saved) {
@@ -2151,8 +2159,19 @@ function startAutosave() {
   window.addEventListener('pagehide', save);
 }
 
+function openWorld(chosen) {
+  window.location.search = new URLSearchParams({ world: chosen.id }).toString();
+}
+
 async function start() {
-  const saved = readSave();
+  if (!world) {
+    stage.classList.add('pp-in-menu');
+    showWorldMenu(stage, openWorld);
+    return;
+  }
+  setGalaxySeed(world.seed ?? DEFAULT_GALAXY_SEED);
+  markPlayed(world.id);
+  const saved = readSave(world.id);
   if (saved) {
     restore(saved);
     catchUp((Date.now() - saved.savedAt) / 1000);

@@ -34,6 +34,27 @@
   <div class="shell app-stage pp-stage" data-stage>
     <canvas></canvas>
 
+    <section class="pp-panel pp-worlds" data-worlds-menu hidden aria-label="Worlds">
+      <header>
+        <h3>Worlds</h3>
+      </header>
+      <ul class="pp-world-list" data-world-list></ul>
+      <p class="pp-hint" data-no-worlds hidden>No worlds yet. Create one below.</p>
+      <h4 class="pp-subhead">New world</h4>
+      <form class="pp-new-world" data-new-world>
+        <label>Name <input name="worldName" maxlength="40" placeholder="New world"></label>
+        <fieldset>
+          <legend>Galaxy</legend>
+          <label><input type="radio" name="galaxy" value="default" checked> Default</label>
+          <label><input type="radio" name="galaxy" value="custom"> Custom</label>
+        </fieldset>
+        <label data-seed-field hidden>Seed <input name="seed" maxlength="40" placeholder="Blank for random"></label>
+        <label><input type="checkbox" name="cheats"> Cheats</label>
+        <p class="pp-hint">Cheats are set for good when the world is made.</p>
+        <button type="submit" class="pp-action pp-buy">Create and play</button>
+      </form>
+    </section>
+
     <div class="pp-counter pp-tokens" title="Galactokens">
       <img src="img/galactokens.svg" alt="Galactokens">
       <span data-tokens>0</span>
@@ -57,6 +78,7 @@
     </div>
 
     <div class="pp-corner-buttons">
+      <button type="button" data-open-worlds aria-label="Worlds">&#x2630;</button>
       <button type="button" data-cheats-toggle aria-label="Cheats" hidden>&#x1F527;</button>
       <button type="button" data-map-toggle aria-label="Galaxy map">&#x1F5FA;</button>
       <button type="button" data-help-toggle aria-label="Controls">?</button>
@@ -434,7 +456,7 @@
         <button type="button" class="pp-action" data-cheat="goHome">Teleport to Earth</button>
         <button type="button" class="pp-action" data-cheat="summonShip">Summon an alien freighter beside you</button>
       </div>
-      <p class="pp-hint">Toggle with <kbd>`</kbd>. Add <code>?cheats</code> to the URL for a button.</p>
+      <p class="pp-hint">Toggle with <kbd>`</kbd>. Only worlds created with cheats have them.</p>
     </section>
 
     <section class="pp-panel pp-help" data-panel="help" hidden aria-label="Controls">
@@ -512,9 +534,9 @@
         <div><dt><kbd>H</kbd></dt><dd>Show this again</dd></div>
       </dl>
       <p class="pp-hint">Touch down slower than 10 or the rocket explodes. The blue line shows where you will coast with the engine off.</p>
-      <p class="pp-hint">Progress saves automatically in this browser.</p>
+      <p class="pp-hint">Progress saves automatically in this browser. The &#x2630; button goes back to your worlds.</p>
       <div class="pp-actions">
-        <button type="button" class="pp-action pp-restart" data-restart>Restart game</button>
+        <button type="button" class="pp-action pp-restart" data-restart>Restart this world</button>
       </div>
     </section>
   </div>
