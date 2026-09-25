@@ -1833,8 +1833,12 @@ function restore(saved) {
   game.crystals = saved.crystals ?? 0;
   game.stardust = saved.stardust ?? 0;
   Object.assign(game, { science: saved.science ?? 0, studies: new Set(saved.studies ?? []), sails: (saved.sails ?? []).map(sailFromOldSave), sailsInHold: saved.sailsInHold ?? 0 });
-  for (const entry of game.starChart.values()) {
+  for (const [key, entry] of game.starChart) {
     const system = systemAt(entry.x, entry.y);
+    if (!system || starKey(system.star) !== key) {
+      game.starChart.delete(key);
+      continue;
+    }
     const planets = system?.planets ?? [];
     entry.crystals ??= crystalWorlds(planets);
     entry.stardust ??= entry.visited ? stardustWorlds(planets) : 0;
