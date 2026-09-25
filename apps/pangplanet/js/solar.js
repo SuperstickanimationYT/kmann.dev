@@ -5,11 +5,12 @@ export function createPower() {
   return { ownsPanels: false, panelsDeployed: false, batteries: [], slots: BATTERY.slots, panelBoost: 1 };
 }
 
-// Inverse square falloff, 1 at a star's surface.
-export function sunlight(x, y) {
-  const stars = bodies.filter((body) => body.kind === 'star');
-  return Math.max(0, ...stars.map((star) => Math.min(1, (star.radius / Math.hypot(x - star.x, y - star.y)) ** 2)));
-}
+const lightFrom = (star, x, y) => Math.min(1, (star.radius / Math.hypot(x - star.x, y - star.y)) ** 2);
+const loadedStars = () => bodies.filter((body) => body.kind === 'star');
+
+export const sunlight = (x, y) => Math.max(0, ...loadedStars().map((star) => lightFrom(star, x, y)));
+
+export const brightestStar = (x, y) => loadedStars().reduce((best, star) => (!best || lightFrom(star, x, y) > lightFrom(best, x, y) ? star : best), null);
 
 export const chargedBatteries = (power) => power.batteries.filter((charge) => charge >= 1).length;
 export const freeBatterySlots = (power) => power.slots - power.batteries.length;

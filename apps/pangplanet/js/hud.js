@@ -88,6 +88,13 @@ export function createHud(root, actions) {
     stardustCounter: find('[data-stardust-counter]'),
     stardust: find('[data-stardust]'),
     sellStardust: find('[data-sell-stardust]'),
+    scienceCounter: find('[data-science-counter]'),
+    science: find('[data-science]'),
+    sellScience: find('[data-sell-science]'),
+    buySail: find('[data-buy-sail]'),
+    launchSail: find('[data-launch-sail]'),
+    sailsInHold: find('[data-sails-in-hold]'),
+    sailNote: find('[data-sail-note]'),
     buySatellite: find('[data-buy-satellite]'),
     prices: [...root.querySelectorAll('[data-price]')],
     satellitesInHold: find('[data-satellites-in-hold]'),
@@ -173,6 +180,9 @@ export function createHud(root, actions) {
     collectGold: actions.collectGold,
     sellCrystals: actions.sellCrystals,
     sellStardust: actions.sellStardust,
+    sellScience: actions.sellScience,
+    buySail: actions.buySail,
+    launchSail: actions.launchSail,
     buyBank: actions.buyBank,
     deployBank: actions.deployBank,
     depositInBank: actions.depositInBank,
@@ -381,6 +391,15 @@ export function createHud(root, actions) {
     setHidden(parts.stardustCounter, status.stardust === 0);
     setText(parts.stardust, String(status.stardust));
     setHidden(parts.sellStardust, status.stardust === 0);
+    setHidden(parts.scienceCounter, status.science === 0);
+    setText(parts.science, String(status.science));
+    setHidden(parts.sellScience, status.science === 0);
+    parts.buySail.disabled = !status.canBuySail;
+    setHidden(parts.launchSail, status.sailsInHold === 0);
+    parts.launchSail.disabled = !status.canLaunchSail;
+    setText(parts.sailsInHold, String(status.sailsInHold));
+    setHidden(parts.sailNote, status.sailsInHold === 0);
+    setText(parts.sailNote, status.sailNote);
     parts.buySatellite.disabled = !status.canBuySatellite;
     parts.prices.forEach((price) => setText(price, status.prices[price.dataset.price].toLocaleString()));
     setText(parts.satellitesInHold, String(status.satellitesInHold));
