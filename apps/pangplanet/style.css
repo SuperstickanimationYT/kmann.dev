@@ -711,6 +711,16 @@
     bottom: 96px;
   }
 
+  .pp-touch-controls,
+  .pp-corner-buttons {
+    transition: transform 0.4s ease;
+  }
+
+  .pp-stage.is-clearing-fullscreen-hint .pp-touch-controls,
+  .pp-stage.is-clearing-fullscreen-hint .pp-corner-buttons {
+    transform: translateY(-64px);
+  }
+
   .pp-stage .pp-recording {
     top: auto;
     bottom: 144px;
