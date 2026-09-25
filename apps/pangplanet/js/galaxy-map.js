@@ -163,7 +163,7 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, routePath, drones }) {
+  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, routePath, drones, ship }) {
     if (canvas.clientWidth !== view.size) fit();
     context.fillStyle = '#02060d';
     context.fillRect(0, 0, view.size, view.size);
@@ -178,6 +178,7 @@ export function createGalaxyMap(canvas) {
       drawStars(chart);
     }
     drawRoute(routePath, drones);
+    if (ship) disk(ship.x, ship.y, 3.5, ship.colour);
     drawRocket(rocket);
   }
 
