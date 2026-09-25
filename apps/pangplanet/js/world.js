@@ -110,7 +110,9 @@ export const CORE = {
   richness: { radiusInSectors: 25, crystals: 3, stardust: 6 },
 };
 
-const GATEWAY = { name: 'Core Gateway', radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' };
+export const WORMHOLE_MOUTH = { radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' };
+
+const GATEWAY = { name: 'Core Gateway', ...WORMHOLE_MOUTH };
 
 export function coreSystem(center) {
   const core = { name: 'Galactic Core', ...center, ...CORE.blackHole, kind: 'blackhole', look: 'blackhole', anchorsSystem: true, mapFill: '#ff963c' };
@@ -144,7 +146,7 @@ export const MINING_RIG = { cost: 1000, batterySlots: 6, secondsPerBattery: 1800
 export const GOLD = { sellPrice: 10 };
 export const CRYSTALS = { sellPrice: 80, chancePerPump: 0.25 };
 export const STARDUST = { sellPrice: 500, chancePerPump: 0.05 };
-export const SCIENCE = { sellPrice: 5, visit: 60, landing: 30, blackHole: 50, flyby: { base: 40, perPlanet: 10 }, sample: { other: 20, gas: 30, crystals: 60, stardust: 150 }, contact: 100 };
+export const SCIENCE = { sellPrice: 5, visit: 60, landing: 30, blackHole: 50, flyby: { base: 40, perPlanet: 10 }, sample: { other: 20, gas: 30, crystals: 60, stardust: 150 }, contact: 100, wormhole: 80 };
 export const SOLAR_SAIL = { cost: 250, pushAtSurface: 0.13, flybyRadius: 1.5e6, sensorRange: 5e6, lifeSeconds: 12 * 3600, scanEverySeconds: 60, minLight: 1e-3 };
 export const FUEL_PER_PUMP = { gas: 2, other: 1 };
 export const UPGRADES = {

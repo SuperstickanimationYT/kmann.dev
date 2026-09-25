@@ -14,6 +14,7 @@ const BOUNTY_GOLD = '#ffc933';
 const CRYSTAL_CYAN = '#7df3ff';
 const STARDUST_VIOLET = '#e2c9ff';
 const LIFE_GREEN = '#8dffc1';
+const WORMHOLE_PURPLE = '#c58cff';
 
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
@@ -100,6 +101,7 @@ export function createGalaxyMap(canvas) {
       }
       if (entry.crystals) ring(entry.x, entry.y, (STAR_DOT_PX + 2) / view.scale, CRYSTAL_CYAN, false);
       if (entry.stardust) ring(entry.x, entry.y, (STAR_DOT_PX + 8) / view.scale, STARDUST_VIOLET, false);
+      if (entry.wormhole) ring(entry.x, entry.y, (STAR_DOT_PX + 14) / view.scale, WORMHOLE_PURPLE, true);
       if (entry.aliens) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, speciesByKey[entry.aliens].colour, false);
       else if (entry.biosignature && !entry.visited) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, LIFE_GREEN, true);
       if (entry === selected) ring(entry.x, entry.y, (STAR_DOT_PX + 5) / view.scale, BOUNTY_GOLD, false);
@@ -107,8 +109,26 @@ export function createGalaxyMap(canvas) {
     }
   }
 
+  function drawWormholeLinks(links) {
+    context.save();
+    context.strokeStyle = WORMHOLE_PURPLE;
+    context.lineWidth = 1.5;
+    context.setLineDash([2, 4]);
+    for (const [from, to] of links) {
+      context.beginPath();
+      context.moveTo(...toMap(from.x, from.y));
+      context.lineTo(...toMap(to.x, to.y));
+      context.stroke();
+    }
+    context.restore();
+  }
+
   function drawSystem(bountyWaiting) {
-    const { star, planets, blackHoles } = system;
+    const { star, planets, blackHoles, wormholes } = system;
+    for (const mouth of wormholes) {
+      disk(mouth.x, mouth.y, PLANET_MIN_PX, WORMHOLE_PURPLE);
+      label(mouth.name, mouth.x, mouth.y, PLANET_MIN_PX + 13);
+    }
     for (const planet of planets) ring(star.x, star.y, distanceBetween(star, planet), 'rgba(140, 170, 255, 0.18)', false);
     for (const hole of blackHoles) {
       ring(hole.x, hole.y, hole.soi, 'rgba(255, 150, 60, 0.35)', false);
@@ -163,7 +183,7 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, routePath, drones, ship }) {
+  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, routePath, drones, ship, wormholeLinks }) {
     if (canvas.clientWidth !== view.size) fit();
     context.fillStyle = '#02060d';
     context.fillRect(0, 0, view.size, view.size);
@@ -175,6 +195,7 @@ export function createGalaxyMap(canvas) {
       drawGalaxy();
       if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
       if (telescopeRange) ring(rocket.x, rocket.y, telescopeRange, 'rgba(63, 224, 208, 0.6)', true);
+      drawWormholeLinks(wormholeLinks);
       drawStars(chart);
     }
     drawRoute(routePath, drones);
