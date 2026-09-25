@@ -68,6 +68,7 @@ import {
   sailDead,
   sailFromOldSave,
   sailPose,
+  sailReach,
   sampleScience,
   starAhead,
   study,
@@ -881,7 +882,7 @@ const actions = {
     if (!canLaunchSail(plan)) return;
     game.sails.push(launchSail(plan.star, game.rocket, starKey(plan.star), plan.target));
     game.sailsInHold -= 1;
-    hud.toast(plan.target ? `Solar sail launched toward ${plan.target.name}.` : 'Solar sail launched. It will scout ahead for 12 hours.');
+    hud.toast(plan.target ? `Solar sail launched toward ${plan.target.name}.` : `Solar sail launched. It will scout ahead for ${formatDuration(SOLAR_SAIL.lifeSeconds)}.`);
   },
   sellStardust: () => {
     game.galactokens += game.stardust * STARDUST.sellPrice;
@@ -1505,9 +1506,11 @@ function sailPlan() {
   const star = brightestStar(rocket.x, rocket.y);
   if (!star || sunlight(rocket.x, rocket.y) < SOLAR_SAIL.minLight) return { note: 'Too dark to sail. Get closer to a star.' };
   const target = starAhead(sailTargets(), star, rocket);
-  if (!target) return { star, note: `Nothing charted ahead. The sail will scout blind, straight out from ${star.name}, for 12 hours.` };
+  const sectors = sailReach(star, rocket) / SECTOR_SIZE;
+  const reach = `From here it reaches about ${sectors < 10 ? sectors.toFixed(1) : Math.round(sectors)} sectors; launching closer to the star goes farther.`;
+  if (!target) return { star, note: `Nothing charted ahead. The sail will scout blind, straight out from ${star.name}, for ${formatDuration(SOLAR_SAIL.lifeSeconds)}. ${reach}` };
   const seconds = Math.hypot(target.x - rocket.x, target.y - rocket.y) / cruiseSpeed(star, rocket);
-  return { star, target, note: `Ahead: ${target.name}, arriving in ${formatDuration(seconds)}, then it scouts on until its battery dies.` };
+  return { star, target, note: `Ahead: ${target.name}, arriving in ${formatDuration(seconds)}, then it scouts on until its battery dies. ${reach}` };
 }
 
 const canLaunchSail = (plan) => game.sailsInHold > 0 && Boolean(plan.star) && !game.rocket.landed && !game.rocket.destroyed;
@@ -1874,7 +1877,9 @@ function droneStatus() {
 function formatDuration(seconds) {
   if (seconds < 60) return `${Math.ceil(seconds)} s`;
   const minutes = Math.ceil(seconds / 60);
-  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  if (minutes < 60) return `${minutes} min`;
+  const hours = `${Math.floor(minutes / 60)} h`;
+  return minutes % 60 ? `${hours} ${minutes % 60} min` : hours;
 }
 
 function haulerStatus(hauler) {
