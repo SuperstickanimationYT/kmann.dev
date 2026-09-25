@@ -1,4 +1,3 @@
-import { loadSprites } from '../../planet-textures/js/planet.js';
 import { bodies } from './universe.js';
 
 const TEXTURE_SIZES = [256, 1024];
@@ -12,14 +11,6 @@ worker.onmessage = ({ data }) => {
   baked.set(bakingBody, data.bitmap);
   bakingBody = null;
 };
-
-export async function loadTextureStamps() {
-  const sprites = await loadSprites();
-  const stamps = await Promise.all(
-    Object.entries(sprites).map(async ([name, sprite]) => [name, { ...sprite, image: await createImageBitmap(sprite.image) }]),
-  );
-  worker.postMessage({ stamps: Object.fromEntries(stamps) });
-}
 
 const sizeToCover = (radiusPx) => TEXTURE_SIZES.find((size) => size >= radiusPx) ?? TEXTURE_SIZES.at(-1);
 

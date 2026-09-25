@@ -1,7 +1,9 @@
-import { loadSprites, renderPlanet } from './planet.js';
+import { renderPlanet } from './planet.js';
 import { PRESETS, randomPlanet, randomSeed } from './presets.js';
 
 const PREVIEW_SIZE = 720;
+const DRAFT_SIZE = 240;
+const SETTLE_MS = 200;
 const TEXT_FIELDS = ['baseColor', 'landColor'];
 const FLAG_FIELDS = ['land'];
 
@@ -56,14 +58,19 @@ function planetCanvas(size) {
   return canvas;
 }
 
-const sprites = await loadSprites();
 let pendingFrame = 0;
+let settleTimer = 0;
+
+function drawAt(size) {
+  flatten(renderPlanet(readPlanet(), size), preview);
+}
 
 function draw() {
   pendingFrame = 0;
-  const planet = readPlanet();
-  flatten(renderPlanet(planet, PREVIEW_SIZE, sprites), preview);
-  cloudsDownload.disabled = planet.clouds === 0;
+  drawAt(DRAFT_SIZE);
+  cloudsDownload.disabled = Number(form.elements.clouds.value) === 0;
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => drawAt(PREVIEW_SIZE), SETTLE_MS);
 }
 
 function update() {
@@ -85,7 +92,7 @@ async function download(button) {
   await nextPaint();
   const planet = readPlanet();
   const size = Number(sizePicker.value);
-  const layers = renderPlanet(planet, size, sprites);
+  const layers = renderPlanet(planet, size);
   const canvas = layer === 'planet' ? flatten(layers, planetCanvas(size)) : layers[layer];
   canvas.toBlob((blob) => {
     const link = document.createElement('a');

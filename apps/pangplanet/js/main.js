@@ -78,7 +78,7 @@ import { deleteSave, findWorld, markPlayed, readSave, writeSave } from './save.j
 import { showWorldMenu } from './menu.js';
 import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, stardustTip, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
-import { bakeNextTexture, loadTextureStamps } from './textures.js';
+import { bakeNextTexture } from './textures.js';
 import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
 import {
@@ -2205,7 +2205,7 @@ async function start() {
     catchUp((Date.now() - saved.savedAt) / 1000);
   }
   startAutosave();
-  const [sprites] = await Promise.all([loadSprites(), loadTextureStamps()]);
+  const sprites = await loadSprites();
   renderer = createRenderer(canvas, sprites);
   streamAround();
   chartVisitsNear(game.starChart, game.rocket.x, game.rocket.y);
