@@ -5,6 +5,7 @@ const TOAST_MS = 4500;
 const QUEUED_TOAST_MS = 2500;
 const MAX_QUEUED_TOASTS = 3;
 const BECKON_MS = 6000;
+const FULLSCREEN_HINT_MS = 10000;
 const UPGRADE_TEXT = {
   batterySlots: { name: 'Battery rack', describe: (value) => `${value} slots` },
   panels: { name: 'Solar panels', describe: (value) => `${value}× charging` },
@@ -408,6 +409,13 @@ export function createHud(root, actions, { cheats }) {
   find('[data-fullscreen]').addEventListener('click', () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else root.requestFullscreen?.();
+  });
+  let fullscreenHintTimer = null;
+  document.addEventListener('fullscreenchange', () => {
+    window.clearTimeout(fullscreenHintTimer);
+    const entered = document.fullscreenElement === root;
+    root.classList.toggle('is-clearing-fullscreen-hint', entered);
+    if (entered) fullscreenHintTimer = window.setTimeout(() => root.classList.remove('is-clearing-fullscreen-hint'), FULLSCREEN_HINT_MS);
   });
 
   function showPanel(name) {
