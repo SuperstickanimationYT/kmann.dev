@@ -150,7 +150,7 @@ export const GOLD = { sellPrice: 10 };
 export const CRYSTALS = { sellPrice: 80, chancePerPump: 0.25 };
 export const STARDUST = { sellPrice: 500, chancePerPump: 0.05 };
 export const SCIENCE = { sellPrice: 5, visit: 60, landing: 30, blackHole: 50, flyby: { base: 40, perPlanet: 10 }, sample: { other: 20, gas: 30, crystals: 60, stardust: 150, life: 200 }, contact: 100, wormhole: 80 };
-export const SOLAR_SAIL = { cost: 250, pushAtSurface: 0.13, flybyRadius: 1.5e6, sensorRange: 5e6, lifeSeconds: 12 * 3600, scanEverySeconds: 60, minLight: 1e-3 };
+export const SOLAR_SAIL = { cost: 250, pushAtSurface: 0.13, flybyRadius: 1.5e6, sensorRange: 5e6, lifeSeconds: 36 * 3600, scanEverySeconds: 60, minLight: 1e-3 };
 export const FUEL_PER_PUMP = { gas: 2, other: 1 };
 export const UPGRADES = {
   batterySlots: { base: BATTERY.slots, levels: [{ cost: 150, value: 4 }, { cost: 400, value: 5 }, { cost: 900, value: 6 }, { cost: 2000, crystals: 4, value: 8 }, { cost: 5000, stardust: 3, value: 10 }] },
