@@ -81,6 +81,10 @@ counts as visiting.
 - **Meeting** a freighter: within 1.5K at a relative speed under 10 (the landing rule).
   Docking matches your velocity to its own. The panel offers the same trade and tips as
   its homeworld, with tips searched around the ship.
+- **Batteries**: each freighter carries 1–3 charged batteries. Friendly and wary ones sell
+  them at their market markup (2× or 3×) on the 40 the Solar market pays for a charged
+  battery; hostile ones don't sell. This is the way out after a crash, which destroys
+  every battery on board, in a system with no homeworld market.
 - **Raid**: the cargo is 200–600 galactokens, 0–3 crystals and a 10% chance of 1
   stardust. It costs -25 relation with the ship's species and gives +10 with its rival
   (Zorani and Quillith: Vessk; Vessk: Zorani). The button shows both before you commit.
