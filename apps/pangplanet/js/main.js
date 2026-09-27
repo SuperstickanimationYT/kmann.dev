@@ -87,8 +87,8 @@ import {
   study,
   systemsPassed,
 } from './science.js';
-import { cruise, dropOut, nearWell, nextFtlTier } from './ftl.js';
-import { addBlock, canFit, createShip, describeShip, flightStats, hasFtl, hasRoom, leaveHelm, moveWithPilot, removeBlock, shipFromSave, takeHelm } from './fleet.js';
+import { cruise, dropOut, headingIntoWell, nextFtlTier } from './ftl.js';
+import { addBlock, canFit, canScoop, createShip, describeShip, flightStats, hasFtl, hasRoom, leaveHelm, moveWithPilot, removeBlock, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
 import { chargeFromPanels } from './vessels.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
@@ -229,6 +229,7 @@ const game = {
   fleet: [],
   boarded: null,
   ftl: false,
+  scooping: false,
   antennas: [],
   antennasInHold: 0,
   drones: [],
@@ -1425,7 +1426,8 @@ function ftlBlocker() {
   const ship = boardedShip();
   const { rocket } = game;
   if (!ship || !hasFtl(ship)) return 'Only a ship with an FTL drive block can go faster than light.';
-  if (rocket.landed || rocket.soi || nearWell(rocket)) return 'FTL needs open space, clear of any gravity well.';
+  if (rocket.landed || rocket.soi) return 'FTL needs open space, outside any gravity well.';
+  if (headingIntoWell(rocket)) return 'Too close to a gravity well to engage FTL heading this way. Turn away from it.';
   if (storedCharge(ship.batteries) <= 0) return "FTL runs on the ship's battery charge, and it has none.";
   return null;
 }
@@ -1468,13 +1470,27 @@ function wreckShip() {
   hud.toast(`Your ship broke up on ${body.name}, but your rocket got out in one piece.`);
 }
 
-function chargeShips(seconds) {
-  for (const ship of game.fleet) chargeFromPanels(ship, ship === boardedShip() ? sunlight(ship.x, ship.y) : (ship.light ?? 0), seconds);
+function runShips(seconds) {
+  for (const ship of game.fleet) {
+    const piloted = ship === boardedShip();
+    const light = piloted ? sunlight(ship.x, ship.y) : (ship.light ?? 0);
+    chargeFromPanels(ship, light, seconds);
+    scoopHydrogen(ship, light, seconds);
+    if (!piloted) runReactor(ship, seconds);
+  }
+  noteScooping();
+}
+
+function noteScooping() {
+  const ship = boardedShip();
+  const scooping = Boolean(ship) && canScoop(ship, sunlight(ship.x, ship.y));
+  if (scooping && !game.scooping) hud.toast('The magnetic scoop is lifting hydrogen off the star. Closer is faster, but its gravity well is fatal.');
+  game.scooping = scooping;
 }
 
 function advanceOutposts(seconds) {
   for (const satellite of game.satellites) chargeSatellite(satellite, seconds);
-  chargeShips(seconds);
+  runShips(seconds);
   runRig(game.rig, seconds);
   watchTheSky(seconds);
 }
@@ -2184,6 +2200,7 @@ function simulate() {
   let simTicks = 0;
   for (let i = 0; i < game.timewarp && !rocket.destroyed; i++) {
     if (game.recording) noteControls(game.recording, rocket);
+    if (boardedShip()) runReactor(boardedShip(), STEP_SECONDS);
     if (game.ftl) {
       stepFtl();
       stepDrones();

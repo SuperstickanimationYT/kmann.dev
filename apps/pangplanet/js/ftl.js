@@ -11,7 +11,7 @@ function entryAlong(body, x, y, dx, dy) {
   const a = dx * dx + dy * dy;
   const b = 2 * (fx * dx + fy * dy);
   const c = fx * fx + fy * fy - reach * reach;
-  if (c <= 0) return 0;
+  if (c <= 0) return fx * dx + fy * dy > 0 ? null : 0;
   const discriminant = b * b - 4 * a * c;
   if (discriminant < 0 || a === 0) return null;
   const t = (-b - Math.sqrt(discriminant)) / (2 * a);
@@ -27,7 +27,7 @@ function firstWellAlong(x, y, dx, dy) {
   return first;
 }
 
-export const nearWell = (rocket) => firstWellAlong(rocket.x, rocket.y, 0, 0) !== null;
+export const headingIntoWell = (rocket) => firstWellAlong(rocket.x, rocket.y, Math.sin(rocket.heading), Math.cos(rocket.heading)) === 0;
 
 export function dropOut(rocket) {
   rocket.vx = Math.sin(rocket.heading) * SPEED_LIMIT;
