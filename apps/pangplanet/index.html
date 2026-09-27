@@ -77,6 +77,8 @@
       <img src="img/fuel.svg" alt="Fuel">
     </div>
 
+    <button type="button" class="pp-goal" data-goal hidden><span class="pp-goal-count" data-goal-count></span> <span class="pp-goal-text" data-goal-text></span></button>
+
     <div class="pp-warp" title="Time warp (drag, or Shift + scroll)" data-warp-slider>
       <span class="pp-warp-caption">Time<br>warp</span>
       <div class="pp-warp-track" data-warp-track><span class="pp-warp-knob" data-warp-knob></span></div>
@@ -500,6 +502,16 @@
         <label><input type="radio" name="touchControls" value="joystick" data-touch-controls> Joystick: point where to fly, hold to burn, throttle slider on the right</label>
       </fieldset>
       <p class="pp-hint">Settings apply to every world in this browser. Touch controls only show on touchscreens.</p>
+      <label class="pp-check"><input type="checkbox" data-show-goals> Show goals in this world</label>
+    </section>
+
+    <section class="pp-panel" data-panel="goals" hidden aria-label="Goals">
+      <header>
+        <h3>Goals</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <ol class="pp-goals" data-goal-list></ol>
+      <p class="pp-hint">Goals are a suggested path for new players, not rewards. Do them in any order. Turn them off in &#x2699; Settings.</p>
     </section>
 
     <section class="pp-panel" data-panel="cheats" hidden aria-label="Cheats">
@@ -529,7 +541,7 @@
         <button type="button" class="pp-action" data-start-tour>Take the tour</button>
       </div>
       <h4>Goal</h4>
-      <p>Fly from Earth to the Moon, take the wormhole to the Sun, and dock at the market.</p>
+      <p>Fly from Earth to the Moon, take the wormhole to the Sun, and dock at the market. The green goal bar at the top suggests what to try next; tap it for the full list.</p>
       <h4>Earn</h4>
       <ul>
         <li>The first landing on each planet or moon pays a bounty, shown in gold by its name.</li>
