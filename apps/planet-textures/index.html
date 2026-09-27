@@ -39,6 +39,11 @@
         <button type="button" data-reroll>New seed</button>
       </div>
 
+      <div class="ptg-actions ptg-history">
+        <button type="button" data-undo disabled>Undo</button>
+        <button type="button" data-redo disabled>Redo</button>
+      </div>
+
       <label class="ptg-field">
         <span>Preset</span>
         <select data-preset>
@@ -50,6 +55,30 @@
         <span>Seed</span>
         <input type="number" name="seed" min="1" max="999999" step="1">
       </label>
+
+      <fieldset data-physical>
+        <legend>Physics</legend>
+        <label class="ptg-field">
+          <span>Kind</span>
+          <select name="kind">
+            <option value="rocky">Rocky</option>
+            <option value="giant">Gas giant</option>
+          </select>
+        </label>
+        <label class="ptg-field">
+          <span>Temperature (K) <output></output></span>
+          <input type="range" name="temperature" min="30" max="1500" step="5">
+        </label>
+        <label class="ptg-field" data-rocky-only>
+          <span>Water % <output></output></span>
+          <input type="range" name="water" min="0" max="100" step="1">
+        </label>
+        <label class="ptg-field" data-rocky-only>
+          <span>Atmosphere <output></output></span>
+          <input type="range" name="atmosphere" min="0" max="100" step="1">
+        </label>
+        <p class="ptg-note">Moving these redraws the look below. Fine-tune it afterwards.</p>
+      </fieldset>
 
       <fieldset>
         <legend>Surface</legend>
@@ -75,7 +104,7 @@
         <legend>Features</legend>
         <label class="ptg-field">
           <span>Polar cap <output></output></span>
-          <input type="range" name="polarCap" min="0" max="120" step="1">
+          <input type="range" name="polarCap" min="0" max="180" step="1">
         </label>
         <label class="ptg-field">
           <span>Craters <output></output></span>
@@ -84,6 +113,22 @@
         <label class="ptg-field">
           <span>Clouds <output></output></span>
           <input type="range" name="clouds" min="0" max="150" step="1">
+        </label>
+        <label class="ptg-field">
+          <span>Lava <output></output></span>
+          <input type="range" name="lava" min="0" max="100" step="1">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Atmosphere</legend>
+        <label class="ptg-field">
+          <span>Haze <output></output></span>
+          <input type="range" name="haze" min="0" max="100" step="1">
+        </label>
+        <label class="ptg-field ptg-color">
+          <span>Haze color</span>
+          <input type="color" name="hazeColor">
         </label>
       </fieldset>
 
@@ -119,7 +164,8 @@
         <div class="ptg-actions">
           <button type="button" data-download="planet">Download planet</button>
           <button type="button" data-download="surface">Surface only</button>
-          <button type="button" data-download="clouds">Clouds only</button>
+          <button type="button" data-download="sky">Sky only</button>
+          <button type="button" data-copy-link>Copy link</button>
         </div>
       </div>
     </section>

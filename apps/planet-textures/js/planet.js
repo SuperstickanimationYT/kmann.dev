@@ -1,10 +1,13 @@
 import { paintClouds } from './clouds.js';
 import { paintCraters } from './craters.js';
 import { createGiantShader } from './giant.js';
+import { paintHaze } from './haze.js';
 import { forEachDiskPixel } from './sphere.js';
 import { createRockyShader } from './terrain.js';
 
 const RELIEF_STRENGTH = 0.15;
+const BASE_DETAIL_SIZE = 720;
+const FIELDS_OLDER_PLANETS_LACK = { lava: 0, haze: 0, hazeColor: '#8fb8ff' };
 
 const inWorker = typeof document === 'undefined';
 
@@ -18,6 +21,7 @@ function createLayer(size) {
 
 function clipToDisk(context, size) {
   context.globalCompositeOperation = 'destination-in';
+  context.fillStyle = '#000';
   context.beginPath();
   context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
   context.fill();
@@ -39,8 +43,10 @@ function shadeRelief(rgb, relief, covered, size) {
   }
 }
 
-function paintSurface(context, size, planet) {
-  const shade = planet.bands > 0 ? createGiantShader(planet) : createRockyShader(planet);
+const extraOctavesFor = (size) => Math.max(0, Math.round(Math.log2(size / BASE_DETAIL_SIZE)));
+
+function paintSurface(context, size, planet, extraOctaves) {
+  const shade = planet.bands > 0 ? createGiantShader(planet, extraOctaves) : createRockyShader(planet, extraOctaves);
   const rgb = new Float32Array(size * size * 3);
   const relief = new Float32Array(size * size);
   const covered = new Uint8Array(size * size);
@@ -68,16 +74,19 @@ function paintSurface(context, size, planet) {
   context.putImageData(image, 0, 0);
 }
 
-export function renderPlanet(planet, size) {
+export function renderPlanet(savedPlanet, size) {
+  const planet = { ...FIELDS_OLDER_PLANETS_LACK, ...savedPlanet };
+  const extraOctaves = extraOctavesFor(size);
   const surface = createLayer(size);
   const surfaceContext = surface.getContext('2d');
-  paintSurface(surfaceContext, size, planet);
+  paintSurface(surfaceContext, size, planet, extraOctaves);
   clipToDisk(surfaceContext, size);
 
-  const clouds = createLayer(size);
-  const cloudContext = clouds.getContext('2d');
-  paintClouds(cloudContext, size, planet);
-  clipToDisk(cloudContext, size);
+  const sky = createLayer(size);
+  const skyContext = sky.getContext('2d');
+  paintClouds(skyContext, size, planet, extraOctaves);
+  paintHaze(skyContext, size, planet);
+  clipToDisk(skyContext, size);
 
-  return { surface, clouds };
+  return { surface, sky };
 }

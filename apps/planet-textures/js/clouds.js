@@ -26,9 +26,9 @@ function climateBias(latitude) {
   return 0.12 * bump(latitude, 55, 12) + 0.1 * bump(latitude, 2, 5) - 0.12 * bump(latitude, 25, 9);
 }
 
-function createDensity(planet, coverage) {
-  const field = createNoise(planet.seed ^ STREAM.field, 5);
-  const detail = createNoise(planet.seed ^ STREAM.detail, 4);
+function createDensity(planet, coverage, extraOctaves) {
+  const field = createNoise(planet.seed ^ STREAM.field, 5 + extraOctaves);
+  const detail = createNoise(planet.seed ^ STREAM.detail, 4 + extraOctaves);
   const cyclones = createCyclones(planet, coverage);
   const hasWeatherBelts = planet.bands === 0;
   const swirled = { x: 0, y: 0, z: 0 };
@@ -52,10 +52,10 @@ function createDensity(planet, coverage) {
   };
 }
 
-export function paintClouds(context, size, planet) {
+export function paintClouds(context, size, planet, extraOctaves) {
   if (!planet.clouds) return;
   const coverage = 1 - Math.exp(-planet.clouds * COVERAGE_PER_CLOUD);
-  const densityAt = createDensity(planet, coverage);
+  const densityAt = createDensity(planet, coverage, extraOctaves);
   const threshold = levelAt(sampleLevels(planet.seed ^ STREAM.field, densityAt), 1 - coverage);
   const image = context.createImageData(size, size);
   const pixels = image.data;

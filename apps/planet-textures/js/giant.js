@@ -32,9 +32,9 @@ function stormAt(storms, p) {
   return null;
 }
 
-export function createGiantShader(planet) {
-  const turbulence = createNoise(planet.seed ^ STREAM.turbulence, 4);
-  const streaks = createNoise(planet.seed ^ STREAM.streaks, 3);
+export function createGiantShader(planet, extraOctaves) {
+  const turbulence = createNoise(planet.seed ^ STREAM.turbulence, 4 + extraOctaves);
+  const streaks = createNoise(planet.seed ^ STREAM.streaks, 3 + extraOctaves);
   const storms = createStorms(planet.seed ^ STREAM.storms);
   const base = hexToHsv(planet.baseColor);
   const floor = 100 - planet.variation - planet.darkness;
