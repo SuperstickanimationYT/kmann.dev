@@ -15,6 +15,7 @@ const CRYSTAL_CYAN = '#7df3ff';
 const STARDUST_VIOLET = '#e2c9ff';
 const LIFE_GREEN = '#8dffc1';
 const WORMHOLE_PURPLE = '#c58cff';
+const OBSERVATORY_TEAL = 'rgba(63, 224, 208, 0.35)';
 
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
@@ -184,7 +185,7 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, rocket, warpRange, telescopeRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
+  function draw({ chart, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
     if (canvas.clientWidth !== view.size) fit();
     context.fillStyle = '#02060d';
     context.fillRect(0, 0, view.size, view.size);
@@ -197,6 +198,10 @@ export function createGalaxyMap(canvas) {
       drawGalaxy();
       if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
       if (telescopeRange) ring(rocket.x, rocket.y, telescopeRange, 'rgba(63, 224, 208, 0.6)', true);
+      for (const observatory of observatories) {
+        ring(observatory.x, observatory.y, observatoryRange, OBSERVATORY_TEAL, false);
+        disk(observatory.x, observatory.y, 3.5, OBSERVATORY_TEAL);
+      }
       drawWormholeLinks(wormholeLinks);
       drawStars(chart);
     }
