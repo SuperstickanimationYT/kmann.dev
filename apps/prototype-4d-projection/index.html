@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4D Projection Prototype</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05070b; color: #cfd6e0; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .panel { position: fixed; top: 8px; background: #0b1018d9; padding: 8px 10px; border-radius: 6px; white-space: pre; font: 12px/1.45 ui-monospace, monospace; }
+  #hud { left: 8px; }
+  #reveal { right: 8px; display: none; }
+  #toggles { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
+  #toggles button { background: #141b26; color: #cfd6e0; border: 1px solid #2a3544; border-radius: 5px; padding: 5px 9px; font: inherit; cursor: pointer; }
+  #toggles button.on { background: #27415f; border-color: #4d7bb0; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="hud" class="panel"></div>
+<div id="reveal" class="panel"></div>
+<div id="toggles"></div>
+<script>
+const RETINA_HALF_ANGLE_TAN = 1;
+const NEAR = 0.05;
+const MOVE_SPEED = 3;
+const TURN_SPEED = 1.1;
+const VIEWER_DISTANCE = 4.2;
+const VIEWER_BASE_YAW = 35 * Math.PI / 180;
+const VIEWER_PITCH = 22 * Math.PI / 180;
+const WOBBLE_AMPLITUDE = 7 * Math.PI / 180;
+const WOBBLE_PERIOD_S = 4;
+const START_POSITION = [0, 2, -6, 0];
+
+const TOGGLES = {
+  wobble: { key: '1', label: '1 Wobble', on: false },
+  color: { key: '2', label: '2 Colors', on: false },
+  depth: { key: '3', label: '3 Depth brightness', on: true },
+  frame: { key: '4', label: '4 Retina box', on: true },
+  labels: { key: '5', label: '5 Labels', on: true },
+  floor: { key: '6', label: '6 Floor', on: true },
+  reveal: { key: 'r', label: 'R Reveal offsets', on: false },
+};
+
+const FLOOR = { center: [0, -0.25, 2, 0], half: [7, 0.25, 7, 7], isFloor: true };
+const PLATFORMS = [
+  { center: [-2, 0.6, 1, -2], half: [0.8, 0.15, 0.8, 0.8] },
+  { center: [2, 1.0, 2, 1], half: [0.7, 0.15, 0.9, 0.7] },
+  { center: [0, 1.6, 4, 0], half: [1.0, 0.15, 0.6, 1.0] },
+  { center: [-3, 2.2, 5, 3], half: [0.8, 0.15, 0.8, 0.6] },
+  { center: [3, 2.6, 6, -3], half: [0.6, 0.15, 0.6, 0.9] },
+  { center: [0, 3.0, 7, 4], half: [0.9, 0.15, 0.7, 0.7] },
+  { center: [-1, 0.9, 3, 4], half: [0.6, 0.15, 0.6, 0.6] },
+  { center: [1, 1.9, 1, -4], half: [0.7, 0.15, 0.7, 0.7] },
+  { center: [4, 0.5, 4, 2], half: [0.8, 0.15, 0.8, 0.8] },
+  { center: [-4, 1.3, 7, -1], half: [0.7, 0.15, 0.9, 0.7] },
+];
+PLATFORMS.forEach((p, i) => { p.hue = Math.round(i * 360 / PLATFORMS.length); p.label = String(i + 1); });
+
+const TESSERACT_EDGES = [];
+for (let i = 0; i < 16; i++) for (let bit = 0; bit < 4; bit++) {
+  const j = i ^ (1 << bit);
+  if (i < j) TESSERACT_EDGES.push([i, j]);
+}
+
+function tesseractVertices({ center, half }) {
+  const verts = [];
+  for (let i = 0; i < 16; i++) verts.push(center.map((c, a) => c + ((i >> a) & 1 ? half[a] : -half[a])));
+  return verts;
+}
+PLATFORMS.forEach(p => p.verts = tesseractVertices(p));
+FLOOR.verts = tesseractVertices(FLOOR);
+
+const RETINA_CUBE_EDGES = [];
+const RETINA_CUBE_VERTS = [];
+for (let i = 0; i < 8; i++) RETINA_CUBE_VERTS.push([0, 1, 2].map(a => ((i >> a) & 1 ? 1 : -1)));
+for (let i = 0; i < 8; i++) for (let bit = 0; bit < 3; bit++) {
+  const j = i ^ (1 << bit);
+  if (i < j) RETINA_CUBE_EDGES.push([i, j]);
+}
+
+const camera = { position: [...START_POSITION], basis: null };
+function resetCamera() {
+  camera.position = [...START_POSITION];
+  camera.basis = [
+    [1, 0, 0, 0],
+    [0, 1, 0, 0],
+    [0, 0, 0, 1],
+    [0, 0, 1, 0],
+  ];
+}
+resetCamera();
+const [RIGHT, UP, ANA, FORWARD] = [0, 1, 2, 3];
+const AXIS_NAMES = ['x', 'y', 'z', 'w'];
+
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+const sub = (a, b) => a.map((v, i) => v - b[i]);
+
+function rotateBasis(i, j, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  const a = camera.basis[i], b = camera.basis[j];
+  camera.basis[i] = a.map((v, k) => c * v + s * b[k]);
+  camera.basis[j] = b.map((v, k) => -s * a[k] + c * v);
+}
+
+function reorthonormalize() {
+  const E = camera.basis;
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < i; j++) {
+      const d = dot(E[i], E[j]);
+      E[i] = E[i].map((v, k) => v - d * E[j][k]);
+    }
+    const n = Math.hypot(...E[i]);
+    E[i] = E[i].map(v => v / n);
+  }
+}
+
+function toCameraFrame(point) {
+  const d = sub(point, camera.position);
+  return camera.basis.map(e => dot(d, e));
+}
+
+const FRUSTUM_PLANES = [
+  c => c[3] - NEAR,
+  c => RETINA_HALF_ANGLE_TAN * c[3] - c[0], c => RETINA_HALF_ANGLE_TAN * c[3] + c[0],
+  c => RETINA_HALF_ANGLE_TAN * c[3] - c[1], c => RETINA_HALF_ANGLE_TAN * c[3] + c[1],
+  c => RETINA_HALF_ANGLE_TAN * c[3] - c[2], c => RETINA_HALF_ANGLE_TAN * c[3] + c[2],
+];
+
+function clipToFrustum(a, b) {
+  let t0 = 0, t1 = 1;
+  for (const plane of FRUSTUM_PLANES) {
+    const ga = plane(a), gb = plane(b);
+    if (ga < 0 && gb < 0) return null;
+    if (ga < 0) t0 = Math.max(t0, ga / (ga - gb));
+    else if (gb < 0) t1 = Math.min(t1, ga / (ga - gb));
+  }
+  if (t0 > t1) return null;
+  const lerp = t => a.map((v, k) => v + (b[k] - v) * t);
+  return [lerp(t0), lerp(t1)];
+}
+
+const insideFrustum = c => FRUSTUM_PLANES.every(plane => plane(c) >= 0);
+
+function projectToRetina(c) {
+  return [c[0] / c[3], c[1] / c[3], c[2] / c[3]].map(v => v / RETINA_HALF_ANGLE_TAN);
+}
+
+const canvas = document.getElementById('view');
+const ctx = canvas.getContext('2d');
+let viewWidth = 0, viewHeight = 0;
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  viewWidth = window.innerWidth; viewHeight = window.innerHeight;
+  canvas.width = viewWidth * dpr; canvas.height = viewHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function viewerYaw(timeS) {
+  return VIEWER_BASE_YAW + (TOGGLES.wobble.on ? WOBBLE_AMPLITUDE * Math.sin(2 * Math.PI * timeS / WOBBLE_PERIOD_S) : 0);
+}
+
+function retinaToScreen(r, yaw) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const x1 = cy * r[0] + sy * r[2];
+  const z1 = -sy * r[0] + cy * r[2];
+  const cp = Math.cos(VIEWER_PITCH), sp = Math.sin(VIEWER_PITCH);
+  const y2 = cp * r[1] - sp * z1;
+  const z2 = sp * r[1] + cp * z1;
+  const depth = VIEWER_DISTANCE + z2;
+  const scale = 0.27 * Math.min(viewWidth, viewHeight) * VIEWER_DISTANCE / depth;
+  return { x: viewWidth / 2 + x1 * scale, y: viewHeight / 2 - y2 * scale, depth };
+}
+
+const NEAREST_RETINA_DEPTH = VIEWER_DISTANCE - Math.sqrt(3);
+const RETINA_DEPTH_SPAN = 2 * Math.sqrt(3);
+function lightnessAt(depth) {
+  if (!TOGGLES.depth.on) return 68;
+  const t = Math.min(1, Math.max(0, (depth - NEAREST_RETINA_DEPTH) / RETINA_DEPTH_SPAN));
+  return 92 - 72 * t;
+}
+
+function colorFor(object, depth) {
+  const lightness = lightnessAt(depth);
+  if (object.isFloor) return `hsl(210 12% ${lightness * 0.6}%)`;
+  return TOGGLES.color.on ? `hsl(${object.hue} 85% ${lightness}%)` : `hsl(0 0% ${lightness}%)`;
+}
+
+function drawScene(timeS) {
+  const yaw = viewerYaw(timeS);
+  ctx.clearRect(0, 0, viewWidth, viewHeight);
+
+  if (TOGGLES.frame.on) {
+    ctx.strokeStyle = '#223044';
+    ctx.lineWidth = 1;
+    for (const [i, j] of RETINA_CUBE_EDGES) {
+      const a = retinaToScreen(RETINA_CUBE_VERTS[i], yaw), b = retinaToScreen(RETINA_CUBE_VERTS[j], yaw);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+  }
+
+  const objects = TOGGLES.floor.on ? [FLOOR, ...PLATFORMS] : PLATFORMS;
+  const segments = [];
+  for (const object of objects) {
+    const camVerts = object.verts.map(toCameraFrame);
+    for (const [i, j] of TESSERACT_EDGES) {
+      const clipped = clipToFrustum(camVerts[i], camVerts[j]);
+      if (!clipped) continue;
+      const a = retinaToScreen(projectToRetina(clipped[0]), yaw);
+      const b = retinaToScreen(projectToRetina(clipped[1]), yaw);
+      segments.push({ object, a, b, depth: (a.depth + b.depth) / 2 });
+    }
+  }
+  segments.sort((s, t) => t.depth - s.depth);
+
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  for (const { object, a, b } of segments) {
+    const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+    gradient.addColorStop(0, colorFor(object, a.depth));
+    gradient.addColorStop(1, colorFor(object, b.depth));
+    ctx.strokeStyle = gradient;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+
+  if (TOGGLES.labels.on) {
+    ctx.font = 'bold 13px ui-monospace, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const platform of PLATFORMS) {
+      const c = toCameraFrame(platform.center);
+      if (!insideFrustum(c)) continue;
+      const s = retinaToScreen(projectToRetina(c), yaw);
+      ctx.fillStyle = TOGGLES.color.on ? `hsl(${platform.hue} 85% 70%)` : '#e8edf3';
+      ctx.fillText(platform.label, s.x, s.y);
+    }
+  }
+
+  return segments.length;
+}
+
+const hud = document.getElementById('hud');
+const revealPanel = document.getElementById('reveal');
+const fmt = v => (v >= 0 ? ' ' : '') + v.toFixed(2);
+const basisLine = e => e.map((v, k) => Math.abs(v) > 0.05 ? `${v >= 0 ? '+' : '-'}${Math.abs(v).toFixed(2)}${AXIS_NAMES[k]}` : '').filter(Boolean).join(' ');
+
+function renderPanels(segmentCount) {
+  const E = camera.basis;
+  hud.textContent =
+`PROTOTYPE: throwaway, 4D projection readability test
+pos   x${fmt(camera.position[0])} y${fmt(camera.position[1])} z${fmt(camera.position[2])} w${fmt(camera.position[3])}
+fwd   ${basisLine(E[FORWARD])}
+right ${basisLine(E[RIGHT])}
+ana   ${basisLine(E[ANA])}   (retina depth axis)
+lines on screen: ${segmentCount}
+
+move   W/S fwd/back  A/D right/left  Q/E kata/ana
+       Space/C up/down
+turn   ←/→ fwd↔right   ↑/↓ fwd↔ana   Z/X spin right↔ana
+H reset camera`;
+
+  revealPanel.style.display = TOGGLES.reveal.on ? 'block' : 'none';
+  if (!TOGGLES.reveal.on) return;
+  const rows = PLATFORMS.map(p => {
+    const c = toCameraFrame(p.center);
+    return `${p.label.padStart(2)}  ${fmt(c[RIGHT])} ${fmt(c[UP])} ${fmt(c[ANA])} ${fmt(c[FORWARD])}  ${insideFrustum(c) ? 'in view' : '-'}`;
+  });
+  revealPanel.textContent = `true offset from camera to platform centre\n #   right    up   ana   fwd\n${rows.join('\n')}`;
+}
+
+const togglesBar = document.getElementById('toggles');
+function renderToggles() {
+  togglesBar.replaceChildren(...Object.values(TOGGLES).map(t => {
+    const button = document.createElement('button');
+    button.textContent = t.label;
+    button.className = t.on ? 'on' : '';
+    button.onclick = () => { t.on = !t.on; renderToggles(); };
+    return button;
+  }));
+}
+renderToggles();
+
+const held = new Set();
+const CAPTURED_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'];
+window.addEventListener('keydown', e => {
+  if (CAPTURED_KEYS.includes(e.code)) e.preventDefault();
+  held.add(e.code);
+  if (e.repeat) return;
+  const toggle = Object.values(TOGGLES).find(t => t.key === e.key.toLowerCase());
+  if (toggle) { toggle.on = !toggle.on; renderToggles(); }
+  if (e.code === 'KeyH') resetCamera();
+});
+window.addEventListener('keyup', e => held.delete(e.code));
+window.addEventListener('blur', () => held.clear());
+
+const axisInput = (plus, minus) => (held.has(plus) ? 1 : 0) - (held.has(minus) ? 1 : 0);
+
+function applyInput(dt) {
+  const E = camera.basis;
+  const moves = [
+    [E[FORWARD], axisInput('KeyW', 'KeyS')],
+    [E[RIGHT], axisInput('KeyD', 'KeyA')],
+    [E[ANA], axisInput('KeyE', 'KeyQ')],
+    [E[UP], axisInput('Space', 'KeyC')],
+  ];
+  for (const [direction, amount] of moves) {
+    if (!amount) continue;
+    camera.position = camera.position.map((v, k) => v + direction[k] * amount * MOVE_SPEED * dt);
+  }
+  const turnForwardRight = axisInput('ArrowRight', 'ArrowLeft');
+  const turnForwardAna = axisInput('ArrowUp', 'ArrowDown');
+  const spinRightAna = axisInput('KeyX', 'KeyZ');
+  if (turnForwardRight) rotateBasis(FORWARD, RIGHT, turnForwardRight * TURN_SPEED * dt);
+  if (turnForwardAna) rotateBasis(FORWARD, ANA, turnForwardAna * TURN_SPEED * dt);
+  if (spinRightAna) rotateBasis(RIGHT, ANA, spinRightAna * TURN_SPEED * dt);
+  reorthonormalize();
+}
+
+let lastTimeMs = performance.now();
+function tick(nowMs) {
+  const dt = Math.min(0.05, (nowMs - lastTimeMs) / 1000);
+  lastTimeMs = nowMs;
+  applyInput(dt);
+  renderPanels(drawScene(nowMs / 1000));
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
