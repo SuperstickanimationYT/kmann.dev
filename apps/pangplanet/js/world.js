@@ -4,6 +4,7 @@ export const ROCKET_HEIGHT = 90;
 export const FLAME_OFFSET = 50;
 export const DRONE_SCALE = 0.6;
 export const CRASH_SPEED = 10;
+export const SPEED_LIMIT = 100;
 export const WORMHOLE_EXIT_GAP = 100;
 
 export const SOI_MARGIN = 2000;
