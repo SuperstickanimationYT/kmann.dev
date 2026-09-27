@@ -28,6 +28,7 @@ export const EARTH_ORBIT = Math.hypot(HOME_BODY.x - SUN.x, HOME_BODY.y - SUN.y);
 const EARTH_ORBIT_NUMBER = 3;
 const EARTH_SURFACE_GRAVITY = 0.1;
 
+const MOON_GRAVITY_IN_EARTHS = 0.165;
 const SURFACE_DEFAULTS = { variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: '#7eff00', landCover: 47, clouds: 0, lava: 0, haze: 0, hazeColor: '#8fb8ff' };
 
 function orbiting(center, distance, bearingDegrees) {
@@ -94,7 +95,7 @@ const SOLAR_MOONS = [
 
 export const HOME_SYSTEM = [
   HOME_BODY,
-  { name: 'Moon', x: 100000, y: 0, radius: 3000, soi: 5000, mass: 3e7, kind: 'planemo', look: 'moon', bounty: 75, moon: true },
+  { name: 'Moon', x: 100000, y: 0, radius: 3000, soi: 5000, mass: massFor(3000, MOON_GRAVITY_IN_EARTHS * EARTH_SURFACE_GRAVITY), kind: 'planemo', look: 'moon', bounty: 75, moon: true },
   ...linkWormholes(
     { name: 'Sun Wormhole', x: 100000, y: 10000, radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' },
     { name: 'Sun Wormhole', x: 1000000, y: -1080000, radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' },
