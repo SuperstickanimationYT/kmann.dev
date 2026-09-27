@@ -21,90 +21,122 @@
 <div id="reveal" class="panel"></div>
 <div id="toggles"></div>
 <script>
-const RETINA_HALF_ANGLE_TAN = 1;
+const FOV_HALF_ANGLE_TAN = 1;
 const NEAR = 0.05;
-const MOVE_SPEED = 3;
+const WALK_SPEED = 3;
+const FLY_SPEED = 3;
 const TURN_SPEED = 1.1;
+const GRAVITY = 18;
+const JUMP_SPEED = 7.4;
+const MAX_FALL_SPEED = 15;
+const PHYSICS_STEP_S = 1 / 120;
+const PLAYER_HALF_WIDTH = 0.25;
+const PLAYER_HEIGHT = 0.9;
+const CHASE_DISTANCE = 3.5;
+const CHASE_HEIGHT_ABOVE_FEET = 1.8;
+const CHASE_PITCH = 20 * Math.PI / 180;
+const RESPAWN_BELOW_Y = -8;
+const START_FEET = [0, 0, -3.5, 0];
 const VIEWER_DISTANCE = 4.2;
 const VIEWER_BASE_YAW = 35 * Math.PI / 180;
 const VIEWER_PITCH = 22 * Math.PI / 180;
 const WOBBLE_AMPLITUDE = 7 * Math.PI / 180;
 const WOBBLE_PERIOD_S = 4;
-const START_POSITION = [0, 2, -6, 0];
+const LINE_SUBDIVISIONS = 4;
+const AUTO_CONTRAST_SMOOTHING = 0.15;
+const VOID_HUE = 0;
 
 const TOGGLES = {
   wobble: { key: '1', label: '1 Wobble', on: false },
-  color: { key: '2', label: '2 Colors', on: false },
-  depth: { key: '3', label: '3 Depth brightness', on: true },
-  frame: { key: '4', label: '4 Retina box', on: true },
-  labels: { key: '5', label: '5 Labels', on: true },
-  floor: { key: '6', label: '6 Floor', on: true },
+  color: { key: '2', label: '2 Colors', on: true },
+  brightness: { key: '3', label: '3 Depth brightness', on: true },
+  autoContrast: { key: '4', label: '4 Auto-contrast', on: true },
+  width: { key: '5', label: '5 Depth width', on: true },
+  frame: { key: '6', label: '6 Retina box', on: true },
+  labels: { key: '7', label: '7 Labels', on: true },
+  floor: { key: '8', label: '8 Floor lines', on: true },
+  dropLine: { key: '9', label: '9 Drop line', on: true },
+  fly: { key: 'f', label: 'F Fly', on: false },
   reveal: { key: 'r', label: 'R Reveal offsets', on: false },
 };
 
-const FLOOR = { center: [0, -0.25, 2, 0], half: [7, 0.25, 7, 7], isFloor: true };
+function box(center, half, extra = {}) {
+  return { center, half, min: center.map((c, a) => c - half[a]), max: center.map((c, a) => c + half[a]), ...extra };
+}
+const FLOOR = box([0, -0.25, 2, 0], [7, 0.25, 7, 7], { isFloor: true });
 const PLATFORMS = [
-  { center: [-2, 0.6, 1, -2], half: [0.8, 0.15, 0.8, 0.8] },
-  { center: [2, 1.0, 2, 1], half: [0.7, 0.15, 0.9, 0.7] },
-  { center: [0, 1.6, 4, 0], half: [1.0, 0.15, 0.6, 1.0] },
-  { center: [-3, 2.2, 5, 3], half: [0.8, 0.15, 0.8, 0.6] },
-  { center: [3, 2.6, 6, -3], half: [0.6, 0.15, 0.6, 0.9] },
-  { center: [0, 3.0, 7, 4], half: [0.9, 0.15, 0.7, 0.7] },
-  { center: [-1, 0.9, 3, 4], half: [0.6, 0.15, 0.6, 0.6] },
-  { center: [1, 1.9, 1, -4], half: [0.7, 0.15, 0.7, 0.7] },
-  { center: [4, 0.5, 4, 2], half: [0.8, 0.15, 0.8, 0.8] },
-  { center: [-4, 1.3, 7, -1], half: [0.7, 0.15, 0.9, 0.7] },
+  box([-2, 0.6, 1, -2], [0.8, 0.15, 0.8, 0.8]),
+  box([2, 1.0, 2, 1], [0.7, 0.15, 0.9, 0.7]),
+  box([0, 1.6, 4, 0], [1.0, 0.15, 0.6, 1.0]),
+  box([-3, 2.2, 5, 3], [0.8, 0.15, 0.8, 0.6]),
+  box([3, 2.6, 6, -3], [0.6, 0.15, 0.6, 0.9]),
+  box([0, 3.0, 7, 4], [0.9, 0.15, 0.7, 0.7]),
+  box([-1, 0.9, 3, 4], [0.6, 0.15, 0.6, 0.6]),
+  box([1, 1.9, 1, -4], [0.7, 0.15, 0.7, 0.7]),
+  box([4, 0.5, 4, 2], [0.8, 0.15, 0.8, 0.8]),
+  box([-4, 1.3, 7, -1], [0.7, 0.15, 0.9, 0.7]),
 ];
 PLATFORMS.forEach((p, i) => { p.hue = Math.round(i * 360 / PLATFORMS.length); p.label = String(i + 1); });
+const SOLIDS = [FLOOR, ...PLATFORMS];
 
 const TESSERACT_EDGES = [];
 for (let i = 0; i < 16; i++) for (let bit = 0; bit < 4; bit++) {
   const j = i ^ (1 << bit);
   if (i < j) TESSERACT_EDGES.push([i, j]);
 }
-
 function tesseractVertices({ center, half }) {
   const verts = [];
   for (let i = 0; i < 16; i++) verts.push(center.map((c, a) => c + ((i >> a) & 1 ? half[a] : -half[a])));
   return verts;
 }
-PLATFORMS.forEach(p => p.verts = tesseractVertices(p));
-FLOOR.verts = tesseractVertices(FLOOR);
+function tesseractSegments(b) {
+  const verts = tesseractVertices(b);
+  return TESSERACT_EDGES.map(([i, j]) => [verts[i], verts[j]]);
+}
+SOLIDS.forEach(s => s.segments = tesseractSegments(s));
 
-const RETINA_CUBE_EDGES = [];
 const RETINA_CUBE_VERTS = [];
+const RETINA_CUBE_EDGES = [];
 for (let i = 0; i < 8; i++) RETINA_CUBE_VERTS.push([0, 1, 2].map(a => ((i >> a) & 1 ? 1 : -1)));
 for (let i = 0; i < 8; i++) for (let bit = 0; bit < 3; bit++) {
   const j = i ^ (1 << bit);
   if (i < j) RETINA_CUBE_EDGES.push([i, j]);
 }
 
-const camera = { position: [...START_POSITION], basis: null };
-function resetCamera() {
-  camera.position = [...START_POSITION];
-  camera.basis = [
+const [RIGHT, UP, ANA, FORWARD] = [0, 1, 2, 3];
+const AXIS_NAMES = ['x', 'y', 'z', 'w'];
+const X = 0, Y = 1, Z = 2, W = 3;
+const HORIZONTAL_AXES = [X, Z, W];
+
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+const sub = (a, b) => a.map((v, i) => v - b[i]);
+const add = (a, b) => a.map((v, i) => v + b[i]);
+const scale = (a, k) => a.map(v => v * k);
+
+const player = {};
+const stats = { falls: 0, landedOn: new Set() };
+function respawn() {
+  player.feet = [...START_FEET];
+  player.verticalSpeed = 0;
+  player.grounded = false;
+  player.basis = [
     [1, 0, 0, 0],
     [0, 1, 0, 0],
     [0, 0, 0, 1],
     [0, 0, 1, 0],
   ];
 }
-resetCamera();
-const [RIGHT, UP, ANA, FORWARD] = [0, 1, 2, 3];
-const AXIS_NAMES = ['x', 'y', 'z', 'w'];
+respawn();
 
-const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
-const sub = (a, b) => a.map((v, i) => v - b[i]);
-
-function rotateBasis(i, j, angle) {
+function rotatePlayerBasis(i, j, angle) {
   const c = Math.cos(angle), s = Math.sin(angle);
-  const a = camera.basis[i], b = camera.basis[j];
-  camera.basis[i] = a.map((v, k) => c * v + s * b[k]);
-  camera.basis[j] = b.map((v, k) => -s * a[k] + c * v);
+  const a = player.basis[i], b = player.basis[j];
+  player.basis[i] = a.map((v, k) => c * v + s * b[k]);
+  player.basis[j] = b.map((v, k) => -s * a[k] + c * v);
 }
 
-function reorthonormalize() {
-  const E = camera.basis;
+function reorthonormalizePlayerBasis() {
+  const E = player.basis;
   for (let i = 0; i < 4; i++) {
     for (let j = 0; j < i; j++) {
       const d = dot(E[i], E[j]);
@@ -115,18 +147,90 @@ function reorthonormalize() {
   }
 }
 
-function toCameraFrame(point) {
-  const d = sub(point, camera.position);
-  return camera.basis.map(e => dot(d, e));
+function chaseCamera() {
+  const P = player.basis;
+  const c = Math.cos(CHASE_PITCH), s = Math.sin(CHASE_PITCH);
+  const basis = [...P];
+  basis[FORWARD] = add(scale(P[FORWARD], c), scale(P[UP], -s));
+  basis[UP] = add(scale(P[FORWARD], s), scale(P[UP], c));
+  const position = add(add(player.feet, scale(P[UP], CHASE_HEIGHT_ABOVE_FEET)), scale(P[FORWARD], -CHASE_DISTANCE));
+  return { position, basis };
+}
+
+function playerBox() {
+  const [x, y, z, w] = player.feet;
+  const h = PLAYER_HALF_WIDTH;
+  return { min: [x - h, y, z - h, w - h], max: [x + h, y + PLAYER_HEIGHT, z + h, w + h] };
+}
+const overlaps = (a, b) => [X, Y, Z, W].every(k => a.min[k] < b.max[k] && a.max[k] > b.min[k]);
+
+const held = new Set();
+const axisInput = (plus, minus) => (held.has(plus) ? 1 : 0) - (held.has(minus) ? 1 : 0);
+
+function wishDirection() {
+  const P = player.basis;
+  let dir = [0, 0, 0, 0];
+  dir = add(dir, scale(P[FORWARD], axisInput('KeyW', 'KeyS')));
+  dir = add(dir, scale(P[RIGHT], axisInput('KeyD', 'KeyA')));
+  dir = add(dir, scale(P[ANA], axisInput('KeyE', 'KeyQ')));
+  const length = Math.hypot(...dir);
+  return length > 1 ? scale(dir, 1 / length) : dir;
+}
+
+function stepFlying(dt) {
+  const move = add(wishDirection(), scale(player.basis[UP], axisInput('Space', 'KeyC')));
+  player.feet = add(player.feet, scale(move, FLY_SPEED * dt));
+  player.verticalSpeed = 0;
+  player.grounded = false;
+}
+
+function stepWalking(dt) {
+  if (player.grounded && held.has('Space')) player.verticalSpeed = JUMP_SPEED;
+  player.verticalSpeed = Math.max(player.verticalSpeed - GRAVITY * dt, -MAX_FALL_SPEED);
+  const wish = scale(wishDirection(), WALK_SPEED * dt);
+  const delta = [wish[X], player.verticalSpeed * dt, wish[Z], wish[W]];
+  player.grounded = false;
+  for (const axis of [Y, ...HORIZONTAL_AXES]) {
+    if (!delta[axis]) continue;
+    player.feet[axis] += delta[axis];
+    const hit = SOLIDS.find(s => overlaps(playerBox(), s));
+    if (!hit) continue;
+    if (axis !== Y) { player.feet[axis] -= delta[axis]; continue; }
+    if (delta[Y] < 0) {
+      player.feet[Y] = hit.max[Y];
+      player.grounded = true;
+      if (hit.label) stats.landedOn.add(hit.label);
+    } else {
+      player.feet[Y] = hit.min[Y] - PLAYER_HEIGHT;
+    }
+    player.verticalSpeed = 0;
+  }
+  if (player.feet[Y] < RESPAWN_BELOW_Y) { stats.falls++; respawn(); }
+}
+
+function applyTurning(dt) {
+  const turnForwardRight = axisInput('ArrowRight', 'ArrowLeft');
+  const turnForwardAna = axisInput('ArrowUp', 'ArrowDown');
+  const spinRightAna = axisInput('KeyX', 'KeyZ');
+  if (turnForwardRight) rotatePlayerBasis(FORWARD, RIGHT, turnForwardRight * TURN_SPEED * dt);
+  if (turnForwardAna) rotatePlayerBasis(FORWARD, ANA, turnForwardAna * TURN_SPEED * dt);
+  if (spinRightAna) rotatePlayerBasis(RIGHT, ANA, spinRightAna * TURN_SPEED * dt);
+  reorthonormalizePlayerBasis();
+}
+
+function surfaceBelow(point) {
+  const containsHorizontally = s => HORIZONTAL_AXES.every(k => point[k] >= s.min[k] && point[k] <= s.max[k]);
+  const candidates = SOLIDS.filter(s => s.max[Y] <= point[Y] + 1e-6 && containsHorizontally(s));
+  if (!candidates.length) return null;
+  return candidates.reduce((best, s) => (s.max[Y] > best.max[Y] ? s : best));
 }
 
 const FRUSTUM_PLANES = [
   c => c[3] - NEAR,
-  c => RETINA_HALF_ANGLE_TAN * c[3] - c[0], c => RETINA_HALF_ANGLE_TAN * c[3] + c[0],
-  c => RETINA_HALF_ANGLE_TAN * c[3] - c[1], c => RETINA_HALF_ANGLE_TAN * c[3] + c[1],
-  c => RETINA_HALF_ANGLE_TAN * c[3] - c[2], c => RETINA_HALF_ANGLE_TAN * c[3] + c[2],
+  c => FOV_HALF_ANGLE_TAN * c[3] - c[0], c => FOV_HALF_ANGLE_TAN * c[3] + c[0],
+  c => FOV_HALF_ANGLE_TAN * c[3] - c[1], c => FOV_HALF_ANGLE_TAN * c[3] + c[1],
+  c => FOV_HALF_ANGLE_TAN * c[3] - c[2], c => FOV_HALF_ANGLE_TAN * c[3] + c[2],
 ];
-
 function clipToFrustum(a, b) {
   let t0 = 0, t1 = 1;
   for (const plane of FRUSTUM_PLANES) {
@@ -139,12 +243,9 @@ function clipToFrustum(a, b) {
   const lerp = t => a.map((v, k) => v + (b[k] - v) * t);
   return [lerp(t0), lerp(t1)];
 }
-
 const insideFrustum = c => FRUSTUM_PLANES.every(plane => plane(c) >= 0);
-
-function projectToRetina(c) {
-  return [c[0] / c[3], c[1] / c[3], c[2] / c[3]].map(v => v / RETINA_HALF_ANGLE_TAN);
-}
+const toCameraFrame = (camera, point) => camera.basis.map(e => dot(sub(point, camera.position), e));
+const projectToRetina = c => [c[0], c[1], c[2]].map(v => v / c[3] / FOV_HALF_ANGLE_TAN);
 
 const canvas = document.getElementById('view');
 const ctx = canvas.getContext('2d');
@@ -170,74 +271,121 @@ function retinaToScreen(r, yaw) {
   const y2 = cp * r[1] - sp * z1;
   const z2 = sp * r[1] + cp * z1;
   const depth = VIEWER_DISTANCE + z2;
-  const scale = 0.27 * Math.min(viewWidth, viewHeight) * VIEWER_DISTANCE / depth;
-  return { x: viewWidth / 2 + x1 * scale, y: viewHeight / 2 - y2 * scale, depth };
+  const k = 0.27 * Math.min(viewWidth, viewHeight) * VIEWER_DISTANCE / depth;
+  return { x: viewWidth / 2 + x1 * k, y: viewHeight / 2 - y2 * k, depth };
 }
 
-const NEAREST_RETINA_DEPTH = VIEWER_DISTANCE - Math.sqrt(3);
-const RETINA_DEPTH_SPAN = 2 * Math.sqrt(3);
-function lightnessAt(depth) {
-  if (!TOGGLES.depth.on) return 68;
-  const t = Math.min(1, Math.max(0, (depth - NEAREST_RETINA_DEPTH) / RETINA_DEPTH_SPAN));
-  return 92 - 72 * t;
+const RETINA_BOX_DEPTH_RANGE = { near: VIEWER_DISTANCE - Math.sqrt(3), far: VIEWER_DISTANCE + Math.sqrt(3) };
+const depthRange = { ...RETINA_BOX_DEPTH_RANGE };
+
+function updateDepthRange(pieces) {
+  let target = RETINA_BOX_DEPTH_RANGE;
+  if (TOGGLES.autoContrast.on && pieces.length) {
+    let near = Infinity, far = -Infinity;
+    for (const { a, b } of pieces) {
+      near = Math.min(near, a.depth, b.depth);
+      far = Math.max(far, a.depth, b.depth);
+    }
+    target = { near, far: Math.max(far, near + 0.05) };
+  }
+  depthRange.near += (target.near - depthRange.near) * AUTO_CONTRAST_SMOOTHING;
+  depthRange.far += (target.far - depthRange.far) * AUTO_CONTRAST_SMOOTHING;
 }
 
-function colorFor(object, depth) {
+const farness = depth => Math.min(1, Math.max(0, (depth - depthRange.near) / (depthRange.far - depthRange.near)));
+const lightnessAt = depth => (TOGGLES.brightness.on ? 92 - 74 * farness(depth) : 68);
+const widthAt = depth => (TOGGLES.width.on ? 0.7 + 3.3 * (1 - farness(depth)) : 1.6);
+
+function colorFor(style, depth) {
   const lightness = lightnessAt(depth);
-  if (object.isFloor) return `hsl(210 12% ${lightness * 0.6}%)`;
-  return TOGGLES.color.on ? `hsl(${object.hue} 85% ${lightness}%)` : `hsl(0 0% ${lightness}%)`;
+  if (style.kind === 'floor') return `hsl(210 12% ${lightness * 0.6}%)`;
+  if (style.kind === 'player') return `hsl(0 0% ${lightness}%)`;
+  if (style.kind === 'platform' && !TOGGLES.color.on) return `hsl(210 35% ${lightness}%)`;
+  return `hsl(${style.hue} 90% ${lightness}%)`;
+}
+
+function sceneSegments() {
+  const list = [];
+  const addAll = (segments, style) => segments.forEach(([a, b]) => list.push({ a, b, style }));
+  if (TOGGLES.floor.on) addAll(FLOOR.segments, { kind: 'floor' });
+  PLATFORMS.forEach(p => addAll(p.segments, { kind: 'platform', hue: p.hue }));
+  const bodyCenter = add(player.feet, [0, PLAYER_HEIGHT / 2, 0, 0]);
+  const bodyHalf = [PLAYER_HALF_WIDTH, PLAYER_HEIGHT / 2, PLAYER_HALF_WIDTH, PLAYER_HALF_WIDTH];
+  addAll(tesseractSegments({ center: bodyCenter, half: bodyHalf }), { kind: 'player' });
+
+  if (TOGGLES.dropLine.on) {
+    const surface = surfaceBelow(player.feet);
+    const hitY = surface ? surface.max[Y] : RESPAWN_BELOW_Y;
+    const hit = [player.feet[X], hitY, player.feet[Z], player.feet[W]];
+    const style = surface ? { kind: 'player' } : { kind: 'drop', hue: VOID_HUE };
+    list.push({ a: player.feet, b: hit, style });
+    for (const k of HORIZONTAL_AXES) {
+      const arm = [0, 0, 0, 0]; arm[k] = 0.35;
+      list.push({ a: sub(hit, arm), b: add(hit, arm), style });
+    }
+  }
+  return list;
+}
+
+function projectPieces(camera, yaw) {
+  const pieces = [];
+  for (const { a, b, style } of sceneSegments()) {
+    const clipped = clipToFrustum(toCameraFrame(camera, a), toCameraFrame(camera, b));
+    if (!clipped) continue;
+    const ra = projectToRetina(clipped[0]), rb = projectToRetina(clipped[1]);
+    let previous = retinaToScreen(ra, yaw);
+    for (let i = 1; i <= LINE_SUBDIVISIONS; i++) {
+      const t = i / LINE_SUBDIVISIONS;
+      const next = retinaToScreen(ra.map((v, k) => v + (rb[k] - v) * t), yaw);
+      pieces.push({ a: previous, b: next, style, depth: (previous.depth + next.depth) / 2 });
+      previous = next;
+    }
+  }
+  return pieces;
+}
+
+function drawRetinaBox(yaw) {
+  ctx.strokeStyle = '#223044';
+  ctx.lineWidth = 1;
+  for (const [i, j] of RETINA_CUBE_EDGES) {
+    const a = retinaToScreen(RETINA_CUBE_VERTS[i], yaw), b = retinaToScreen(RETINA_CUBE_VERTS[j], yaw);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+}
+
+function drawLabels(camera, yaw) {
+  ctx.font = 'bold 13px ui-monospace, monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const platform of PLATFORMS) {
+    const c = toCameraFrame(camera, platform.center);
+    if (!insideFrustum(c)) continue;
+    const s = retinaToScreen(projectToRetina(c), yaw);
+    ctx.fillStyle = TOGGLES.color.on ? `hsl(${platform.hue} 85% 72%)` : '#e8edf3';
+    ctx.fillText(platform.label, s.x, s.y);
+  }
 }
 
 function drawScene(timeS) {
+  const camera = chaseCamera();
   const yaw = viewerYaw(timeS);
   ctx.clearRect(0, 0, viewWidth, viewHeight);
+  if (TOGGLES.frame.on) drawRetinaBox(yaw);
 
-  if (TOGGLES.frame.on) {
-    ctx.strokeStyle = '#223044';
-    ctx.lineWidth = 1;
-    for (const [i, j] of RETINA_CUBE_EDGES) {
-      const a = retinaToScreen(RETINA_CUBE_VERTS[i], yaw), b = retinaToScreen(RETINA_CUBE_VERTS[j], yaw);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-  }
-
-  const objects = TOGGLES.floor.on ? [FLOOR, ...PLATFORMS] : PLATFORMS;
-  const segments = [];
-  for (const object of objects) {
-    const camVerts = object.verts.map(toCameraFrame);
-    for (const [i, j] of TESSERACT_EDGES) {
-      const clipped = clipToFrustum(camVerts[i], camVerts[j]);
-      if (!clipped) continue;
-      const a = retinaToScreen(projectToRetina(clipped[0]), yaw);
-      const b = retinaToScreen(projectToRetina(clipped[1]), yaw);
-      segments.push({ object, a, b, depth: (a.depth + b.depth) / 2 });
-    }
-  }
-  segments.sort((s, t) => t.depth - s.depth);
-
-  ctx.lineWidth = 1.6;
+  const pieces = projectPieces(camera, yaw);
+  updateDepthRange(pieces);
+  pieces.sort((p, q) => q.depth - p.depth);
   ctx.lineCap = 'round';
-  for (const { object, a, b } of segments) {
+  for (const { a, b, style } of pieces) {
     const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-    gradient.addColorStop(0, colorFor(object, a.depth));
-    gradient.addColorStop(1, colorFor(object, b.depth));
+    gradient.addColorStop(0, colorFor(style, a.depth));
+    gradient.addColorStop(1, colorFor(style, b.depth));
     ctx.strokeStyle = gradient;
+    ctx.lineWidth = widthAt((a.depth + b.depth) / 2);
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
 
-  if (TOGGLES.labels.on) {
-    ctx.font = 'bold 13px ui-monospace, monospace';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const platform of PLATFORMS) {
-      const c = toCameraFrame(platform.center);
-      if (!insideFrustum(c)) continue;
-      const s = retinaToScreen(projectToRetina(c), yaw);
-      ctx.fillStyle = TOGGLES.color.on ? `hsl(${platform.hue} 85% 70%)` : '#e8edf3';
-      ctx.fillText(platform.label, s.x, s.y);
-    }
-  }
-
-  return segments.length;
+  if (TOGGLES.labels.on) drawLabels(camera, yaw);
+  return pieces.length / LINE_SUBDIVISIONS;
 }
 
 const hud = document.getElementById('hud');
@@ -245,28 +393,38 @@ const revealPanel = document.getElementById('reveal');
 const fmt = v => (v >= 0 ? ' ' : '') + v.toFixed(2);
 const basisLine = e => e.map((v, k) => Math.abs(v) > 0.05 ? `${v >= 0 ? '+' : '-'}${Math.abs(v).toFixed(2)}${AXIS_NAMES[k]}` : '').filter(Boolean).join(' ');
 
-function renderPanels(segmentCount) {
-  const E = camera.basis;
+function playerState() {
+  if (TOGGLES.fly.on) return 'flying';
+  return player.grounded ? 'grounded' : `airborne vy${fmt(player.verticalSpeed)}`;
+}
+
+function renderPanels(lineCount) {
+  const P = player.basis;
+  const landed = [...stats.landedOn].sort((a, b) => a - b).join(' ') || '-';
   hud.textContent =
-`PROTOTYPE: throwaway, 4D projection readability test
-pos   x${fmt(camera.position[0])} y${fmt(camera.position[1])} z${fmt(camera.position[2])} w${fmt(camera.position[3])}
-fwd   ${basisLine(E[FORWARD])}
-right ${basisLine(E[RIGHT])}
-ana   ${basisLine(E[ANA])}   (retina depth axis)
-lines on screen: ${segmentCount}
+`PROTOTYPE: throwaway, 4D projection jump test
+feet  x${fmt(player.feet[X])} y${fmt(player.feet[Y])} z${fmt(player.feet[Z])} w${fmt(player.feet[W])}
+fwd   ${basisLine(P[FORWARD])}
+right ${basisLine(P[RIGHT])}
+ana   ${basisLine(P[ANA])}   (retina depth axis)
+state ${playerState()}
+landed on ${landed}  (${stats.landedOn.size}/${PLATFORMS.length})   falls ${stats.falls}
+lines ${lineCount}
 
 move   W/S fwd/back  A/D right/left  Q/E kata/ana
-       Space/C up/down
+jump   Space   (fly: Space/C up/down)
 turn   ←/→ fwd↔right   ↑/↓ fwd↔ana   Z/X spin right↔ana
-H reset camera`;
+H respawn`;
 
   revealPanel.style.display = TOGGLES.reveal.on ? 'block' : 'none';
   if (!TOGGLES.reveal.on) return;
   const rows = PLATFORMS.map(p => {
-    const c = toCameraFrame(p.center);
-    return `${p.label.padStart(2)}  ${fmt(c[RIGHT])} ${fmt(c[UP])} ${fmt(c[ANA])} ${fmt(c[FORWARD])}  ${insideFrustum(c) ? 'in view' : '-'}`;
+    const top = [p.center[X], p.max[Y], p.center[Z], p.center[W]];
+    const d = sub(top, player.feet);
+    const c = P.map(e => dot(d, e));
+    return `${p.label.padStart(2)}  ${fmt(c[RIGHT])} ${fmt(c[UP])} ${fmt(c[ANA])} ${fmt(c[FORWARD])}`;
   });
-  revealPanel.textContent = `true offset from camera to platform centre\n #   right    up   ana   fwd\n${rows.join('\n')}`;
+  revealPanel.textContent = `true offset from your feet to platform top\n #   right    up   ana   fwd\n${rows.join('\n')}`;
 }
 
 const togglesBar = document.getElementById('toggles');
@@ -275,13 +433,12 @@ function renderToggles() {
     const button = document.createElement('button');
     button.textContent = t.label;
     button.className = t.on ? 'on' : '';
-    button.onclick = () => { t.on = !t.on; renderToggles(); };
+    button.onclick = () => { t.on = !t.on; renderToggles(); button.blur(); };
     return button;
   }));
 }
 renderToggles();
 
-const held = new Set();
 const CAPTURED_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'];
 window.addEventListener('keydown', e => {
   if (CAPTURED_KEYS.includes(e.code)) e.preventDefault();
@@ -289,39 +446,22 @@ window.addEventListener('keydown', e => {
   if (e.repeat) return;
   const toggle = Object.values(TOGGLES).find(t => t.key === e.key.toLowerCase());
   if (toggle) { toggle.on = !toggle.on; renderToggles(); }
-  if (e.code === 'KeyH') resetCamera();
+  if (e.code === 'KeyH') respawn();
 });
 window.addEventListener('keyup', e => held.delete(e.code));
 window.addEventListener('blur', () => held.clear());
 
-const axisInput = (plus, minus) => (held.has(plus) ? 1 : 0) - (held.has(minus) ? 1 : 0);
-
-function applyInput(dt) {
-  const E = camera.basis;
-  const moves = [
-    [E[FORWARD], axisInput('KeyW', 'KeyS')],
-    [E[RIGHT], axisInput('KeyD', 'KeyA')],
-    [E[ANA], axisInput('KeyE', 'KeyQ')],
-    [E[UP], axisInput('Space', 'KeyC')],
-  ];
-  for (const [direction, amount] of moves) {
-    if (!amount) continue;
-    camera.position = camera.position.map((v, k) => v + direction[k] * amount * MOVE_SPEED * dt);
-  }
-  const turnForwardRight = axisInput('ArrowRight', 'ArrowLeft');
-  const turnForwardAna = axisInput('ArrowUp', 'ArrowDown');
-  const spinRightAna = axisInput('KeyX', 'KeyZ');
-  if (turnForwardRight) rotateBasis(FORWARD, RIGHT, turnForwardRight * TURN_SPEED * dt);
-  if (turnForwardAna) rotateBasis(FORWARD, ANA, turnForwardAna * TURN_SPEED * dt);
-  if (spinRightAna) rotateBasis(RIGHT, ANA, spinRightAna * TURN_SPEED * dt);
-  reorthonormalize();
-}
-
 let lastTimeMs = performance.now();
+let physicsBacklogS = 0;
 function tick(nowMs) {
-  const dt = Math.min(0.05, (nowMs - lastTimeMs) / 1000);
+  const dt = Math.min(0.1, (nowMs - lastTimeMs) / 1000);
   lastTimeMs = nowMs;
-  applyInput(dt);
+  applyTurning(dt);
+  physicsBacklogS += dt;
+  while (physicsBacklogS >= PHYSICS_STEP_S) {
+    (TOGGLES.fly.on ? stepFlying : stepWalking)(PHYSICS_STEP_S);
+    physicsBacklogS -= PHYSICS_STEP_S;
+  }
   renderPanels(drawScene(nowMs / 1000));
   requestAnimationFrame(tick);
 }
