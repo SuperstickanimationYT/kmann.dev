@@ -1,4 +1,5 @@
 import { hexToHsv, hsvToRgb } from './color.js';
+import { createFlowField, polarChaos } from './flow.js';
 import { createNoise, createRandom } from './random.js';
 import { bump, clamp01, mix, smoothstep, wrapAngle } from './sphere.js';
 
@@ -7,6 +8,7 @@ const TURBULENCE_SCALE = 1.5;
 const STREAK_SCALE = 6;
 const STREAK_STRETCH = 40;
 const CHAOS_SCALE = 4;
+const WARP_STRENGTH = 1.5;
 
 function createStorms(seed) {
   const random = createRandom(seed);
@@ -32,21 +34,28 @@ function stormAt(storms, p) {
   return null;
 }
 
-export function createGiantShader(planet, extraOctaves) {
+export function createGiantShader(planet, extraOctaves, size) {
   const turbulence = createNoise(planet.seed ^ STREAM.turbulence, 4 + extraOctaves);
   const streaks = createNoise(planet.seed ^ STREAM.streaks, 3 + extraOctaves);
   const storms = createStorms(planet.seed ^ STREAM.storms);
+  const drifted = createFlowField(planet, storms, size);
+  const drift = [0, 0, 0];
   const base = hexToHsv(planet.baseColor);
   const floor = 100 - planet.variation - planet.darkness;
   const hueSwing = planet.variation / 300;
 
   return (p, out) => {
-    const poleward = p.lat / (Math.PI / 2);
-    const warp = turbulence(p.x * TURBULENCE_SCALE, p.y * TURBULENCE_SCALE, p.lat * 6) - 0.5;
-    const band = Math.sin(poleward * planet.bands * Math.PI * 2 + warp * (2 + planet.bands * 0.5));
-    const polar = smoothstep(0.7, 0.92, poleward);
-    const chaos = turbulence(p.x * CHAOS_SCALE, p.y * CHAOS_SCALE, p.z * CHAOS_SCALE) - 0.5;
-    const streak = streaks(p.x * STREAK_SCALE, p.y * STREAK_SCALE, p.lat * STREAK_STRETCH) - 0.5;
+    drifted(p, drift);
+    const x = drift[0];
+    const y = drift[1];
+    const z = drift[2];
+    const lat = Math.asin(z);
+    const poleward = lat / (Math.PI / 2);
+    const warp = turbulence(x * TURBULENCE_SCALE, y * TURBULENCE_SCALE, lat * 6) - 0.5;
+    const band = Math.sin(poleward * planet.bands * Math.PI * 2 + warp * WARP_STRENGTH);
+    const polar = polarChaos(poleward);
+    const chaos = turbulence(x * CHAOS_SCALE, y * CHAOS_SCALE, z * CHAOS_SCALE) - 0.5;
+    const streak = streaks(x * STREAK_SCALE, y * STREAK_SCALE, lat * STREAK_STRETCH) - 0.5;
 
     const shade = 0.5 + 0.5 * band * (1 - polar) + chaos * polar * 1.5 + streak * 0.9 * (1 - polar);
     let hue = base.hue + band * hueSwing * (1 - polar);
