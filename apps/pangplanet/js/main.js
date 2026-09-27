@@ -1725,7 +1725,7 @@ function wormholeNote() {
 function throughWormhole(mouth) {
   if (mouth.wormhole) throughBuiltWormhole(mouth);
   if (mouth === coreGate) wakeGateway();
-  if (!mouth.partnerSector) return;
+  if (!mouth.star || !mouth.exit?.star) return;
   const ends = [mouth.star, mouth.exit.star].sort((a, b) => a.x - b.x || a.y - b.y);
   game.wormholeLinks.set(ends.map(({ x, y }) => `${Math.round(x)},${Math.round(y)}`).join('>'), ends);
   earnScience(`wormhole:${bodyKey(mouth)}`, SCIENCE.wormhole, `went through the ${mouth.name}`);

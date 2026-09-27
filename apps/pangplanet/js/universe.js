@@ -1,7 +1,7 @@
 import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
 import { luminosityOf, seedFromRetiredLookDraws, warmthAt, worldLook } from './climate.js';
-import { ALIENS, CORE, DEPOSITS, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, massFor } from './world.js';
+import { ALIENS, CORE, DEPOSITS, FAR_SHORE, GENERATED_BOUNTY, HOME_SYSTEM as SOLAR_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, farShoreSystem, massFor } from './world.js';
 
 export const DEFAULT_GALAXY_SEED = 0x9a1a7;
 let galaxySeed = DEFAULT_GALAXY_SEED;
@@ -9,6 +9,7 @@ const MIRROR_SALT = 0x3a7c9e1;
 export const SECTOR_SIZE = 1.5e7;
 const GALAXY_CENTER_IN_SECTORS = [100, 0];
 const GALAXY_RADIUS_IN_SECTORS = 150;
+const FAR_SHORE_IN_SECTORS = [-58, 0];
 const GALACTIC_PULL = 0.05;
 const LOAD_REACH = 1;
 const UNLOAD_REACH = 2;
@@ -58,8 +59,6 @@ const STAR_TYPES = [
 ];
 const SYLLABLES = ['ka', 've', 'tri', 'nor', 'zu', 'lo', 'mi', 'xan', 'dar', 'the', 'ol', 'py', 'rho', 'qui', 'sel', 'bra', 'on', 'ix'];
 
-export const bodies = [...HOME_SYSTEM];
-
 export function setGalaxySeed(seed) {
   galaxySeed = seed;
 }
@@ -67,6 +66,12 @@ const loadedSectors = new Map();
 
 export const sectorOf = (x, y) => [Math.round(x / SECTOR_SIZE), Math.round(y / SECTOR_SIZE)];
 const sectorCenter = (sectorX, sectorY) => [sectorX * SECTOR_SIZE, sectorY * SECTOR_SIZE];
+
+const [farShoreX, farShoreY] = sectorCenter(...FAR_SHORE_IN_SECTORS);
+const FAR_SHORE_SYSTEM = farShoreSystem({ x: farShoreX, y: farShoreY });
+const HOME_SYSTEM = [...SOLAR_SYSTEM, FAR_SHORE_SYSTEM.saturnGate];
+
+export const bodies = [...HOME_SYSTEM];
 
 export const GALAXY = {
   x: GALAXY_CENTER_IN_SECTORS[0] * SECTOR_SIZE,
@@ -114,8 +119,10 @@ function coreRichness(x, y) {
 
 export const outsideGalaxy = (x, y) => Math.hypot(x - GALAXY.x, y - GALAXY.y) > GALAXY.radius;
 
+const nearFarShore = (x, y) => Math.hypot(x - farShoreX, y - farShoreY) < FAR_SHORE.calmReach;
+
 export function galacticPull(x, y) {
-  if (!outsideGalaxy(x, y)) return null;
+  if (!outsideGalaxy(x, y) || nearFarShore(x, y)) return null;
   const distance = Math.hypot(GALAXY.x - x, GALAXY.y - y);
   return [((GALAXY.x - x) / distance) * GALACTIC_PULL, ((GALAXY.y - y) / distance) * GALACTIC_PULL];
 }
@@ -188,10 +195,12 @@ function generatePlanet(next, star, orbit, index, seed, richness) {
 
 const rollsStar = (next) => next() <= STAR_CHANCE;
 const isCoreSector = (sectorX, sectorY) => sectorX === GALAXY_CENTER_IN_SECTORS[0] && sectorY === GALAXY_CENTER_IN_SECTORS[1];
+const isFarShoreSector = (sectorX, sectorY) => sectorX === FAR_SHORE_IN_SECTORS[0] && sectorY === FAR_SHORE_IN_SECTORS[1];
 
 function generateSystem(sectorX, sectorY) {
   if (sectorX === 0 && sectorY === 0) return [];
   if (isCoreSector(sectorX, sectorY)) return CORE_SYSTEM.bodies;
+  if (isFarShoreSector(sectorX, sectorY)) return FAR_SHORE_SYSTEM.bodies;
   if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return [];
   const seed = sectorSeed(sectorX, sectorY);
   const { next, integer } = createRandom(seed);
