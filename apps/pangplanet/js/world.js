@@ -16,17 +16,19 @@ function linkWormholes(mouth, exit) {
   return [mouth, exit];
 }
 
-const EARTH_SURFACE = { seed: 3303, baseColor: '#1f6fd1', variation: 15, darkness: 35, polarCap: 30, bands: 0, craters: 0, land: true, landColor: '#3fbf2a', landCover: 45, clouds: 35 };
+const EARTH_SURFACE = { seed: 3303, baseColor: '#1f6fd1', variation: 15, darkness: 35, polarCap: 30, bands: 0, craters: 0, land: true, landColor: '#3fbf2a', landCover: 45, clouds: 35, haze: 24, hazeColor: '#7fb2ff' };
 
 export const HOME_BODY = { name: 'Earth', x: 0, y: -10000, radius: 10000, soi: 12000, mass: 1e8, kind: 'planemo', look: 'earth', planet: EARTH_SURFACE };
 
-const SUN = { name: 'Sun', x: 1000000, y: -1000000, radius: 50000, soi: 52000, mass: 1e11, kind: 'star', look: 'sun' };
+export const SUN_RADIUS = 50000;
 
-const EARTH_ORBIT = Math.hypot(HOME_BODY.x - SUN.x, HOME_BODY.y - SUN.y);
+const SUN = { name: 'Sun', x: 1000000, y: -1000000, radius: SUN_RADIUS, soi: 52000, mass: 1e11, kind: 'star', look: 'sun' };
+
+export const EARTH_ORBIT = Math.hypot(HOME_BODY.x - SUN.x, HOME_BODY.y - SUN.y);
 const EARTH_ORBIT_NUMBER = 3;
 const EARTH_SURFACE_GRAVITY = 0.1;
 
-const SURFACE_DEFAULTS = { variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: '#7eff00', landCover: 47, clouds: 0 };
+const SURFACE_DEFAULTS = { variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: '#7eff00', landCover: 47, clouds: 0, lava: 0, haze: 0, hazeColor: '#8fb8ff' };
 
 function orbiting(center, distance, bearingDegrees) {
   const bearing = (bearingDegrees * Math.PI) / 180;
@@ -63,9 +65,9 @@ export const blackHole = (name, { x, y }) => ({ name, x, y, ...BLACK_HOLE, kind:
 
 const SOLAR_PLANETS = [
   { name: 'Mercury', orbitNumber: 1, bearingDegrees: 150, radius: 4000, gravityInEarths: 0.38, bounty: 150, seed: 1101, surface: { baseColor: '#9c9489', variation: 30, darkness: 30, craters: 18 } },
-  { name: 'Venus', orbitNumber: 2, bearingDegrees: 60, radius: 9500, gravityInEarths: 0.9, bounty: 150, seed: 2202, surface: { baseColor: '#e8c07a', variation: 12, darkness: 15, clouds: 70 } },
-  { name: 'Mars', orbitNumber: 4, bearingDegrees: -140, radius: 5300, gravityInEarths: 0.38, bounty: 200, seed: 4404, surface: { baseColor: '#ff6e00', variation: 25, polarCap: 35, craters: 4 } },
-  { name: 'Jupiter', orbitNumber: 5, bearingDegrees: 100, radius: 32000, gravityInEarths: 2.5, bounty: 300, resource: 'gas', seed: 5505, surface: { baseColor: '#d9a066', variation: 20, darkness: 25, bands: 6 } },
+  { name: 'Venus', orbitNumber: 2, bearingDegrees: 60, radius: 9500, gravityInEarths: 0.9, bounty: 150, seed: 2202, surface: { baseColor: '#e8c07a', variation: 12, darkness: 15, clouds: 70, haze: 80, hazeColor: '#e8b25f' } },
+  { name: 'Mars', orbitNumber: 4, bearingDegrees: -140, radius: 5300, gravityInEarths: 0.38, bounty: 200, seed: 4404, surface: { baseColor: '#ff6e00', variation: 25, polarCap: 35, craters: 4, haze: 4, hazeColor: '#d8a57a' } },
+  { name: 'Jupiter', orbitNumber: 5, bearingDegrees: 100, radius: 32000, gravityInEarths: 2.5, bounty: 300, resource: 'gas', seed: 5505, surface: { baseColor: '#d9a066', variation: 20, darkness: 25, bands: 6, haze: 10, hazeColor: '#e8d0a0' } },
   {
     name: 'Saturn',
     orbitNumber: 6,
@@ -75,18 +77,18 @@ const SOLAR_PLANETS = [
     bounty: 300,
     resource: 'gas',
     seed: 6606,
-    surface: { baseColor: '#e3c98a', variation: 10, darkness: 20, bands: 3 },
+    surface: { baseColor: '#e3c98a', variation: 10, darkness: 20, bands: 3, haze: 10, hazeColor: '#e8d0a0' },
     rings: { inner: 1.35, outer: 2.3, colour: 'rgba(226, 206, 160, 0.6)' },
   },
-  { name: 'Uranus', orbitNumber: 7, bearingDegrees: 200, radius: 18000, gravityInEarths: 0.9, bounty: 350, resource: 'gas', seed: 7707, surface: { baseColor: '#9fe3e8', variation: 5, darkness: 10, bands: 1 } },
-  { name: 'Neptune', orbitNumber: 8, bearingDegrees: 30, radius: 17500, gravityInEarths: 1.14, bounty: 400, resource: 'gas', seed: 8808, surface: { baseColor: '#3f6fff', variation: 12, darkness: 20, bands: 2 } },
+  { name: 'Uranus', orbitNumber: 7, bearingDegrees: 200, radius: 18000, gravityInEarths: 0.9, bounty: 350, resource: 'gas', seed: 7707, surface: { baseColor: '#9fe3e8', variation: 5, darkness: 10, bands: 1, haze: 30, hazeColor: '#a8e0ff' } },
+  { name: 'Neptune', orbitNumber: 8, bearingDegrees: 30, radius: 17500, gravityInEarths: 1.14, bounty: 400, resource: 'gas', seed: 8808, surface: { baseColor: '#3f6fff', variation: 12, darkness: 20, bands: 2, haze: 30, hazeColor: '#a8e0ff' } },
 ].map(solarPlanet);
 
 const SOLAR_MOONS = [
   { parent: 'Mars', name: 'Phobos', distance: 25000, bearingDegrees: 60, radius: 600, gravityInEarths: 0.02, bounty: 200, seed: 4411, surface: { baseColor: '#7a6e64', darkness: 40, craters: 20 } },
   { parent: 'Mars', name: 'Deimos', distance: 50000, bearingDegrees: -110, radius: 400, gravityInEarths: 0.015, bounty: 200, seed: 4422, surface: { baseColor: '#9a8c7c', darkness: 30, craters: 12 } },
   { parent: 'Jupiter', name: 'Europa', distance: 110000, bearingDegrees: -30, radius: 2700, gravityInEarths: 0.134, bounty: 250, seed: 5511, surface: { baseColor: '#d8cfc0', variation: 10, darkness: 15, craters: 2 } },
-  { parent: 'Saturn', name: 'Titan', distance: 150000, bearingDegrees: 120, radius: 4450, gravityInEarths: 0.138, bounty: 300, resource: 'gas', seed: 6611, surface: { baseColor: '#d99a3a', variation: 8, darkness: 15, clouds: 80 } },
+  { parent: 'Saturn', name: 'Titan', distance: 150000, bearingDegrees: 120, radius: 4450, gravityInEarths: 0.138, bounty: 300, resource: 'gas', seed: 6611, surface: { baseColor: '#d99a3a', variation: 8, darkness: 15, clouds: 80, haze: 70, hazeColor: '#e8a040' } },
   { parent: 'Neptune', name: 'Triton', distance: 90000, bearingDegrees: 200, radius: 2340, gravityInEarths: 0.08, bounty: 400, seed: 8811, surface: { baseColor: '#d9b8b0', variation: 15, polarCap: 40, craters: 3 } },
 ].map(solarMoon);
 

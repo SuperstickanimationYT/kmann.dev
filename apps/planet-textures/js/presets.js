@@ -1,60 +1,46 @@
+import { derivePlanet, randomPhysical } from './physics.js';
+
 const EARTHLIKE_LAND = '#7eff00';
+const CLEAR_SKY = { lava: 0, haze: 0, hazeColor: '#8fb8ff' };
+
+function handTuned(name, physical, look) {
+  return { name, planet: { ...physical, ...CLEAR_SKY, ...look } };
+}
+
+function fromPhysics(name, seed, physical) {
+  const { seed: _unused, ...planet } = derivePlanet({ seed, ...physical });
+  return { name, planet };
+}
 
 export const PRESETS = [
-  {
-    name: 'Gornia (Earth analog)',
-    planet: { baseColor: '#0083ff', variation: 15, darkness: 35, polarCap: 35, bands: 0, craters: 0, land: true, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 30 },
-  },
-  {
-    name: 'Trynoon (Mars analog)',
-    planet: { baseColor: '#ff6e00', variation: 25, darkness: 35, polarCap: 35, bands: 0, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0 },
-  },
-  {
-    name: 'Tetrum (ocean world)',
-    planet: { baseColor: '#0083ff', variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0 },
-  },
-  {
-    name: 'Norma (Jupiter analog)',
-    planet: { baseColor: '#ff7b00', variation: 8, darkness: 35, polarCap: 0, bands: 4, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0 },
-  },
-  {
-    name: 'Green gas giant',
-    planet: { baseColor: '#2aff00', variation: 20, darkness: 35, polarCap: 0, bands: 4, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0 },
-  },
-  {
-    name: 'Glacia (icy moon)',
-    planet: { baseColor: '#ffffff', variation: 35, darkness: 0, polarCap: 0, bands: 0, craters: 1, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0 },
-  },
+  handTuned('Gornia (Earth analog)', { kind: 'rocky', temperature: 288, water: 53, atmosphere: 30 }, {
+    baseColor: '#0083ff', variation: 15, darkness: 35, polarCap: 35, bands: 0, craters: 0, land: true, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 30, haze: 24, hazeColor: '#7fb2ff',
+  }),
+  handTuned('Trynoon (Mars analog)', { kind: 'rocky', temperature: 210, water: 1, atmosphere: 5 }, {
+    baseColor: '#ff6e00', variation: 25, darkness: 35, polarCap: 35, bands: 0, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0, haze: 4, hazeColor: '#d8a57a',
+  }),
+  handTuned('Tetrum (ocean world)', { kind: 'rocky', temperature: 295, water: 100, atmosphere: 40 }, {
+    baseColor: '#0083ff', variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0, haze: 32, hazeColor: '#7fb2ff',
+  }),
+  handTuned('Norma (Jupiter analog)', { kind: 'giant', temperature: 130, water: 0, atmosphere: 100 }, {
+    baseColor: '#ff7b00', variation: 8, darkness: 35, polarCap: 0, bands: 4, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0, haze: 10, hazeColor: '#e8d0a0',
+  }),
+  handTuned('Green gas giant', { kind: 'giant', temperature: 150, water: 0, atmosphere: 100 }, {
+    baseColor: '#2aff00', variation: 20, darkness: 35, polarCap: 0, bands: 4, craters: 0, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0,
+  }),
+  handTuned('Glacia (icy moon)', { kind: 'rocky', temperature: 90, water: 60, atmosphere: 0 }, {
+    baseColor: '#ffffff', variation: 35, darkness: 0, polarCap: 0, bands: 0, craters: 1, land: false, landColor: EARTHLIKE_LAND, landCover: 47, clouds: 0,
+  }),
+  fromPhysics('Lava world', 4471, { kind: 'rocky', temperature: 1100, water: 0, atmosphere: 15 }),
+  fromPhysics('Desert world', 2380, { kind: 'rocky', temperature: 320, water: 6, atmosphere: 25 }),
+  fromPhysics('Ice giant', 7612, { kind: 'giant', temperature: 60, water: 0, atmosphere: 100 }),
+  fromPhysics('Hot Jupiter', 9051, { kind: 'giant', temperature: 1300, water: 0, atmosphere: 100 }),
 ];
 
-const between = (min, max, next = Math.random) => min + Math.floor(next() * (max - min + 1));
-const chance = (odds, next) => next() < odds;
-
-function randomColor(minSaturation, next) {
-  const hue = next() * 360;
-  const saturation = minSaturation + next() * (100 - minSaturation);
-  const lightness = 50 + (100 - saturation) / 2;
-  const context = document.createElement('canvas').getContext('2d');
-  context.fillStyle = `hsl(${hue} ${saturation}% ${lightness}%)`;
-  return context.fillStyle;
-}
-
 export function randomSeed() {
-  return between(1, 999999);
+  return 1 + Math.floor(Math.random() * 999999);
 }
 
-export function randomPlanet(next = Math.random, gasGiant = chance(0.3, next)) {
-  return {
-    seed: between(1, 999999, next),
-    baseColor: randomColor(20, next),
-    variation: between(10, 45, next),
-    darkness: between(0, 50, next),
-    polarCap: !gasGiant && chance(0.5, next) ? between(15, 80, next) : 0,
-    bands: gasGiant ? between(2, 16, next) / 2 : 0,
-    craters: !gasGiant && chance(0.4, next) ? between(1, 20, next) : 0,
-    land: !gasGiant && chance(0.4, next),
-    landColor: randomColor(40, next),
-    landCover: between(20, 70, next),
-    clouds: chance(0.5, next) ? between(10, 80, next) : 0,
-  };
+export function randomPlanet(next = Math.random) {
+  return derivePlanet(randomPhysical(next));
 }

@@ -1,6 +1,6 @@
-import { randomPlanet } from '../../planet-textures/js/presets.js';
 import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
+import { luminosityOf, seedFromRetiredLookDraws, warmthAt, worldLook } from './climate.js';
 import { ALIENS, CORE, DEPOSITS, GENERATED_BOUNTY, HOME_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, massFor } from './world.js';
 
 export const DEFAULT_GALAXY_SEED = 0x9a1a7;
@@ -51,10 +51,10 @@ const STAR_GRAVITY = [2, 6];
 const ROCKY = { radius: [2000, 14000], gravity: [0.05, 0.4] };
 const GAS_GIANT = { radius: [16000, 30000], gravity: [0.3, 0.7] };
 const STAR_TYPES = [
-  { fill: '#ffb38a', glow: 'rgba(255, 140, 90, 0.45)', radius: [25000, 40000] },
-  { fill: '#fff7dc', glow: 'rgba(255, 236, 170, 0.45)', radius: [40000, 60000] },
-  { fill: '#f4f6ff', glow: 'rgba(230, 236, 255, 0.45)', radius: [50000, 70000] },
-  { fill: '#bcd4ff', glow: 'rgba(150, 190, 255, 0.5)', radius: [60000, 80000] },
+  { fill: '#ffb38a', glow: 'rgba(255, 140, 90, 0.45)', radius: [25000, 40000], surfaceTemperature: 4500 },
+  { fill: '#fff7dc', glow: 'rgba(255, 236, 170, 0.45)', radius: [40000, 60000], surfaceTemperature: 5800 },
+  { fill: '#f4f6ff', glow: 'rgba(230, 236, 255, 0.45)', radius: [50000, 70000], surfaceTemperature: 6800 },
+  { fill: '#bcd4ff', glow: 'rgba(150, 190, 255, 0.5)', radius: [60000, 80000], surfaceTemperature: 8500 },
 ];
 const SYLLABLES = ['ka', 've', 'tri', 'nor', 'zu', 'lo', 'mi', 'xan', 'dar', 'the', 'ol', 'py', 'rho', 'qui', 'sel', 'bra', 'on', 'ix'];
 
@@ -167,8 +167,9 @@ function generatePlanet(next, star, orbit, index, seed, richness) {
   const shape = gasGiant ? GAS_GIANT : ROCKY;
   const radius = within(next, shape.radius);
   const bearing = next() * Math.PI * 2;
-  const planet = randomPlanet(next, gasGiant);
+  const lookSeed = seedFromRetiredLookDraws(next, gasGiant);
   const surfaceGravity = within(next, shape.gravity);
+  const planet = worldLook(lookSeed, gasGiant, warmthAt(star, orbit), surfaceGravity);
   return {
     name: `${star.name} ${String.fromCharCode(98 + index)}`,
     x: star.x + Math.sin(bearing) * orbit,
@@ -206,6 +207,7 @@ function generateSystem(sectorX, sectorY) {
     radius,
     soi: radius + SOI_MARGIN,
     mass: massFor(radius, within(next, STAR_GRAVITY)),
+    luminosity: luminosityOf(radius, type.surfaceTemperature),
     kind: 'star',
     palette: { fill: type.fill, glow: type.glow },
   };
@@ -223,7 +225,7 @@ function generateSystem(sectorX, sectorY) {
   settleHomeworld(star, planets, seed);
   star.biosignature = Boolean(homeworldSpecies(planets)) || createRandom(seed ^ BIOSIGNATURE_SALT).next() < FALSE_BIOSIGNATURE_CHANCE;
   const blackHoles = blackHolesBetween(star, orbits, seed);
-  const moons = planets.flatMap((planet, index) => moonsOf(planet, index, seed, richness)).filter((moon) => clearOf(blackHoles, moon));
+  const moons = planets.flatMap((planet, index) => moonsOf(star, planet, index, seed, richness)).filter((moon) => clearOf(blackHoles, moon));
   return [star, ...blackHoles, ...wormholeMouth(star, orbits, seed, sectorX, sectorY), ...planets, ...moons];
 }
 
@@ -239,7 +241,7 @@ function moonResource(icy, next, richness) {
   return next() < STARDUST_CHANCE * richness.stardust ? 'stardust' : null;
 }
 
-function moonsOf(planet, index, seed, richness) {
+function moonsOf(star, planet, index, seed, richness) {
   const { next, integer } = createRandom(seed ^ Math.imul(index + 1, MOON_SALT));
   const count = moonCount(planet, integer);
   const lane = (MOON.outerReach - planet.soi) / Math.max(count, 1);
@@ -249,14 +251,16 @@ function moonsOf(planet, index, seed, richness) {
     const bearing = next() * Math.PI * 2;
     const resource = moonResource(planet.resource === 'gas', next, richness);
     const range = DEPOSITS[resource];
-    const surface = randomPlanet(next, false);
+    const lookSeed = seedFromRetiredLookDraws(next, false);
+    const gravity = within(next, MOON.gravity);
+    const surface = worldLook(lookSeed, false, warmthAt(star, Math.hypot(planet.x - star.x, planet.y - star.y)), gravity);
     return {
       name: `${planet.name} ${MOON_NUMERALS[moonIndex]}`,
       x: planet.x + Math.sin(bearing) * distance,
       y: planet.y + Math.cos(bearing) * distance,
       radius,
       soi: radius + SOI_MARGIN,
-      mass: massFor(radius, within(next, MOON.gravity)),
+      mass: massFor(radius, gravity),
       kind: 'planemo',
       moon: true,
       palette: { fill: surface.baseColor },

@@ -2,11 +2,12 @@ import { hexToHsv, hexToRgb, hsvToRgb, mixHue, mixInto } from './color.js';
 import { createNoise } from './random.js';
 import { bump, clamp01, levelAt, mix, sampleLevels, smoothstep, toDegrees } from './sphere.js';
 
-const STREAM = { terrain: 0x1a4d, grain: 0x51f1, moisture: 0x3e77, iceEdge: 0x9013 };
+const STREAM = { terrain: 0x1a4d, grain: 0x51f1, moisture: 0x3e77, iceEdge: 0x9013, lava: 0x1a7a };
 const CONTINENT_SCALE = 1.8;
 const GRAIN_SCALE = 9;
 const MOISTURE_SCALE = 2.2;
 const ICE_EDGE_SCALE = 5;
+const LAVA_SCALE = 3.5;
 const STAGE_RADIUS = 180;
 const SAND_HUE = 0.1;
 const ROCK = hsvToRgb(0.07, 0.18, 1);
@@ -14,12 +15,25 @@ const SEA_ICE = hexToRgb('#c9e6ff');
 const LAND_ICE = hexToRgb('#f2f7ff');
 const DESERT_LATITUDE = 25;
 const COAST_WIDTH = 0.1;
+const LAVA_EDGE = [0.5, 0.04, 0];
+const LAVA_FLOW = [1, 0.42, 0.05];
+const LAVA_CORE = [1, 0.85, 0.35];
+const CRACK_WIDTH = [0.03, 0.12];
+const POOL_SHARE = 0.2;
+const POOL_HEAT = 0.75;
 
-export function createRockyShader(planet) {
-  const terrain = createNoise(planet.seed ^ STREAM.terrain, 6);
-  const grain = createNoise(planet.seed ^ STREAM.grain, 3);
+function lavaGlow(out, glow) {
+  mixInto(out, LAVA_EDGE, smoothstep(0, 0.35, glow));
+  mixInto(out, LAVA_FLOW, smoothstep(0.3, 0.75, glow));
+  mixInto(out, LAVA_CORE, smoothstep(0.8, 1, glow));
+}
+
+export function createRockyShader(planet, extraOctaves) {
+  const terrain = createNoise(planet.seed ^ STREAM.terrain, 6 + extraOctaves);
+  const grain = createNoise(planet.seed ^ STREAM.grain, 3 + extraOctaves);
   const moisture = createNoise(planet.seed ^ STREAM.moisture, 3);
-  const iceEdge = createNoise(planet.seed ^ STREAM.iceEdge, 3);
+  const iceEdge = createNoise(planet.seed ^ STREAM.iceEdge, 3 + extraOctaves);
+  const lavaNetwork = createNoise(planet.seed ^ STREAM.lava, 4 + extraOctaves);
   const heightAt = (p) => terrain(p.x * CONTINENT_SCALE, p.y * CONTINENT_SCALE, p.z * CONTINENT_SCALE);
 
   const heights = sampleLevels(planet.seed ^ STREAM.terrain, heightAt);
@@ -27,6 +41,9 @@ export function createRockyShader(planet) {
   const peak = levelAt(heights, 0.995);
   const trench = levelAt(heights, 0.005);
   const midHeight = levelAt(heights, 0.5);
+  const molten = planet.lava / 100;
+  const poolLevel = levelAt(heights, molten * POOL_SHARE);
+  const crackStart = 1 - (CRACK_WIDTH[0] + molten * CRACK_WIDTH[1]);
 
   const base = hexToHsv(planet.baseColor);
   const land = hexToHsv(planet.landColor);
@@ -91,6 +108,13 @@ export function createRockyShader(planet) {
       const terrainPush = planet.land ? (onLand ? 0.05 + elevation * 0.12 : -0.03) : (height - midHeight) * 0.25;
       const edge = capReach + wobble + terrainPush;
       mixInto(out, planet.land && onLand ? LAND_ICE : SEA_ICE, smoothstep(edge + 0.012, edge - 0.012, p.flat));
+    }
+
+    if (molten > 0) {
+      const ridge = 1 - Math.abs(lavaNetwork(p.x * LAVA_SCALE, p.y * LAVA_SCALE, p.z * LAVA_SCALE) * 2 - 1);
+      const crack = smoothstep(crackStart, 1, ridge);
+      const pool = smoothstep(poolLevel + 0.02, poolLevel - 0.02, height) * POOL_HEAT;
+      lavaGlow(out, Math.max(crack, pool));
     }
 
     return (planet.land ? Math.max(height, seaLevel) : height) * reliefScale;

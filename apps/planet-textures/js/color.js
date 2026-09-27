@@ -44,3 +44,8 @@ export function mixInto(out, color, t) {
   out[2] += (color[2] - out[2]) * t;
   return out;
 }
+
+export function hsvToHex(hue, saturation, value) {
+  const channels = hsvToRgb(hue, saturation, value).map((channel) => Math.round(channel * 255).toString(16).padStart(2, '0'));
+  return `#${channels.join('')}`;
+}
