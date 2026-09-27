@@ -61,7 +61,11 @@ export function createHud(root, actions, { cheats }) {
     speed: find('[data-speed]'),
     throttle: find('[data-throttle]'),
     engine: find('[data-engine]'),
-    engineButton: find('[data-engine-button]'),
+    engineButtons: [...root.querySelectorAll('[data-engine-button]')],
+    throttleKnob: find('[data-throttle-knob]'),
+    throttleLabel: find('[data-throttle-label]'),
+    volume: find('[data-volume]'),
+    touchControls: [...root.querySelectorAll('[data-touch-controls]')],
     dockPrompt: find('[data-dock-prompt]'),
     dockSlow: find('[data-dock-slow]'),
     crash: find('[data-crash]'),
@@ -425,6 +429,9 @@ export function createHud(root, actions, { cheats }) {
   const cheatsToggle = find('[data-cheats-toggle]');
   cheatsToggle.hidden = !cheats;
   find('[data-open-worlds]').addEventListener('click', actions.openWorlds);
+  find('[data-settings-toggle]').addEventListener('click', actions.toggleSettings);
+  parts.volume.addEventListener('input', () => actions.setVolume(Number(parts.volume.value) / 100));
+  parts.touchControls.forEach((radio) => radio.addEventListener('change', () => actions.setTouchControls(radio.value)));
   cheatsToggle.addEventListener('click', actions.toggleCheats);
   root.querySelectorAll('[data-cheat]').forEach((button) => button.addEventListener('click', () => actions.cheat(button.dataset.cheat)));
   find('[data-fullscreen]').addEventListener('click', () => {
@@ -438,6 +445,11 @@ export function createHud(root, actions, { cheats }) {
     root.classList.toggle('is-clearing-fullscreen-hint', entered);
     if (entered) fullscreenHintTimer = window.setTimeout(() => root.classList.remove('is-clearing-fullscreen-hint'), FULLSCREEN_HINT_MS);
   });
+
+  function showSettings({ volume, touchControls }) {
+    parts.volume.value = String(Math.round(volume * 100));
+    parts.touchControls.forEach((radio) => (radio.checked = radio.value === touchControls));
+  }
 
   function showPanel(name) {
     for (const [key, panel] of Object.entries(parts.panels)) setHidden(panel, key !== name);
@@ -459,7 +471,9 @@ export function createHud(root, actions, { cheats }) {
     setText(parts.throttle, `${Math.round(status.throttle)}%`);
     setText(parts.engine, status.engineOn ? 'on' : 'off');
     parts.engine.classList.toggle('is-on', status.engineOn);
-    parts.engineButton.classList.toggle('is-on', status.engineOn);
+    parts.engineButtons.forEach((button) => button.classList.toggle('is-on', status.engineOn));
+    parts.throttleKnob.style.bottom = `${status.throttle}%`;
+    setText(parts.throttleLabel, `${Math.round(status.throttle)}%`);
     setHidden(parts.dockPrompt, !status.canDock);
     setHidden(parts.dockSlow, !status.tooFastToDock);
     setHidden(parts.crash, !status.destroyed);
@@ -704,5 +718,5 @@ export function createHud(root, actions, { cheats }) {
     setTimeout(() => help.classList.remove('is-beckoning'), BECKON_MS);
   }
 
-  return { showPanel, update, toast, beckonHelp };
+  return { showPanel, showSettings, update, toast, beckonHelp };
 }

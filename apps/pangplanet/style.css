@@ -201,6 +201,11 @@
   color: var(--text-strong);
 }
 
+.pp-throttle {
+  left: auto;
+  right: 12px;
+}
+
 .pp-corner-buttons {
   position: absolute;
   right: 12px;
@@ -732,7 +737,66 @@
   background: rgba(255, 160, 0, 0.35);
 }
 
+.pp-joystick-only {
+  display: none;
+}
+
+.pp-touch-controls .pp-joystick {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border: 2px solid var(--edge-bright);
+  border-radius: 50%;
+  background: rgba(11, 33, 55, 0.6);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.pp-joystick-knob {
+  position: absolute;
+  left: calc(50% - 24px);
+  top: calc(50% - 24px);
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--edge-bright);
+  border-radius: 50%;
+  background: rgba(120, 180, 255, 0.55);
+  pointer-events: none;
+}
+
+.pp-setting {
+  display: grid;
+  color-scheme: light;
+  gap: 6px;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+fieldset.pp-setting {
+  padding: 4px 10px 8px;
+  border: 2px solid #8a8a8a;
+  border-radius: 6px;
+}
+
+.pp-setting input[type='range'] {
+  width: 100%;
+}
+
 @media (pointer: coarse) {
+  .pp-stage.pp-joystick-controls .pp-joystick-only {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pp-stage.pp-joystick-controls .pp-buttons-only {
+    display: none;
+  }
+
+  .pp-stage.pp-joystick-controls .pp-corner-buttons {
+    bottom: 144px;
+  }
+
   .pp-touch-only {
     display: inline;
   }
