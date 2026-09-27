@@ -151,6 +151,7 @@ const THROTTLE_PER_TICK = 5;
 const TURN_PER_TICK = (3 * Math.PI) / 180;
 const CAMERA_EASE_PER_TICK = 1 / 20;
 const ZOOM_STEP = 1.1;
+const TAP_SLOP_PX = 10;
 const ZOOM_LIMITS = { min: 0.00002, max: 8 };
 const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
@@ -164,6 +165,7 @@ const CHEAT_SKIP_SECONDS = 600;
 const CHEAT_REVEAL_RANGE = 1.5e8;
 const CHEAT_SHIP_GAP = 800;
 const CHART_EVERY_TICKS = 30;
+const BIG_BUY_SHARE = 1 / 3;
 
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
@@ -229,6 +231,8 @@ const game = {
   mapPlanet: null,
   panel: null,
   tourSeen: false,
+  askBeforeBigBuys: true,
+  pendingBuy: null,
   forecast: null,
 };
 
@@ -554,6 +558,10 @@ const actions = {
   closePanels: () => {
     if (game.panel === 'toll') {
       actions.refuseToll();
+      return;
+    }
+    if (game.panel === 'confirmBuy') {
+      actions.cancelBuy();
       return;
     }
     tour.stop();
@@ -959,6 +967,14 @@ const actions = {
     game.galactokens -= market.batteryCost;
     game.power.batteries.push(0);
   },
+  freighterBuyBattery: () => {
+    const ship = dockedFreighter();
+    const market = ship && freighterMarket(ship);
+    if (!market?.canBuyBattery) return;
+    game.galactokens -= market.batteryCost;
+    ship.cargo.batteries -= 1;
+    game.power.batteries.push(1);
+  },
   alienSell: (key) => {
     const offer = dockedMarket()?.offers.find((candidate) => candidate.key === key);
     if (!offer?.count) return;
@@ -982,7 +998,60 @@ const actions = {
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
     power.batteries = power.batteries.filter((charge) => charge < 1);
   },
+  confirmBuy: (stopAsking) => {
+    const pending = game.pendingBuy;
+    if (!pending) return;
+    game.pendingBuy = null;
+    if (stopAsking) game.askBeforeBigBuys = false;
+    openPanel(pending.returnTo);
+    pending.buy();
+  },
+  cancelBuy: () => {
+    const pending = game.pendingBuy;
+    game.pendingBuy = null;
+    openPanel(pending?.returnTo ?? null);
+  },
+  setAskBeforeBigBuys: (ask) => (game.askBeforeBigBuys = ask),
 };
+
+const PURCHASE_PRICES = {
+  buyFuel: () => FUEL_PACK.cost,
+  fillTank: () => fillTankCost(),
+  buyPanels: () => SOLAR_PANELS.cost,
+  buyBattery: () => BATTERY.cost,
+  buyUpgrade: (key) => nextUpgrade(key, game.upgrades[key])?.cost ?? 0,
+  buyTelescope: () => TELESCOPE.cost,
+  buyRescueModule: () => RESCUE.cost,
+  buyWarpDrive: () => WARP_DRIVE.cost,
+  buyRig: () => MINING_RIG.cost,
+  buySail: () => SOLAR_SAIL.cost,
+  buySatellite: PRICES.satellite,
+  buyBank: PRICES.bank,
+  buyAntenna: PRICES.antenna,
+  buyDrone: PRICES.drone,
+  buyHauler: PRICES.hauler,
+  buyBuilder: PRICES.builder,
+  buyWormhole: PRICES.wormhole,
+  alienBuyFuel: () => dockedMarket()?.fuelPackCost ?? 0,
+  alienFillTank: () => dockedMarket()?.fillTankCost ?? 0,
+  alienBuyBattery: () => dockedMarket()?.batteryCost ?? 0,
+  paySampleFee: () => ALIENS.sampling.fee,
+};
+
+const isBigBuy = (price) => price > game.galactokens * BIG_BUY_SHARE && price <= game.galactokens;
+
+for (const [name, priceOf] of Object.entries(PURCHASE_PRICES)) {
+  const buy = actions[name];
+  actions[name] = (...args) => {
+    const price = priceOf(...args);
+    if (!game.askBeforeBigBuys || !isBigBuy(price)) {
+      buy(...args);
+      return;
+    }
+    game.pendingBuy = { price, buy: () => buy(...args), returnTo: game.panel };
+    openPanel('confirmBuy');
+  };
+}
 
 const CHEATS = {
   galactokens: () => {
@@ -1062,6 +1131,7 @@ function alienInfo(homeworld) {
     sellPrice: priceFromAliens(relation, goods.marketPrice),
     canSell: goods.count() > 0,
     market: homeworld === game.ship ? null : homeworldMarket(homeworld, wants),
+    freighter: homeworld === game.ship ? freighterMarket(homeworld) : null,
     refusesTrade: homeworld !== game.ship && mood(relation) === 'hostile',
     title: alienTitle(homeworld),
     raidable: homeworld === game.ship,
@@ -1091,6 +1161,16 @@ function homeworldMarket(homeworld, wants) {
     offers,
   };
 }
+
+function freighterMarket(ship) {
+  const rates = ALIENS.market[mood(game.relations[ship.species])];
+  if (!rates) return null;
+  const batteryCost = Math.ceil(BATTERY.sellPrice * rates.buy);
+  const stock = ship.cargo.batteries;
+  return { batteryCost, stock, canBuyBattery: stock > 0 && freeBatterySlots(game.power) > 0 && game.galactokens >= batteryCost };
+}
+
+const dockedFreighter = () => (game.ship && dockedOf('aliens') === game.ship ? game.ship : null);
 
 const dockedMarket = () => {
   const homeworld = dockedOf('aliens');
@@ -1235,14 +1315,38 @@ canvas.addEventListener(
   { passive: false },
 );
 
+const pointersDown = new Set();
+let rocketTap = null;
+
 canvas.addEventListener('pointerdown', (event) => {
+  pointersDown.add(event.pointerId);
   const { rocket, drill } = game;
   if (drillAwaitingClick(drill) && renderer.hitsDrill(rocket, drill, event.clientX, event.clientY)) {
     startDrilling(drill, play);
     return;
   }
-  if (!rocket.destroyed && renderer.hitsRocket(rocket, event.clientX, event.clientY)) openPanel('rocket');
+  const onRocket = !rocket.destroyed && renderer.hitsRocket(rocket, event.clientX, event.clientY);
+  rocketTap = onRocket && pointersDown.size === 1 ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY } : null;
 });
+
+canvas.addEventListener('pointermove', (event) => {
+  if (rocketTap?.pointerId !== event.pointerId) return;
+  if (Math.hypot(event.clientX - rocketTap.x, event.clientY - rocketTap.y) > TAP_SLOP_PX) rocketTap = null;
+});
+
+canvas.addEventListener('pointerup', (event) => {
+  pointersDown.delete(event.pointerId);
+  if (rocketTap?.pointerId !== event.pointerId) return;
+  rocketTap = null;
+  if (!game.rocket.destroyed) openPanel('rocket');
+});
+
+for (const type of ['pointercancel', 'pointerleave']) {
+  canvas.addEventListener(type, (event) => {
+    pointersDown.delete(event.pointerId);
+    rocketTap = null;
+  });
+}
 
 function steer() {
   const { rocket } = game;
@@ -2004,6 +2108,7 @@ function status() {
     batteries: power.batteries,
     ownsPanels: power.ownsPanels,
     panelsDeployed: power.panelsDeployed,
+    charging: power.panelsDeployed && roomToCharge(power.batteries) > 0 && sunlight(rocket.x, rocket.y) > 0,
     canBuyPanels: !power.ownsPanels && game.galactokens >= SOLAR_PANELS.cost,
     canBuyBattery: freeBatterySlots(power) > 0 && game.galactokens >= BATTERY.cost,
     canSellBatteries: chargedBatteries(power) > 0,
@@ -2050,6 +2155,8 @@ function status() {
     wormholeNote: wormholeNote(),
     stopChoices: game.panel === 'hauler' ? remoteStops().map((stop) => ({ value: stopValue(stop), label: describeStop(stop) })) : [],
     buildChoices: game.panel === 'hauler' && selectedHauler()?.builds ? buildChoices(selectedHauler()) : [],
+    pendingBuy: game.pendingBuy && { price: game.pendingBuy.price, balance: game.galactokens },
+    askBeforeBigBuys: game.askBeforeBigBuys,
   };
 }
 
@@ -2097,6 +2204,7 @@ function snapshot() {
     ownsWarpDrive: game.ownsWarpDrive,
     ownsRescueModule: game.ownsRescueModule,
     tourSeen: game.tourSeen,
+    askBeforeBigBuys: game.askBeforeBigBuys,
     timewarp: game.timewarp,
     zoom: camera.zoom,
     rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
@@ -2171,6 +2279,7 @@ function restore(saved) {
   game.samplePermits = new Map(saved.samplePermits ?? []);
   game.builtWormholes = saved.builtWormholes ?? [];
   game.wormholesInHold = saved.wormholesInHold ?? 0;
+  game.askBeforeBigBuys = saved.askBeforeBigBuys ?? true;
   syncMouths();
   if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);

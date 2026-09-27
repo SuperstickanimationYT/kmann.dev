@@ -1,4 +1,4 @@
-import { MAX_BATTERY_SLOTS } from './world.js';
+import { GOLD, MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
 const TOAST_MS = 4500;
@@ -50,6 +50,8 @@ export function createHud(root, actions, { cheats }) {
   const find = (selector) => root.querySelector(selector);
   const parts = {
     tokens: find('[data-tokens]'),
+    balances: [...root.querySelectorAll('[data-balance]')],
+    charging: find('[data-charging]'),
     fuel: find('[data-fuel]'),
     fuelBar: find('[data-fuel-bar]'),
     warp: find('[data-warp]'),
@@ -182,12 +184,18 @@ export function createHud(root, actions, { cheats }) {
     alienFillTank: find('[data-alien-fill-tank]'),
     alienBuyBattery: find('[data-alien-buy-battery]'),
     alienSells: find('[data-alien-sells]'),
+    freighterMarket: find('[data-freighter-market]'),
+    freighterBuyBattery: find('[data-freighter-buy-battery]'),
+    freighterStock: find('[data-freighter-stock]'),
     raidCost: find('[data-raid-cost]'),
     alienWantsIcon: find('[data-alien-wants-icon]'),
     askToSample: find('[data-ask-to-sample]'),
     paySampleFee: find('[data-pay-sample-fee]'),
     sampleFee: find('[data-sample-fee]'),
     sampleNote: find('[data-sample-note]'),
+    confirmBuyText: find('[data-confirm-buy-text]'),
+    stopAsking: find('[data-stop-asking]'),
+    askBigBuys: find('[data-ask-big-buys]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -243,6 +251,7 @@ export function createHud(root, actions, { cheats }) {
     alienBuyFuel: actions.alienBuyFuel,
     alienFillTank: actions.alienFillTank,
     alienBuyBattery: actions.alienBuyBattery,
+    freighterBuyBattery: actions.freighterBuyBattery,
     askToSample: actions.askToSample,
     paySampleFee: actions.paySampleFee,
   };
@@ -272,6 +281,15 @@ export function createHud(root, actions, { cheats }) {
     const button = event.target.closest('[data-alien-sell]');
     if (button) actions.alienSell(button.dataset.alienSell);
   });
+  find('[data-confirm-buy]').addEventListener('click', () => {
+    actions.confirmBuy(parts.stopAsking.checked);
+    parts.stopAsking.checked = false;
+  });
+  find('[data-cancel-buy]').addEventListener('click', () => {
+    actions.cancelBuy();
+    parts.stopAsking.checked = false;
+  });
+  parts.askBigBuys.addEventListener('change', () => actions.setAskBeforeBigBuys(parts.askBigBuys.checked));
   parts.upgrades.addEventListener('click', (event) => {
     const button = event.target.closest('[data-upgrade]');
     if (button) actions.buyUpgrade(button.dataset.upgrade);
@@ -427,6 +445,9 @@ export function createHud(root, actions, { cheats }) {
 
   function update(status) {
     setText(parts.tokens, String(status.galactokens));
+    parts.balances.forEach((balance) => setText(balance, status.galactokens.toLocaleString()));
+    setHidden(parts.charging, !status.charging);
+    parts.charging.classList.toggle('is-dim', status.sunlight < DIM_SATELLITE_LIGHT);
     setText(parts.fuel, String(Math.floor(status.fuel)));
     parts.fuelBar.style.width = `${status.fuelFraction * 100}%`;
     setText(parts.warp, `${status.timewarp}x`);
@@ -514,9 +535,17 @@ export function createHud(root, actions, { cheats }) {
     setText(parts.outpostBan, status.outpostBan);
     setHidden(parts.outpostBan, !status.outpostBan);
     showDestinations(status.warpDestinations);
+    updatePendingBuy(status.pendingBuy);
+    parts.askBigBuys.checked = status.askBeforeBigBuys;
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;
     parts.sellBatteries.disabled = !status.canSellBatteries;
+  }
+
+  function updatePendingBuy(pendingBuy) {
+    if (!pendingBuy) return;
+    const { price, balance } = pendingBuy;
+    setText(parts.confirmBuyText, `Spend ${price.toLocaleString()} of your ${balance.toLocaleString()} galactokens? That's ${Math.round((price / balance) * 100)}% of what you have.`);
   }
 
   function updateSatellite({ satellite, canTakeSatelliteCharge }) {
@@ -532,7 +561,8 @@ export function createHud(root, actions, { cheats }) {
     if (!rig) return;
     const minutesLeft = Math.ceil(rig.secondsLeft / 60);
     setText(parts.rigSite, rig.site);
-    setText(parts.rigStatus, `Power: ${rig.charge.toFixed(2)} batteries (${minutesLeft} min left). Gold waiting: ${Math.floor(rig.gold)}.`);
+    const gold = Math.floor(rig.gold);
+    setText(parts.rigStatus, `Power: ${rig.charge.toFixed(2)} batteries (${minutesLeft} min left). Gold waiting: ${gold}, worth ${(gold * GOLD.sellPrice).toLocaleString()} galactokens at the market.`);
     parts.loadRig.disabled = !canLoadRig;
     parts.collectGold.disabled = rig.gold < 1;
   }
@@ -600,7 +630,16 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.alienRefusal, !alien.refusesTrade);
     setText(parts.alienRefusal, `The ${alien.name} won't trade with you, except for ${alien.wantsLabel}.`);
     updateAlienMarket(alien.market);
+    updateFreighterMarket(alien.freighter);
     updateSampleTerms(alien.name, alien.sample);
+  }
+
+  function updateFreighterMarket(freighter) {
+    setHidden(parts.freighterMarket, !freighter);
+    if (!freighter) return;
+    setText(parts.freighterBuyBattery, `Charged battery for ${freighter.batteryCost}`);
+    parts.freighterBuyBattery.disabled = !freighter.canBuyBattery;
+    setText(parts.freighterStock, freighter.stock > 0 ? `${freighter.stock} charged ${freighter.stock === 1 ? 'battery' : 'batteries'} on board.` : 'Sold out of batteries.');
   }
 
   function sampleNote(name, { answer, fee, anger }) {

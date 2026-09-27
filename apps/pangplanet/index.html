@@ -65,6 +65,7 @@
     </div>
     <div class="pp-cargo">
       <div class="pp-batteries" data-batteries title="Batteries"></div>
+      <span class="pp-charging" data-charging title="Charging" hidden>&#x26A1;</span>
       <span class="pp-gold" data-gold-counter title="Gold" hidden><img src="img/gold.svg" alt="Gold"> <span data-gold>0</span></span>
       <span class="pp-gold pp-crystals" data-crystal-counter title="Crystals" hidden><img src="img/crystal.svg" alt="Crystals"> <span data-crystals>0</span></span>
       <span class="pp-gold pp-stardust" data-stardust-counter title="Stardust" hidden><img src="img/stardust.svg" alt="Stardust"> <span data-stardust>0</span></span>
@@ -172,6 +173,7 @@
     <section class="pp-panel" data-panel="market" hidden aria-label="Market">
       <header>
         <h3>Market</h3>
+        <span class="pp-balance" title="Your galactokens"><img src="img/galactokens.svg" alt="Galactokens"> <span data-balance>0</span></span>
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
       <div class="pp-actions">
@@ -269,6 +271,7 @@
     <section class="pp-panel" data-panel="aliens" hidden aria-label="Aliens">
       <header>
         <h3 data-alien-name></h3>
+        <span class="pp-balance" title="Your galactokens"><img src="img/galactokens.svg" alt="Galactokens"> <span data-balance>0</span></span>
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
       <p data-alien-mood></p>
@@ -300,6 +303,13 @@
         <div class="pp-actions" data-alien-sells></div>
         <p class="pp-hint">Friends charge 2× Solar prices for fuel and batteries and pay 80% for goods; wary species charge 3× and pay 60%. Upgrades, outposts and the warp drive are only sold at the Solar market.</p>
       </div>
+      <div data-freighter-market hidden>
+        <h4 class="pp-subhead">Cargo for sale</h4>
+        <div class="pp-actions">
+          <button type="button" class="pp-action pp-buy" data-freighter-buy-battery></button>
+        </div>
+        <p class="pp-hint" data-freighter-stock></p>
+      </div>
       <p class="pp-hint" data-sample-note hidden></p>
       <p class="pp-hint" data-alien-refusal hidden></p>
       <p class="pp-hint" data-alien-note>They only share what they know with friends.</p>
@@ -318,6 +328,19 @@
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action" data-refuse-toll>Refuse</button>
+      </div>
+    </section>
+
+    <section class="pp-panel" data-panel="confirmBuy" hidden aria-label="Confirm purchase">
+      <header>
+        <h3>Big purchase</h3>
+        <button type="button" class="pp-close" data-close aria-label="Cancel">X</button>
+      </header>
+      <p data-confirm-buy-text></p>
+      <label class="pp-check"><input type="checkbox" data-stop-asking> Don't ask again in this world</label>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-confirm-buy>Buy</button>
+        <button type="button" class="pp-action" data-cancel-buy>Cancel</button>
       </div>
     </section>
 
@@ -499,7 +522,7 @@
         <li>Stardust: much rarer and invisible to telescopes. Visit a system or ask friendly aliens to find it. It pays for the top upgrades.</li>
         <li>Each crystal or stardust world holds a limited amount: 10 to 25 crystals or 3 to 8 stardust, up to twice that near the galactic core. Once it's mined out, the drill brings up fuel only.</li>
         <li>Aliens live on some worlds around other stars. Telescopes spot possible biosignatures; 3 in 4 are real homeworlds, and no homeworld goes unflagged. Land on one to meet them. Friendly aliens tell you where stardust is, for science. Homeworlds of friendly or wary species run a small market: fuel, empty batteries, and buying your goods, at worse prices than the Solar market. Each species wants gold, crystals or charged batteries; selling to them wins them over. Mining crystals or stardust in their home system angers them. Hostile aliens charge a toll to enter their system, ban new outposts there, and raid haulers that stop there.</li>
-        <li>Alien freighters sometimes pass through the system you're in, including the Solar System. Fly within 1.5K of one and match its speed to under 10 to meet it: trade, ask for tips, or raid it for its cargo. Raiding angers that species and pleases its rival.</li>
+        <li>Alien freighters sometimes pass through the system you're in, including the Solar System. Fly within 1.5K of one and match its speed to under 10 to meet it: trade, ask for tips, or raid it for its cargo. Friendly and wary freighters sell a few charged batteries, at 2× or 3× what the Solar market pays for one, so a crash far from home needn't strand you. Raiding angers that species and pleases its rival.</li>
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
         <li>Wormholes: some star systems beyond the Sun's neighbourhood have one, orbiting past the outermost planet. Each links to another system 10 to 30 sectors away. You find out where by going through; the galaxy map remembers the link.</li>
         <li>Your own wormholes: buy a pair at the market, place the first mouth in open space, then carry the second one anywhere and place it. Each trip costs 5 galactokens per sector between the mouths; haulers use them too. A wormhole nobody goes through for 6 hours of play collapses.</li>
@@ -551,6 +574,7 @@
       </dl>
       <p class="pp-hint">Touch down slower than 10 or the rocket explodes. The blue line shows where you will coast with the engine off.</p>
       <p class="pp-hint">Progress saves automatically in this browser. The &#x2630; button goes back to your worlds, where Export downloads a world as a file to back it up or move it to another device.</p>
+      <label class="pp-check"><input type="checkbox" data-ask-big-buys> Ask before spending over a third of my galactokens</label>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-restart" data-restart>Restart this world</button>
       </div>
