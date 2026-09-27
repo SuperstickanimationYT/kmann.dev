@@ -46,7 +46,7 @@ function shadeRelief(rgb, relief, covered, size) {
 const extraOctavesFor = (size) => Math.max(0, Math.round(Math.log2(size / BASE_DETAIL_SIZE)));
 
 function paintSurface(context, size, planet, extraOctaves) {
-  const shade = planet.bands > 0 ? createGiantShader(planet, extraOctaves) : createRockyShader(planet, extraOctaves);
+  const shade = planet.bands > 0 ? createGiantShader(planet, extraOctaves, size) : createRockyShader(planet, extraOctaves);
   const rgb = new Float32Array(size * size * 3);
   const relief = new Float32Array(size * size);
   const covered = new Uint8Array(size * size);
