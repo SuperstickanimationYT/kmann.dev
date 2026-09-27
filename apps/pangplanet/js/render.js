@@ -1,12 +1,14 @@
 import { speciesByKey } from './aliens.js';
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
 import { haulerPose } from './haulers.js';
+import { runsOnStarlight } from './outposts.js';
 import { rocketPoint } from './physics.js';
 import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
 import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, MARKET, ROCKET_HEIGHT } from './world.js';
 import { sailPose } from './science.js';
+import { storedCharge } from './solar.js';
 import { relativeSpeed, shipHeading } from './ships.js';
 
 const STAGE_HEIGHT_UNITS = 360;
@@ -31,6 +33,7 @@ const RIG_SHAPE = { base: 50, height: 80, besideRocket: 75 };
 const OUTPOST_DOT_BELOW_PX = 8;
 const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
+const OBSERVATORY_SHAPE = { width: 48, height: 26, dome: 22, tube: 34, tubeWidth: 9, tilt: -0.6, lamp: 4 };
 const SIGNAL_RING_MAX_PX = 50000;
 const HAULER_SCALE = 0.8;
 const SHIP_SCALE = 1.4;
@@ -426,6 +429,36 @@ export function createRenderer(canvas, sprites) {
     });
   }
 
+  function drawObservatory(observatory) {
+    if (!observatory?.deployed) return;
+    const [sx, sy] = toScreen(observatory.x, observatory.y);
+    const { width, height, dome, tube, tubeWidth, tilt, lamp } = OBSERVATORY_SHAPE;
+    const scale = view.ppu;
+    if (!onScreen(sx, sy, (height + dome + tube) * scale + 20)) return;
+    if (width * scale < OUTPOST_DOT_BELOW_PX) {
+      drawOutpostDot(sx, sy, 'Observatory');
+      return;
+    }
+    const running = runsOnStarlight(observatory) || storedCharge(observatory.batteries) > 0;
+    withPose(sx, sy, 0, () => {
+      context.save();
+      context.translate(0, (-height / 2) * scale);
+      context.rotate(tilt);
+      context.fillStyle = '#3fe0d0';
+      context.fillRect((-tubeWidth / 2) * scale, -(dome + tube) * scale, tubeWidth * scale, (dome + tube) * scale);
+      context.restore();
+      context.fillStyle = '#d9dde3';
+      context.beginPath();
+      context.arc(0, (-height / 2) * scale, dome * scale, Math.PI, 0);
+      context.fill();
+      context.fillRect((-width / 2) * scale, (-height / 2) * scale, width * scale, height * scale);
+      context.fillStyle = running ? '#6dff8c' : '#ff5b4a';
+      context.beginPath();
+      context.arc(0, 0, lamp * scale, 0, Math.PI * 2);
+      context.fill();
+    });
+  }
+
   function drawMarker(sx, sy, heading, colour, size) {
     withPose(sx, sy, heading, () => {
       context.fillStyle = colour;
@@ -687,6 +720,7 @@ export function createRenderer(canvas, sprites) {
       scene.satellites.forEach(drawSatellite);
       drawRig(scene.rig);
       scene.banks.forEach(drawBank);
+      scene.observatories.forEach(drawObservatory);
       scene.antennas.forEach(drawAntenna);
     }
     drawSignal(scene.antennas);
