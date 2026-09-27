@@ -433,6 +433,11 @@
   color: #ffb3a8;
 }
 
+.pp-autopilot {
+  top: calc(50% - 90px);
+  border: 1px solid #7ddc3c;
+}
+
 .pp-crash {
   top: calc(50% - 20px);
   border: 1px solid #ff5b4a;

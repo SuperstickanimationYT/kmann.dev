@@ -41,6 +41,8 @@ export function createRocket() {
     fuel: MAX_FUEL,
     fuelCapacity: MAX_FUEL,
     thrust: 1,
+    crashSpeed: CRASH_SPEED,
+    autopilot: null,
     soi: HOME_BODY,
     landed: false,
     destroyed: false,
@@ -75,7 +77,8 @@ function touchDown(rocket, body) {
     passThroughWormhole(rocket, body);
     return 'wormhole';
   }
-  if (FATAL_KINDS.has(body.kind) || Math.hypot(rocket.vx, rocket.vy) > CRASH_SPEED) {
+  const tooFast = !rocket.autopilot && Math.hypot(rocket.vx, rocket.vy) > (rocket.crashSpeed ?? CRASH_SPEED);
+  if (FATAL_KINDS.has(body.kind) || tooFast) {
     rocket.destroyed = true;
     rocket.engineOn = false;
     return 'crash';
@@ -131,7 +134,7 @@ export function altitude(rocket) {
 
 // Coasting forecast: a list of polyline segments (split at wormholes) and where it ends.
 export function forecast(rocket, steps, dt) {
-  const ghost = { ...rocket, engineOn: false };
+  const ghost = { ...rocket, engineOn: false, autopilot: null };
   const segments = [[ghost.x, ghost.y]];
   let ending = null;
   for (let i = 0; i < steps && !ending; i++) {

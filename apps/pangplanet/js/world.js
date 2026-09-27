@@ -162,9 +162,11 @@ export const UPGRADES = {
   engine: { base: 1, levels: [{ cost: 200, value: 1.25 }, { cost: 600, value: 1.5 }, { cost: 1500, crystals: 4, value: 2 }, { cost: 4000, stardust: 3, value: 2.5 }] },
   telescope: { base: 4.5e7, levels: [{ cost: 800, value: 9e7 }, { cost: 2000, value: 1.5e8 }, { cost: 4000, crystals: 5, value: 3e8 }, { cost: 8000, stardust: 4, value: 4.5e8 }] },
   warpRange: { base: 2e7, levels: [{ cost: 3000, crystals: 3, value: 3.5e7 }, { cost: 6000, crystals: 8, value: 5e7 }, { cost: 12000, stardust: 5, value: 8e7 }] },
+  hull: { base: CRASH_SPEED, levels: [{ cost: 300, value: 15 }, { cost: 900, value: 20 }, { cost: 2500, crystals: 3, value: 30 }] },
   timewarp: { base: 5, levels: [{ cost: 500, value: 10 }, { cost: 1500, value: 20 }, { cost: 4000, value: 30 }, { cost: 8000, stardust: 3, value: 50 }] },
 };
 export const TELESCOPE = { cost: 600 };
+export const AUTOPILOT = { cost: 1500 };
 export const PRICE_GROWTH = 1.5;
 export const ANTENNA = { cost: 800, range: 6e5, reach: 1500 };
 export const DRONE = { cost: 1500, batteries: 3, padReach: 1500, fuelMargin: 0.05 };

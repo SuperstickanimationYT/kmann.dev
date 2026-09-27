@@ -116,6 +116,7 @@
       <button type="button" class="pp-action" data-finish-recording>Finish</button>
       <button type="button" class="pp-action" data-cancel-recording>Cancel</button>
     </div>
+    <p class="pp-prompt pp-autopilot" data-autopilot-landing hidden>Autopilot landing you on <span data-autopilot-body></span></p>
     <p class="pp-prompt" data-drill-hint hidden>Click the drill to start drilling.</p>
     <button type="button" class="pp-prompt pp-crash" data-crash data-tap="c" hidden>
       Rocket destroyed. <span class="pp-keyboard-only">Press <kbd>C</kbd> to respawn.</span>
@@ -160,6 +161,7 @@
           <img src="img/solar.svg" alt=""> <span data-panels-label></span> <kbd>P</kbd>
         </button>
         <button type="button" class="pp-action pp-warp-button" data-open-warp>Warp drive <kbd>W</kbd></button>
+        <button type="button" class="pp-action" data-toggle-autopilot hidden><span data-autopilot-label></span> <kbd>L</kbd></button>
         <button type="button" class="pp-action pp-outpost" data-scan>Scan with telescope <kbd>T</kbd></button>
         <button type="button" class="pp-action pp-outpost" data-deploy-satellite>Park satellite here (<span data-satellites-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-deploy-rig>
@@ -258,6 +260,10 @@
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-sail>
           Solar sail for 250
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-buy" data-buy-autopilot>
+          Landing autopilot for 1,500
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action" data-buy-rescue-module hidden>
@@ -576,7 +582,8 @@
       </ul>
       <h4>Danger</h4>
       <ul>
-        <li>Touch down slower than 10 or the rocket explodes. Crashing destroys every battery on board.</li>
+        <li>Touch down slower than 10 or the rocket explodes. Crashing destroys every battery on board. Landing leg upgrades at the market raise that limit to 15, 20, then 30; docking still needs under 10.</li>
+        <li>The landing autopilot (market, 1,500) takes over when you're heading into a planet or moon too fast, turns you around and brakes you down. You can't crash while it's flying. Switch it on or off in the rocket menu.</li>
         <li>Docking at the market, a satellite, a battery bank or an alien freighter also needs a speed under 10, so brake before you arrive.</li>
         <li>Out of fuel in deep space: abandon ship, which counts as a crash. With the rescue module, a drone in antenna range refuels you instead.</li>
       </ul>
@@ -603,6 +610,7 @@
         <div><dt><kbd>G</kbd></dt><dd>Stop drilling</dd></div>
         <div><dt><kbd>P</kbd></dt><dd>Deploy / stow solar panels</dd></div>
         <div><dt><kbd>W</kbd></dt><dd>Warp drive, once bought</dd></div>
+        <div><dt><kbd>L</kbd></dt><dd>Landing autopilot on / off, once bought</dd></div>
         <div><dt><kbd>M</kbd></dt><dd>Galaxy map</dd></div>
         <div><dt><kbd>T</kbd></dt><dd>Scan with telescope, once bought</dd></div>
         <div><dt><kbd>C</kbd></dt><dd>Respawn after a crash</dd></div>
