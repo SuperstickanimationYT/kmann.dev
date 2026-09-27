@@ -87,7 +87,8 @@ import {
   study,
   systemsPassed,
 } from './science.js';
-import { addBlock, createShip, describeShip, flightStats, hasRoom, leaveHelm, moveWithPilot, removeBlock, shipFromSave, takeHelm } from './fleet.js';
+import { cruise, dropOut, nearWell, nextFtlTier } from './ftl.js';
+import { addBlock, canFit, createShip, describeShip, flightStats, hasFtl, hasRoom, leaveHelm, moveWithPilot, removeBlock, shipFromSave, takeHelm } from './fleet.js';
 import { chargeFromPanels } from './vessels.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
@@ -227,6 +228,7 @@ const game = {
   observatories: [],
   fleet: [],
   boarded: null,
+  ftl: false,
   antennas: [],
   antennasInHold: 0,
   drones: [],
@@ -684,7 +686,7 @@ const actions = {
   addShipBlock: (type) => {
     const ship = shipInShipyard();
     const block = SHIP_BLOCKS[type];
-    if (!ship || !block || !hasRoom(ship) || game.galactokens < block.cost) return;
+    if (!ship || !block || !canFit(ship, type) || game.galactokens < block.cost) return;
     game.galactokens -= block.cost;
     addBlock(ship, type);
   },
@@ -705,9 +707,33 @@ const actions = {
     openPanel(null);
     hud.toast('You have the controls. Open the rocket menu to leave the ship.');
   },
+  upgradeFtl: () => {
+    const ship = shipInShipyard();
+    const next = ship && hasFtl(ship) ? nextFtlTier(ship) : null;
+    if (!next || !canAfford(next, game)) return;
+    game.galactokens -= next.cost;
+    game.crystals -= next.crystals ?? 0;
+    game.stardust -= next.stardust ?? 0;
+    ship.ftlTier += 1;
+  },
+  toggleFtl: () => {
+    if (game.ftl) {
+      leaveFtl('FTL off. Back to light speed.');
+      return;
+    }
+    const blocker = ftlBlocker();
+    if (blocker) {
+      hud.toast(blocker);
+      return;
+    }
+    game.ftl = true;
+    game.rocket.engineOn = false;
+    hud.toast('FTL on. Throttle sets the speed; the drive drops out before any gravity well.');
+  },
   leaveShip: () => {
     const ship = boardedShip();
     if (!ship) return;
+    if (game.ftl) leaveFtl();
     parkShip(ship);
     openPanel(null);
   },
@@ -1197,6 +1223,7 @@ const PURCHASE_PRICES = {
   buyWormhole: PRICES.wormhole,
   buyShip: PRICES.ship,
   addShipBlock: (type) => SHIP_BLOCKS[type]?.cost ?? 0,
+  upgradeFtl: () => nextFtlTier(shipInShipyard() ?? { ftlTier: 0 })?.cost ?? 0,
   alienBuyFuel: () => dockedMarket()?.fuelPackCost ?? 0,
   alienFillTank: () => dockedMarket()?.fillTankCost ?? 0,
   alienBuyBattery: () => dockedMarket()?.batteryCost ?? 0,
@@ -1394,6 +1421,36 @@ function parkShip(ship) {
   else Object.assign(rocket, { x: ship.x + Math.cos(ship.heading) * step, y: ship.y - Math.sin(ship.heading) * step });
 }
 
+function ftlBlocker() {
+  const ship = boardedShip();
+  const { rocket } = game;
+  if (!ship || !hasFtl(ship)) return 'Only a ship with an FTL drive block can go faster than light.';
+  if (rocket.landed || rocket.soi || nearWell(rocket)) return 'FTL needs open space, clear of any gravity well.';
+  if (storedCharge(ship.batteries) <= 0) return "FTL runs on the ship's battery charge, and it has none.";
+  return null;
+}
+
+function leaveFtl(message) {
+  game.ftl = false;
+  dropOut(game.rocket);
+  if (message) hud.toast(message);
+}
+
+const FTL_DROP_OUT_NEWS = {
+  well: 'Dropped out of FTL at the edge of a gravity well.',
+  charge: 'The ship ran out of charge and dropped out of FTL.',
+};
+
+function stepFtl() {
+  const { rocket } = game;
+  const ship = boardedShip();
+  const reason = cruise(rocket, ship, STEP_TICKS);
+  moveWithPilot(ship, rocket);
+  if (!reason) return;
+  game.ftl = false;
+  hud.toast(FTL_DROP_OUT_NEWS[reason]);
+}
+
 function wreckShip() {
   const { rocket } = game;
   const body = rocket.soi;
@@ -1497,6 +1554,7 @@ const KEY_ACTIONS = {
   },
   f: dock,
   l: actions.toggleAutopilot,
+  j: actions.toggleFtl,
   g: actions.stopDrill,
   p: actions.togglePanels,
   w: actions.openWarp,
@@ -2126,6 +2184,13 @@ function simulate() {
   let simTicks = 0;
   for (let i = 0; i < game.timewarp && !rocket.destroyed; i++) {
     if (game.recording) noteControls(game.recording, rocket);
+    if (game.ftl) {
+      stepFtl();
+      stepDrones();
+      stepShip();
+      simTicks += STEP_TICKS;
+      continue;
+    }
     if (game.autopilotArmed) steerAutopilot();
     const fuelBefore = rocket.fuel;
     const hit = advance(rocket, STEP_TICKS);
@@ -2404,6 +2469,14 @@ function dockAction() {
   );
 }
 
+function ftlUpgrade(ship) {
+  const next = hasFtl(ship) ? nextFtlTier(ship) : null;
+  if (!next) return null;
+  const crystals = next.crystals ? ` + ${next.crystals} crystals` : '';
+  const stardust = next.stardust ? ` + ${next.stardust} stardust` : '';
+  return { label: `Upgrade FTL to tier ${ship.ftlTier + 1} (up to ${abbreviate(next.speed)}) · ${next.cost.toLocaleString()}${crystals}${stardust}`, affordable: canAfford(next, game) };
+}
+
 function shipInfo() {
   const ship = game.panel === 'myShip' ? game.docked : null;
   if (!ship) return null;
@@ -2413,7 +2486,8 @@ function shipInfo() {
     stats: describeShip(ship),
     blocks: ship.blocks.map((type) => SHIP_BLOCKS[type].label),
     shipyard: Boolean(shipInShipyard()),
-    blockChoices: hasRoom(ship) ? Object.entries(SHIP_BLOCKS).map(([value, { label, cost }]) => ({ value, label: `${label} · ${cost}` })) : [],
+    ftlUpgrade: ftlUpgrade(ship),
+    blockChoices: hasRoom(ship) ? Object.entries(SHIP_BLOCKS).filter(([type]) => canFit(ship, type)).map(([value, { label, cost }]) => ({ value, label: `${label} · ${cost}` })) : [],
     piloting,
     canTakeCharge: storedCharge(ship.batteries) > 0 && roomToCharge(game.power.batteries) > 0,
   };
@@ -2449,7 +2523,9 @@ function status() {
     location: body ? body.name : outsideGalaxy(rocket.x, rocket.y) ? 'Outside the galaxy' : 'Deep space',
     altitude: altitude(rocket),
     speed: Math.hypot(rocket.vx, rocket.vy),
-    atSpeedLimit: Math.hypot(rocket.vx, rocket.vy) >= SPEED_LIMIT - 0.01,
+    atSpeedLimit: !game.ftl && Math.hypot(rocket.vx, rocket.vy) >= SPEED_LIMIT - 0.01,
+    inFtl: game.ftl,
+    ftlLabel: boardedShip() && hasFtl(boardedShip()) ? (game.ftl ? 'Drop out of FTL' : 'Engage FTL') : null,
     throttle: rocket.throttle,
     engineOn: rocket.engineOn,
     canDock: canDock(),
@@ -2559,7 +2635,7 @@ function frame(time) {
     backlog -= STEP_SECONDS;
   }
   const { rocket } = game;
-  game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
+  game.forecast = rocket.landed || rocket.destroyed || game.ftl ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   catchUpToNow();
   markGoals(newlyReachedGoals(game));
   renderer.draw(game, routePaths());
