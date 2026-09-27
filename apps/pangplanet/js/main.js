@@ -160,6 +160,7 @@ const STEP_SECONDS = STEP_TICKS / TICKS_PER_SECOND;
 const MAX_STEPS_PER_FRAME = 8;
 const THROTTLE_PER_TICK = 5;
 const TURN_PER_TICK = (3 * Math.PI) / 180;
+const PILOT_HANDS = { turn: TURN_PER_TICK * STEP_TICKS, throttleChange: THROTTLE_PER_TICK * STEP_TICKS, stepTicks: STEP_TICKS };
 const CAMERA_EASE_PER_TICK = 1 / 20;
 const ZOOM_STEP = 1.1;
 const TAP_SLOP_PX = 10;
@@ -2029,12 +2030,12 @@ function steerAutopilot() {
   if (rocket.landed || rocket.destroyed) return;
   if (!rocket.autopilot) {
     const body = crashCourseBody();
-    if (!body || !mustTakeOver(rocket, body)) return;
+    if (!body || !mustTakeOver(rocket, body, PILOT_HANDS)) return;
     rocket.autopilot = body;
     stopRecording('The autopilot took over. Recording stopped.');
     hud.toast(`Coming in too fast: the autopilot is landing you on ${body.name}.`);
   }
-  flyDescent(rocket, rocket.autopilot);
+  flyDescent(rocket, rocket.autopilot, PILOT_HANDS);
 }
 
 function handBackControl() {
