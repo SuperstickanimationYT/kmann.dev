@@ -40,6 +40,10 @@
       </header>
       <ul class="pp-world-list" data-world-list></ul>
       <p class="pp-hint" data-no-worlds hidden>No worlds yet. Create one below.</p>
+      <div class="pp-actions">
+        <label class="pp-action pp-outpost pp-import">Import a world file <input type="file" accept=".json,application/json" data-import-world></label>
+      </div>
+      <p class="pp-hint" data-import-error hidden>That file isn't a PangPlanet world export.</p>
       <h4 class="pp-subhead">New world</h4>
       <form class="pp-new-world" data-new-world>
         <label>Name <input name="worldName" maxlength="40" placeholder="New world"></label>
@@ -569,7 +573,7 @@
         <div><dt><kbd>H</kbd></dt><dd>Show this again</dd></div>
       </dl>
       <p class="pp-hint">Touch down slower than 10 or the rocket explodes. The blue line shows where you will coast with the engine off.</p>
-      <p class="pp-hint">Progress saves automatically in this browser. The &#x2630; button goes back to your worlds.</p>
+      <p class="pp-hint">Progress saves automatically in this browser. The &#x2630; button goes back to your worlds, where Export downloads a world as a file to back it up or move it to another device.</p>
       <label class="pp-check"><input type="checkbox" data-ask-big-buys> Ask before spending over a third of my galactokens</label>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-restart" data-restart>Restart this world</button>

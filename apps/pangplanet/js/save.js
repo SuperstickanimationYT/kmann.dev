@@ -2,6 +2,7 @@ const LEGACY_SAVE_KEY = 'pangplanet-save';
 const WORLDS_KEY = 'pangplanet-worlds';
 const SAVE_VERSION = 1;
 const LEGACY_WORLD_NAME = 'My world';
+const WORLD_FILE_FORMAT = 'pangplanet-world';
 
 const worldSaveKey = (id) => `pangplanet-world-${id}`;
 const newWorldId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -78,3 +79,19 @@ export function writeSave(id, state) {
 }
 
 export const deleteSave = (id) => removeKey(worldSaveKey(id));
+
+export function exportWorld(id) {
+  const world = findWorld(id);
+  if (!world) return null;
+  const { name, seed, cheats } = world;
+  return { format: WORLD_FILE_FORMAT, world: { name, seed, cheats }, save: readJson(worldSaveKey(id)) };
+}
+
+export function importWorld(file) {
+  if (file?.format !== WORLD_FILE_FORMAT || typeof file.world?.name !== 'string') return null;
+  if (file.save !== null && file.save?.version !== SAVE_VERSION) return null;
+  const { name, seed, cheats } = file.world;
+  const world = createWorld({ name, seed: Number.isInteger(seed) ? seed : null, cheats: cheats === true });
+  if (file.save) writeJson(worldSaveKey(world.id), file.save);
+  return world;
+}

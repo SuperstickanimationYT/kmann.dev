@@ -855,7 +855,7 @@
 
 .pp-world-list li {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 2px 8px;
   align-items: center;
   margin-bottom: 8px;
@@ -886,8 +886,22 @@
   grid-column: 2;
 }
 
-.pp-world-list .pp-restart {
+.pp-world-list .pp-export {
   grid-column: 3;
+  background: #0f6b6b;
+  color: #fff;
+}
+
+.pp-world-list .pp-restart {
+  grid-column: 4;
+}
+
+.pp-import {
+  cursor: pointer;
+}
+
+.pp-import input {
+  display: none;
 }
 
 .pp-new-world {
