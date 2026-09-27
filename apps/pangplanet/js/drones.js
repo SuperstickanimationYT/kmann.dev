@@ -56,6 +56,7 @@ export function launchDrone(drone) {
     throttle: 100,
     engineOn: false,
     thrust: 1,
+    burnRate: 1,
     fuel: route.fuel,
     soi: null,
     landed: true,

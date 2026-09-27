@@ -174,6 +174,8 @@
         <button type="button" class="pp-action pp-outpost" data-deploy-drone>Park drone here (<span data-drones-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-open-drone>Drone controls</button>
         <button type="button" class="pp-action pp-outpost" data-open-haulers>Haulers</button>
+        <button type="button" class="pp-action" data-open-ship hidden>Ship</button>
+        <button type="button" class="pp-action" data-leave-ship hidden>Leave ship</button>
         <button type="button" class="pp-action pp-outpost" data-place-mouth></button>
         <button type="button" class="pp-action pp-outpost" data-launch-sail>Launch solar sail (<span data-sails-in-hold></span> in hold)</button>
       </div>
@@ -216,6 +218,10 @@
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-rig>
           <img src="img/gold.svg" alt=""> Mining rig for 1,000
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-ship>
+          Ship hull for <span data-price="ship"></span>
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-bank>
@@ -431,6 +437,27 @@
       </div>
     </section>
 
+    <section class="pp-panel" data-panel="myShip" hidden aria-label="Your ship">
+      <header>
+        <h3 data-ship-title>Ship</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>A ship is built from up to 8 blocks. Engines push; every block adds mass, so a heavier ship speeds up more slowly. Each engine burns 1 fuel a second at full throttle, and each tank holds 100. Solar panel blocks charge the ship's batteries, even while it's parked. Your rocket flies inside and takes the controls; when you leave, the ship stays where it is.</p>
+      <p data-ship-stats></p>
+      <ol class="pp-stops" data-ship-blocks></ol>
+      <p class="pp-hint" data-shipyard-note>Park the ship beside the market to add or remove blocks. Removed blocks refund half their price.</p>
+      <div class="pp-picker" data-shipyard hidden>
+        <select data-block-choice aria-label="Block"></select>
+        <button type="button" class="pp-action pp-buy" data-add-block>Add block</button>
+      </div>
+      <div class="pp-actions">
+        <button type="button" class="pp-action" data-board-ship>Take the controls</button>
+        <button type="button" class="pp-action pp-buy" data-take-ship-charge>
+          <img src="img/battery.svg" alt=""> Take charge
+        </button>
+        <button type="button" class="pp-action" data-leave-ship-panel>Leave ship</button>
+      </div>
+    </section>
     <section class="pp-panel" data-panel="observatory" hidden aria-label="Observatory">
       <header>
         <h3>Observatory</h3>
@@ -594,6 +621,7 @@
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
         <li>Wormholes: some star systems beyond the Sun's neighbourhood have one, orbiting past the outermost planet. Each links to another system 10 to 30 sectors away. You find out where by going through; the galaxy map remembers the link.</li>
         <li>A wormhole beside Saturn leads far outside the galaxy. Out there the galaxy's pull can't reach you near the far mouth; stray too far and it drags you home the long way.</li>
+        <li>Ships: buy a hull at the market and fit it with up to 8 blocks while it's parked beside the market: engines, fuel tanks, batteries and solar panels. More engines push harder, and every block adds mass. Fly your rocket up to it to board and take the controls; your rocket's own fuel waits for you. Leave from the rocket menu and the ship stays where you left it. A ship that crashes breaks up, but your rocket gets out. Ships have no warp drive.</li>
         <li>Your own wormholes: buy a pair at the market, place the first mouth in open space, then carry the second one anywhere and place it. Each trip costs 5 galactokens per sector between the mouths; haulers use them too. A wormhole nobody goes through for 6 hours of play collapses.</li>
         <li>A supermassive black hole sits at the galaxy's center, 100 sectors from the Sun. Stars near it hold more crystals and stardust. Something orbiting it is worth the trip.</li>
       </ul>

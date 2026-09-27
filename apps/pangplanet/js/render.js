@@ -35,6 +35,8 @@ const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
 const OBSERVATORY_SHAPE = { width: 48, height: 26, dome: 22, tube: 34, tubeWidth: 9, tilt: -0.6, lamp: 4 };
 const SIGNAL_RING_MAX_PX = 50000;
+const SHIP_BLOCK = { size: 22, columns: 2, outline: '#0b1a2e' };
+const SHIP_BLOCK_COLOURS = { engine: '#ff8a3d', tank: '#c9d3e0', battery: '#ffc933', panel: '#1f4fa8' };
 const HAULER_SCALE = 0.8;
 const SHIP_SCALE = 1.4;
 const SHIP_SPEED_SHOWN_WITHIN = 60000;
@@ -459,6 +461,43 @@ export function createRenderer(canvas, sprites) {
     });
   }
 
+  function shipLayout(blocks) {
+    const ordered = [...blocks.filter((type) => type !== 'engine'), ...blocks.filter((type) => type === 'engine')];
+    const { size, columns } = SHIP_BLOCK;
+    const rows = Math.max(1, Math.ceil(ordered.length / columns));
+    const height = rows * size;
+    const cells = ordered.map((type, index) => {
+      const row = Math.floor(index / columns);
+      const inRow = Math.min(columns, ordered.length - row * columns);
+      const column = index % columns;
+      return { type, x: (column - inRow / 2) * size, y: row * size - height / 2 };
+    });
+    return { cells, height };
+  }
+
+  function drawFleetShip(ship, pilot) {
+    const [sx, sy] = toScreen(ship.x, ship.y);
+    const { cells, height } = shipLayout(ship.blocks);
+    const scale = view.ppu;
+    if (!onScreen(sx, sy, height * scale + 20)) return;
+    if (height * scale < OUTPOST_DOT_BELOW_PX) {
+      if (pilot) drawMarker(sx, sy, ship.heading, '#e2effd', 5);
+      else drawOutpostDot(sx, sy, 'Ship');
+      return;
+    }
+    if (pilot?.engineOn && pilot.throttle > 0) drawFlame({ ...pilot, heading: ship.heading }, Math.max(height / 2, FLAME_OFFSET / 2) / FLAME_OFFSET, ship);
+    const { size, outline } = SHIP_BLOCK;
+    withPose(sx, sy, ship.heading, () => {
+      context.lineWidth = Math.max(1, 2 * scale);
+      context.strokeStyle = outline;
+      for (const { type, x, y } of cells) {
+        context.fillStyle = SHIP_BLOCK_COLOURS[type];
+        context.fillRect(x * scale, y * scale, size * scale, size * scale);
+        context.strokeRect(x * scale, y * scale, size * scale, size * scale);
+      }
+    });
+  }
+
   function drawMarker(sx, sy, heading, colour, size) {
     withPose(sx, sy, heading, () => {
       context.fillStyle = colour;
@@ -721,6 +760,7 @@ export function createRenderer(canvas, sprites) {
       drawRig(scene.rig);
       scene.banks.forEach(drawBank);
       scene.observatories.forEach(drawObservatory);
+      scene.fleet.filter((ship) => ship !== scene.fleet[scene.boarded]).forEach((ship) => drawFleetShip(ship, null));
       scene.antennas.forEach(drawAntenna);
     }
     drawSignal(scene.antennas);
@@ -734,7 +774,9 @@ export function createRenderer(canvas, sprites) {
     drawForecast(scene.forecast);
     drawDrill(scene.rocket, scene.drill);
     drawSolarPanels(scene.rocket, scene.power);
-    drawRocket(scene.rocket);
+    const piloted = scene.fleet[scene.boarded];
+    if (piloted) drawFleetShip(piloted, scene.rocket);
+    else drawRocket(scene.rocket);
     drawExplosion(scene.explosion);
     flushLabels();
     drawWarp(scene.warp);

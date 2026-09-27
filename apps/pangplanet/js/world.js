@@ -226,6 +226,13 @@ export const RESCUE = { cost: 2500, fee: 50, speed: 300, reach: 300 };
 export const OFFLINE_CATCH_UP_SECONDS = 86400;
 export const HAULER = { cost: 8000, batteries: 6, speed: 2000, tokensPerUnit: 1 / 20000, stopSeconds: 10, warpSeconds: 60, retrySeconds: 60, idleSeconds: 300 };
 export const BUILDER = { cost: 15000, siteInStarRadii: 1.5, siteSpacing: 800, siteTries: 200, starChoices: 40 };
+export const SHIP_BLOCKS = {
+  engine: { cost: 800, mass: 1, label: 'Engine' },
+  tank: { cost: 300, mass: 1, label: 'Fuel tank' },
+  battery: { cost: 150, mass: 0.5, label: 'Battery' },
+  panel: { cost: 300, mass: 0.5, label: 'Solar panel' },
+};
+export const SHIP = { hullCost: 3000, hullMass: 2, maxBlocks: 8, engineForce: 4, fuelPerTank: 100, boardingRange: 400, parkingGap: 3000, shipyardRange: 5000, refundShare: 0.5, startingBlocks: { engine: 1, tank: 1 } };
 export const BATTERY_BANK = { cost: 600, blocks: { battery: 10 }, dockingRange: 1500 };
 export const OBSERVATORY = { cost: 900, blocks: { telescope: 1, battery: 4 }, dockingRange: 1500, minLight: 0.05, secondsPerBattery: 7200, edgeClarity: 0.2 };
 export const MAX_BATTERY_SLOTS = UPGRADES.batterySlots.levels.at(-1).value;
