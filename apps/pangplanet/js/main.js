@@ -641,6 +641,9 @@ const actions = {
     game.mapPlanet = null;
   },
   mapZoom: (direction) => galaxyMap.zoom(direction),
+  mapCenter: () => {
+    if (game.mapSelection && !galaxyMap.showingSystem()) galaxyMap.centerOn(game.mapSelection);
+  },
   pickOnMap: (clientX, clientY) => {
     const picked = galaxyMap.pick(game.starChart, clientX, clientY);
     if (galaxyMap.showingSystem()) game.mapPlanet = picked;
@@ -1498,7 +1501,7 @@ function mapInfo() {
   const distance = Math.hypot(entry.x - rocket.x, entry.y - rocket.y);
   const details = [
     entry.name,
-    worldsNote(entry),
+    worldsNote(entry, moonsSeen(entry)),
     bountyNote(entry),
     entry.visited ? 'visited' : 'seen through telescope',
     `${abbreviate(distance)} away`,
@@ -1511,11 +1514,14 @@ function mapInfo() {
   return details.filter(Boolean).join(' · ');
 }
 
-function worldsNote(entry) {
+const moonsSeen = (entry) => entry.visited || game.studies.has(`flyby:${starKey(entry)}`);
+
+function worldsNote(entry, showMoons) {
   const bodies = systemAt(entry.x, entry.y)?.planets ?? [];
   const moons = bodies.filter((body) => body.moon).length;
   const planets = bodies.length - moons;
   const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  if (!showMoons) return `${counted(planets, 'planet')}, moons unknown`;
   return moons ? `${counted(planets, 'planet')}, ${counted(moons, 'moon')}` : counted(planets, 'planet');
 }
 
@@ -2189,6 +2195,7 @@ function status() {
     canBuyTelescope: !game.ownsTelescope && game.galactokens >= TELESCOPE.cost,
     mapInfo: mapInfo(),
     canCloseUp: Boolean(game.mapSelection?.visited) && !galaxyMap.showingSystem(),
+    canCenterMap: Boolean(game.mapSelection) && !galaxyMap.showingSystem(),
     bank: dockedOf('bank'),
     canBuyBank: game.galactokens >= PRICES.bank(),
     canDeployBank: Boolean(canDeployBank()),
