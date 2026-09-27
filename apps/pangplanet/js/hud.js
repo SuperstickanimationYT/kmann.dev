@@ -146,6 +146,9 @@ export function createHud(root, actions, { cheats }) {
     buyShip: find('[data-buy-ship]'),
     openShip: find('[data-open-ship]'),
     leaveShip: find('[data-leave-ship]'),
+    toggleFtl: find('[data-toggle-ftl]'),
+    ftlLabel: find('[data-ftl-label]'),
+    upgradeFtl: find('[data-upgrade-ftl]'),
     shipTitle: find('[data-ship-title]'),
     shipStats: find('[data-ship-stats]'),
     shipBlocks: find('[data-ship-blocks]'),
@@ -264,6 +267,8 @@ export function createHud(root, actions, { cheats }) {
     buyShip: actions.buyShip,
     openShip: actions.openShip,
     leaveShip: actions.leaveShip,
+    toggleFtl: actions.toggleFtl,
+    upgradeFtl: actions.upgradeFtl,
     leaveShipPanel: actions.leaveShip,
     boardShip: actions.boardShip,
     takeShipCharge: actions.takeShipCharge,
@@ -453,8 +458,10 @@ export function createHud(root, actions, { cheats }) {
     );
   }
 
-  function updateShip({ canBuyShip, piloting, myShip }) {
+  function updateShip({ canBuyShip, piloting, myShip, ftlLabel }) {
     parts.buyShip.disabled = !canBuyShip;
+    setHidden(parts.toggleFtl, !ftlLabel);
+    setText(parts.ftlLabel, ftlLabel ?? '');
     setHidden(parts.openShip, !piloting);
     setHidden(parts.leaveShip, !piloting);
     if (!myShip) return;
@@ -464,6 +471,9 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.shipyard, !myShip.shipyard || !myShip.blockChoices.length);
     setHidden(parts.shipyardNote, myShip.shipyard);
     showOptions(parts.blockChoice, myShip.blockChoices);
+    setHidden(parts.upgradeFtl, !myShip.shipyard || !myShip.ftlUpgrade);
+    setText(parts.upgradeFtl, myShip.ftlUpgrade?.label ?? '');
+    parts.upgradeFtl.disabled = !myShip.ftlUpgrade?.affordable;
     setHidden(parts.boardShip, myShip.piloting);
     setHidden(parts.leaveShipPanel, !myShip.piloting);
     parts.takeShipCharge.disabled = !myShip.canTakeCharge;
@@ -555,7 +565,8 @@ export function createHud(root, actions, { cheats }) {
     parts.warpSlider.classList.toggle('is-held', status.timewarpHeld);
     setText(parts.location, status.location);
     setText(parts.altitude, status.altitude === null ? '—' : abbreviate(status.altitude));
-    setText(parts.speed, status.atSpeedLimit ? `${abbreviate(status.speed)} (top)` : abbreviate(status.speed));
+    const speedNote = status.inFtl ? ' (FTL)' : status.atSpeedLimit ? ' (top)' : '';
+    setText(parts.speed, `${abbreviate(status.speed)}${speedNote}`);
     setText(parts.throttle, `${Math.round(status.throttle)}%`);
     setText(parts.engine, status.engineOn ? 'on' : 'off');
     parts.engine.classList.toggle('is-on', status.engineOn);

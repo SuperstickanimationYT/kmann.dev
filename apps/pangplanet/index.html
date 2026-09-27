@@ -175,6 +175,7 @@
         <button type="button" class="pp-action pp-outpost" data-open-drone>Drone controls</button>
         <button type="button" class="pp-action pp-outpost" data-open-haulers>Haulers</button>
         <button type="button" class="pp-action" data-open-ship hidden>Ship</button>
+        <button type="button" class="pp-action pp-warp-button" data-toggle-ftl hidden><span data-ftl-label></span> <kbd>J</kbd></button>
         <button type="button" class="pp-action" data-leave-ship hidden>Leave ship</button>
         <button type="button" class="pp-action pp-outpost" data-place-mouth></button>
         <button type="button" class="pp-action pp-outpost" data-launch-sail>Launch solar sail (<span data-sails-in-hold></span> in hold)</button>
@@ -450,6 +451,7 @@
         <select data-block-choice aria-label="Block"></select>
         <button type="button" class="pp-action pp-buy" data-add-block>Add block</button>
       </div>
+      <button type="button" class="pp-action pp-upgrade" data-upgrade-ftl hidden></button>
       <div class="pp-actions">
         <button type="button" class="pp-action" data-board-ship>Take the controls</button>
         <button type="button" class="pp-action pp-buy" data-take-ship-charge>
@@ -622,6 +624,7 @@
         <li>Wormholes: some star systems beyond the Sun's neighbourhood have one, orbiting past the outermost planet. Each links to another system 10 to 30 sectors away. You find out where by going through; the galaxy map remembers the link.</li>
         <li>A wormhole beside Saturn leads far outside the galaxy. Out there the galaxy's pull can't reach you near the far mouth; stray too far and it drags you home the long way.</li>
         <li>Ships: buy a hull at the market and fit it with up to 8 blocks while it's parked beside the market: engines, fuel tanks, batteries and solar panels. More engines push harder, and every block adds mass. Fly your rocket up to it to board and take the controls; your rocket's own fuel waits for you. Leave from the rocket menu and the ship stays where you left it. A ship that crashes breaks up, but your rocket gets out. Ships have no warp drive.</li>
+        <li>FTL drive: a ship block (one per ship) that goes faster than light. Press J in open space: the ship cruises straight along its heading, ignoring gravity, at up to 1,000 (tier 0), 10K, 100K or 1M (tier 3); throttle sets the speed. It burns 1 battery of the ship's charge per sector and drops out to light speed before any gravity well or when the charge runs out. Upgrade tiers at the shipyard.</li>
         <li>Your own wormholes: buy a pair at the market, place the first mouth in open space, then carry the second one anywhere and place it. Each trip costs 5 galactokens per sector between the mouths; haulers use them too. A wormhole nobody goes through for 6 hours of play collapses.</li>
         <li>A supermassive black hole sits at the galaxy's center, 100 sectors from the Sun. Stars near it hold more crystals and stardust. Something orbiting it is worth the trip.</li>
       </ul>

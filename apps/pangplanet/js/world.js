@@ -231,6 +231,12 @@ export const SHIP_BLOCKS = {
   tank: { cost: 300, mass: 1, label: 'Fuel tank' },
   battery: { cost: 150, mass: 0.5, label: 'Battery' },
   panel: { cost: 300, mass: 0.5, label: 'Solar panel' },
+  ftl: { cost: 25000, mass: 2, label: 'FTL drive', onePerShip: true },
+};
+export const FTL = {
+  tiers: [{ speed: 1e3 }, { speed: 1e4, cost: 30000, crystals: 5 }, { speed: 1e5, cost: 80000, crystals: 10, stardust: 3 }, { speed: 1e6, cost: 200000, stardust: 10 }],
+  chargePerUnit: 1 / 1.5e7,
+  dropOutMargin: 20000,
 };
 export const SHIP = { hullCost: 3000, hullMass: 2, maxBlocks: 8, engineForce: 4, fuelPerTank: 100, boardingRange: 400, parkingGap: 3000, shipyardRange: 5000, refundShare: 0.5, startingBlocks: { engine: 1, tank: 1 } };
 export const BATTERY_BANK = { cost: 600, blocks: { battery: 10 }, dockingRange: 1500 };
