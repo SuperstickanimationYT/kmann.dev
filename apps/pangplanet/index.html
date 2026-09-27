@@ -442,6 +442,7 @@
         <button type="button" class="pp-action pp-buy" data-charge-observatory>
           <img src="img/battery.svg" alt=""> Deposit charge
         </button>
+        <button type="button" class="pp-action pp-outpost" data-add-hauler-stop="observatory">Add to hauler route: deposit charge</button>
         <button type="button" class="pp-action" data-pick-up-observatory>Pick up observatory</button>
       </div>
     </section>
@@ -452,7 +453,7 @@
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
       <p>A hauler flies its route of stops on repeat with no antennas, even while you're away. It pays galactokens for fuel inside a star system and burns the charge it carries to warp between stars. It carries 6 batteries and sells gold at the market, but never batteries.</p>
-      <p class="pp-hint" data-builder-note hidden>A builder does everything a hauler does and also builds. At a build stop it parks a satellite or battery bank from your hold near any star on your galaxy map, then drops the stop. It can't build haulers, builders or drones.</p>
+      <p class="pp-hint" data-builder-note hidden>A builder does everything a hauler does and also builds. At a build stop it parks a satellite, battery bank or observatory from your hold near any star on your galaxy map, then drops the stop. It can't build haulers, builders or drones.</p>
       <p data-hauler-status></p>
       <ol class="pp-stops" data-hauler-stops></ol>
       <div class="pp-picker">
@@ -463,6 +464,7 @@
         <select data-build-kind aria-label="What to build">
           <option value="buildSatellite">Satellite</option>
           <option value="buildBank">Battery bank</option>
+          <option value="buildObservatory">Observatory</option>
         </select>
         <select data-build-star aria-label="Star"></select>
         <button type="button" class="pp-action pp-outpost" data-add-build-stop>Add build stop</button>

@@ -439,6 +439,11 @@ const STOP_KINDS = {
     },
     describe: () => `Mining rig on ${game.rig?.site || 'nowhere'}: load batteries, collect gold`,
   },
+  observatory: {
+    locate: ({ index }) => deployedOrNull(game.observatories[index]),
+    act: ({ index }, hauler, keep) => transferCharge(hauler.batteries, game.observatories[index].batteries, keep),
+    describe: ({ index }) => `Observatory ${index + 1}${nearStar(game.observatories[index])}: deposit charge`,
+  },
   buildSatellite: {
     locate: (stop) => stop,
     act: (stop) => buildFromHold(stop, game.satellites, deploySatellite),
@@ -450,6 +455,12 @@ const STOP_KINDS = {
     act: (stop) => buildFromHold(stop, game.banks, deployBank),
     describe: (stop) => `Build a battery bank near ${stop.starName}`,
     missing: 'battery bank',
+  },
+  buildObservatory: {
+    locate: (stop) => stop,
+    act: (stop) => buildFromHold(stop, game.observatories, deployObservatory),
+    describe: (stop) => `Build an observatory near ${stop.starName}`,
+    missing: 'observatory',
   },
   market: {
     locate: () => MARKET,
@@ -470,10 +481,13 @@ function stopFromValue(value) {
   return index === '' ? { kind } : { kind, index: Number(index) };
 }
 
+const needsCharge = (observatory) => observatory && !runsOnStarlight(observatory);
+
 function remoteStops() {
   const stops = [];
   game.satellites.forEach((satellite, index) => satellite.deployed && stops.push({ kind: 'satellite', index }));
   game.banks.forEach((bank, index) => bank.deployed && stops.push({ kind: 'bankTake', index }, { kind: 'bankDeposit', index }));
+  game.observatories.forEach((observatory, index) => observatory.deployed && needsCharge(observatory) && stops.push({ kind: 'observatory', index }));
   if (game.rig?.deployed) stops.push({ kind: 'rig' });
   stops.push({ kind: 'market' });
   return stops;
@@ -537,6 +551,7 @@ const selectedHauler = () => game.haulers[game.haulerIndex] ?? null;
 function stopHere(kind) {
   if (kind === 'satellite') return dockedOf('satellite') && { kind, index: game.satellites.indexOf(dockedOf('satellite')) };
   if (kind === 'bankTake' || kind === 'bankDeposit') return dockedOf('bank') && { kind, index: game.banks.indexOf(dockedOf('bank')) };
+  if (kind === 'observatory') return needsCharge(dockedOf('observatory')) && { kind, index: game.observatories.indexOf(dockedOf('observatory')) };
   if (kind === 'rig') return game.panel === 'rig' && game.rig ? { kind } : null;
   if (kind === 'market') return game.panel === 'market' ? { kind } : null;
   return null;
@@ -909,7 +924,7 @@ const actions = {
   },
   addBuildStop: (kind, key) => {
     const hauler = selectedHauler();
-    if (!hauler?.builds || !['buildSatellite', 'buildBank'].includes(kind)) return;
+    if (!hauler?.builds || !STOP_KINDS[kind]?.missing) return;
     const site = buildSite(key);
     if (!site) {
       hud.toast('No clear spot near that star.');
