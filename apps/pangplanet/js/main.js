@@ -164,6 +164,7 @@ const CHEAT_SKIP_SECONDS = 600;
 const CHEAT_REVEAL_RANGE = 1.5e8;
 const CHEAT_SHIP_GAP = 800;
 const CHART_EVERY_TICKS = 30;
+const BIG_BUY_SHARE = 1 / 3;
 
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
@@ -229,6 +230,8 @@ const game = {
   mapPlanet: null,
   panel: null,
   tourSeen: false,
+  askBeforeBigBuys: true,
+  pendingBuy: null,
   forecast: null,
 };
 
@@ -554,6 +557,10 @@ const actions = {
   closePanels: () => {
     if (game.panel === 'toll') {
       actions.refuseToll();
+      return;
+    }
+    if (game.panel === 'confirmBuy') {
+      actions.cancelBuy();
       return;
     }
     tour.stop();
@@ -982,7 +989,60 @@ const actions = {
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
     power.batteries = power.batteries.filter((charge) => charge < 1);
   },
+  confirmBuy: (stopAsking) => {
+    const pending = game.pendingBuy;
+    if (!pending) return;
+    game.pendingBuy = null;
+    if (stopAsking) game.askBeforeBigBuys = false;
+    openPanel(pending.returnTo);
+    pending.buy();
+  },
+  cancelBuy: () => {
+    const pending = game.pendingBuy;
+    game.pendingBuy = null;
+    openPanel(pending?.returnTo ?? null);
+  },
+  setAskBeforeBigBuys: (ask) => (game.askBeforeBigBuys = ask),
 };
+
+const PURCHASE_PRICES = {
+  buyFuel: () => FUEL_PACK.cost,
+  fillTank: () => fillTankCost(),
+  buyPanels: () => SOLAR_PANELS.cost,
+  buyBattery: () => BATTERY.cost,
+  buyUpgrade: (key) => nextUpgrade(key, game.upgrades[key])?.cost ?? 0,
+  buyTelescope: () => TELESCOPE.cost,
+  buyRescueModule: () => RESCUE.cost,
+  buyWarpDrive: () => WARP_DRIVE.cost,
+  buyRig: () => MINING_RIG.cost,
+  buySail: () => SOLAR_SAIL.cost,
+  buySatellite: PRICES.satellite,
+  buyBank: PRICES.bank,
+  buyAntenna: PRICES.antenna,
+  buyDrone: PRICES.drone,
+  buyHauler: PRICES.hauler,
+  buyBuilder: PRICES.builder,
+  buyWormhole: PRICES.wormhole,
+  alienBuyFuel: () => dockedMarket()?.fuelPackCost ?? 0,
+  alienFillTank: () => dockedMarket()?.fillTankCost ?? 0,
+  alienBuyBattery: () => dockedMarket()?.batteryCost ?? 0,
+  paySampleFee: () => ALIENS.sampling.fee,
+};
+
+const isBigBuy = (price) => price > game.galactokens * BIG_BUY_SHARE && price <= game.galactokens;
+
+for (const [name, priceOf] of Object.entries(PURCHASE_PRICES)) {
+  const buy = actions[name];
+  actions[name] = (...args) => {
+    const price = priceOf(...args);
+    if (!game.askBeforeBigBuys || !isBigBuy(price)) {
+      buy(...args);
+      return;
+    }
+    game.pendingBuy = { price, buy: () => buy(...args), returnTo: game.panel };
+    openPanel('confirmBuy');
+  };
+}
 
 const CHEATS = {
   galactokens: () => {
@@ -2050,6 +2110,8 @@ function status() {
     wormholeNote: wormholeNote(),
     stopChoices: game.panel === 'hauler' ? remoteStops().map((stop) => ({ value: stopValue(stop), label: describeStop(stop) })) : [],
     buildChoices: game.panel === 'hauler' && selectedHauler()?.builds ? buildChoices(selectedHauler()) : [],
+    pendingBuy: game.pendingBuy && { price: game.pendingBuy.price, balance: game.galactokens },
+    askBeforeBigBuys: game.askBeforeBigBuys,
   };
 }
 
@@ -2097,6 +2159,7 @@ function snapshot() {
     ownsWarpDrive: game.ownsWarpDrive,
     ownsRescueModule: game.ownsRescueModule,
     tourSeen: game.tourSeen,
+    askBeforeBigBuys: game.askBeforeBigBuys,
     timewarp: game.timewarp,
     zoom: camera.zoom,
     rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
@@ -2171,6 +2234,7 @@ function restore(saved) {
   game.samplePermits = new Map(saved.samplePermits ?? []);
   game.builtWormholes = saved.builtWormholes ?? [];
   game.wormholesInHold = saved.wormholesInHold ?? 0;
+  game.askBeforeBigBuys = saved.askBeforeBigBuys ?? true;
   syncMouths();
   if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);

@@ -188,6 +188,9 @@ export function createHud(root, actions, { cheats }) {
     paySampleFee: find('[data-pay-sample-fee]'),
     sampleFee: find('[data-sample-fee]'),
     sampleNote: find('[data-sample-note]'),
+    confirmBuyText: find('[data-confirm-buy-text]'),
+    stopAsking: find('[data-stop-asking]'),
+    askBigBuys: find('[data-ask-big-buys]'),
     panels: Object.fromEntries([...root.querySelectorAll('[data-panel]')].map((panel) => [panel.dataset.panel, panel])),
   };
 
@@ -272,6 +275,15 @@ export function createHud(root, actions, { cheats }) {
     const button = event.target.closest('[data-alien-sell]');
     if (button) actions.alienSell(button.dataset.alienSell);
   });
+  find('[data-confirm-buy]').addEventListener('click', () => {
+    actions.confirmBuy(parts.stopAsking.checked);
+    parts.stopAsking.checked = false;
+  });
+  find('[data-cancel-buy]').addEventListener('click', () => {
+    actions.cancelBuy();
+    parts.stopAsking.checked = false;
+  });
+  parts.askBigBuys.addEventListener('change', () => actions.setAskBeforeBigBuys(parts.askBigBuys.checked));
   parts.upgrades.addEventListener('click', (event) => {
     const button = event.target.closest('[data-upgrade]');
     if (button) actions.buyUpgrade(button.dataset.upgrade);
@@ -514,9 +526,17 @@ export function createHud(root, actions, { cheats }) {
     setText(parts.outpostBan, status.outpostBan);
     setHidden(parts.outpostBan, !status.outpostBan);
     showDestinations(status.warpDestinations);
+    updatePendingBuy(status.pendingBuy);
+    parts.askBigBuys.checked = status.askBeforeBigBuys;
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;
     parts.sellBatteries.disabled = !status.canSellBatteries;
+  }
+
+  function updatePendingBuy(pendingBuy) {
+    if (!pendingBuy) return;
+    const { price, balance } = pendingBuy;
+    setText(parts.confirmBuyText, `Spend ${price.toLocaleString()} of your ${balance.toLocaleString()} galactokens? That's ${Math.round((price / balance) * 100)}% of what you have.`);
   }
 
   function updateSatellite({ satellite, canTakeSatelliteCharge }) {

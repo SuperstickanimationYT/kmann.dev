@@ -317,6 +317,19 @@
       </div>
     </section>
 
+    <section class="pp-panel" data-panel="confirmBuy" hidden aria-label="Confirm purchase">
+      <header>
+        <h3>Big purchase</h3>
+        <button type="button" class="pp-close" data-close aria-label="Cancel">X</button>
+      </header>
+      <p data-confirm-buy-text></p>
+      <label class="pp-check"><input type="checkbox" data-stop-asking> Don't ask again in this world</label>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-confirm-buy>Buy</button>
+        <button type="button" class="pp-action" data-cancel-buy>Cancel</button>
+      </div>
+    </section>
+
     <section class="pp-panel" data-panel="warp" hidden aria-label="Warp drive">
       <header>
         <h3>Warp drive</h3>
@@ -547,6 +560,7 @@
       </dl>
       <p class="pp-hint">Touch down slower than 10 or the rocket explodes. The blue line shows where you will coast with the engine off.</p>
       <p class="pp-hint">Progress saves automatically in this browser. The &#x2630; button goes back to your worlds.</p>
+      <label class="pp-check"><input type="checkbox" data-ask-big-buys> Ask before spending over a third of my galactokens</label>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-restart" data-restart>Restart this world</button>
       </div>
