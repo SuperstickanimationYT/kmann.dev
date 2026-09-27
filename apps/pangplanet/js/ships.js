@@ -21,7 +21,7 @@ export function launchShip(species, star, transitRadius) {
     vy: along.y * speed,
     ticksLeft: (2 * halfChord) / speed,
     starName: star.name,
-    cargo: { galactokens: Math.round(between(SHIPS.cargo.galactokens) / 10) * 10, crystals: Math.floor(between(SHIPS.cargo.crystals)), stardust },
+    cargo: { galactokens: Math.round(between(SHIPS.cargo.galactokens) / 10) * 10, crystals: Math.floor(between(SHIPS.cargo.crystals)), stardust, batteries: Math.floor(between(SHIPS.cargo.batteries)) },
   };
 }
 

@@ -182,6 +182,9 @@ export function createHud(root, actions, { cheats }) {
     alienFillTank: find('[data-alien-fill-tank]'),
     alienBuyBattery: find('[data-alien-buy-battery]'),
     alienSells: find('[data-alien-sells]'),
+    freighterMarket: find('[data-freighter-market]'),
+    freighterBuyBattery: find('[data-freighter-buy-battery]'),
+    freighterStock: find('[data-freighter-stock]'),
     raidCost: find('[data-raid-cost]'),
     alienWantsIcon: find('[data-alien-wants-icon]'),
     askToSample: find('[data-ask-to-sample]'),
@@ -243,6 +246,7 @@ export function createHud(root, actions, { cheats }) {
     alienBuyFuel: actions.alienBuyFuel,
     alienFillTank: actions.alienFillTank,
     alienBuyBattery: actions.alienBuyBattery,
+    freighterBuyBattery: actions.freighterBuyBattery,
     askToSample: actions.askToSample,
     paySampleFee: actions.paySampleFee,
   };
@@ -600,7 +604,16 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.alienRefusal, !alien.refusesTrade);
     setText(parts.alienRefusal, `The ${alien.name} won't trade with you, except for ${alien.wantsLabel}.`);
     updateAlienMarket(alien.market);
+    updateFreighterMarket(alien.freighter);
     updateSampleTerms(alien.name, alien.sample);
+  }
+
+  function updateFreighterMarket(freighter) {
+    setHidden(parts.freighterMarket, !freighter);
+    if (!freighter) return;
+    setText(parts.freighterBuyBattery, `Charged battery for ${freighter.batteryCost}`);
+    parts.freighterBuyBattery.disabled = !freighter.canBuyBattery;
+    setText(parts.freighterStock, freighter.stock > 0 ? `${freighter.stock} charged ${freighter.stock === 1 ? 'battery' : 'batteries'} on board.` : 'Sold out of batteries.');
   }
 
   function sampleNote(name, { answer, fee, anger }) {

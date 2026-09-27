@@ -960,6 +960,14 @@ const actions = {
     game.galactokens -= market.batteryCost;
     game.power.batteries.push(0);
   },
+  freighterBuyBattery: () => {
+    const ship = dockedFreighter();
+    const market = ship && freighterMarket(ship);
+    if (!market?.canBuyBattery) return;
+    game.galactokens -= market.batteryCost;
+    ship.cargo.batteries -= 1;
+    game.power.batteries.push(1);
+  },
   alienSell: (key) => {
     const offer = dockedMarket()?.offers.find((candidate) => candidate.key === key);
     if (!offer?.count) return;
@@ -1063,6 +1071,7 @@ function alienInfo(homeworld) {
     sellPrice: priceFromAliens(relation, goods.marketPrice),
     canSell: goods.count() > 0,
     market: homeworld === game.ship ? null : homeworldMarket(homeworld, wants),
+    freighter: homeworld === game.ship ? freighterMarket(homeworld) : null,
     refusesTrade: homeworld !== game.ship && mood(relation) === 'hostile',
     title: alienTitle(homeworld),
     raidable: homeworld === game.ship,
@@ -1092,6 +1101,16 @@ function homeworldMarket(homeworld, wants) {
     offers,
   };
 }
+
+function freighterMarket(ship) {
+  const rates = ALIENS.market[mood(game.relations[ship.species])];
+  if (!rates) return null;
+  const batteryCost = Math.ceil(BATTERY.sellPrice * rates.buy);
+  const stock = ship.cargo.batteries;
+  return { batteryCost, stock, canBuyBattery: stock > 0 && freeBatterySlots(game.power) > 0 && game.galactokens >= batteryCost };
+}
+
+const dockedFreighter = () => (game.ship && dockedOf('aliens') === game.ship ? game.ship : null);
 
 const dockedMarket = () => {
   const homeworld = dockedOf('aliens');
