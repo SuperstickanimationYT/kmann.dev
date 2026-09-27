@@ -1,4 +1,4 @@
-import { MAX_BATTERY_SLOTS } from './world.js';
+import { GOLD, MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
 const TOAST_MS = 4500;
@@ -50,6 +50,8 @@ export function createHud(root, actions, { cheats }) {
   const find = (selector) => root.querySelector(selector);
   const parts = {
     tokens: find('[data-tokens]'),
+    balances: [...root.querySelectorAll('[data-balance]')],
+    charging: find('[data-charging]'),
     fuel: find('[data-fuel]'),
     fuelBar: find('[data-fuel-bar]'),
     warp: find('[data-warp]'),
@@ -443,6 +445,9 @@ export function createHud(root, actions, { cheats }) {
 
   function update(status) {
     setText(parts.tokens, String(status.galactokens));
+    parts.balances.forEach((balance) => setText(balance, status.galactokens.toLocaleString()));
+    setHidden(parts.charging, !status.charging);
+    parts.charging.classList.toggle('is-dim', status.sunlight < DIM_SATELLITE_LIGHT);
     setText(parts.fuel, String(Math.floor(status.fuel)));
     parts.fuelBar.style.width = `${status.fuelFraction * 100}%`;
     setText(parts.warp, `${status.timewarp}x`);
@@ -556,7 +561,8 @@ export function createHud(root, actions, { cheats }) {
     if (!rig) return;
     const minutesLeft = Math.ceil(rig.secondsLeft / 60);
     setText(parts.rigSite, rig.site);
-    setText(parts.rigStatus, `Power: ${rig.charge.toFixed(2)} batteries (${minutesLeft} min left). Gold waiting: ${Math.floor(rig.gold)}.`);
+    const gold = Math.floor(rig.gold);
+    setText(parts.rigStatus, `Power: ${rig.charge.toFixed(2)} batteries (${minutesLeft} min left). Gold waiting: ${gold}, worth ${(gold * GOLD.sellPrice).toLocaleString()} galactokens at the market.`);
     parts.loadRig.disabled = !canLoadRig;
     parts.collectGold.disabled = rig.gold < 1;
   }
