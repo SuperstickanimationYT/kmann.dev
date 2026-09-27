@@ -55,6 +55,7 @@ import {
   replayFlight,
 } from './drones.js';
 import { createGalaxyMap } from './galaxy-map.js';
+import { GOALS, currentGoal, newlyReachedGoals } from './goals.js';
 import { flyShip, launchShip, nextShipDelayTicks, relativeSpeed, shipGone } from './ships.js';
 import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
 import { blast, createParticles, drift, exhaust, flash } from './particles.js';
@@ -236,6 +237,8 @@ const game = {
   panel: null,
   tourSeen: false,
   askBeforeBigBuys: true,
+  goalsDone: new Set(),
+  showGoals: true,
   pendingBuy: null,
   forecast: null,
 };
@@ -1011,7 +1014,10 @@ const actions = {
     const { power } = game;
     game.galactokens += chargedBatteries(power) * BATTERY.sellPrice;
     power.batteries = power.batteries.filter((charge) => charge < 1);
+    markGoals(GOALS.filter((goal) => goal.key === 'sellBattery' && !game.goalsDone.has(goal.key)));
   },
+  toggleGoals: () => openPanel(game.panel === 'goals' ? null : 'goals'),
+  setShowGoals: (show) => (game.showGoals = show),
   confirmBuy: (stopAsking) => {
     const pending = game.pendingBuy;
     if (!pending) return;
@@ -1990,6 +1996,24 @@ function tick() {
   puffExhaust(simTicks || STEP_TICKS);
 }
 
+function markGoals(goals, { quiet = false } = {}) {
+  for (const goal of goals) {
+    game.goalsDone.add(goal.key);
+    if (!quiet && game.showGoals) hud.toast(`Goal done: ${goal.text}.`);
+  }
+}
+
+function goalsStatus() {
+  const current = currentGoal(game.goalsDone);
+  return {
+    show: game.showGoals,
+    current: current?.text ?? null,
+    done: game.goalsDone.size,
+    total: GOALS.length,
+    list: GOALS.map((goal) => ({ text: goal.text, done: game.goalsDone.has(goal.key), current: goal === current })),
+  };
+}
+
 function marketNote() {
   const { rocket, power, galactokens } = game;
   if (galactokens < Math.min(FUEL_PACK.cost, BATTERY.cost) && chargedBatteries(power) === 0) return 'Not enough galactokens.';
@@ -2199,6 +2223,7 @@ function status() {
     buildChoices: game.panel === 'hauler' && selectedHauler()?.builds ? buildChoices(selectedHauler()) : [],
     pendingBuy: game.pendingBuy && { price: game.pendingBuy.price, balance: game.galactokens },
     askBeforeBigBuys: game.askBeforeBigBuys,
+    goals: goalsStatus(),
   };
 }
 
@@ -2216,6 +2241,7 @@ function frame(time) {
   const { rocket } = game;
   game.forecast = rocket.landed || rocket.destroyed ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   catchUpToNow();
+  markGoals(newlyReachedGoals(game));
   renderer.draw(game, routePaths());
   if (game.panel === 'map') {
     galaxyMap.draw({
@@ -2247,6 +2273,8 @@ function snapshot() {
     ownsRescueModule: game.ownsRescueModule,
     tourSeen: game.tourSeen,
     askBeforeBigBuys: game.askBeforeBigBuys,
+    goalsDone: [...game.goalsDone],
+    showGoals: game.showGoals,
     timewarp: game.timewarp,
     zoom: camera.zoom,
     rocket: Object.fromEntries(SAVED_ROCKET_FIELDS.map((field) => [field, rocket[field]])),
@@ -2322,6 +2350,8 @@ function restore(saved) {
   game.builtWormholes = saved.builtWormholes ?? [];
   game.wormholesInHold = saved.wormholesInHold ?? 0;
   game.askBeforeBigBuys = saved.askBeforeBigBuys ?? true;
+  game.goalsDone = new Set(saved.goalsDone ?? []);
+  game.showGoals = saved.showGoals ?? true;
   syncMouths();
   if (game.gatewayOpen) openGateway();
   applyUpgrades(game.upgrades, rocket, power);
@@ -2355,6 +2385,7 @@ async function start() {
     restore(saved);
     catchUp((Date.now() - saved.savedAt) / 1000);
   }
+  markGoals(newlyReachedGoals(game), { quiet: true });
   startAutosave();
   const sprites = await loadSprites();
   renderer = createRenderer(canvas, sprites);

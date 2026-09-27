@@ -65,6 +65,11 @@ export function createHud(root, actions, { cheats }) {
     throttleKnob: find('[data-throttle-knob]'),
     throttleLabel: find('[data-throttle-label]'),
     volume: find('[data-volume]'),
+    goal: find('[data-goal]'),
+    goalCount: find('[data-goal-count]'),
+    goalText: find('[data-goal-text]'),
+    goalList: find('[data-goal-list]'),
+    showGoals: find('[data-show-goals]'),
     touchControls: [...root.querySelectorAll('[data-touch-controls]')],
     dockPrompt: find('[data-dock-prompt]'),
     dockSlow: find('[data-dock-slow]'),
@@ -302,6 +307,7 @@ export function createHud(root, actions, { cheats }) {
   let shownUpgrades = '';
   let shownAlienSells = '';
   let shownStops = '';
+  let shownGoals = '';
   const shownOptions = new Map();
 
   function showOptions(select, choices) {
@@ -430,6 +436,8 @@ export function createHud(root, actions, { cheats }) {
   cheatsToggle.hidden = !cheats;
   find('[data-open-worlds]').addEventListener('click', actions.openWorlds);
   find('[data-settings-toggle]').addEventListener('click', actions.toggleSettings);
+  parts.goal.addEventListener('click', actions.toggleGoals);
+  parts.showGoals.addEventListener('change', () => actions.setShowGoals(parts.showGoals.checked));
   parts.volume.addEventListener('input', () => actions.setVolume(Number(parts.volume.value) / 100));
   parts.touchControls.forEach((radio) => radio.addEventListener('change', () => actions.setTouchControls(radio.value)));
   cheatsToggle.addEventListener('click', actions.toggleCheats);
@@ -550,10 +558,30 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.outpostBan, !status.outpostBan);
     showDestinations(status.warpDestinations);
     updatePendingBuy(status.pendingBuy);
+    updateGoals(status.goals);
     parts.askBigBuys.checked = status.askBeforeBigBuys;
     parts.buyPanels.disabled = !status.canBuyPanels;
     parts.buyBattery.disabled = !status.canBuyBattery;
     parts.sellBatteries.disabled = !status.canSellBatteries;
+  }
+
+  function updateGoals({ show, current, done, total, list }) {
+    parts.showGoals.checked = show;
+    setHidden(parts.goal, !show || !current);
+    setText(parts.goalCount, `✓ ${done}/${total}`);
+    setText(parts.goalText, current ?? '');
+    const signature = list.map((goal) => `${goal.done}${goal.current}`).join('');
+    if (signature === shownGoals) return;
+    shownGoals = signature;
+    parts.goalList.replaceChildren(
+      ...list.map(({ text, done: finished, current: next }) => {
+        const item = document.createElement('li');
+        item.classList.toggle('is-done', finished);
+        item.classList.toggle('is-next', next);
+        item.textContent = text;
+        return item;
+      }),
+    );
   }
 
   function updatePendingBuy(pendingBuy) {

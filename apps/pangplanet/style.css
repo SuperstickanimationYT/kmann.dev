@@ -201,6 +201,57 @@
   color: var(--text-strong);
 }
 
+.pp-goal {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(420px, calc(100% - 240px));
+  padding: 5px 12px;
+  border: 1px solid #7ddc3c;
+  border-radius: 999px;
+  background: rgba(8, 30, 12, 0.85);
+  color: #d6ffc0;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.pp-goal-count {
+  flex: none;
+  font-weight: 700;
+  color: #7ddc3c;
+}
+
+.pp-goal-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pp-goals {
+  margin: 0 0 12px;
+  padding-left: 24px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.pp-goals li.is-done {
+  color: #2d5a1f;
+  text-decoration: line-through;
+}
+
+.pp-goals li.is-done::marker {
+  content: '✓  ';
+}
+
+.pp-goals li.is-next {
+  font-weight: 700;
+}
+
 .pp-throttle {
   left: auto;
   right: 12px;
@@ -895,11 +946,20 @@ fieldset.pp-setting {
   .pp-warp-track {
     height: 100px;
   }
+
+  .pp-goal {
+    top: 88px;
+    max-width: calc(100% - 24px);
+  }
 }
 
 @media (pointer: coarse) and (max-width: 640px) {
   .pp-stage .pp-telemetry {
     top: 108px;
+  }
+
+  .pp-stage .pp-goal {
+    top: 156px;
   }
 }
 
