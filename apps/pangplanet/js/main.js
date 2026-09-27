@@ -20,12 +20,17 @@ import {
   chargeSatellite,
   collectGold,
   createBank,
+  createObservatory,
   createRig,
   createSatellite,
   deployBank,
+  deployObservatory,
   deployRig,
   deploySatellite,
   loadRig,
+  observatorySecondsLeft,
+  runObservatory,
+  runsOnStarlight,
   rigSecondsLeft,
   runRig,
   takeSatelliteCharge,
@@ -78,7 +83,7 @@ import {
 } from './science.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
-import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, stardustTip, starKey } from './starchart.js';
+import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture } from './textures.js';
 import { bindHold, bindHoldButtons, bindJoystick, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
@@ -132,6 +137,7 @@ import {
   HOME_BODY,
   MARKET,
   MINING_RIG,
+  OBSERVATORY,
   OFFLINE_CATCH_UP_SECONDS,
   RESCUE,
   SATELLITE,
@@ -206,6 +212,7 @@ const game = {
   satellites: [],
   rig: null,
   banks: [],
+  observatories: [],
   antennas: [],
   antennasInHold: 0,
   drones: [],
@@ -282,6 +289,8 @@ function targetInReach() {
   if (satellite) return { kind: 'satellite', item: satellite };
   const bank = nearestWithin(deployed(game.banks), rocket, BATTERY_BANK.dockingRange);
   if (bank) return { kind: 'bank', item: bank };
+  const observatory = nearestWithin(deployed(game.observatories), rocket, OBSERVATORY.dockingRange);
+  if (observatory) return { kind: 'observatory', item: observatory };
   if (rocket.landed && withinReach(rocket, game.rig, MINING_RIG.reach)) return { kind: 'rig' };
   if (rocket.landed && rocket.soi?.species) return { kind: 'aliens', item: rocket.soi };
   const drone = nearDrone();
@@ -332,6 +341,7 @@ const canDeployRig = () => game.rig && !game.rig.deployed && onGround() && outpo
 const canDeployAntenna = () => game.antennasInHold > 0 && onGround() && outpostsWelcome();
 const canDeployDrone = () => Boolean(droneInHold()) && onGround() && inSignal(game.antennas, game.rocket.x, game.rocket.y) && outpostsWelcome();
 const canDeployBank = () => inHold(game.banks).length > 0 && inOpenSpace() && outpostsWelcome();
+const canDeployObservatory = () => inHold(game.observatories).length > 0 && inOpenSpace() && outpostsWelcome();
 const hasMouthToPlace = () => game.wormholesInHold > 0 || Boolean(pendingWormhole(game.builtWormholes));
 
 function mouthPlacement() {
@@ -345,6 +355,7 @@ function mouthPlacement() {
 const PRICES = {
   satellite: () => risingPrice(SATELLITE.cost, game.satellites.length),
   bank: () => risingPrice(BATTERY_BANK.cost, game.banks.length),
+  observatory: () => risingPrice(OBSERVATORY.cost, game.observatories.length),
   antenna: () => risingPrice(ANTENNA.cost, game.antennas.length + game.antennasInHold),
   drone: () => risingPrice(DRONE.cost, game.drones.length),
   hauler: () => risingPrice(HAULER.cost, game.haulers.filter((hauler) => !hauler.builds).length),
@@ -631,7 +642,8 @@ const actions = {
     const { rocket } = game;
     if (!game.ownsTelescope || rocket.destroyed) return;
     const found = scanFrom(game.starChart, rocket.x, rocket.y, telescopeRange());
-    hud.toast(found ? `Telescope found ${found} new star${found === 1 ? '' : 's'}.` : 'No new stars in telescope range.');
+    const learnMore = game.observatories.length ? '' : ' An observatory can learn what orbits them.';
+    hud.toast(found ? `Telescope found ${found} new star${found === 1 ? '' : 's'}.${learnMore}` : 'No new stars in telescope range.');
   },
   toggleMap: () => openPanel(game.panel === 'map' ? null : 'map'),
   mapView: (mode) => {
@@ -779,6 +791,26 @@ const actions = {
     const bank = dockedOf('bank');
     if (!bank) return;
     bank.deployed = false;
+    openPanel(null);
+  },
+  buyObservatory: () => {
+    if (pay('observatory')) game.observatories.push(createObservatory());
+  },
+  deployObservatory: () => {
+    if (!canDeployObservatory()) return;
+    deployObservatory(inHold(game.observatories)[0], game.rocket);
+    openPanel(null);
+  },
+  chargeObservatory: () => {
+    const observatory = dockedOf('observatory');
+    if (!observatory) return;
+    transferCharge(game.power.batteries, observatory.batteries);
+    noteRecording('chargeObservatory');
+  },
+  pickUpObservatory: () => {
+    const observatory = dockedOf('observatory');
+    if (!observatory) return;
+    observatory.deployed = false;
     openPanel(null);
   },
   buyAntenna: () => {
@@ -1066,6 +1098,7 @@ const PURCHASE_PRICES = {
   buySail: () => SOLAR_SAIL.cost,
   buySatellite: PRICES.satellite,
   buyBank: PRICES.bank,
+  buyObservatory: PRICES.observatory,
   buyAntenna: PRICES.antenna,
   buyDrone: PRICES.drone,
   buyHauler: PRICES.hauler,
@@ -1116,7 +1149,7 @@ const CHEATS = {
     const { ship, rocket } = game;
     if (ship) Object.assign(ship, { x: rocket.x + CHEAT_SHIP_GAP, y: rocket.y, vx: rocket.vx, vy: rocket.vy });
   },
-  revealNearby: () => scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE),
+  revealNearby: () => scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE, FULLY_OBSERVED),
   goHome: () => {
     const { rocket, drill } = game;
     stopRecording('Teleported. Recording stopped.');
@@ -1253,6 +1286,35 @@ const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map(dro
 function advanceOutposts(seconds) {
   for (const satellite of game.satellites) chargeSatellite(satellite, seconds);
   runRig(game.rig, seconds);
+  watchTheSky(seconds);
+}
+
+function watchTheSky(seconds) {
+  const range = telescopeRange();
+  const news = [];
+  for (const observatory of game.observatories) {
+    const watching = runObservatory(observatory, seconds);
+    if (!watching) continue;
+    for (const entry of game.starChart.values()) {
+      const distance = Math.hypot(entry.x - observatory.x, entry.y - observatory.y);
+      if (distance > range) continue;
+      const clarity = 1 - (1 - OBSERVATORY.edgeClarity) * (distance / range);
+      for (const detail of observe(entry, watching * clarity)) news.push(observationNews(entry, detail));
+    }
+  }
+  reportObservations(news.filter(Boolean));
+}
+
+function observationNews(entry, detail) {
+  if (detail === 'planets') return `counted the worlds around ${entry.name}: ${worldsNote(entry, false)}`;
+  if (detail === 'crystals' && entry.crystals) return `spotted ${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'} at ${entry.name}`;
+  if (detail === 'biosignature' && entry.biosignature) return `picked up a possible biosignature at ${entry.name}`;
+  return null;
+}
+
+function reportObservations(news) {
+  if (news.length > 2) hud.toast(`Your observatories learned more about ${news.length} stars. Check the galaxy map.`);
+  else for (const item of news) hud.toast(`Observatory ${item}.`);
 }
 
 function advanceUnattended(seconds) {
@@ -1521,7 +1583,7 @@ function mapInfo() {
     entry.name,
     worldsNote(entry, moonsSeen(entry)),
     bountyNote(entry),
-    entry.visited ? 'visited' : 'seen through telescope',
+    entry.visited ? 'visited' : observationNote(entry),
     `${abbreviate(distance)} away`,
     entry.crystals ? `${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'}` : null,
     entry.stardust ? `${entry.stardust} stardust world${entry.stardust === 1 ? '' : 's'}` : null,
@@ -1534,7 +1596,14 @@ function mapInfo() {
 
 const moonsSeen = (entry) => entry.visited || game.studies.has(`flyby:${starKey(entry)}`);
 
+function observationNote(entry) {
+  if (entry.watched >= FULLY_OBSERVED) return 'fully observed';
+  if (entry.watched > 0) return `observed ${Math.floor((entry.watched / FULLY_OBSERVED) * 100)}%`;
+  return 'seen through telescope, not yet observed';
+}
+
 function worldsNote(entry, showMoons) {
+  if (!showMoons && !learned(entry, 'planets')) return 'planets unknown';
   const bodies = systemAt(entry.x, entry.y)?.planets ?? [];
   const moons = bodies.filter((body) => body.moon).length;
   const planets = bodies.length - moons;
@@ -1722,7 +1791,13 @@ function advanceSailing(seconds) {
 const satelliteBy = (flight) => nearestWithin(deployed(game.satellites), flight, SATELLITE.dockingRange);
 const bankBy = (flight) => nearestWithin(deployed(game.banks), flight, BATTERY_BANK.dockingRange);
 
+const observatoryBy = (flight) => nearestWithin(deployed(game.observatories), flight, OBSERVATORY.dockingRange);
+
 const DRONE_ACTIONS = {
+  chargeObservatory: (flight, drone) => {
+    const observatory = observatoryBy(flight);
+    if (observatory) transferCharge(drone.batteries, observatory.batteries);
+  },
   dock: dockFlight,
   takeSatellite: (flight, drone) => {
     const satellite = satelliteBy(flight);
@@ -2089,11 +2164,27 @@ function warpNote(destinations, unchartedInRange) {
 }
 
 const UPGRADE_UNLOCKED_BY = {
-  telescope: () => game.ownsTelescope,
+  telescope: () => game.ownsTelescope || game.observatories.length > 0,
   warpRange: () => game.ownsWarpDrive,
 };
 
 const upgradeUnlocked = (key) => UPGRADE_UNLOCKED_BY[key]?.() ?? true;
+
+function observatoryInfo() {
+  const observatory = dockedOf('observatory');
+  if (!observatory) return null;
+  const range = telescopeRange();
+  const inRange = [...game.starChart.values()].filter((entry) => Math.hypot(entry.x - observatory.x, entry.y - observatory.y) <= range);
+  const learning = inRange.filter((entry) => !entry.visited && entry.watched < FULLY_OBSERVED).length;
+  const stars = `${inRange.length} star${inRange.length === 1 ? '' : 's'} on your map in range, ${learning} still being studied.`;
+  const stored = storedCharge(observatory.batteries);
+  const power = runsOnStarlight(observatory)
+    ? `Running on starlight (${Math.round(observatory.light * 100)}%).`
+    : stored > 0
+      ? `Too dark for starlight: running on ${stored.toFixed(2)} of ${observatory.batteries.length} batteries, ${formatDuration(observatorySecondsLeft(observatory))} left.`
+      : 'Too dark for starlight and out of charge: it has stopped. Deposit charge to restart it.';
+  return { status: `${power} ${stars}`, canCharge: !runsOnStarlight(observatory) && storedCharge(game.power.batteries) > 0 && roomToCharge(observatory.batteries) > 0 };
+}
 
 function droneStatus() {
   const drone = dockedOf('drone');
@@ -2162,6 +2253,7 @@ function dockAction() {
       market: 'enter the market',
       satellite: 'dock with the satellite',
       bank: 'use the battery bank',
+      observatory: 'use the observatory',
       rig: 'use the mining rig',
       drone: 'use the drone',
     }[target?.kind] ?? ''
@@ -2252,6 +2344,10 @@ function status() {
     canCenterMap: Boolean(game.mapSelection) && !galaxyMap.showingSystem(),
     bank: dockedOf('bank'),
     canBuyBank: game.galactokens >= PRICES.bank(),
+    canBuyObservatory: game.galactokens >= PRICES.observatory(),
+    observatoriesInHold: inHold(game.observatories).length,
+    canDeployObservatory: Boolean(canDeployObservatory()),
+    observatory: observatoryInfo(),
     canDeployBank: Boolean(canDeployBank()),
     canDepositInBank: Boolean(dockedOf('bank')) && storedCharge(power.batteries) > 0 && roomToCharge(dockedOf('bank').batteries) > 0,
     canTakeFromBank: Boolean(dockedOf('bank')) && roomToCharge(power.batteries) > 0 && storedCharge(dockedOf('bank').batteries) > 0,
@@ -2310,6 +2406,8 @@ function frame(time) {
       rocket,
       warpRange: game.ownsWarpDrive ? warpRange() : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
+      observatories: deployed(game.observatories),
+      observatoryRange: telescopeRange(),
       bountyWaiting: (planet) => bountyWaiting(game.claimedBounties, planet),
       findsLeft,
       routePath: routePaths(),
@@ -2345,6 +2443,7 @@ function snapshot() {
     satellites: game.satellites,
     rig: game.rig,
     banks: game.banks,
+    observatories: game.observatories,
     antennas: game.antennas,
     antennasInHold: game.antennasInHold,
     drones: game.drones.map((drone) => ({ ...drone, flight: drone.flight && { ...drone.flight, soi: null } })),
@@ -2382,6 +2481,7 @@ function restore(saved) {
   Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, ownsRescueModule: saved.ownsRescueModule ?? false, tourSeen: saved.tourSeen ?? false, panel: null });
   const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
   Object.assign(game, { satellites: listOf('satellites', 'satellite'), rig: saved.rig ?? null, gold: saved.gold ?? 0 });
+  game.observatories = saved.observatories ?? [];
   Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone').map((drone) => ({ waitSeconds: 0, resting: 0, ...drone })), haulers: saved.haulers ?? [] });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
@@ -2402,6 +2502,7 @@ function restore(saved) {
     entry.biosignature ??= Boolean(system?.star.biosignature);
     entry.aliens ??= entry.visited ? homeworldSpecies(planets) : null;
     entry.wormhole ??= entry.visited && system.wormholes.length > 0;
+    entry.watched ??= FULLY_OBSERVED;
   }
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };

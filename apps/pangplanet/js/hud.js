@@ -145,6 +145,11 @@ export function createHud(root, actions, { cheats }) {
     buyBank: find('[data-buy-bank]'),
     deployBank: find('[data-deploy-bank]'),
     bankStored: find('[data-bank-stored]'),
+    buyObservatory: find('[data-buy-observatory]'),
+    deployObservatory: find('[data-deploy-observatory]'),
+    observatoriesInHold: find('[data-observatories-in-hold]'),
+    observatoryStatus: find('[data-observatory-status]'),
+    chargeObservatory: find('[data-charge-observatory]'),
     depositInBank: find('[data-deposit-in-bank]'),
     takeFromBank: find('[data-take-from-bank]'),
     buyAntenna: find('[data-buy-antenna]'),
@@ -244,6 +249,9 @@ export function createHud(root, actions, { cheats }) {
     buySail: actions.buySail,
     launchSail: actions.launchSail,
     buyBank: actions.buyBank,
+    buyObservatory: actions.buyObservatory,
+    deployObservatory: actions.deployObservatory,
+    chargeObservatory: actions.chargeObservatory,
     deployBank: actions.deployBank,
     depositInBank: actions.depositInBank,
     takeFromBank: actions.takeFromBank,
@@ -277,6 +285,7 @@ export function createHud(root, actions, { cheats }) {
   find('[data-pick-up-satellite]').addEventListener('click', actions.pickUpSatellite);
   find('[data-pick-up-rig]').addEventListener('click', actions.pickUpRig);
   find('[data-pick-up-bank]').addEventListener('click', actions.pickUpBank);
+  find('[data-pick-up-observatory]').addEventListener('click', actions.pickUpObservatory);
   parts.pickUpAntenna.addEventListener('click', actions.pickUpAntenna);
   parts.openDrone.addEventListener('click', actions.openDrone);
   find('[data-cancel-recording]').addEventListener('click', actions.cancelRecording);
@@ -566,6 +575,7 @@ export function createHud(root, actions, { cheats }) {
     updateSatellite(status);
     updateRig(status);
     updateBank(status);
+    updateObservatory(status);
     updateDrones(status);
     updateHaulers(status);
     updateWormholes(status);
@@ -636,6 +646,15 @@ export function createHud(root, actions, { cheats }) {
     setText(parts.mouthNote, blocker ?? '');
     setHidden(parts.wormholeNote, !wormholeNote);
     setText(parts.wormholeNote, wormholeNote);
+  }
+
+  function updateObservatory({ observatory, canBuyObservatory, canDeployObservatory, observatoriesInHold }) {
+    parts.buyObservatory.disabled = !canBuyObservatory;
+    setHidden(parts.deployObservatory, !canDeployObservatory);
+    setText(parts.observatoriesInHold, String(observatoriesInHold));
+    if (!observatory) return;
+    setText(parts.observatoryStatus, observatory.status);
+    parts.chargeObservatory.disabled = !observatory.canCharge;
   }
 
   function updateBank({ bank, canBuyBank, canDeployBank, canDepositInBank, canTakeFromBank }) {

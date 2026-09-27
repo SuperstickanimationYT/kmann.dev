@@ -167,6 +167,7 @@
         <button type="button" class="pp-action pp-outpost" data-deploy-rig>
           <img src="img/gold.svg" alt=""> Set up mining rig here
         </button>
+        <button type="button" class="pp-action pp-outpost" data-deploy-observatory>Park observatory here (<span data-observatories-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-deploy-bank>Park battery bank here (<span data-banks-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-deploy-antenna>Set up antenna here (<span data-antennas-in-hold></span> in hold)</button>
         <button type="button" class="pp-action" data-pick-up-antenna>Pick up antenna</button>
@@ -219,6 +220,10 @@
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-bank>
           <img src="img/battery.svg" alt=""> Battery bank for <span data-price="bank"></span>
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-observatory>
+          Observatory for <span data-price="observatory"></span>
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-antenna>
@@ -426,6 +431,21 @@
       </div>
     </section>
 
+    <section class="pp-panel" data-panel="observatory" hidden aria-label="Observatory">
+      <header>
+        <h3>Observatory</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Watches every star on your galaxy map within telescope range, even while you're away. The longer it looks, the more it learns: first the planet count, then crystal worlds, then possible biosignatures. Nearer stars come into focus faster, and telescope upgrades widen its range. Near a star it runs on starlight; anywhere darker it burns 1 battery of charge every 2 hours.</p>
+      <p data-observatory-status></p>
+      <div class="pp-actions">
+        <button type="button" class="pp-action pp-buy" data-charge-observatory>
+          <img src="img/battery.svg" alt=""> Deposit charge
+        </button>
+        <button type="button" class="pp-action" data-pick-up-observatory>Pick up observatory</button>
+      </div>
+    </section>
+
     <section class="pp-panel" data-panel="hauler" hidden aria-label="Haulers">
       <header>
         <h3 data-hauler-title>Haulers</h3>
@@ -494,7 +514,7 @@
         <button type="button" class="pp-action" data-map-zoom="out" aria-label="Zoom out">&minus;</button>
       </div>
       <p data-map-info></p>
-      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a star, then Center on star to move the map there, or Close up (visited stars) to see its planets. Moon counts show once you or a solar sail have been close. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found by visiting or from friendly aliens. Dashed green: possible biosignature, real 3 times in 4. Solid colour: alien homeworld. Dashed purple ring: a wormhole in that system; purple dotted lines join the ends of wormholes you've been through. Orange dashes: your drone's route.</p>
+      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope; tap one to see how much your observatories have learned. Teal circles: your observatories' range. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a star, then Center on star to move the map there, or Close up (visited stars) to see its planets. Moon counts show once you or a solar sail have been close. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found by visiting or from friendly aliens. Dashed green: possible biosignature, real 3 times in 4. Solid colour: alien homeworld. Dashed purple ring: a wormhole in that system; purple dotted lines join the ends of wormholes you've been through. Orange dashes: your drone's route.</p>
     </section>
 
     <section class="pp-panel" data-panel="settings" hidden aria-label="Settings">
@@ -560,10 +580,11 @@
       <ul>
         <li>The Moon pulls about a sixth as hard as Earth, so it's the easiest place to practise landing.</li>
         <li>Gas giants pump double fuel.</li>
-        <li>Crystals: some rocky worlds around other stars have them, and the fuel drill brings them up. A telescope shows which systems.</li>
+        <li>Telescopes find stars; observatories learn about them. Scanning with the rocket's telescope (<kbd>T</kbd>) puts stars on your map, but only their names. Park an observatory in open space and it studies every star in range over time: planet counts after a couple of minutes, crystal worlds after about 15, possible biosignatures after about 45, slower for distant stars.</li>
+        <li>Crystals: some rocky worlds around other stars have them, and the fuel drill brings them up. An observatory shows which systems.</li>
         <li>Stardust: much rarer and invisible to telescopes. Visit a system or ask friendly aliens to find it. It pays for the top upgrades.</li>
         <li>Each crystal or stardust world holds a limited amount: 10 to 25 crystals or 3 to 8 stardust, up to twice that near the galactic core. Once it's mined out, the drill brings up fuel only.</li>
-        <li>Aliens live on some worlds around other stars. Telescopes spot possible biosignatures; 3 in 4 are real homeworlds, and no homeworld goes unflagged. Land on one to meet them. Friendly aliens tell you where stardust is, for science. Homeworlds of friendly or wary species run a small market: fuel, empty batteries, and buying your goods, at worse prices than the Solar market. Each species wants gold, crystals or charged batteries; selling to them wins them over. Mining crystals or stardust in their home system angers them. Hostile aliens charge a toll to enter their system, ban new outposts there, and raid haulers that stop there.</li>
+        <li>Aliens live on some worlds around other stars. Observatories spot possible biosignatures; 3 in 4 are real homeworlds, and no homeworld goes unflagged. Land on one to meet them. Friendly aliens tell you where stardust is, for science. Homeworlds of friendly or wary species run a small market: fuel, empty batteries, and buying your goods, at worse prices than the Solar market. Each species wants gold, crystals or charged batteries; selling to them wins them over. Mining crystals or stardust in their home system angers them. Hostile aliens charge a toll to enter their system, ban new outposts there, and raid haulers that stop there.</li>
         <li>Alien freighters sometimes pass through the system you're in, including the Solar System. Fly within 1.5K of one and match its speed to under 10 to meet it: trade, ask for tips, or raid it for its cargo. Friendly and wary freighters sell a few charged batteries, at 2× or 3× what the Solar market pays for one, so a crash far from home needn't strand you. Raiding angers that species and pleases its rival.</li>
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
         <li>Wormholes: some star systems beyond the Sun's neighbourhood have one, orbiting past the outermost planet. Each links to another system 10 to 30 sectors away. You find out where by going through; the galaxy map remembers the link.</li>

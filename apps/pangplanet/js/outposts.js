@@ -1,5 +1,5 @@
 import { chargeRate, drainBatteries, fillBatteries, storedCharge, sunlight, transferCharge } from './solar.js';
-import { BATTERY_BANK, MINING_RIG, SATELLITE } from './world.js';
+import { BATTERY_BANK, MINING_RIG, OBSERVATORY, SATELLITE } from './world.js';
 
 export function createSatellite() {
   return { deployed: false, x: 0, y: 0, light: 0, batteries: Array(SATELLITE.batteries).fill(0) };
@@ -23,6 +23,26 @@ export function createBank() {
 
 export function deployBank(bank, rocket) {
   Object.assign(bank, { deployed: true, x: rocket.x, y: rocket.y });
+}
+
+export function createObservatory() {
+  return { deployed: false, x: 0, y: 0, light: 0, batteries: Array(OBSERVATORY.batteries).fill(0) };
+}
+
+export function deployObservatory(observatory, rocket) {
+  Object.assign(observatory, { deployed: true, x: rocket.x, y: rocket.y, light: sunlight(rocket.x, rocket.y) });
+}
+
+export const runsOnStarlight = (observatory) => observatory.light >= OBSERVATORY.minLight;
+
+export const observatorySecondsLeft = (observatory) => storedCharge(observatory.batteries) * OBSERVATORY.secondsPerBattery;
+
+export function runObservatory(observatory, seconds) {
+  if (!observatory.deployed) return 0;
+  if (runsOnStarlight(observatory)) return seconds;
+  const powered = Math.min(seconds, observatorySecondsLeft(observatory));
+  drainBatteries(observatory.batteries, powered / OBSERVATORY.secondsPerBattery);
+  return powered;
 }
 
 export function createRig() {
