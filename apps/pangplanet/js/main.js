@@ -2004,6 +2004,7 @@ function status() {
     batteries: power.batteries,
     ownsPanels: power.ownsPanels,
     panelsDeployed: power.panelsDeployed,
+    charging: power.panelsDeployed && roomToCharge(power.batteries) > 0 && sunlight(rocket.x, rocket.y) > 0,
     canBuyPanels: !power.ownsPanels && game.galactokens >= SOLAR_PANELS.cost,
     canBuyBattery: freeBatterySlots(power) > 0 && game.galactokens >= BATTERY.cost,
     canSellBatteries: chargedBatteries(power) > 0,
