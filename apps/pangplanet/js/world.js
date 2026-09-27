@@ -136,6 +136,57 @@ export function coreSystem(center) {
   return { bodies: [core, relic, coreGate], coreGate, solarGate };
 }
 
+export const FAR_SHORE = {
+  blackHole: { radius: 40000, soi: 110000, mass: 5e11, science: 600, rings: { inner: 1.5, outer: 3, colour: 'rgba(150, 190, 255, 0.55)' } },
+  gateOrbit: 900000,
+  saturnGap: 90000,
+  calmReach: 5e6,
+};
+
+const SATURN_WORMHOLE = { name: 'Saturn Wormhole', ...WORMHOLE_MOUTH };
+
+export function farShoreSystem(center) {
+  const hole = { name: 'Leviathan', ...center, ...FAR_SHORE.blackHole, kind: 'blackhole', look: 'blackhole', anchorsSystem: true, mapFill: '#8fb8ff' };
+  const worlds = [
+    {
+      name: 'Tidewater',
+      distance: 250000,
+      bearingDegrees: 70,
+      radius: 7000,
+      gravityInEarths: 1.3,
+      bounty: 1500,
+      seed: 9911,
+      surface: { baseColor: '#1b4fb0', variation: 20, darkness: 25, clouds: 45, haze: 20, hazeColor: '#8fb8ff' },
+    },
+    {
+      name: 'Rime',
+      distance: 450000,
+      bearingDegrees: 190,
+      radius: 6000,
+      gravityInEarths: 0.8,
+      bounty: 1200,
+      seed: 9922,
+      surface: { baseColor: '#dff3ff', variation: 10, darkness: 20, polarCap: 60, craters: 3, clouds: 15, haze: 10, hazeColor: '#cfe8ff' },
+    },
+    {
+      name: 'Haven',
+      distance: 650000,
+      bearingDegrees: -50,
+      radius: 9000,
+      gravityInEarths: 0.9,
+      bounty: 1500,
+      seed: 9933,
+      surface: { baseColor: '#2a6fb8', land: true, landColor: '#8a9a4a', landCover: 40, polarCap: 25, clouds: 30, haze: 18, hazeColor: '#a8c8ff' },
+    },
+  ].map(({ distance, bearingDegrees, ...body }) => surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) }));
+  const saturn = SOLAR_PLANETS.find((planet) => planet.name === 'Saturn');
+  const [farGate, saturnGate] = linkWormholes(
+    { ...SATURN_WORMHOLE, ...orbiting(center, FAR_SHORE.gateOrbit, 300), star: { name: hole.name, ...center } },
+    { ...SATURN_WORMHOLE, ...orbiting(saturn, FAR_SHORE.saturnGap, -60), star: { name: SUN.name, x: SUN.x, y: SUN.y } },
+  );
+  return { bodies: [hole, ...worlds, farGate], saturnGate };
+}
+
 export const DEPOSITS = { crystals: [10, 25], stardust: [3, 8] };
 
 export const MARKET = { x: 1000, y: -50000, scale: 3, dockingRange: 1000 };
