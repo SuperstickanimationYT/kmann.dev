@@ -39,15 +39,14 @@ const RESPAWN_BELOW_Y = -8;
 const VIEWER_DISTANCE = 4.2;
 const VIEWER_BASE_YAW = 35 * Math.PI / 180;
 const VIEWER_PITCH = 22 * Math.PI / 180;
-const LINE_VIEWER_DISTANCE = 3;
-const LINE_VIEWER_BASE_ANGLE = 25 * Math.PI / 180;
+const OUTSIDE_CAMERA_POSITION = [-13, 13, -11];
+const OUTSIDE_CAMERA_TARGET = [0, 0.5, 2.5];
+const OUTSIDE_CAMERA_FOV = 40 * Math.PI / 180;
+const VIEW_CONE_LENGTH = 4;
 const WOBBLE_AMPLITUDE = 7 * Math.PI / 180;
 const WOBBLE_PERIOD_S = 4;
 const LINE_SUBDIVISIONS = 4;
 const AUTO_CONTRAST_SMOOTHING = 0.15;
-const STRIP_MIN_HEIGHT = 4;
-const STRIP_MAX_HEIGHT = 44;
-const STRIP_GAP_ABOVE_TOGGLES = 40;
 const PANEL_MARGIN = 16;
 const VOID_HUE = 0;
 
@@ -72,12 +71,12 @@ const START_FEET_4D = [0, 0, -3.5, 0];
 
 const TOGGLES = {
   mode3D: { key: 'm', label: 'M 3D mode', on: false, onChange: () => enterDimension(TOGGLES.mode3D.on ? 3 : 4) },
-  panel: { key: 'p', label: 'P 2-projection panel', on: true },
-  wobble: { key: '1', label: '1 Wobble', on: false },
+  outside: { key: 'p', label: 'P Outside view', on: true, dimensions: [3] },
+  wobble: { key: '1', label: '1 Wobble', on: false, dimensions: [4] },
   color: { key: '2', label: '2 Colors', on: true },
-  brightness: { key: '3', label: '3 Depth brightness', on: true },
-  autoContrast: { key: '4', label: '4 Auto-contrast', on: true },
-  width: { key: '5', label: '5 Depth width', on: true },
+  brightness: { key: '3', label: '3 Depth brightness', on: true, dimensions: [4] },
+  autoContrast: { key: '4', label: '4 Auto-contrast', on: true, dimensions: [4] },
+  width: { key: '5', label: '5 Depth width', on: true, dimensions: [4] },
   frame: { key: '6', label: '6 Retina box', on: true },
   labels: { key: '7', label: '7 Labels', on: true },
   floor: { key: '8', label: '8 Floor lines', on: true },
@@ -346,11 +345,7 @@ resize();
 const wobble = timeS => (TOGGLES.wobble.on ? WOBBLE_AMPLITUDE * Math.sin(2 * Math.PI * timeS / WOBBLE_PERIOD_S) : 0);
 
 const depthRange = { near: 0, far: 1 };
-function retinaDepthRange() {
-  return world.n === 4
-    ? { near: VIEWER_DISTANCE - Math.sqrt(3), far: VIEWER_DISTANCE + Math.sqrt(3) }
-    : { near: LINE_VIEWER_DISTANCE - Math.SQRT2, far: LINE_VIEWER_DISTANCE + Math.SQRT2 };
-}
+const retinaDepthRange = () => ({ near: VIEWER_DISTANCE - Math.sqrt(3), far: VIEWER_DISTANCE + Math.sqrt(3) });
 function updateDepthRange(pieces) {
   let target = retinaDepthRange();
   if (TOGGLES.autoContrast.on && pieces.length) {
@@ -366,9 +361,8 @@ function updateDepthRange(pieces) {
 }
 
 const farness = depth => Math.min(1, Math.max(0, (depth - depthRange.near) / (depthRange.far - depthRange.near)));
-const lightnessAt = depth => (TOGGLES.brightness.on ? 92 - 74 * farness(depth) : 68);
+const lightnessAt = depth => (depth !== null && TOGGLES.brightness.on ? 92 - 74 * farness(depth) : 68);
 const widthAt = depth => (TOGGLES.width.on ? 0.7 + 3.3 * (1 - farness(depth)) : 1.6);
-const stripHeightAt = depth => (TOGGLES.width.on ? STRIP_MIN_HEIGHT + (STRIP_MAX_HEIGHT - STRIP_MIN_HEIGHT) * (1 - farness(depth)) : STRIP_MAX_HEIGHT / 2);
 
 function colorFor(style, depth) {
   const lightness = lightnessAt(depth);
@@ -437,106 +431,186 @@ function draw4D(camera, timeS) {
   return pieces.length / LINE_SUBDIVISIONS;
 }
 
-function lineViewerAt(angle) {
-  const toward = [Math.sin(angle), Math.cos(angle)];
-  const across = [Math.cos(angle), -Math.sin(angle)];
-  const position = scale(toward, -LINE_VIEWER_DISTANCE);
-  const view = r => {
-    const depth = LINE_VIEWER_DISTANCE + dot(r, toward);
-    return { u: dot(r, across) * LINE_VIEWER_DISTANCE / depth, depth };
+const PICTURE_CORNERS = hypercubeVertices([0, 0], [1, 1]);
+const PICTURE_EDGES = hypercubeEdges(2);
+const normalize = v => scale(v, 1 / Math.hypot(...v));
+const LIGHT_DIRECTION = normalize([0.45, 1, -0.3]);
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+function outsideCamera(panel) {
+  const forward = normalize(sub(OUTSIDE_CAMERA_TARGET, OUTSIDE_CAMERA_POSITION));
+  const right = normalize(cross(forward, [0, 1, 0]));
+  const up = cross(right, forward);
+  const focal = panel.half / Math.tan(OUTSIDE_CAMERA_FOV / 2);
+  const project = p => {
+    const d = sub(p, OUTSIDE_CAMERA_POSITION);
+    const depth = dot(d, forward);
+    if (depth < 0.1) return null;
+    return { x: panel.cx + dot(d, right) * focal / depth, y: panel.cy - dot(d, up) * focal / depth, depth };
   };
-  return { position, view };
-}
-const lineViewer = timeS => lineViewerAt(LINE_VIEWER_BASE_ANGLE + wobble(timeS));
-
-const SQUARE_CORNERS = hypercubeVertices([0, 0], [1, 1]);
-const SQUARE_EDGES = hypercubeEdges(2);
-const LINE_VIEWER_REACH = 1.05 * Math.max(...SQUARE_CORNERS.map(r => Math.abs(lineViewerAt(LINE_VIEWER_BASE_ANGLE).view(r).u)));
-
-function layout3D() {
-  const stripY = togglesBar.getBoundingClientRect().top - STRIP_GAP_ABOVE_TOGGLES - STRIP_MAX_HEIGHT / 2;
-  const stripHalfWidth = Math.min(viewWidth * 0.45, 520);
-  const viewerBelow = LINE_VIEWER_DISTANCE * Math.cos(LINE_VIEWER_BASE_ANGLE);
-  const viewerLeft = LINE_VIEWER_DISTANCE * Math.sin(LINE_VIEWER_BASE_ANGLE);
-  const left = TOGGLES.info.on ? hud.getBoundingClientRect().right + PANEL_MARGIN : PANEL_MARGIN;
-  const right = viewWidth - PANEL_MARGIN;
-  const top = PANEL_MARGIN;
-  const bottom = stripY - STRIP_MAX_HEIGHT - 30;
-  const regionUnitsWide = 1 + viewerLeft + 0.3;
-  const regionUnitsTall = 1 + viewerBelow + 0.3;
-  const half = Math.max(40, Math.min((bottom - top) / regionUnitsTall, (right - left) / regionUnitsWide));
-  const squareCenter = { x: (left + right) / 2 + half * (viewerLeft - 1) / 2, y: top + half };
-  return { stripY, stripHalfWidth, half, squareCenter };
+  return { project };
 }
 
-function draw3D(camera, timeS) {
-  const L = layout3D();
-  const viewer = lineViewer(timeS);
-  const toPanel = r => ({ x: L.squareCenter.x + r[0] * L.half, y: L.squareCenter.y - r[1] * L.half });
-  const toStripX = u => viewWidth / 2 + (u / LINE_VIEWER_REACH) * L.stripHalfWidth;
-
-  const pieces = retinaSegments(camera).map(({ ra, rb, style }) => {
-    const va = viewer.view(ra), vb = viewer.view(rb);
-    const a = { ...toPanel(ra), depth: va.depth, u: va.u };
-    const b = { ...toPanel(rb), depth: vb.depth, u: vb.u };
-    return { a, b, style, depth: (a.depth + b.depth) / 2 };
-  });
-  updateDepthRange(pieces);
-  pieces.sort((p, q) => q.depth - p.depth);
-
-  if (TOGGLES.panel.on) {
-    if (TOGGLES.frame.on) {
-      ctx.strokeStyle = '#223044';
-      ctx.lineWidth = 1;
-      for (const [i, j] of SQUARE_EDGES) {
-        const a = toPanel(SQUARE_CORNERS[i]), b = toPanel(SQUARE_CORNERS[j]);
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      }
-      const eye = toPanel(viewer.position);
-      const extremes = [...SQUARE_CORNERS].sort((p, q) => viewer.view(p).u - viewer.view(q).u);
-      ctx.setLineDash([4, 5]);
-      for (const corner of [extremes[0], extremes[3]]) {
-        const c = toPanel(corner);
-        ctx.beginPath(); ctx.moveTo(eye.x, eye.y); ctx.lineTo(c.x, c.y); ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#7f93ad';
-      ctx.beginPath(); ctx.arc(eye.x, eye.y, 5, 0, 2 * Math.PI); ctx.fill();
-      drawLabel('1D viewer', eye.x, eye.y + 16, '#7f93ad');
-    }
-    ctx.lineCap = 'round';
-    for (const { a, b, style } of pieces) strokeDepthLine(a, b, style);
+function boxFaces(min, max) {
+  const faces = [];
+  for (let axis = 0; axis < 3; axis++) for (const side of [-1, 1]) {
+    const [b, c] = [0, 1, 2].filter(k => k !== axis);
+    const corner = (sb, sc) => {
+      const p = [];
+      p[axis] = side < 0 ? min[axis] : max[axis];
+      p[b] = sb < 0 ? min[b] : max[b];
+      p[c] = sc < 0 ? min[c] : max[c];
+      return p;
+    };
+    const normal = [0, 0, 0]; normal[axis] = side;
+    faces.push({ normal, corners: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)] });
   }
+  return faces;
+}
 
-  if (TOGGLES.frame.on) {
-    ctx.strokeStyle = '#223044';
+function solidColor(kind, hue, shade) {
+  if (kind === 'floor') return `hsl(210 10% ${12 + 22 * shade}%)`;
+  if (kind === 'player') return `hsl(0 0% ${45 + 45 * shade}%)`;
+  if (!TOGGLES.color.on) return `hsl(210 30% ${25 + 40 * shade}%)`;
+  return `hsl(${hue} 70% ${22 + 38 * shade}%)`;
+}
+
+function drawSolidBox(view, min, max, kind, hue) {
+  const center = min.map((v, k) => (v + max[k]) / 2);
+  for (const { normal, corners } of boxFaces(min, max)) {
+    const faceCenter = add(center, normal.map((s, k) => s * (max[k] - min[k]) / 2));
+    if (dot(normal, sub(OUTSIDE_CAMERA_POSITION, faceCenter)) <= 0) continue;
+    const points = corners.map(view.project);
+    if (points.some(p => !p)) continue;
+    const shade = 0.25 + 0.75 * Math.max(0, dot(normal, LIGHT_DIRECTION));
+    ctx.fillStyle = solidColor(kind, hue, shade);
+    ctx.strokeStyle = '#05070b';
     ctx.lineWidth = 1;
-    ctx.strokeRect(viewWidth / 2 - L.stripHalfWidth, L.stripY - STRIP_MAX_HEIGHT / 2 - 3, 2 * L.stripHalfWidth, STRIP_MAX_HEIGHT + 6);
+    ctx.beginPath();
+    points.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath(); ctx.fill(); ctx.stroke();
   }
-  for (const { a, b, style } of pieces) {
-    const [left, right] = [a, b].sort((p, q) => p.u - q.u);
-    const x0 = toStripX(left.u), x1 = Math.max(toStripX(right.u), x0 + 1.5);
-    const height = stripHeightAt((a.depth + b.depth) / 2);
-    const gradient = ctx.createLinearGradient(x0, 0, x1, 0);
-    gradient.addColorStop(0, colorFor(style, left.depth));
-    gradient.addColorStop(1, colorFor(style, right.depth));
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x0, L.stripY - height / 2, x1 - x0, height);
-  }
+}
 
+function strokeWorldLine(view, a, b, color, width = 1.5, dash = []) {
+  const pa = view.project(a), pb = view.project(b);
+  if (!pa || !pb) return;
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash);
+  ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawViewCone(view, camera) {
+  const F = world.forward;
+  const apex = camera.position;
+  const far = [-1, 1].flatMap(sr => [-1, 1].map(su => add(apex, scale(
+    add(add(camera.basis[F], scale(camera.basis[RIGHT], sr * FOV_HALF_ANGLE_TAN)), scale(camera.basis[UP], su * FOV_HALF_ANGLE_TAN)),
+    VIEW_CONE_LENGTH,
+  ))));
+  const coneColor = '#8fb3e0';
+  far.forEach(corner => strokeWorldLine(view, apex, corner, coneColor, 1, [5, 4]));
+  [[0, 1], [1, 3], [3, 2], [2, 0]].forEach(([i, j]) => strokeWorldLine(view, far[i], far[j], coneColor, 1, [5, 4]));
+  const p = view.project(apex);
+  if (p) {
+    ctx.fillStyle = coneColor;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI); ctx.fill();
+    drawLabel('camera', p.x, p.y - 12, coneColor);
+  }
+}
+
+function drawOutsideView(panel, camera) {
+  const view = outsideCamera(panel);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(panel.cx - panel.half, panel.cy - panel.half, 2 * panel.half, 2 * panel.half); ctx.clip();
+  const distanceTo = b => Math.hypot(...sub(b.min.map((v, k) => (v + b.max[k]) / 2), OUTSIDE_CAMERA_POSITION));
+  if (TOGGLES.floor.on) drawSolidBox(view, world.floor.min, world.floor.max, 'floor');
+  const { min, max } = playerBox();
+  const bodies = [
+    ...world.platforms.map(p => ({ min: p.min, max: p.max, kind: 'platform', hue: p.hue })),
+    { min, max, kind: 'player' },
+  ].sort((a, b) => distanceTo(b) - distanceTo(a));
+  bodies.forEach(b => drawSolidBox(view, b.min, b.max, b.kind, b.hue));
+
+  if (TOGGLES.dropLine.on) {
+    const surface = surfaceBelow(player.feet);
+    const hit = [...player.feet]; hit[Y] = surface ? surface.max[Y] : RESPAWN_BELOW_Y;
+    strokeWorldLine(view, player.feet, hit, surface ? '#e8edf3' : 'hsl(0 90% 60%)', 2);
+  }
+  drawViewCone(view, camera);
+  if (TOGGLES.labels.on) {
+    for (const p of world.platforms) {
+      const top = [...p.center]; top[Y] = p.max[Y] + 0.35;
+      const s = view.project(top);
+      if (s) drawLabel(p.label, s.x, s.y, labelColor(p));
+    }
+  }
+  ctx.restore();
+  drawPanelCaption(panel, 'the world, from outside');
+}
+
+function drawPicture(panel, camera) {
+  const toPanel = r => ({ x: panel.cx + r[0] * panel.half, y: panel.cy - r[1] * panel.half });
+  if (TOGGLES.frame.on) {
+    ctx.strokeStyle = '#223044'; ctx.lineWidth = 1;
+    for (const [i, j] of PICTURE_EDGES) {
+      const a = toPanel(PICTURE_CORNERS[i]), b = toPanel(PICTURE_CORNERS[j]);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+  }
+  const pieces = retinaSegments(camera);
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 1.6;
+  for (const { ra, rb, style } of pieces) {
+    const a = toPanel(ra), b = toPanel(rb);
+    ctx.strokeStyle = colorFor(style, null);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
   if (TOGGLES.labels.on) {
     for (const { platform, r } of visiblePlatformCenters(camera)) {
-      if (TOGGLES.panel.on) { const p = toPanel(r); drawLabel(platform.label, p.x, p.y, labelColor(platform)); }
-      drawLabel(platform.label, toStripX(viewer.view(r).u), L.stripY - STRIP_MAX_HEIGHT / 2 - 14, labelColor(platform));
+      const p = toPanel(r);
+      drawLabel(platform.label, p.x, p.y, labelColor(platform));
     }
   }
+  drawPanelCaption(panel, 'what the camera sees (the 2-projection)');
   return pieces.length / LINE_SUBDIVISIONS;
+}
+
+function drawPanelCaption(panel, text) {
+  ctx.font = '12px ui-monospace, monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillStyle = '#7f93ad';
+  ctx.fillText(text, panel.cx, panel.cy - panel.half - 6);
+}
+
+function layout3D() {
+  const left = TOGGLES.info.on ? hud.getBoundingClientRect().right + PANEL_MARGIN : PANEL_MARGIN;
+  const right = viewWidth - PANEL_MARGIN;
+  const top = PANEL_MARGIN + 18;
+  const bottom = togglesBar.getBoundingClientRect().top - PANEL_MARGIN;
+  const width = right - left, height = bottom - top;
+  const panelCount = TOGGLES.outside.on ? 2 : 1;
+  const sideBySide = panelCount === 1 || width / panelCount >= height * 0.8;
+  const slotW = sideBySide ? width / panelCount : width;
+  const slotH = sideBySide ? height : height / panelCount;
+  const half = Math.max(40, Math.min(slotW, slotH) / 2 - PANEL_MARGIN);
+  const slot = i => ({
+    cx: sideBySide ? left + slotW * (i + 0.5) : left + width / 2,
+    cy: sideBySide ? top + height / 2 : top + slotH * (i + 0.5),
+    half,
+  });
+  return TOGGLES.outside.on ? { outside: slot(0), picture: slot(1) } : { picture: slot(0) };
+}
+
+function draw3D(camera) {
+  const panels = layout3D();
+  if (panels.outside) drawOutsideView(panels.outside, camera);
+  return drawPicture(panels.picture, camera);
 }
 
 function drawScene(timeS) {
   ctx.clearRect(0, 0, viewWidth, viewHeight);
   const camera = chaseCamera();
-  return world.n === 4 ? draw4D(camera, timeS) : draw3D(camera, timeS);
+  return world.n === 4 ? draw4D(camera, timeS) : draw3D(camera);
 }
 
 const fmt = v => (v >= 0 ? ' ' : '') + v.toFixed(2);
@@ -558,8 +632,8 @@ const CONTROLS_3D =
 jump   Space   (fly: Space/C up/down)
 turn   ←/→ fwd↔right
 H respawn   M switch to 4D
-top: 2-projection (what the camera sees)
-bottom: 1-projection (that picture seen by a 1D viewer)`;
+P hides the outside view: play from the picture alone,
+  the way 4D mode makes you play`;
 
 function renderPanels(lineCount) {
   const P = player.basis;
@@ -593,8 +667,9 @@ function flip(toggle) {
   toggle.onChange?.();
   renderToggles();
 }
+const activeToggles = () => Object.values(TOGGLES).filter(t => !t.dimensions || t.dimensions.includes(world.n));
 function renderToggles() {
-  togglesBar.replaceChildren(...Object.values(TOGGLES).map(t => {
+  togglesBar.replaceChildren(...activeToggles().map(t => {
     const button = document.createElement('button');
     button.textContent = t.label;
     button.className = t.on ? 'on' : '';
@@ -608,7 +683,7 @@ window.addEventListener('keydown', e => {
   if (CAPTURED_KEYS.includes(e.code)) e.preventDefault();
   held.add(e.code);
   if (e.repeat) return;
-  const toggle = Object.values(TOGGLES).find(t => t.key === e.key.toLowerCase());
+  const toggle = activeToggles().find(t => t.key === e.key.toLowerCase());
   if (toggle) flip(toggle);
   if (e.code === 'KeyH') respawn();
 });
