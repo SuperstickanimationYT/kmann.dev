@@ -74,12 +74,12 @@ import {
   study,
   systemsPassed,
 } from './science.js';
-import { deleteSave, findWorld, markPlayed, readSave, writeSave } from './save.js';
+import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
 import { VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, scanFrom, stardustTip, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture } from './textures.js';
-import { bindHoldButtons, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
+import { bindHold, bindHoldButtons, bindJoystick, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
 import {
   DEFAULT_GALAXY_SEED,
@@ -152,6 +152,7 @@ const TURN_PER_TICK = (3 * Math.PI) / 180;
 const CAMERA_EASE_PER_TICK = 1 / 20;
 const ZOOM_STEP = 1.1;
 const TAP_SLOP_PX = 10;
+const JOYSTICK_DEAD_ZONE = 0.2;
 const ZOOM_LIMITS = { min: 0.00002, max: 8 };
 const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
@@ -170,8 +171,11 @@ const BIG_BUY_SHARE = 1 / 3;
 const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhir: 'sfx/buzz-whir.wav' };
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
 
+const settings = readSettings();
+
 function play(name) {
   const voice = audio[name].cloneNode();
+  voice.volume = settings.volume;
   voice.play().catch(() => {});
 }
 
@@ -668,6 +672,16 @@ const actions = {
   },
   toggleCheats: () => world.cheats && openPanel(game.panel === 'cheats' ? null : 'cheats'),
   cheat: (name) => world.cheats && CHEATS[name]?.(),
+  toggleSettings: () => openPanel(game.panel === 'settings' ? null : 'settings'),
+  setVolume: (volume) => {
+    settings.volume = volume;
+    writeSettings(settings);
+  },
+  setTouchControls: (scheme) => {
+    settings.touchControls = scheme;
+    writeSettings(settings);
+    showTouchControls();
+  },
   openWorlds: () => {
     save();
     window.location.search = '';
@@ -1300,6 +1314,26 @@ window.addEventListener('keyup', (event) => held.delete(event.key.length === 1 ?
 window.addEventListener('blur', () => held.clear());
 
 bindHoldButtons(stage, { hold: (key) => held.add(key), release: (key) => held.delete(key) });
+bindHold(stage.querySelector('[data-engine-hold]'), {
+  hold: () => {
+    const { rocket } = game;
+    if (!rocket.destroyed && rocket.fuel > 0) rocket.engineOn = true;
+  },
+  release: () => (game.rocket.engineOn = false),
+});
+
+let joystickBearing = null;
+
+bindJoystick(stage.querySelector('[data-joystick]'), stage.querySelector('[data-joystick-knob]'), (push, screenBearing) => {
+  joystickBearing = push > JOYSTICK_DEAD_ZONE ? screenBearing : null;
+});
+bindVerticalSlider(stage.querySelector('[data-throttle-slider]'), stage.querySelector('[data-throttle-track]'), (fraction) => {
+  game.rocket.throttle = Math.round(fraction * 100);
+});
+
+function showTouchControls() {
+  stage.classList.toggle('pp-joystick-controls', settings.touchControls === 'joystick');
+}
 bindTapButtons(stage, (key) => KEY_ACTIONS[key]?.());
 bindPinchZoom(canvas, changeZoom);
 bindVerticalSlider(stage.querySelector('[data-warp-slider]'), stage.querySelector('[data-warp-track]'), (fraction) => {
@@ -1361,6 +1395,10 @@ function steer() {
   const turn = TURN_PER_TICK * STEP_TICKS;
   if (isHeld('q', 'ArrowLeft')) rocket.heading -= turn;
   if (isHeld('e', 'ArrowRight')) rocket.heading += turn;
+  if (joystickBearing !== null) {
+    const wanted = wrapAngle(joystickBearing + game.camera.angle - rocket.heading);
+    rocket.heading += clamp(wanted, { min: -turn, max: turn });
+  }
 }
 
 function explode() {
@@ -2325,6 +2363,8 @@ async function start() {
   renderer.resize();
   new ResizeObserver(() => renderer.resize()).observe(canvas);
   hud.showPanel(game.panel);
+  hud.showSettings(settings);
+  showTouchControls();
   if (!game.tourSeen) hud.beckonHelp();
   window.requestAnimationFrame((time) => {
     lastTime = time;

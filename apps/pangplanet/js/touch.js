@@ -1,12 +1,41 @@
+export function bindHold(button, { hold, release }) {
+  button.addEventListener('pointerdown', (event) => {
+    hold();
+    button.setPointerCapture(event.pointerId);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, release);
+}
+
 export function bindHoldButtons(root, { hold, release }) {
   for (const button of root.querySelectorAll('[data-hold]')) {
     const { hold: key } = button.dataset;
-    button.addEventListener('pointerdown', (event) => {
-      hold(key);
-      button.setPointerCapture(event.pointerId);
-    });
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, () => release(key));
+    bindHold(button, { hold: () => hold(key), release: () => release(key) });
   }
+}
+
+export function bindJoystick(pad, knob, onPushAndScreenBearing) {
+  const aimAt = (event) => {
+    const box = pad.getBoundingClientRect();
+    const radius = box.width / 2;
+    const dx = event.clientX - (box.left + radius);
+    const dy = event.clientY - (box.top + radius);
+    const push = Math.min(1, Math.hypot(dx, dy) / radius);
+    const bearing = Math.atan2(dx, -dy);
+    knob.style.transform = `translate(${Math.sin(bearing) * push * radius}px, ${-Math.cos(bearing) * push * radius}px)`;
+    onPushAndScreenBearing(push, bearing);
+  };
+  const letGo = () => {
+    knob.style.transform = '';
+    onPushAndScreenBearing(0, 0);
+  };
+  pad.addEventListener('pointerdown', (event) => {
+    pad.setPointerCapture(event.pointerId);
+    aimAt(event);
+  });
+  pad.addEventListener('pointermove', (event) => {
+    if (pad.hasPointerCapture(event.pointerId)) aimAt(event);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(type, letGo);
 }
 
 export function bindTapButtons(root, press) {

@@ -3,6 +3,8 @@ const WORLDS_KEY = 'pangplanet-worlds';
 const SAVE_VERSION = 1;
 const LEGACY_WORLD_NAME = 'My world';
 const WORLD_FILE_FORMAT = 'pangplanet-world';
+const SETTINGS_KEY = 'pangplanet-settings';
+const DEFAULT_SETTINGS = { volume: 1, touchControls: 'buttons' };
 
 const worldSaveKey = (id) => `pangplanet-world-${id}`;
 const newWorldId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -79,6 +81,9 @@ export function writeSave(id, state) {
 }
 
 export const deleteSave = (id) => removeKey(worldSaveKey(id));
+
+export const readSettings = () => ({ ...DEFAULT_SETTINGS, ...readJson(SETTINGS_KEY) });
+export const writeSettings = (settings) => writeJson(SETTINGS_KEY, settings);
 
 export function exportWorld(id) {
   const world = findWorld(id);

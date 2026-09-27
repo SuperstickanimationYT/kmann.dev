@@ -85,6 +85,7 @@
 
     <div class="pp-corner-buttons">
       <button type="button" data-open-worlds aria-label="Worlds">&#x2630;</button>
+      <button type="button" data-settings-toggle aria-label="Settings">&#x2699;</button>
       <button type="button" data-cheats-toggle aria-label="Cheats" hidden>&#x1F527;</button>
       <button type="button" data-map-toggle aria-label="Galaxy map">&#x1F5FA;</button>
       <button type="button" data-help-toggle aria-label="Controls">?</button>
@@ -124,15 +125,22 @@
     </button>
 
     <div class="pp-touch-controls">
-      <div class="pp-touch-group">
+      <div class="pp-touch-group pp-buttons-only">
         <button type="button" data-hold="ArrowLeft" aria-label="Rotate left">&#x27F2;</button>
         <button type="button" data-hold="ArrowRight" aria-label="Rotate right">&#x27F3;</button>
       </div>
-      <button type="button" class="pp-touch-engine" data-tap=" " data-engine-button>Engine</button>
-      <div class="pp-touch-group">
+      <button type="button" class="pp-touch-engine pp-buttons-only" data-tap=" " data-engine-button>Engine</button>
+      <div class="pp-touch-group pp-buttons-only">
         <button type="button" data-hold="ArrowDown" aria-label="Throttle down">&minus;</button>
         <button type="button" data-hold="ArrowUp" aria-label="Throttle up">+</button>
       </div>
+      <div class="pp-joystick pp-joystick-only" data-joystick aria-label="Steering joystick"><span class="pp-joystick-knob" data-joystick-knob></span></div>
+      <button type="button" class="pp-touch-engine pp-joystick-only" data-engine-hold data-engine-button>Hold to burn</button>
+    </div>
+    <div class="pp-warp pp-throttle pp-joystick-only" title="Throttle" data-throttle-slider>
+      <span class="pp-warp-caption">Throttle</span>
+      <div class="pp-warp-track" data-throttle-track><span class="pp-warp-knob" data-throttle-knob></span></div>
+      <span class="pp-warp-label" data-throttle-label>100%</span>
     </div>
 
     <section class="pp-panel" data-panel="rocket" hidden aria-label="Your rocket">
@@ -480,6 +488,20 @@
       <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a visited star, then Close up to see its planets. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found by visiting or from friendly aliens. Dashed green: possible biosignature, real 3 times in 4. Solid colour: alien homeworld. Dashed purple ring: a wormhole in that system; purple dotted lines join the ends of wormholes you've been through. Orange dashes: your drone's route.</p>
     </section>
 
+    <section class="pp-panel" data-panel="settings" hidden aria-label="Settings">
+      <header>
+        <h3>Settings</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <label class="pp-setting">Sound volume <input type="range" min="0" max="100" step="5" data-volume></label>
+      <fieldset class="pp-setting">
+        <legend>Touch controls</legend>
+        <label><input type="radio" name="touchControls" value="buttons" data-touch-controls> Buttons: rotate, engine on/off, throttle</label>
+        <label><input type="radio" name="touchControls" value="joystick" data-touch-controls> Joystick: point where to fly, hold to burn, throttle slider on the right</label>
+      </fieldset>
+      <p class="pp-hint">Settings apply to every world in this browser. Touch controls only show on touchscreens.</p>
+    </section>
+
     <section class="pp-panel" data-panel="cheats" hidden aria-label="Cheats">
       <header>
         <h3>Cheats</h3>
@@ -554,6 +576,7 @@
         <div><dt>Tap rocket</dt><dd>Rocket menu: mine fuel, solar panels, warp drive</dd></div>
         <div><dt>Prompts</dt><dd>Tap to enter the market or respawn</dd></div>
         <div><dt>&#x1F5FA;</dt><dd>Galaxy map</dd></div>
+        <div><dt>&#x2699;</dt><dd>Settings: sound volume, and a joystick layout: drag it to point the rocket, hold the burn button, set throttle on the right</dd></div>
       </dl>
       <dl class="pp-keys pp-keyboard-only">
         <div><dt><kbd>Space</kbd></dt><dd>Engine on / off</dd></div>

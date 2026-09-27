@@ -15,6 +15,7 @@ const STEPS = [
     target: { touch: '.pp-touch-controls', keys: '.pp-telemetry' },
     text: {
       touch: 'Engine switches thrust on and off. Hold ⟲ ⟳ to turn and − + to set the throttle.',
+      joystick: 'Drag the joystick to point the rocket and hold the burn button for thrust. The slider on the right sets the throttle.',
       keys: 'Space switches the engine on and off. Q and E turn, Shift and Ctrl set the throttle.',
     },
   },
@@ -32,8 +33,12 @@ const STEPS = [
   { target: '[data-help-toggle]', text: "That's the basics. Press ? any time for the full guide and controls.", last: true },
 ];
 
-const inputMode = () => (window.matchMedia('(pointer: coarse)').matches ? 'touch' : 'keys');
-const forMode = (value) => (typeof value === 'string' ? value : value[inputMode()]);
+function inputMode(stage) {
+  if (!window.matchMedia('(pointer: coarse)').matches) return 'keys';
+  return stage.classList.contains('pp-joystick-controls') ? 'joystick' : 'touch';
+}
+
+const forMode = (stage, value) => (typeof value === 'string' ? value : (value[inputMode(stage)] ?? value.touch));
 
 function element(tag, className, text = '') {
   const node = document.createElement(tag);
@@ -60,7 +65,7 @@ export function createTour(stage, { onEnd, openGuide }) {
 
   function targetRect(step) {
     const stageBox = stage.getBoundingClientRect();
-    const target = forMode(step.target);
+    const target = forMode(stage, step.target);
     if (target === 'rocket') {
       const canvasBox = stage.querySelector('canvas').getBoundingClientRect();
       const half = ROCKET_SPOT_PX / 2;
@@ -90,7 +95,7 @@ export function createTour(stage, { onEnd, openGuide }) {
   function show(at) {
     index = at;
     const step = steps[index];
-    text.textContent = forMode(step.text);
+    text.textContent = forMode(stage, step.text);
     count.textContent = `${index + 1}/${steps.length}`;
     back.hidden = index === 0;
     skip.hidden = Boolean(step.last);
