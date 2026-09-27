@@ -493,8 +493,11 @@
         <button type="button" class="pp-action" data-map-zoom="in" aria-label="Zoom in">+</button>
         <button type="button" class="pp-action" data-map-zoom="out" aria-label="Zoom out">&minus;</button>
       </div>
-      <p data-map-info></p>
-      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a star, then Center on star to move the map there, or Close up (visited stars) to see its planets. Moon counts show once you or a solar sail have been close. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found by visiting or from friendly aliens. Dashed green: possible biosignature, real 3 times in 4. Solid colour: alien homeworld. Dashed purple ring: a wormhole in that system; purple dotted lines join the ends of wormholes you've been through. Orange dashes: your drone's route.</p>
+      <div class="pp-map-details">
+        <canvas class="pp-star-photo" data-star-photo hidden aria-label="Photo of the selected star"></canvas>
+        <p data-map-info></p>
+      </div>
+      <p class="pp-hint">Filled dots: visited. Rings: seen through a telescope. Purple circle: warp range. Dashed: telescope range. You can only warp to stars on this map. Tap a star to see a photo of it from where you are, then Center on star to move the map there, or Close up (visited stars) to see its planets. Moon counts show once you or a solar sail have been close. Dashed gold: bounty waiting. Cyan: crystals. Violet: stardust, found by visiting or from friendly aliens. Dashed green: possible biosignature, real 3 times in 4. Solid colour: alien homeworld. Dashed purple ring: a wormhole in that system; purple dotted lines join the ends of wormholes you've been through. Orange dashes: your drone's route.</p>
     </section>
 
     <section class="pp-panel" data-panel="settings" hidden aria-label="Settings">
