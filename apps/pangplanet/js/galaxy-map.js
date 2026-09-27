@@ -1,7 +1,7 @@
 import { speciesByKey } from './aliens.js';
 import { GALAXY, SECTOR_SIZE } from './universe.js';
 
-const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08 };
+const VIEW_RADIUS = { nearby: 5.5e7, star: 5.5e7, galaxy: GALAXY.radius * 1.08 };
 const SYSTEM_MARGIN = 1.15;
 const ZOOM_STEP = 1.5;
 const ZOOM_LIMITS = { min: 0.25, max: 40 };
@@ -21,7 +21,7 @@ const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map
 
 export function createGalaxyMap(canvas) {
   const context = canvas.getContext('2d');
-  const view = { mode: 'nearby', zoom: 1, size: 0, scale: 1, centerX: 0, centerY: 0 };
+  const view = { mode: 'nearby', zoom: 1, size: 0, scale: 1, centerX: 0, centerY: 0, star: null };
   let system = null;
   let selected = null;
   let selectedPlanet = null;
@@ -192,7 +192,8 @@ export function createGalaxyMap(canvas) {
       frameOn(system.star, systemRadius(system));
       drawSystem(bountyWaiting, findsLeft);
     } else {
-      frameOn(view.mode === 'nearby' ? rocket : GALAXY, VIEW_RADIUS[view.mode]);
+      const focus = { nearby: rocket, star: view.star, galaxy: GALAXY }[view.mode];
+      frameOn(focus, VIEW_RADIUS[view.mode]);
       drawGalaxy();
       if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
       if (telescopeRange) ring(rocket.x, rocket.y, telescopeRange, 'rgba(63, 224, 208, 0.6)', true);
@@ -241,6 +242,11 @@ export function createGalaxyMap(canvas) {
     showView('system');
   }
 
+  function centerOn(star) {
+    view.mode = 'star';
+    view.star = star;
+  }
+
   const showingSystem = () => view.mode === 'system';
 
   function zoom(direction) {
@@ -248,5 +254,5 @@ export function createGalaxyMap(canvas) {
     view.zoom = Math.min(ZOOM_LIMITS.max, Math.max(ZOOM_LIMITS.min, view.zoom * factor));
   }
 
-  return { draw, pick, showView, showSystem, showingSystem, zoom };
+  return { draw, pick, showView, showSystem, showingSystem, centerOn, zoom };
 }
