@@ -4,6 +4,7 @@ import {
   HOME_BODY,
   MAX_FUEL,
   ROCKET_HEIGHT,
+  SPEED_LIMIT,
   TICKS_PER_SECOND,
   WORMHOLE_EXIT_GAP,
 } from './world.js';
@@ -87,6 +88,13 @@ function touchDown(rocket, body) {
   return 'land';
 }
 
+function holdToSpeedLimit(rocket) {
+  const speed = Math.hypot(rocket.vx, rocket.vy);
+  if (speed <= SPEED_LIMIT) return;
+  rocket.vx *= SPEED_LIMIT / speed;
+  rocket.vy *= SPEED_LIMIT / speed;
+}
+
 function burnEngine(rocket, dt) {
   if (!rocket.engineOn) return;
   if (rocket.fuel <= 0) {
@@ -104,6 +112,7 @@ export function advance(rocket, dt) {
   if (rocket.destroyed) return null;
   rocket.soi = sphereOfInfluence(rocket.x, rocket.y);
   burnEngine(rocket, dt);
+  holdToSpeedLimit(rocket);
   rocket.x += rocket.vx * dt;
   rocket.y += rocket.vy * dt;
   rocket.landed = false;
@@ -111,6 +120,7 @@ export function advance(rocket, dt) {
   if (edgePull) {
     rocket.vx += edgePull[0] * dt;
     rocket.vy += edgePull[1] * dt;
+    holdToSpeedLimit(rocket);
   }
   const body = rocket.soi;
   if (!body) return null;
@@ -123,6 +133,7 @@ export function advance(rocket, dt) {
   const pull = (GRAVITATIONAL_CONSTANT * body.mass) / (distance * distance);
   rocket.vx += (dx / distance) * pull * dt;
   rocket.vy += (dy / distance) * pull * dt;
+  holdToSpeedLimit(rocket);
   return null;
 }
 

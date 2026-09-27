@@ -494,7 +494,7 @@ export function createHud(root, actions, { cheats }) {
     parts.warpSlider.classList.toggle('is-held', status.timewarpHeld);
     setText(parts.location, status.location);
     setText(parts.altitude, status.altitude === null ? '—' : abbreviate(status.altitude));
-    setText(parts.speed, abbreviate(status.speed));
+    setText(parts.speed, status.atSpeedLimit ? `${abbreviate(status.speed)} (top)` : abbreviate(status.speed));
     setText(parts.throttle, `${Math.round(status.throttle)}%`);
     setText(parts.engine, status.engineOn ? 'on' : 'off');
     parts.engine.classList.toggle('is-on', status.engineOn);
