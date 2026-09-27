@@ -42,6 +42,7 @@ export function createRocket() {
     fuel: MAX_FUEL,
     fuelCapacity: MAX_FUEL,
     thrust: 1,
+    burnRate: 1,
     crashSpeed: CRASH_SPEED,
     autopilot: null,
     soi: HOME_BODY,
@@ -104,7 +105,7 @@ function burnEngine(rocket, dt) {
   const push = (rocket.throttle / 100) * rocket.thrust * dt;
   rocket.vx += Math.sin(rocket.heading) * push;
   rocket.vy += Math.cos(rocket.heading) * push;
-  rocket.fuel = Math.max(0, rocket.fuel - (rocket.throttle / 100) * (dt / TICKS_PER_SECOND));
+  rocket.fuel = Math.max(0, rocket.fuel - (rocket.throttle / 100) * rocket.burnRate * (dt / TICKS_PER_SECOND));
 }
 
 // One symplectic Euler step (move, then pull) in ticks; returns what the rocket hit, if anything.

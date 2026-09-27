@@ -87,6 +87,8 @@ import {
   study,
   systemsPassed,
 } from './science.js';
+import { addBlock, createShip, describeShip, flightStats, hasRoom, leaveHelm, moveWithPilot, removeBlock, shipFromSave, takeHelm } from './fleet.js';
+import { chargeFromPanels } from './vessels.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
 import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
@@ -148,6 +150,8 @@ import {
   RESCUE,
   SATELLITE,
   SCIENCE,
+  SHIP,
+  SHIP_BLOCKS,
   SOLAR_PANELS,
   SOLAR_SAIL,
   SPEED_LIMIT,
@@ -221,6 +225,8 @@ const game = {
   rig: null,
   banks: [],
   observatories: [],
+  fleet: [],
+  boarded: null,
   antennas: [],
   antennasInHold: 0,
   drones: [],
@@ -262,7 +268,15 @@ const game = {
   forecast: null,
 };
 
-applyUpgrades(game.upgrades, game.rocket, game.power);
+const boardedShip = () => game.fleet[game.boarded] ?? null;
+
+function applyCraft() {
+  applyUpgrades(game.upgrades, game.rocket, game.power);
+  const ship = boardedShip();
+  Object.assign(game.rocket, ship ? flightStats(ship) : { burnRate: 1 });
+}
+
+applyCraft();
 
 const held = new Set();
 const isHeld = (...keys) => keys.some((key) => held.has(key));
@@ -299,6 +313,8 @@ function targetInReach() {
   if (bank) return { kind: 'bank', item: bank };
   const observatory = nearestWithin(deployed(game.observatories), rocket, OBSERVATORY.dockingRange);
   if (observatory) return { kind: 'observatory', item: observatory };
+  const ship = !boardedShip() && nearestWithin(game.fleet, rocket, SHIP.boardingRange);
+  if (ship) return { kind: 'myShip', item: ship };
   if (rocket.landed && withinReach(rocket, game.rig, MINING_RIG.reach)) return { kind: 'rig' };
   if (rocket.landed && rocket.soi?.species) return { kind: 'aliens', item: rocket.soi };
   const drone = nearDrone();
@@ -369,6 +385,7 @@ const PRICES = {
   hauler: () => risingPrice(HAULER.cost, game.haulers.filter((hauler) => !hauler.builds).length),
   builder: () => risingPrice(BUILDER.cost, game.haulers.filter((hauler) => hauler.builds).length),
   wormhole: () => risingPrice(BUILT_WORMHOLE.cost, game.builtWormholes.length + game.wormholesInHold),
+  ship: () => risingPrice(SHIP.hullCost, game.fleet.length),
 };
 
 const TRADE_GOODS = {
@@ -636,7 +653,10 @@ const actions = {
     game.rocket.fuel = game.rocket.fuelCapacity;
     game.galactokens -= cost;
   },
-  togglePanels: () => togglePanels(game.power, game.rocket),
+  togglePanels: () => {
+    if (boardedShip()) hud.toast('Your solar panels stay folded inside the ship. Ship panel blocks charge the ship.');
+    else togglePanels(game.power, game.rocket);
+  },
   buyPanels: () => {
     if (game.power.ownsPanels || game.galactokens < SOLAR_PANELS.cost) return;
     game.power.ownsPanels = true;
@@ -654,7 +674,52 @@ const actions = {
     game.crystals -= upgrade.crystals ?? 0;
     game.stardust -= upgrade.stardust ?? 0;
     game.upgrades[key] += 1;
-    applyUpgrades(game.upgrades, game.rocket, game.power);
+    applyCraft();
+  },
+  buyShip: () => {
+    if (!pay('ship')) return;
+    game.fleet.push(createShip({ x: MARKET.x, y: MARKET.y - SHIP.parkingGap }));
+    hud.toast('Your new ship is parked just past the market. Fly over to it to board it and add blocks.');
+  },
+  addShipBlock: (type) => {
+    const ship = shipInShipyard();
+    const block = SHIP_BLOCKS[type];
+    if (!ship || !block || !hasRoom(ship) || game.galactokens < block.cost) return;
+    game.galactokens -= block.cost;
+    addBlock(ship, type);
+  },
+  removeShipBlock: (index) => {
+    const ship = shipInShipyard();
+    if (!ship?.blocks[index]) return;
+    game.galactokens += Math.round(SHIP_BLOCKS[removeBlock(ship, index)].cost * SHIP.refundShare);
+  },
+  boardShip: () => {
+    const ship = dockedOf('myShip');
+    if (!ship || ship === boardedShip() || game.rocket.destroyed) return;
+    stopRecording('You boarded a ship. Recording stopped.');
+    stopDrill(game.drill, play);
+    game.power.panelsDeployed = false;
+    game.boarded = game.fleet.indexOf(ship);
+    takeHelm(ship, game.rocket);
+    applyCraft();
+    openPanel(null);
+    hud.toast('You have the controls. Open the rocket menu to leave the ship.');
+  },
+  leaveShip: () => {
+    const ship = boardedShip();
+    if (!ship) return;
+    parkShip(ship);
+    openPanel(null);
+  },
+  takeShipCharge: () => {
+    const ship = game.panel === 'myShip' ? game.docked : null;
+    if (ship) transferCharge(ship.batteries, game.power.batteries);
+  },
+  openShip: () => {
+    const ship = boardedShip();
+    if (!ship) return;
+    game.docked = ship;
+    openPanel(game.panel === 'myShip' ? null : 'myShip');
   },
   buyTelescope: () => {
     if (game.ownsTelescope || game.galactokens < TELESCOPE.cost) return;
@@ -709,10 +774,13 @@ const actions = {
     game.ownsWarpDrive = true;
     game.galactokens -= WARP_DRIVE.cost;
   },
-  openWarp: () => openPanel(game.panel === 'warp' ? null : 'warp'),
+  openWarp: () => {
+    if (boardedShip()) hud.toast("Ships don't have warp drives yet. Leave the ship to warp.");
+    else openPanel(game.panel === 'warp' ? null : 'warp');
+  },
   warpTo: (starName) => {
     const { rocket, power } = game;
-    if (!game.ownsWarpDrive || game.warp || !canWarpFrom(rocket)) return;
+    if (!game.ownsWarpDrive || game.warp || !canWarpFrom(rocket) || boardedShip()) return;
     const destination = chartedDestinations().find(({ star, affordable }) => star.name === starName && affordable);
     if (!destination) return;
     stopRecording("Warp jumps can't be part of a drone route. Recording stopped.");
@@ -863,7 +931,7 @@ const actions = {
   recordRoute: () => {
     const drone = dockedOf('drone');
     const { rocket } = game;
-    if (!drone?.pad || drone.flight || !rocket.landed) return;
+    if (!drone?.pad || drone.flight || !rocket.landed || boardedShip()) return;
     game.recording = { ...startRecording(drone, rocket), drone };
     openPanel(null);
   },
@@ -1127,6 +1195,8 @@ const PURCHASE_PRICES = {
   buyHauler: PRICES.hauler,
   buyBuilder: PRICES.builder,
   buyWormhole: PRICES.wormhole,
+  buyShip: PRICES.ship,
+  addShipBlock: (type) => SHIP_BLOCKS[type]?.cost ?? 0,
   alienBuyFuel: () => dockedMarket()?.fuelPackCost ?? 0,
   alienFillTank: () => dockedMarket()?.fillTankCost ?? 0,
   alienBuyBattery: () => dockedMarket()?.batteryCost ?? 0,
@@ -1307,8 +1377,47 @@ function angerOwners(body, resource) {
 
 const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map(dronePose)]);
 
+const shipInShipyard = () => {
+  const ship = dockedOf('myShip');
+  return ship && ship !== boardedShip() && Math.hypot(ship.x - MARKET.x, ship.y - MARKET.y) < SHIP.shipyardRange ? ship : null;
+};
+
+function parkShip(ship) {
+  const { rocket } = game;
+  leaveHelm(ship, rocket);
+  game.boarded = null;
+  ship.light = sunlight(ship.x, ship.y);
+  applyCraft();
+  const step = SHIP.boardingRange / 2;
+  const body = rocket.landed ? rocket.soi : null;
+  if (body) placeOnSurface(rocket, body, bearingBetween(body.x, body.y, ship.x, ship.y) + step / body.radius);
+  else Object.assign(rocket, { x: ship.x + Math.cos(ship.heading) * step, y: ship.y - Math.sin(ship.heading) * step });
+}
+
+function wreckShip() {
+  const { rocket } = game;
+  const body = rocket.soi;
+  blast(game.particles, rocket);
+  leaveHelm(boardedShip(), rocket);
+  game.fleet.splice(game.boarded, 1);
+  game.boarded = null;
+  applyCraft();
+  if (body?.kind !== 'planemo') {
+    explode();
+    return;
+  }
+  rocket.destroyed = false;
+  placeOnSurface(rocket, body, bearingBetween(body.x, body.y, rocket.x, rocket.y));
+  hud.toast(`Your ship broke up on ${body.name}, but your rocket got out in one piece.`);
+}
+
+function chargeShips(seconds) {
+  for (const ship of game.fleet) chargeFromPanels(ship, ship === boardedShip() ? sunlight(ship.x, ship.y) : (ship.light ?? 0), seconds);
+}
+
 function advanceOutposts(seconds) {
   for (const satellite of game.satellites) chargeSatellite(satellite, seconds);
+  chargeShips(seconds);
   runRig(game.rig, seconds);
   watchTheSky(seconds);
 }
@@ -1526,7 +1635,7 @@ function explode() {
 
 const stranded = () => {
   const { rocket } = game;
-  return !rocket.destroyed && rocket.fuel <= 0 && !rocket.soi && !canDock();
+  return !rocket.destroyed && rocket.fuel <= 0 && !rocket.soi && !canDock() && !boardedShip();
 };
 
 function abandonShip() {
@@ -2020,12 +2129,14 @@ function simulate() {
     if (game.autopilotArmed) steerAutopilot();
     const fuelBefore = rocket.fuel;
     const hit = advance(rocket, STEP_TICKS);
+    if (boardedShip()) moveWithPilot(boardedShip(), rocket);
     if (hit === 'land' && rocket.autopilot) {
       hud.toast(`Autopilot set you down on ${rocket.autopilot.name}.`);
       handBackControl();
     }
     if (game.recording) noteStep(game.recording, fuelBefore, rocket);
-    if (hit === 'crash') explode();
+    if (hit === 'crash' && boardedShip()) wreckShip();
+    else if (hit === 'crash') explode();
     if (hit === 'land') rewardFirstLanding();
     if (hit === 'wormhole') throughWormhole(rocket.soi);
     if (game.recording && !inSignal(game.antennas, rocket.x, rocket.y)) stopRecording('Out of antenna range. Recording stopped.');
@@ -2288,8 +2399,24 @@ function dockAction() {
       observatory: 'use the observatory',
       rig: 'use the mining rig',
       drone: 'use the drone',
+      myShip: 'board your ship',
     }[target?.kind] ?? ''
   );
+}
+
+function shipInfo() {
+  const ship = game.panel === 'myShip' ? game.docked : null;
+  if (!ship) return null;
+  const piloting = ship === boardedShip();
+  return {
+    title: `Ship ${game.fleet.indexOf(ship) + 1}`,
+    stats: describeShip(ship),
+    blocks: ship.blocks.map((type) => SHIP_BLOCKS[type].label),
+    shipyard: Boolean(shipInShipyard()),
+    blockChoices: hasRoom(ship) ? Object.entries(SHIP_BLOCKS).map(([value, { label, cost }]) => ({ value, label: `${label} · ${cost}` })) : [],
+    piloting,
+    canTakeCharge: storedCharge(ship.batteries) > 0 && roomToCharge(game.power.batteries) > 0,
+  };
 }
 
 function status() {
@@ -2377,6 +2504,9 @@ function status() {
     canCenterMap: Boolean(game.mapSelection) && !galaxyMap.showingSystem(),
     bank: dockedOf('bank'),
     canBuyBank: game.galactokens >= PRICES.bank(),
+    canBuyShip: game.galactokens >= PRICES.ship(),
+    piloting: Boolean(boardedShip()),
+    myShip: shipInfo(),
     canBuyObservatory: game.galactokens >= PRICES.observatory(),
     observatoriesInHold: inHold(game.observatories).length,
     canDeployObservatory: Boolean(canDeployObservatory()),
@@ -2478,6 +2608,8 @@ function snapshot() {
     rig: game.rig,
     banks: game.banks,
     observatories: game.observatories,
+    fleet: game.fleet,
+    boarded: game.boarded,
     antennas: game.antennas,
     antennasInHold: game.antennasInHold,
     drones: game.drones.map((drone) => ({ ...drone, flight: drone.flight && { ...drone.flight, soi: null } })),
@@ -2516,6 +2648,7 @@ function restore(saved) {
   const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
   Object.assign(game, { satellites: listOf('satellites', 'satellite').map(satelliteFromSave), rig: saved.rig ? rigFromSave(saved.rig) : null, gold: saved.gold ?? 0 });
   game.observatories = (saved.observatories ?? []).map(observatoryFromSave);
+  Object.assign(game, { fleet: (saved.fleet ?? []).map(shipFromSave), boarded: saved.boarded ?? null });
   Object.assign(game, { banks: listOf('banks', 'bank').map(bankFromSave), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone').map((drone) => ({ waitSeconds: 0, resting: 0, ...drone })), haulers: saved.haulers ?? [] });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
@@ -2554,7 +2687,7 @@ function restore(saved) {
   game.showGoals = saved.showGoals ?? true;
   syncMouths();
   if (game.gatewayOpen) openGateway();
-  applyUpgrades(game.upgrades, rocket, power);
+  applyCraft();
   camera.zoom = saved.zoom;
   streamAround();
   rocket.soi = sphereOfInfluence(rocket.x, rocket.y);

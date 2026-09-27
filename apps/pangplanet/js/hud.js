@@ -143,6 +143,18 @@ export function createHud(root, actions, { cheats }) {
     mapCenter: find('[data-map-center]'),
     bountyHere: find('[data-bounty-here]'),
     buyBank: find('[data-buy-bank]'),
+    buyShip: find('[data-buy-ship]'),
+    openShip: find('[data-open-ship]'),
+    leaveShip: find('[data-leave-ship]'),
+    shipTitle: find('[data-ship-title]'),
+    shipStats: find('[data-ship-stats]'),
+    shipBlocks: find('[data-ship-blocks]'),
+    shipyard: find('[data-shipyard]'),
+    shipyardNote: find('[data-shipyard-note]'),
+    blockChoice: find('[data-block-choice]'),
+    boardShip: find('[data-board-ship]'),
+    takeShipCharge: find('[data-take-ship-charge]'),
+    leaveShipPanel: find('[data-leave-ship-panel]'),
     deployBank: find('[data-deploy-bank]'),
     bankStored: find('[data-bank-stored]'),
     buyObservatory: find('[data-buy-observatory]'),
@@ -249,6 +261,12 @@ export function createHud(root, actions, { cheats }) {
     buySail: actions.buySail,
     launchSail: actions.launchSail,
     buyBank: actions.buyBank,
+    buyShip: actions.buyShip,
+    openShip: actions.openShip,
+    leaveShip: actions.leaveShip,
+    leaveShipPanel: actions.leaveShip,
+    boardShip: actions.boardShip,
+    takeShipCharge: actions.takeShipCharge,
     buyObservatory: actions.buyObservatory,
     deployObservatory: actions.deployObservatory,
     chargeObservatory: actions.chargeObservatory,
@@ -293,6 +311,11 @@ export function createHud(root, actions, { cheats }) {
   parts.addHaulerStop.forEach((button) => button.addEventListener('click', () => actions.addHaulerStop(button.dataset.addHaulerStop)));
   find('[data-add-stop-choice]').addEventListener('click', () => parts.stopChoice.value && actions.addRemoteStop(parts.stopChoice.value));
   find('[data-add-build-stop]').addEventListener('click', () => parts.buildStar.value && actions.addBuildStop(parts.buildKind.value, parts.buildStar.value));
+  find('[data-add-block]').addEventListener('click', () => parts.blockChoice.value && actions.addShipBlock(parts.blockChoice.value));
+  parts.shipBlocks.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-block]');
+    if (button) actions.removeShipBlock(Number(button.dataset.removeBlock));
+  });
   parts.haulerStops.addEventListener('click', (event) => {
     const button = event.target.closest('[data-remove-stop]');
     if (button) actions.removeHaulerStop(Number(button.dataset.removeStop));
@@ -325,6 +348,7 @@ export function createHud(root, actions, { cheats }) {
   let shownUpgrades = '';
   let shownAlienSells = '';
   let shownStops = '';
+  let shownBlocks = '';
   let shownGoals = '';
   const shownOptions = new Map();
 
@@ -406,6 +430,43 @@ export function createHud(root, actions, { cheats }) {
         return item;
       }),
     );
+  }
+
+  function showBlocks(blocks, removable) {
+    const signature = `${removable}:${blocks.join('|')}`;
+    if (signature === shownBlocks) return;
+    shownBlocks = signature;
+    parts.shipBlocks.replaceChildren(
+      ...blocks.map((label, index) => {
+        const item = document.createElement('li');
+        item.append(label);
+        if (removable) {
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'pp-action';
+          remove.dataset.removeBlock = String(index);
+          remove.textContent = 'Remove';
+          item.append(remove);
+        }
+        return item;
+      }),
+    );
+  }
+
+  function updateShip({ canBuyShip, piloting, myShip }) {
+    parts.buyShip.disabled = !canBuyShip;
+    setHidden(parts.openShip, !piloting);
+    setHidden(parts.leaveShip, !piloting);
+    if (!myShip) return;
+    setText(parts.shipTitle, myShip.title);
+    setText(parts.shipStats, myShip.stats);
+    showBlocks(myShip.blocks, myShip.shipyard);
+    setHidden(parts.shipyard, !myShip.shipyard || !myShip.blockChoices.length);
+    setHidden(parts.shipyardNote, myShip.shipyard);
+    showOptions(parts.blockChoice, myShip.blockChoices);
+    setHidden(parts.boardShip, myShip.piloting);
+    setHidden(parts.leaveShipPanel, !myShip.piloting);
+    parts.takeShipCharge.disabled = !myShip.canTakeCharge;
   }
 
   function updateHaulers({ hauler, canBuyHauler, canBuyBuilder, haulerStopsHere, stopChoices, buildChoices }) {
@@ -575,6 +636,7 @@ export function createHud(root, actions, { cheats }) {
     updateSatellite(status);
     updateRig(status);
     updateBank(status);
+    updateShip(status);
     updateObservatory(status);
     updateDrones(status);
     updateHaulers(status);
