@@ -8,7 +8,7 @@ import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
 import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, MARKET, ROCKET_HEIGHT } from './world.js';
 import { sailPose } from './science.js';
-import { storedCharge } from './solar.js';
+import { brightestStar, storedCharge } from './solar.js';
 import { relativeSpeed, shipHeading } from './ships.js';
 
 const STAGE_HEIGHT_UNITS = 360;
@@ -35,8 +35,10 @@ const ANTENNA_SHAPE = { height: 110, dish: 22, besideRocket: -75 };
 const BANK_SHAPE = { width: 56, height: 36, cells: 5 };
 const OBSERVATORY_SHAPE = { width: 48, height: 26, dome: 22, tube: 34, tubeWidth: 9, tilt: -0.6, lamp: 4 };
 const SIGNAL_RING_MAX_PX = 50000;
+const PROMINENCE = { count: 7, height: 0.14, span: 0.22, ticksPerCycle: 1200, shownAbovePx: 25 };
+const SCOOP_STREAM = { dots: 24, ticksPerTrip: 75, sway: 0.05, sizePx: 3 };
 const SHIP_BLOCK = { size: 22, columns: 2, outline: '#0b1a2e' };
-const SHIP_BLOCK_COLOURS = { engine: '#ff8a3d', tank: '#c9d3e0', battery: '#ffc933', panel: '#1f4fa8' };
+const SHIP_BLOCK_COLOURS = { engine: '#ff8a3d', tank: '#c9d3e0', battery: '#ffc933', panel: '#1f4fa8', ftl: '#c58cff', scoop: '#3fe0d0', hydrogenTank: '#9fd8ff', reactor: '#ff5b8a' };
 const HAULER_SCALE = 0.8;
 const SHIP_SCALE = 1.4;
 const SHIP_SPEED_SHOWN_WITHIN = 60000;
@@ -498,6 +500,73 @@ export function createRenderer(canvas, sprites) {
     });
   }
 
+  function seededRandom(name) {
+    let hash = 0;
+    for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+    return (i, k) => {
+      const value = Math.sin(hash + i * 12.9898 + k * 78.233) * 43758.5453;
+      return value - Math.floor(value);
+    };
+  }
+
+  const surfacePoint = (body, bearing, lift = 0) => [body.x + Math.sin(bearing) * (body.radius + lift), body.y + Math.cos(bearing) * (body.radius + lift)];
+
+  function drawProminences(star) {
+    const radiusPx = star.radius * view.ppu;
+    if (radiusPx < PROMINENCE.shownAbovePx) return;
+    const random = seededRandom(star.name);
+    const { count, height, span, ticksPerCycle } = PROMINENCE;
+    context.save();
+    context.globalCompositeOperation = 'lighter';
+    context.lineCap = 'round';
+    for (let i = 0; i < count; i++) {
+      const phase = (clock / ticksPerCycle + random(i, 1)) % 1;
+      const rise = Math.sin(phase * Math.PI);
+      const bearing = random(i, 2) * Math.PI * 2 + phase * 0.3;
+      const width = span * (0.5 + random(i, 3));
+      const lift = star.radius * height * rise * (0.5 + random(i, 4));
+      const [ax, ay] = toScreen(...surfacePoint(star, bearing - width / 2));
+      const [bx, by] = toScreen(...surfacePoint(star, bearing + width / 2));
+      const [cx, cy] = toScreen(...surfacePoint(star, bearing, lift * 2));
+      const green = Math.round(110 + 60 * random(i, 5));
+      const thickness = Math.max(2, radiusPx * 0.035 * (0.6 + random(i, 6)));
+      context.beginPath();
+      context.moveTo(ax, ay);
+      context.quadraticCurveTo(cx, cy, bx, by);
+      context.strokeStyle = `rgba(255, ${green}, 40, ${0.25 * rise})`;
+      context.lineWidth = thickness * 3;
+      context.stroke();
+      context.strokeStyle = `rgba(255, ${green + 40}, 90, ${0.85 * rise})`;
+      context.lineWidth = thickness;
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  function drawScoopStream(scene) {
+    const ship = scene.fleet[scene.boarded];
+    if (!scene.scooping || !ship) return;
+    const star = brightestStar(ship.x, ship.y);
+    if (!star) return;
+    const gap = Math.hypot(ship.x - star.x, ship.y - star.y);
+    const [ux, uy] = [(ship.x - star.x) / gap, (ship.y - star.y) / gap];
+    const [fromX, fromY] = [star.x + ux * star.radius, star.y + uy * star.radius];
+    const reach = gap - star.radius;
+    const { dots, ticksPerTrip, sway, sizePx } = SCOOP_STREAM;
+    context.save();
+    context.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < dots; i++) {
+      const t = (clock / ticksPerTrip + i / dots) % 1;
+      const along = t * t * reach;
+      const side = Math.sin(t * Math.PI * 3 + i * 1.7) * reach * sway * (1 - t);
+      const [sx, sy] = toScreen(fromX + ux * along - uy * side, fromY + uy * along + ux * side);
+      context.fillStyle = `rgba(255, ${Math.round(120 + 70 * t)}, ${Math.round(40 + 60 * t)}, ${0.3 + 0.4 * t})`;
+      discPath(sx, sy, sizePx * (1.3 - t * 0.6));
+      context.fill();
+    }
+    context.restore();
+  }
+
   function drawMarker(sx, sy, heading, colour, size) {
     withPose(sx, sy, heading, () => {
       context.fillStyle = colour;
@@ -753,6 +822,7 @@ export function createRenderer(canvas, sprites) {
     drawStars();
     const shownBodies = bodies.filter((body) => shownAtZoom(tierOf(body)));
     shownBodies.forEach(drawBody);
+    shownBodies.filter((body) => body.kind === 'star').forEach(drawProminences);
     drawBodyLabels(shownBodies, scene.claimedBounties);
     if (shownAtZoom('minor')) {
       drawMarket();
@@ -767,6 +837,7 @@ export function createRenderer(canvas, sprites) {
     drawPath(routePath, 'rgba(255, 150, 90, 0.55)', [8, 6]);
     clock = scene.clock;
     drawParticles(scene.particles);
+    drawScoopStream(scene);
     scene.drones.forEach(drawDrone);
     scene.haulers.forEach(drawHauler);
     scene.sails.forEach(drawSail);

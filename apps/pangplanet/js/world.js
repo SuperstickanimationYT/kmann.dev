@@ -232,7 +232,11 @@ export const SHIP_BLOCKS = {
   battery: { cost: 150, mass: 0.5, label: 'Battery' },
   panel: { cost: 300, mass: 0.5, label: 'Solar panel' },
   ftl: { cost: 25000, mass: 2, label: 'FTL drive', onePerShip: true },
+  scoop: { cost: 4000, mass: 1, label: 'Magnetic scoop' },
+  hydrogenTank: { cost: 1500, mass: 1, label: 'Hydrogen tank' },
+  reactor: { cost: 12000, mass: 2, label: 'Fusion reactor' },
 };
+export const FUSION = { tankSize: 100, scoopPerSecond: 1, scoopMinLight: 0.1, chargePerSecond: 2.5, hydrogenPerCharge: 1 };
 export const FTL = {
   tiers: [{ speed: 1e3 }, { speed: 1e4, cost: 30000, crystals: 5 }, { speed: 1e5, cost: 80000, crystals: 10, stardust: 3 }, { speed: 1e6, cost: 200000, stardust: 10 }],
   chargePerUnit: 1 / 1.5e7,
