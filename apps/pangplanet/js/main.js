@@ -17,6 +17,7 @@ import {
   transferCharge,
 } from './solar.js';
 import {
+  bankFromSave,
   chargeSatellite,
   collectGold,
   createBank,
@@ -28,11 +29,15 @@ import {
   deployRig,
   deploySatellite,
   loadRig,
+  observatoryFromSave,
   observatorySecondsLeft,
-  runObservatory,
-  runsOnStarlight,
+  rigCharge,
+  rigFromSave,
   rigSecondsLeft,
+  runObservatory,
   runRig,
+  runsOnStarlight,
+  satelliteFromSave,
   takeSatelliteCharge,
   withinReach,
 } from './outposts.js';
@@ -2331,13 +2336,13 @@ function status() {
     prices: Object.fromEntries(Object.entries(PRICES).map(([kind, price]) => [kind, price()])),
     satellitesInHold: inHold(game.satellites).length,
     banksInHold: inHold(game.banks).length,
-    rig: game.rig && { ...game.rig, secondsLeft: rigSecondsLeft(game.rig) },
+    rig: game.rig && { ...game.rig, charge: rigCharge(game.rig), secondsLeft: rigSecondsLeft(game.rig) },
     canBuySatellite: game.galactokens >= PRICES.satellite(),
     canBuyRig: !game.rig && game.galactokens >= MINING_RIG.cost,
     canDeploySatellite: Boolean(canDeploySatellite()),
     canDeployRig: Boolean(canDeployRig()),
     canTakeSatelliteCharge: Boolean(dockedOf('satellite')) && roomToCharge(power.batteries) > 0 && storedCharge(dockedOf('satellite').batteries) > 0,
-    canLoadRig: Boolean(game.rig) && game.rig.charge < MINING_RIG.batterySlots && storedCharge(power.batteries) > 0,
+    canLoadRig: Boolean(game.rig) && roomToCharge(game.rig.batteries) > 0 && storedCharge(power.batteries) > 0,
     destroyed: rocket.destroyed,
     stranded: stranded(),
     canMine: landedBody()?.kind === 'planemo' && !drillBusy(drill),
@@ -2509,9 +2514,9 @@ function restore(saved) {
   Object.assign(power, saved.power);
   Object.assign(game, { galactokens: saved.galactokens, ownsWarpDrive: saved.ownsWarpDrive, ownsRescueModule: saved.ownsRescueModule ?? false, tourSeen: saved.tourSeen ?? false, panel: null });
   const listOf = (plural, single) => saved[plural] ?? (saved[single] ? [saved[single]] : []);
-  Object.assign(game, { satellites: listOf('satellites', 'satellite'), rig: saved.rig ?? null, gold: saved.gold ?? 0 });
-  game.observatories = saved.observatories ?? [];
-  Object.assign(game, { banks: listOf('banks', 'bank'), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone').map((drone) => ({ waitSeconds: 0, resting: 0, ...drone })), haulers: saved.haulers ?? [] });
+  Object.assign(game, { satellites: listOf('satellites', 'satellite').map(satelliteFromSave), rig: saved.rig ? rigFromSave(saved.rig) : null, gold: saved.gold ?? 0 });
+  game.observatories = (saved.observatories ?? []).map(observatoryFromSave);
+  Object.assign(game, { banks: listOf('banks', 'bank').map(bankFromSave), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone').map((drone) => ({ waitSeconds: 0, resting: 0, ...drone })), haulers: saved.haulers ?? [] });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);

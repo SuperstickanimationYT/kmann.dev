@@ -1,36 +1,33 @@
-import { chargeRate, drainBatteries, fillBatteries, storedCharge, sunlight, transferCharge } from './solar.js';
+import { drainBatteries, fillBatteries, storedCharge, sunlight, transferCharge } from './solar.js';
+import { chargeFromPanels, createVessel, placeVessel, vesselFromSave } from './vessels.js';
 import { BATTERY_BANK, MINING_RIG, OBSERVATORY, SATELLITE } from './world.js';
 
-export function createSatellite() {
-  return { deployed: false, x: 0, y: 0, light: 0, batteries: Array(SATELLITE.batteries).fill(0) };
-}
+export const createSatellite = () => ({ ...createVessel(SATELLITE.blocks), light: 0 });
+export const satelliteFromSave = (saved) => vesselFromSave(saved, SATELLITE.blocks);
 
-export function deploySatellite(satellite, rocket) {
-  Object.assign(satellite, { deployed: true, x: rocket.x, y: rocket.y, light: sunlight(rocket.x, rocket.y) });
+export function deploySatellite(satellite, spot) {
+  placeVessel(satellite, spot);
+  satellite.light = sunlight(spot.x, spot.y);
 }
 
 export function chargeSatellite(satellite, seconds) {
-  if (satellite?.deployed) fillBatteries(satellite.batteries, chargeRate(satellite.light) * seconds);
+  if (satellite?.deployed) chargeFromPanels(satellite, satellite.light, seconds);
 }
 
 export function takeSatelliteCharge(satellite, power) {
   transferCharge(satellite.batteries, power.batteries);
 }
 
-export function createBank() {
-  return { deployed: false, x: 0, y: 0, batteries: Array(BATTERY_BANK.batteries).fill(0) };
-}
+export const createBank = () => createVessel(BATTERY_BANK.blocks);
+export const bankFromSave = (saved) => vesselFromSave(saved, BATTERY_BANK.blocks);
+export const deployBank = placeVessel;
 
-export function deployBank(bank, rocket) {
-  Object.assign(bank, { deployed: true, x: rocket.x, y: rocket.y });
-}
+export const createObservatory = () => ({ ...createVessel(OBSERVATORY.blocks), light: 0 });
+export const observatoryFromSave = (saved) => vesselFromSave(saved, OBSERVATORY.blocks);
 
-export function createObservatory() {
-  return { deployed: false, x: 0, y: 0, light: 0, batteries: Array(OBSERVATORY.batteries).fill(0) };
-}
-
-export function deployObservatory(observatory, rocket) {
-  Object.assign(observatory, { deployed: true, x: rocket.x, y: rocket.y, light: sunlight(rocket.x, rocket.y) });
+export function deployObservatory(observatory, spot) {
+  placeVessel(observatory, spot);
+  observatory.light = sunlight(spot.x, spot.y);
 }
 
 export const runsOnStarlight = (observatory) => observatory.light >= OBSERVATORY.minLight;
@@ -45,23 +42,29 @@ export function runObservatory(observatory, seconds) {
   return powered;
 }
 
-export function createRig() {
-  return { deployed: false, x: 0, y: 0, heading: 0, site: '', charge: 0, gold: 0 };
+export const createRig = () => ({ ...createVessel(MINING_RIG.blocks), heading: 0, site: '', gold: 0 });
+
+export function rigFromSave({ charge, ...saved }) {
+  const rig = vesselFromSave(saved, MINING_RIG.blocks);
+  if (charge) fillBatteries(rig.batteries, charge);
+  return rig;
 }
 
 export function deployRig(rig, rocket) {
-  Object.assign(rig, { deployed: true, x: rocket.x, y: rocket.y, heading: rocket.heading, site: rocket.soi.name });
+  placeVessel(rig, rocket);
+  Object.assign(rig, { heading: rocket.heading, site: rocket.soi.name });
 }
 
 export function loadRig(rig, power, keep = 0) {
-  const room = MINING_RIG.batterySlots - rig.charge;
-  rig.charge += drainBatteries(power.batteries, Math.max(0, Math.min(room, storedCharge(power.batteries) - keep)));
+  transferCharge(power.batteries, rig.batteries, keep);
 }
 
+export const rigCharge = (rig) => storedCharge(rig.batteries);
+
 export function runRig(rig, seconds) {
-  if (!rig?.deployed || rig.charge <= 0) return;
-  const poweredSeconds = Math.min(seconds, rig.charge * MINING_RIG.secondsPerBattery);
-  rig.charge = Math.max(0, rig.charge - poweredSeconds / MINING_RIG.secondsPerBattery);
+  if (!rig?.deployed) return;
+  const poweredSeconds = Math.min(seconds, rigSecondsLeft(rig));
+  drainBatteries(rig.batteries, poweredSeconds / MINING_RIG.secondsPerBattery);
   rig.gold += (poweredSeconds / 60) * MINING_RIG.goldPerMinute;
 }
 
@@ -71,6 +74,6 @@ export function collectGold(rig) {
   return collected;
 }
 
-export const rigSecondsLeft = (rig) => rig.charge * MINING_RIG.secondsPerBattery;
+export const rigSecondsLeft = (rig) => rigCharge(rig) * MINING_RIG.secondsPerBattery;
 
 export const withinReach = (rocket, outpost, range) => outpost?.deployed && Math.hypot(rocket.x - outpost.x, rocket.y - outpost.y) < range;
