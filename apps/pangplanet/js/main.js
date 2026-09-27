@@ -1035,6 +1035,10 @@ const PURCHASE_PRICES = {
   alienBuyFuel: () => dockedMarket()?.fuelPackCost ?? 0,
   alienFillTank: () => dockedMarket()?.fillTankCost ?? 0,
   alienBuyBattery: () => dockedMarket()?.batteryCost ?? 0,
+  freighterBuyBattery: () => {
+    const ship = dockedFreighter();
+    return (ship && freighterMarket(ship)?.batteryCost) ?? 0;
+  },
   paySampleFee: () => ALIENS.sampling.fee,
 };
 
