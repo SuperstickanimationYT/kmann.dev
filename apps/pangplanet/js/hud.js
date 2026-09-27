@@ -11,6 +11,7 @@ const UPGRADE_TEXT = {
   panels: { name: 'Solar panels', describe: (value) => `${value}× charging` },
   tank: { name: 'Fuel tank', describe: (value) => `${value} fuel` },
   engine: { name: 'Engine', describe: (value) => `${value}× thrust` },
+  hull: { name: 'Landing legs', describe: (value) => `land under ${value}` },
   telescope: { name: 'Telescope', describe: (value) => `${abbreviate(value)} range` },
   timewarp: { name: 'Time warp', describe: (value) => `up to ${value}x` },
   warpRange: { name: 'Warp range', describe: (value) => `${abbreviate(value)} jumps` },
@@ -91,6 +92,11 @@ export function createHud(root, actions, { cheats }) {
     sellBatteries: find('[data-sell-batteries]'),
     buyWarpDrive: find('[data-buy-warp-drive]'),
     buyRescueModule: find('[data-buy-rescue-module]'),
+    buyAutopilot: find('[data-buy-autopilot]'),
+    toggleAutopilot: find('[data-toggle-autopilot]'),
+    autopilotLabel: find('[data-autopilot-label]'),
+    autopilotLanding: find('[data-autopilot-landing]'),
+    autopilotBody: find('[data-autopilot-body]'),
     openWarp: find('[data-open-warp]'),
     warpNote: find('[data-warp-note]'),
     destinations: find('[data-destinations]'),
@@ -219,6 +225,8 @@ export function createHud(root, actions, { cheats }) {
   parts.sellBatteries.addEventListener('click', actions.sellBatteries);
   parts.buyWarpDrive.addEventListener('click', actions.buyWarpDrive);
   parts.buyRescueModule.addEventListener('click', actions.buyRescueModule);
+  parts.buyAutopilot.addEventListener('click', actions.buyAutopilot);
+  parts.toggleAutopilot.addEventListener('click', actions.toggleAutopilot);
   parts.openWarp.addEventListener('click', actions.openWarp);
   const clicks = {
     buySatellite: actions.buySatellite,
@@ -507,6 +515,12 @@ export function createHud(root, actions, { cheats }) {
     parts.buyWarpDrive.disabled = !status.canBuyWarpDrive;
     setHidden(parts.buyRescueModule, !status.offersRescueModule);
     parts.buyRescueModule.disabled = !status.canBuyRescueModule;
+    setHidden(parts.buyAutopilot, status.ownsAutopilot);
+    parts.buyAutopilot.disabled = !status.canBuyAutopilot;
+    setHidden(parts.toggleAutopilot, !status.ownsAutopilot);
+    setText(parts.autopilotLabel, status.autopilotArmed ? 'Landing autopilot: on' : 'Landing autopilot: off');
+    setHidden(parts.autopilotLanding, !status.autopilotLanding);
+    setText(parts.autopilotBody, status.autopilotLanding ?? '');
     setHidden(parts.openWarp, !status.ownsWarpDrive);
     setText(parts.warpNote, status.warpNote);
     parts.dockActions.forEach((action) => setText(action, status.dockAction));

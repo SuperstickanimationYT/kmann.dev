@@ -54,6 +54,7 @@ import {
   rehearseRoute,
   replayFlight,
 } from './drones.js';
+import { flyDescent, mustTakeOver } from './autopilot.js';
 import { createGalaxyMap } from './galaxy-map.js';
 import { GOALS, currentGoal, newlyReachedGoals } from './goals.js';
 import { flyShip, launchShip, nextShipDelayTicks, relativeSpeed, shipGone } from './ships.js';
@@ -115,6 +116,7 @@ import {
 import {
   ALIENS,
   ANTENNA,
+  AUTOPILOT,
   BATTERY,
   BATTERY_BANK,
   BUILDER,
@@ -199,6 +201,8 @@ const game = {
   warp: null,
   ownsWarpDrive: false,
   ownsRescueModule: false,
+  ownsAutopilot: false,
+  autopilotArmed: false,
   satellites: [],
   rig: null,
   banks: [],
@@ -651,6 +655,17 @@ const actions = {
     game.ownsRescueModule = true;
     game.galactokens -= RESCUE.cost;
   },
+  buyAutopilot: () => {
+    if (game.ownsAutopilot || game.galactokens < AUTOPILOT.cost) return;
+    game.ownsAutopilot = true;
+    game.autopilotArmed = true;
+    game.galactokens -= AUTOPILOT.cost;
+  },
+  toggleAutopilot: () => {
+    if (!game.ownsAutopilot) return;
+    game.autopilotArmed = !game.autopilotArmed;
+    if (!game.autopilotArmed) handBackControl();
+  },
   buyWarpDrive: () => {
     if (game.ownsWarpDrive || game.galactokens < WARP_DRIVE.cost) return;
     game.ownsWarpDrive = true;
@@ -1043,6 +1058,7 @@ const PURCHASE_PRICES = {
   buyTelescope: () => TELESCOPE.cost,
   buyRescueModule: () => RESCUE.cost,
   buyWarpDrive: () => WARP_DRIVE.cost,
+  buyAutopilot: () => AUTOPILOT.cost,
   buyRig: () => MINING_RIG.cost,
   buySail: () => SOLAR_SAIL.cost,
   buySatellite: PRICES.satellite,
@@ -1282,6 +1298,7 @@ const KEY_ACTIONS = {
     if (!rocket.destroyed && rocket.fuel > 0) rocket.engineOn = !rocket.engineOn;
   },
   f: dock,
+  l: actions.toggleAutopilot,
   g: actions.stopDrill,
   p: actions.togglePanels,
   w: actions.openWarp,
@@ -1394,6 +1411,7 @@ for (const type of ['pointercancel', 'pointerleave']) {
 
 function steer() {
   const { rocket } = game;
+  if (rocket.autopilot) return;
   const throttleChange = THROTTLE_PER_TICK * STEP_TICKS;
   if (isHeld('Shift', 'ArrowUp')) rocket.throttle += throttleChange;
   if (isHeld('Control', 'ArrowDown')) rocket.throttle -= throttleChange;
@@ -1886,8 +1904,13 @@ function simulate() {
   let simTicks = 0;
   for (let i = 0; i < game.timewarp && !rocket.destroyed; i++) {
     if (game.recording) noteControls(game.recording, rocket);
+    if (game.autopilotArmed) steerAutopilot();
     const fuelBefore = rocket.fuel;
     const hit = advance(rocket, STEP_TICKS);
+    if (hit === 'land' && rocket.autopilot) {
+      hud.toast(`Autopilot set you down on ${rocket.autopilot.name}.`);
+      handBackControl();
+    }
     if (game.recording) noteStep(game.recording, fuelBefore, rocket);
     if (hit === 'crash') explode();
     if (hit === 'land') rewardFirstLanding();
@@ -1900,6 +1923,33 @@ function simulate() {
     game.timewarp = Math.min(game.timewarp, timewarpCap());
   }
   return simTicks;
+}
+
+function crashCourseBody() {
+  const ending = game.forecast?.ending;
+  if (ending?.kind !== 'crash') return null;
+  const body = sphereOfInfluence(ending.x, ending.y);
+  return body?.kind === 'planemo' ? body : null;
+}
+
+function steerAutopilot() {
+  const { rocket } = game;
+  if (rocket.landed || rocket.destroyed) return;
+  if (!rocket.autopilot) {
+    const body = crashCourseBody();
+    if (!body || !mustTakeOver(rocket, body)) return;
+    rocket.autopilot = body;
+    stopRecording('The autopilot took over. Recording stopped.');
+    hud.toast(`Coming in too fast: the autopilot is landing you on ${body.name}.`);
+  }
+  flyDescent(rocket, rocket.autopilot);
+}
+
+function handBackControl() {
+  const { rocket } = game;
+  if (!rocket.autopilot) return;
+  rocket.autopilot = null;
+  rocket.engineOn = false;
 }
 
 function stepShip() {
@@ -2183,6 +2233,10 @@ function status() {
     canBuyWarpDrive: !game.ownsWarpDrive && game.galactokens >= WARP_DRIVE.cost,
     offersRescueModule: !game.ownsRescueModule && game.drones.length > 0,
     canBuyRescueModule: !game.ownsRescueModule && game.galactokens >= RESCUE.cost,
+    ownsAutopilot: game.ownsAutopilot,
+    autopilotArmed: game.autopilotArmed,
+    canBuyAutopilot: !game.ownsAutopilot && game.galactokens >= AUTOPILOT.cost,
+    autopilotLanding: rocket.autopilot?.name ?? null,
     warpDestinations: destinations,
     warpNote: warpNote(destinations, unchartedInRange),
     ownsTelescope: game.ownsTelescope,
@@ -2271,6 +2325,8 @@ function snapshot() {
     galactokens: game.galactokens,
     ownsWarpDrive: game.ownsWarpDrive,
     ownsRescueModule: game.ownsRescueModule,
+    ownsAutopilot: game.ownsAutopilot,
+    autopilotArmed: game.autopilotArmed,
     tourSeen: game.tourSeen,
     askBeforeBigBuys: game.askBeforeBigBuys,
     goalsDone: [...game.goalsDone],
@@ -2350,6 +2406,8 @@ function restore(saved) {
   game.builtWormholes = saved.builtWormholes ?? [];
   game.wormholesInHold = saved.wormholesInHold ?? 0;
   game.askBeforeBigBuys = saved.askBeforeBigBuys ?? true;
+  game.ownsAutopilot = saved.ownsAutopilot ?? false;
+  game.autopilotArmed = saved.autopilotArmed ?? false;
   game.goalsDone = new Set(saved.goalsDone ?? []);
   game.showGoals = saved.showGoals ?? true;
   syncMouths();

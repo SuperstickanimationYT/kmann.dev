@@ -26,4 +26,5 @@ export function applyUpgrades(upgrades, rocket, power) {
   power.panelBoost = upgradeValue('panels', upgrades.panels);
   rocket.fuelCapacity = upgradeValue('tank', upgrades.tank);
   rocket.thrust = upgradeValue('engine', upgrades.engine);
+  rocket.crashSpeed = upgradeValue('hull', upgrades.hull);
 }
