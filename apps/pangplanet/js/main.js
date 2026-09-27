@@ -151,6 +151,7 @@ const THROTTLE_PER_TICK = 5;
 const TURN_PER_TICK = (3 * Math.PI) / 180;
 const CAMERA_EASE_PER_TICK = 1 / 20;
 const ZOOM_STEP = 1.1;
+const TAP_SLOP_PX = 10;
 const ZOOM_LIMITS = { min: 0.00002, max: 8 };
 const FORECAST_STEPS = 1500;
 const FORECAST_STEP_TICKS = 3;
@@ -1235,14 +1236,38 @@ canvas.addEventListener(
   { passive: false },
 );
 
+const pointersDown = new Set();
+let rocketTap = null;
+
 canvas.addEventListener('pointerdown', (event) => {
+  pointersDown.add(event.pointerId);
   const { rocket, drill } = game;
   if (drillAwaitingClick(drill) && renderer.hitsDrill(rocket, drill, event.clientX, event.clientY)) {
     startDrilling(drill, play);
     return;
   }
-  if (!rocket.destroyed && renderer.hitsRocket(rocket, event.clientX, event.clientY)) openPanel('rocket');
+  const onRocket = !rocket.destroyed && renderer.hitsRocket(rocket, event.clientX, event.clientY);
+  rocketTap = onRocket && pointersDown.size === 1 ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY } : null;
 });
+
+canvas.addEventListener('pointermove', (event) => {
+  if (rocketTap?.pointerId !== event.pointerId) return;
+  if (Math.hypot(event.clientX - rocketTap.x, event.clientY - rocketTap.y) > TAP_SLOP_PX) rocketTap = null;
+});
+
+canvas.addEventListener('pointerup', (event) => {
+  pointersDown.delete(event.pointerId);
+  if (rocketTap?.pointerId !== event.pointerId) return;
+  rocketTap = null;
+  if (!game.rocket.destroyed) openPanel('rocket');
+});
+
+for (const type of ['pointercancel', 'pointerleave']) {
+  canvas.addEventListener(type, (event) => {
+    pointersDown.delete(event.pointerId);
+    rocketTap = null;
+  });
+}
 
 function steer() {
   const { rocket } = game;
