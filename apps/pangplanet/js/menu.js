@@ -1,4 +1,4 @@
-import { createWorld, deleteWorld, listWorlds } from './save.js';
+import { createWorld, deleteWorld, exportWorld, importWorld, listWorlds } from './save.js';
 
 const SEED_RANGE = 2 ** 32;
 const DEFAULT_WORLD_NAME = 'New world';
@@ -36,12 +36,32 @@ function button(label, className, onClick) {
   return element;
 }
 
+const fileNameFor = (world) => `${world.name.replace(/[^\w -]+/g, '').trim() || 'world'}.pangplanet.json`;
+
+function downloadWorld(world) {
+  const file = new Blob([JSON.stringify(exportWorld(world.id))], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(file);
+  link.download = fileNameFor(world);
+  link.click();
+}
+
+async function readWorldFile(file) {
+  try {
+    return JSON.parse(await file.text());
+  } catch {
+    return null;
+  }
+}
+
 export function showWorldMenu(root, play) {
   const menu = root.querySelector('[data-worlds-menu]');
   const list = menu.querySelector('[data-world-list]');
   const empty = menu.querySelector('[data-no-worlds]');
   const form = menu.querySelector('[data-new-world]');
   const seedField = menu.querySelector('[data-seed-field]');
+  const importInput = menu.querySelector('[data-import-world]');
+  const importError = menu.querySelector('[data-import-error]');
   const { worldName, galaxy, seed, cheats } = form.elements;
 
   function worldRow(world) {
@@ -55,7 +75,7 @@ export function showWorldMenu(root, play) {
       deleteWorld(world.id);
       render();
     };
-    row.append(name, details, button('Play', 'pp-buy', () => play(world)), button('Delete', 'pp-restart', remove));
+    row.append(name, details, button('Play', 'pp-buy', () => play(world)), button('Export', 'pp-export', () => downloadWorld(world)), button('Delete', 'pp-restart', remove));
     return row;
   }
 
@@ -65,6 +85,13 @@ export function showWorldMenu(root, play) {
     list.replaceChildren(...worlds.map(worldRow));
   }
 
+  importInput.addEventListener('change', async () => {
+    const [file] = importInput.files;
+    importInput.value = '';
+    if (!file) return;
+    importError.hidden = Boolean(importWorld(await readWorldFile(file)));
+    render();
+  });
   form.addEventListener('change', () => (seedField.hidden = galaxy.value !== 'custom'));
   form.addEventListener('submit', (event) => {
     event.preventDefault();
