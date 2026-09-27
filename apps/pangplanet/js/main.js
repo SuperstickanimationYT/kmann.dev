@@ -61,6 +61,7 @@ import {
 } from './drones.js';
 import { flyDescent, mustTakeOver } from './autopilot.js';
 import { createGalaxyMap } from './galaxy-map.js';
+import { apparentBrightness, createStarPhoto } from './star-photo.js';
 import { GOALS, currentGoal, newlyReachedGoals } from './goals.js';
 import { flyShip, launchShip, nextShipDelayTicks, relativeSpeed, shipGone } from './ships.js';
 import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
@@ -1164,6 +1165,7 @@ const CHEATS = {
 const hud = createHud(stage, actions, { cheats: Boolean(world?.cheats) });
 const tour = createTour(stage, { onEnd: () => (game.tourSeen = true), openGuide: () => openPanel('help') });
 const galaxyMap = createGalaxyMap(stage.querySelector('[data-map]'));
+const starPhoto = createStarPhoto(stage.querySelector('[data-star-photo]'));
 
 function shipInReach() {
   const { ship, rocket } = game;
@@ -1595,6 +1597,14 @@ function mapInfo() {
 }
 
 const moonsSeen = (entry) => entry.visited || game.studies.has(`flyby:${starKey(entry)}`);
+
+function photoSubject() {
+  const entry = game.mapSelection;
+  if (!entry || galaxyMap.showingSystem()) return null;
+  const star = systemAt(entry.x, entry.y)?.star;
+  const distance = Math.max(1, Math.hypot(entry.x - game.rocket.x, entry.y - game.rocket.y));
+  return { name: entry.name, colour: entry.fill, brightness: apparentBrightness(star?.luminosity ?? 1, distance) };
+}
 
 function observationNote(entry) {
   if (entry.watched >= FULLY_OBSERVED) return 'fully observed';
@@ -2415,6 +2425,7 @@ function frame(time) {
       ship: game.ship && { x: game.ship.x, y: game.ship.y, colour: speciesByKey[game.ship.species].colour },
       wormholeLinks: [...game.wormholeLinks.values(), ...game.builtWormholes.filter(isLinked).map(({ ends }) => ends)],
     });
+    starPhoto.show(photoSubject());
   }
   bakeNextTexture();
   hud.update(status());
