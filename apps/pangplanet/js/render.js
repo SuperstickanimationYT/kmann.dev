@@ -2,6 +2,7 @@ import { speciesByKey } from './aliens.js';
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
 import { partBounds, partColour } from './fleet.js';
 import { haulerPose } from './haulers.js';
+import { floraOf, hasFlora } from './plants.js';
 import { runsOnStarlight } from './outposts.js';
 import { rocketPoint } from './physics.js';
 import { bountyWaiting } from './progression.js';
@@ -15,6 +16,7 @@ import { relativeSpeed, shipHeading } from './ships.js';
 const STAGE_HEIGHT_UNITS = 360;
 const ROCK_COUNT = 72;
 const ROCK_LIFT = 5;
+const PLANTS_SHOWN_FROM_PPU = 0.05;
 const LABEL_BELOW_PX = 40;
 const LABEL_LINE_PX = 14;
 const LABEL_GAP_PX = 6;
@@ -237,6 +239,7 @@ export function createRenderer(canvas, sprites) {
       context.stroke();
     }
     if (look.rock) drawRocks(body, look.rock);
+    if (hasFlora(body)) drawPlants(body);
   }
 
   function cloudTurn(body) {
@@ -254,6 +257,82 @@ export function createRenderer(canvas, sprites) {
     context.lineWidth = 1;
     discPath(cx, cy, radiusPx);
     context.stroke();
+  }
+
+  const plantColour = (species, lighten = 0) => `hsl(${species.hue}, ${species.saturation}%, ${species.lightness + lighten}%)`;
+
+  function drawTuft(species, height) {
+    context.strokeStyle = plantColour(species);
+    context.lineWidth = Math.max(1, height * 0.06);
+    for (let blade = 0; blade < species.parts; blade++) {
+      const angle = (blade / (species.parts - 1) - 0.5) * species.spread;
+      const tipX = Math.sin(angle) * height * 0.7;
+      const tipY = -Math.cos(angle) * height;
+      context.beginPath();
+      context.moveTo(0, 0);
+      context.quadraticCurveTo(tipX * 0.2, tipY * 0.6, tipX, tipY);
+      context.stroke();
+    }
+  }
+
+  function drawFern(species, height) {
+    context.strokeStyle = plantColour(species);
+    context.lineWidth = Math.max(1, height * 0.05);
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.lineTo(0, -height);
+    for (let leaf = 1; leaf <= species.parts; leaf++) {
+      const y = (-height * leaf) / (species.parts + 1);
+      const reach = height * 0.35 * species.spread * (1 - leaf / (species.parts + 1));
+      context.moveTo(-reach, y - reach * 0.4);
+      context.lineTo(0, y);
+      context.lineTo(reach, y - reach * 0.4);
+    }
+    context.stroke();
+  }
+
+  function drawBulb(species, height) {
+    const stalk = height * 0.75;
+    context.strokeStyle = plantColour(species, -10);
+    context.lineWidth = Math.max(1, height * 0.06);
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.lineTo(0, -stalk);
+    context.stroke();
+    context.fillStyle = plantColour(species, 12);
+    context.beginPath();
+    context.arc(0, -stalk, height * 0.25 * species.spread, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  function drawSpire(species, height) {
+    context.fillStyle = plantColour(species);
+    for (let spike = 0; spike < species.parts; spike++) {
+      const offset = (spike / (species.parts - 1) - 0.5) * height * 0.5 * species.spread;
+      const tall = height * (1 - Math.abs(offset) / height);
+      const base = height * 0.08;
+      context.beginPath();
+      context.moveTo(offset - base, 0);
+      context.lineTo(offset, -tall);
+      context.lineTo(offset + base, 0);
+      context.closePath();
+      context.fill();
+    }
+  }
+
+  const PLANT_DRAWERS = { tuft: drawTuft, fern: drawFern, bulb: drawBulb, spire: drawSpire };
+
+  function drawPlants(body) {
+    const scale = view.ppu;
+    if (scale < PLANTS_SHOWN_FROM_PPU) return;
+    context.lineCap = 'round';
+    for (const { bearing, species, size, phase } of floraOf(body).plants) {
+      const [sx, sy] = toScreen(body.x + Math.sin(bearing) * body.radius, body.y + Math.cos(bearing) * body.radius);
+      const height = species.height * size * scale;
+      if (!onScreen(sx, sy, height)) continue;
+      const lean = Math.sin(clock * species.swayPerTick + phase) * species.sway;
+      withPose(sx, sy, bearing + lean, () => PLANT_DRAWERS[species.shape](species, height));
+    }
   }
 
   function drawRocks(body, colour) {
