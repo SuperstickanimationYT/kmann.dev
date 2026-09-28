@@ -19,11 +19,11 @@ function linkWormholes(mouth, exit) {
 
 const EARTH_SURFACE = { seed: 3303, baseColor: '#1f6fd1', variation: 15, darkness: 35, polarCap: 30, bands: 0, craters: 0, land: true, landColor: '#3fbf2a', landCover: 45, clouds: 35, haze: 24, hazeColor: '#7fb2ff' };
 
-export const HOME_BODY = { name: 'Earth', x: 0, y: -10000, radius: 10000, soi: 12000, mass: 1e8, kind: 'planemo', look: 'earth', planet: EARTH_SURFACE };
-
 export const SUN_RADIUS = 50000;
 
 const SUN = { name: 'Sun', x: 1000000, y: -1000000, radius: SUN_RADIUS, soi: 52000, mass: 1e11, kind: 'star', look: 'sun' };
+
+export const HOME_BODY = { name: 'Earth', x: 0, y: -10000, radius: 10000, soi: 12000, mass: 1e8, kind: 'planemo', look: 'earth', planet: EARTH_SURFACE, orbitCenter: { x: SUN.x, y: SUN.y } };
 
 export const EARTH_ORBIT = Math.hypot(HOME_BODY.x - SUN.x, HOME_BODY.y - SUN.y);
 const EARTH_ORBIT_NUMBER = 3;
@@ -55,12 +55,14 @@ function surfaceBody({ name, x, y, radius, gravityInEarths, seed, surface, rings
   };
 }
 
-const solarPlanet = ({ orbitNumber, bearingDegrees, ...body }) =>
-  surfaceBody({ ...body, ...orbiting(SUN, (EARTH_ORBIT / EARTH_ORBIT_NUMBER) * orbitNumber, bearingDegrees) });
+const solarPlanet = ({ orbitNumber, bearingDegrees, ...body }) => ({
+  ...surfaceBody({ ...body, ...orbiting(SUN, (EARTH_ORBIT / EARTH_ORBIT_NUMBER) * orbitNumber, bearingDegrees) }),
+  orbitCenter: { x: SUN.x, y: SUN.y },
+});
 
 function solarMoon({ parent, distance, bearingDegrees, ...body }) {
   const center = SOLAR_PLANETS.find((planet) => planet.name === parent);
-  return { ...surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) }), moon: true };
+  return { ...surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) }), moon: true, orbitCenter: { x: center.x, y: center.y } };
 }
 
 export const blackHole = (name, { x, y }) => ({ name, x, y, ...BLACK_HOLE, kind: 'blackhole', look: 'blackhole' });
@@ -96,7 +98,7 @@ const SOLAR_MOONS = [
 
 export const HOME_SYSTEM = [
   HOME_BODY,
-  { name: 'Moon', x: 100000, y: 0, radius: 3000, soi: 5000, mass: massFor(3000, MOON_GRAVITY_IN_EARTHS * EARTH_SURFACE_GRAVITY), kind: 'planemo', look: 'moon', bounty: 75, moon: true },
+  { name: 'Moon', x: 100000, y: 0, radius: 3000, soi: 5000, mass: massFor(3000, MOON_GRAVITY_IN_EARTHS * EARTH_SURFACE_GRAVITY), kind: 'planemo', look: 'moon', bounty: 75, moon: true, orbitCenter: { x: HOME_BODY.x, y: HOME_BODY.y } },
   ...linkWormholes(
     { name: 'Sun Wormhole', x: 100000, y: 10000, radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' },
     { name: 'Sun Wormhole', x: 1000000, y: -1080000, radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' },
@@ -131,6 +133,7 @@ export function coreSystem(center) {
       surface: { baseColor: '#5a5670', variation: 25, darkness: 45, craters: 10 },
     }),
     landingScience: 2000,
+    orbitCenter: { ...center },
   };
   const [coreGate, solarGate] = linkWormholes({ ...GATEWAY, ...orbiting(center, CORE.gateOrbit, 20) }, { ...GATEWAY, ...orbiting(SUN, 200000, -60) });
   return { bodies: [core, relic, coreGate], coreGate, solarGate };
@@ -178,7 +181,7 @@ export function farShoreSystem(center) {
       seed: 9933,
       surface: { baseColor: '#2a6fb8', land: true, landColor: '#8a9a4a', landCover: 40, polarCap: 25, clouds: 30, haze: 18, hazeColor: '#a8c8ff' },
     },
-  ].map(({ distance, bearingDegrees, ...body }) => surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) }));
+  ].map(({ distance, bearingDegrees, ...body }) => ({ ...surfaceBody({ ...body, ...orbiting(center, distance, bearingDegrees) }), orbitCenter: { ...center } }));
   const saturn = SOLAR_PLANETS.find((planet) => planet.name === 'Saturn');
   const [farGate, saturnGate] = linkWormholes(
     { ...SATURN_WORMHOLE, ...orbiting(center, FAR_SHORE.gateOrbit, 300), star: { name: hole.name, ...center } },

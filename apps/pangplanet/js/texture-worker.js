@@ -1,8 +1,9 @@
 import { renderPlanet } from '../../planet-textures/js/planet.js';
 
 self.onmessage = ({ data }) => {
-  const { surface, sky } = renderPlanet(data.planet, data.size);
-  surface.getContext('2d').drawImage(sky, 0, 0);
-  const bitmap = surface.transferToImageBitmap();
-  self.postMessage({ bitmap }, [bitmap]);
+  const layers = renderPlanet(data.planet, data.size);
+  const surface = layers.surface.transferToImageBitmap();
+  const hasSky = data.planet.clouds > 0 || data.planet.haze > 0;
+  const sky = hasSky ? layers.sky.transferToImageBitmap() : null;
+  self.postMessage({ surface, sky }, sky ? [surface, sky] : [surface]);
 };
