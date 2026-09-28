@@ -35,6 +35,8 @@ const WORMHOLE_REACH_IN_SECTORS = [10, 30];
 const WORMHOLE_CLEAR_OF_HOME_IN_SECTORS = 6;
 const WORMHOLE_BEYOND_PLANETS = 150000;
 const BIOSIGNATURE_SALT = 0xb105;
+const ZERO_CELSIUS_IN_KELVIN = 273;
+const LIVABLE = { minCelsius: 0, maxCelsius: 50, minWater: 20, minAtmosphere: 20 };
 const MOON_SALT = 0x6d0015;
 const MOON = {
   countAroundGasGiant: [0, 3],
@@ -266,10 +268,17 @@ function generateSystem(sectorX, sectorY) {
     planets.push(generatePlanet(next, star, orbit, index, seed, richness));
   }
   settleHomeworld(star, planets, seed);
-  star.biosignature = Boolean(homeworldSpecies(planets)) || createRandom(seed ^ BIOSIGNATURE_SALT).next() < FALSE_BIOSIGNATURE_CHANCE;
   const blackHoles = blackHolesBetween(star, orbits, seed);
   const moons = planets.flatMap((planet, index) => moonsOf(star, planet, index, seed, richness)).filter((moon) => clearOf(blackHoles, moon));
+  for (const world of [...planets, ...moons]) if (supportsLife(world)) world.life = true;
+  star.biosignature = Boolean(homeworldSpecies(planets)) || livingWorlds([...planets, ...moons]) > 0 || createRandom(seed ^ BIOSIGNATURE_SALT).next() < FALSE_BIOSIGNATURE_CHANCE;
   return [star, ...blackHoles, ...wormholeMouth(star, orbits, seed, sectorX, sectorY), ...planets, ...moons];
+}
+
+function supportsLife(world) {
+  const { kind, temperature, water, atmosphere } = world.planet;
+  const celsius = temperature - ZERO_CELSIUS_IN_KELVIN;
+  return kind === 'rocky' && !world.species && celsius >= LIVABLE.minCelsius && celsius <= LIVABLE.maxCelsius && water >= LIVABLE.minWater && atmosphere >= LIVABLE.minAtmosphere;
 }
 
 const clearOf = (blackHoles, moon) => blackHoles.every((hole) => Math.hypot(hole.x - moon.x, hole.y - moon.y) > MOON_CLEARANCE_FROM_BLACK_HOLE + moon.soi);
@@ -447,6 +456,7 @@ export function systemAt(x, y) {
 const worldsWith = (resource) => (planets) => planets.filter((planet) => planet.resource === resource).length;
 export const crystalWorlds = worldsWith('crystals');
 export const stardustWorlds = worldsWith('stardust');
+export const livingWorlds = (planets) => planets.filter((planet) => planet.life).length;
 export const homeworldSpecies = (planets) => planets.find((planet) => planet.species)?.species ?? null;
 
 export function homeworldNear(x, y, range) {

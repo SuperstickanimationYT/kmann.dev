@@ -9,7 +9,11 @@ export function study(studies, key, amount) {
   return amount;
 }
 
-export const sampleScience = (body) => (body.species ? SCIENCE.sample.life : (SCIENCE.sample[body.resource] ?? SCIENCE.sample.other));
+export function sampleScience(body) {
+  if (body.species) return SCIENCE.sample.life;
+  if (body.life) return SCIENCE.sample.simpleLife;
+  return SCIENCE.sample[body.resource] ?? SCIENCE.sample.other;
+}
 export const flybyScience = (planets) => SCIENCE.flyby.base + SCIENCE.flyby.perPlanet * planets;
 
 export function cruiseSpeed(star, from) {

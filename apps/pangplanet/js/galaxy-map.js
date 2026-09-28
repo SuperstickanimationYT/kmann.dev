@@ -104,6 +104,7 @@ export function createGalaxyMap(canvas) {
       if (entry.stardust) ring(entry.x, entry.y, (STAR_DOT_PX + 8) / view.scale, STARDUST_VIOLET, false);
       if (entry.wormhole) ring(entry.x, entry.y, (STAR_DOT_PX + 14) / view.scale, WORMHOLE_PURPLE, true);
       if (entry.aliens) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, speciesByKey[entry.aliens].colour, false);
+      else if (entry.life) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, LIFE_GREEN, false);
       else if (entry.biosignature && !entry.visited) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, LIFE_GREEN, true);
       if (entry === selected) ring(entry.x, entry.y, (STAR_DOT_PX + 5) / view.scale, BOUNTY_GOLD, false);
       if (showLabels || entry === selected) label(entry.name, entry.x, entry.y, 15);

@@ -105,6 +105,7 @@ import {
   followFarShore,
   homeworldNear,
   homeworldSpecies,
+  livingWorlds,
   openGateway,
   outsideGalaxy,
   setBuiltMouths,
@@ -1840,6 +1841,7 @@ function bountyNote(entry) {
 
 function lifeNote(entry) {
   if (entry.aliens) return `${speciesByKey[entry.aliens].name} homeworld`;
+  if (entry.life) return `simple life on ${entry.life} ${entry.life === 1 ? 'world' : 'worlds'}`;
   if (!entry.biosignature) return null;
   return entry.visited ? 'biosignature was a false alarm' : 'possible biosignature';
 }
@@ -2764,8 +2766,9 @@ function restore(saved) {
     const planets = system?.planets ?? [];
     entry.crystals ??= crystalWorlds(planets);
     entry.stardust ??= entry.visited ? stardustWorlds(planets) : 0;
-    entry.biosignature ??= Boolean(system?.star.biosignature);
+    if (learned(entry, 'biosignature')) entry.biosignature = Boolean(system.star.biosignature);
     entry.aliens ??= entry.visited ? homeworldSpecies(planets) : null;
+    entry.life ??= entry.visited ? livingWorlds(planets) : 0;
     entry.wormhole ??= entry.visited && system.wormholes.length > 0;
     entry.watched ??= FULLY_OBSERVED;
   }
