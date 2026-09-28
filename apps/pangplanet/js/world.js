@@ -227,22 +227,25 @@ export const OFFLINE_CATCH_UP_SECONDS = 86400;
 export const HAULER = { cost: 8000, batteries: 6, speed: 2000, tokensPerUnit: 1 / 20000, stopSeconds: 10, warpSeconds: 60, retrySeconds: 60, idleSeconds: 300 };
 export const BUILDER = { cost: 15000, siteInStarRadii: 1.5, siteSpacing: 800, siteTries: 200, starChoices: 40 };
 export const SHIP_BLOCKS = {
-  engine: { cost: 800, mass: 1, label: 'Engine' },
-  tank: { cost: 300, mass: 1, label: 'Fuel tank' },
-  battery: { cost: 150, mass: 0.5, label: 'Battery' },
-  panel: { cost: 300, mass: 0.5, label: 'Solar panel' },
-  ftl: { cost: 25000, mass: 2, label: 'FTL drive', onePerShip: true },
-  scoop: { cost: 4000, mass: 1, label: 'Magnetic scoop' },
-  hydrogenTank: { cost: 1500, mass: 1, label: 'Hydrogen tank' },
-  reactor: { cost: 12000, mass: 2, label: 'Fusion reactor' },
+  engine: { cost: 800, mass: 1, label: 'Engine', colour: '#ff8a3d' },
+  tank: { cost: 300, mass: 1, label: 'Fuel tank', colour: '#c9d3e0' },
+  battery: { cost: 150, mass: 0.5, label: 'Battery', colour: '#ffc933' },
+  panel: { cost: 300, mass: 0.5, label: 'Solar panel', colour: '#1f4fa8' },
+  ftl: { cost: 25000, mass: 2, label: 'FTL drive', colour: '#c58cff', onePerShip: true },
+  scoop: { cost: 4000, mass: 1, label: 'Magnetic scoop', colour: '#3fe0d0' },
+  hydrogenTank: { cost: 1500, mass: 1, label: 'Hydrogen tank', colour: '#9fd8ff' },
+  reactor: { cost: 12000, mass: 2, label: 'Fusion reactor', colour: '#ff5b8a' },
+  plate: { cost: 20, mass: 0.25, label: 'Hull plate', structural: true },
+  wedge: { cost: 20, mass: 0.25, label: 'Hull wedge', structural: true },
 };
+export const HULL_PAINTS = { steel: { label: 'Steel', colour: '#8a97a8' }, white: { label: 'White', colour: '#e6edf5' }, red: { label: 'Red', colour: '#d8453a' }, blue: { label: 'Blue', colour: '#2f6fd8' }, green: { label: 'Green', colour: '#3faa55' }, gold: { label: 'Gold', colour: '#e8c33a' } };
 export const FUSION = { tankSize: 100, scoopPerSecond: 1, scoopMinLight: 0.1, chargePerSecond: 2.5, hydrogenPerCharge: 1 };
 export const FTL = {
   tiers: [{ speed: 1e3 }, { speed: 1e4, cost: 30000, crystals: 5 }, { speed: 1e5, cost: 80000, crystals: 10, stardust: 3 }, { speed: 1e6, cost: 200000, stardust: 10 }],
   chargePerUnit: 1 / 1.5e7,
   dropOutMargin: 20000,
 };
-export const SHIP = { hullCost: 3000, hullMass: 2, maxBlocks: 8, engineForce: 4, fuelPerTank: 100, boardingRange: 400, parkingGap: 3000, shipyardRange: 5000, refundShare: 0.5, startingBlocks: { engine: 1, tank: 1 } };
+export const SHIP = { hullCost: 3000, hullMass: 2, engineForce: 4, fuelPerTank: 100, boardingRange: 400, parkingGap: 3000, shipyardRange: 5000, refundShare: 0.5, startingParts: [{ type: 'tank', col: 0, row: 0 }, { type: 'engine', col: 0, row: 1 }] };
 export const BATTERY_BANK = { cost: 600, blocks: { battery: 10 }, dockingRange: 1500 };
 export const OBSERVATORY = { cost: 900, blocks: { telescope: 1, battery: 4 }, dockingRange: 1500, minLight: 0.05, secondsPerBattery: 7200, edgeClarity: 0.2 };
 export const MAX_BATTERY_SLOTS = UPGRADES.batterySlots.levels.at(-1).value;

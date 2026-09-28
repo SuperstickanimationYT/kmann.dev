@@ -443,13 +443,20 @@
         <h3 data-ship-title>Ship</h3>
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
-      <p>A ship is built from up to 8 blocks. Engines push; every block adds mass, so a heavier ship speeds up more slowly. Each engine burns 1 fuel a second at full throttle, and each tank holds 100. Solar panel blocks charge the ship's batteries, even while it's parked. Your rocket flies inside and takes the controls; when you leave, the ship stays where it is.</p>
+      <p>A ship is built from blocks snapped together side by side, as many as you can afford. Engines push; every block adds mass, so a heavier ship speeds up more slowly. Each engine burns 1 fuel a second at full throttle, and each tank holds 100. Solar panel blocks charge the ship's batteries, even while it's parked. Your rocket flies inside and takes the controls; when you leave, the ship stays where it is.</p>
       <p data-ship-stats></p>
-      <ol class="pp-stops" data-ship-blocks></ol>
+      <div class="pp-ship-plan" data-ship-plan></div>
       <p class="pp-hint" data-shipyard-note>Park the ship beside the market to add or remove blocks. Removed blocks refund half their price.</p>
       <div class="pp-picker" data-shipyard hidden>
         <select data-block-choice aria-label="Block"></select>
-        <button type="button" class="pp-action pp-buy" data-add-block>Add block</button>
+        <select data-hull-paint aria-label="Paint"></select>
+        <select data-wedge-turn aria-label="Wedge direction">
+          <option value="0">◢</option>
+          <option value="1">◣</option>
+          <option value="2">◤</option>
+          <option value="3">◥</option>
+        </select>
+        <p class="pp-hint">Pick a block, then tap a dashed square to attach it. Tap a block to remove it; half its price comes back.</p>
       </div>
       <button type="button" class="pp-action pp-upgrade" data-upgrade-ftl hidden></button>
       <div class="pp-actions">
@@ -623,7 +630,7 @@
         <li>Black holes sit between some orbits, one between Jupiter and Saturn. Coast past one to swing onto a new heading; too close and you fall in.</li>
         <li>Wormholes: some star systems beyond the Sun's neighbourhood have one, orbiting past the outermost planet. Each links to another system 10 to 30 sectors away. You find out where by going through; the galaxy map remembers the link.</li>
         <li>A wormhole beside Saturn leads far outside the galaxy. Out there, Leviathan's pull drags you back to its worlds if you stray, so the wormhole is the way home.</li>
-        <li>Ships: buy a hull at the market and fit it with up to 8 blocks while it's parked beside the market: engines, fuel tanks, batteries and solar panels. More engines push harder, and every block adds mass. Fly your rocket up to it to board and take the controls; your rocket's own fuel waits for you. Leave from the rocket menu and the ship stays where you left it. A ship that crashes breaks up, but your rocket gets out. Ships have no warp drive.</li>
+        <li>Ships: buy a hull at the market and build onto it while it's parked beside the market. Attach blocks to any open side: engines, fuel tanks, batteries, solar panels, and hull plates and wedges in your choice of paint, which only add looks. More engines push harder, and every block adds mass. Fly your rocket up to it to board and take the controls; your rocket's own fuel waits for you. Leave from the rocket menu and the ship stays where you left it. A ship that crashes breaks up, but your rocket gets out. Ships have no warp drive.</li>
         <li>FTL drive: a ship block (one per ship) that goes faster than light. Press J in open space: the ship cruises straight along its heading, ignoring gravity, at up to 1,000 (tier 0), 10K, 100K or 1M (tier 3); throttle sets the speed. It burns 1 battery of the ship's charge per sector and drops out to light speed before any gravity well or when the charge runs out. Upgrade tiers at the shipyard.</li>
         <li>Fusion: a magnetic scoop lifts hydrogen off a star from outside its gravity well (within about 3 star radii; closer is faster, and the well itself is fatal). Hydrogen tanks hold 100 each. A fusion reactor turns 1 hydrogen into 1 battery of ship charge, up to 0.1 a second, even during FTL, so a ship full of hydrogen can cross the dark between galaxies.</li>
         <li>Your own wormholes: buy a pair at the market, place the first mouth in open space, then carry the second one anywhere and place it. Each trip costs 5 galactokens per sector between the mouths; haulers use them too. A wormhole nobody goes through for 6 hours of play collapses.</li>

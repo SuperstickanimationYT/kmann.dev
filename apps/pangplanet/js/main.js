@@ -88,8 +88,7 @@ import {
   systemsPassed,
 } from './science.js';
 import { cruise, dropOut, headingIntoWell, nextFtlTier } from './ftl.js';
-import { addBlock, canFit, canScoop, createShip, describeShip, flightStats, hasFtl, hasRoom, leaveHelm, moveWithPilot, removeBlock, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
-import { chargeFromPanels } from './vessels.js';
+import { addPart, buildPlan, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
 import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
@@ -686,17 +685,17 @@ const actions = {
     game.fleet.push(createShip({ x: MARKET.x, y: MARKET.y - SHIP.parkingGap }));
     hud.toast('Your new ship is parked just past the market. Fly over to it to board it and add blocks.');
   },
-  addShipBlock: (type) => {
+  addShipBlock: (type, spot, look) => {
     const ship = shipInShipyard();
     const block = SHIP_BLOCKS[type];
-    if (!ship || !block || !canFit(ship, type) || game.galactokens < block.cost) return;
+    if (!ship || !block || !canPlace(ship, type, spot) || game.galactokens < block.cost) return;
     game.galactokens -= block.cost;
-    addBlock(ship, type);
+    addPart(ship, type, spot, look);
   },
   removeShipBlock: (index) => {
     const ship = shipInShipyard();
-    if (!ship?.blocks[index]) return;
-    game.galactokens += Math.round(SHIP_BLOCKS[removeBlock(ship, index)].cost * SHIP.refundShare);
+    if (!ship?.parts[index] || !canRemove(ship, index)) return;
+    game.galactokens += Math.round(SHIP_BLOCKS[removePart(ship, index)].cost * SHIP.refundShare);
   },
   boardShip: () => {
     const ship = dockedOf('myShip');
@@ -1476,7 +1475,7 @@ function runShips(seconds) {
   for (const ship of game.fleet) {
     const piloted = ship === boardedShip();
     const light = piloted ? sunlight(ship.x, ship.y) : (ship.light ?? 0);
-    chargeFromPanels(ship, light, seconds);
+    chargeShip(ship, light, seconds);
     scoopHydrogen(ship, light, seconds);
     if (!piloted) runReactor(ship, seconds);
   }
@@ -2503,10 +2502,12 @@ function shipInfo() {
   return {
     title: `Ship ${game.fleet.indexOf(ship) + 1}`,
     stats: describeShip(ship),
-    blocks: ship.blocks.map((type) => SHIP_BLOCKS[type].label),
+    plan: buildPlan(ship),
     shipyard: Boolean(shipInShipyard()),
     ftlUpgrade: ftlUpgrade(ship),
-    blockChoices: hasRoom(ship) ? Object.entries(SHIP_BLOCKS).filter(([type]) => canFit(ship, type)).map(([value, { label, cost }]) => ({ value, label: `${label} · ${cost}` })) : [],
+    blockChoices: Object.entries(SHIP_BLOCKS)
+      .filter(([type]) => canFit(ship, type))
+      .map(([value, { label, cost }]) => ({ value, label: `${label} · ${cost}` })),
     piloting,
     canTakeCharge: storedCharge(ship.batteries) > 0 && roomToCharge(game.power.batteries) > 0,
   };
