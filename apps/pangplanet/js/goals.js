@@ -17,6 +17,7 @@ export const GOALS = [
   { key: 'savings', text: 'Save up 1,000 galactokens', reached: (game) => game.galactokens >= 1000 },
   { key: 'rig', text: 'Set up a mining rig on a planet or moon', reached: (game) => Boolean(game.rig?.deployed) },
   { key: 'telescope', text: 'Buy a telescope to find more stars', reached: (game) => game.ownsTelescope },
+  { key: 'boardShip', text: 'Buy a ship hull at the market, then fly to it and board it', reached: (game) => game.boarded !== null },
   { key: 'warpDrive', text: 'Buy the warp drive', reached: (game) => game.ownsWarpDrive },
   { key: 'otherStar', text: 'Reach another star system', reached: (game) => countStudied(game, 'visit:') >= 2 },
   { key: 'aliens', text: 'Meet an alien species', reached: (game) => studied(game, 'contact:') },
