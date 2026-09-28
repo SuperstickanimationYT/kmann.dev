@@ -21,6 +21,7 @@ const LABEL_GAP_PX = 6;
 const LABEL_SEPARATOR = ', ';
 const LABEL_SEPARATOR_COLOUR = 'rgba(185, 214, 245, 0.6)';
 const SHOWN_FROM_PPU = { minor: 3e-3, intermediate: 1e-3, major: 0 };
+const CLEAR_OF_MAJOR_BODY_PX = 12;
 const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
 const TEXTURED_ABOVE_PX = 6;
@@ -824,13 +825,24 @@ export function createRenderer(canvas, sprites) {
   const tierOf = (body) => (body.moon || body.kind === 'wormhole' ? 'intermediate' : 'major');
   const shownAtZoom = (tier) => view.ppu >= SHOWN_FROM_PPU[tier];
 
+  function standsApart(body, majorBodies) {
+    const gap = Math.min(...majorBodies.map((major) => Math.hypot(major.x - body.x, major.y - body.y) - major.radius));
+    return gap * view.ppu >= CLEAR_OF_MAJOR_BODY_PX;
+  }
+
+  function bodiesToShow() {
+    const majorBodies = bodies.filter((body) => tierOf(body) === 'major');
+    if (shownAtZoom('intermediate')) return bodies;
+    return [...majorBodies, ...bodies.filter((body) => tierOf(body) === 'intermediate' && standsApart(body, majorBodies))];
+  }
+
   function draw(scene, routePath) {
     aim(scene.camera);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.fillStyle = '#000';
     context.fillRect(0, 0, view.width, view.height);
     drawStars();
-    const shownBodies = bodies.filter((body) => shownAtZoom(tierOf(body)));
+    const shownBodies = bodiesToShow();
     shownBodies.forEach(drawBody);
     shownBodies.filter((body) => body.kind === 'star').forEach(drawProminences);
     drawBodyLabels(shownBodies, scene.claimedBounties);
