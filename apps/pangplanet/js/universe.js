@@ -9,8 +9,9 @@ const MIRROR_SALT = 0x3a7c9e1;
 export const SECTOR_SIZE = 1.5e7;
 const GALAXY_CENTER_IN_SECTORS = [100, 0];
 const GALAXY_RADIUS_IN_SECTORS = 150;
-const FAR_SHORE_IN_SECTORS = [-58, 0];
-const GALACTIC_PULL = 0.05;
+export const FAR_SHORE_IN_SECTORS = [-110, 0];
+const FIRST_FAR_SHORE_IN_SECTORS = [-58, 0];
+const DEEP_SPACE_PULL = 0.05;
 const LOAD_REACH = 1;
 const UNLOAD_REACH = 2;
 const STAR_CHANCE = 0.6;
@@ -121,10 +122,41 @@ export const outsideGalaxy = (x, y) => Math.hypot(x - GALAXY.x, y - GALAXY.y) > 
 
 const nearFarShore = (x, y) => Math.hypot(x - farShoreX, y - farShoreY) < FAR_SHORE.calmReach;
 
-export function galacticPull(x, y) {
+function pullToward(x, y, target) {
+  const distance = Math.hypot(target.x - x, target.y - y);
+  return [((target.x - x) / distance) * DEEP_SPACE_PULL, ((target.y - y) / distance) * DEEP_SPACE_PULL];
+}
+
+export function deepSpacePull(x, y) {
   if (!outsideGalaxy(x, y) || nearFarShore(x, y)) return null;
-  const distance = Math.hypot(GALAXY.x - x, GALAXY.y - y);
-  return [((GALAXY.x - x) / distance) * GALACTIC_PULL, ((GALAXY.y - y) / distance) * GALACTIC_PULL];
+  const toFarShore = Math.hypot(farShoreX - x, farShoreY - y);
+  const toGalaxyEdge = Math.hypot(GALAXY.x - x, GALAXY.y - y) - GALAXY.radius;
+  return pullToward(x, y, toFarShore < toGalaxyEdge ? { x: farShoreX, y: farShoreY } : GALAXY);
+}
+
+const POSITION_IN_KEY = /@(-?\d+),(-?\d+)$/;
+
+function shiftEverythingNear(saved, center, [dx, dy]) {
+  const isNear = (x, y) => Math.hypot(x - center.x, y - center.y) < SECTOR_SIZE;
+  const shiftKey = (key) => key.replace(POSITION_IN_KEY, (whole, x, y) => (isNear(Number(x), Number(y)) ? `@${Number(x) + dx},${Number(y) + dy}` : whole));
+  const shift = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.x === 'number' && typeof value.y === 'number' && isNear(value.x, value.y)) {
+      value.x += dx;
+      value.y += dy;
+    }
+    for (const [field, child] of Object.entries(value)) {
+      if (typeof child === 'string') value[field] = shiftKey(child);
+      else shift(child);
+    }
+  };
+  shift(saved);
+}
+
+export function followFarShore(saved) {
+  const [fromX, fromY] = sectorCenter(...(saved.farShoreSector ?? FIRST_FAR_SHORE_IN_SECTORS));
+  if (fromX === farShoreX && fromY === farShoreY) return;
+  shiftEverythingNear(saved, { x: fromX, y: fromY }, [farShoreX - fromX, farShoreY - fromY]);
 }
 
 const onMirroredSide = (sectorX, sectorY) => sectorX < 0 || (sectorX === 0 && sectorY < 0);

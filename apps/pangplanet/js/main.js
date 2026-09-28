@@ -99,9 +99,11 @@ import { bindHold, bindHoldButtons, bindJoystick, bindPinchZoom, bindTapButtons,
 import { createTour } from './tour.js';
 import {
   DEFAULT_GALAXY_SEED,
+  FAR_SHORE_IN_SECTORS,
   SECTOR_SIZE,
   coreGate,
   crystalWorlds,
+  followFarShore,
   homeworldNear,
   homeworldSpecies,
   openGateway,
@@ -2726,6 +2728,7 @@ function snapshot() {
     samplePermits: [...game.samplePermits],
     builtWormholes: game.builtWormholes,
     wormholesInHold: game.wormholesInHold,
+    farShoreSector: FAR_SHORE_IN_SECTORS,
   };
 }
 
@@ -2734,6 +2737,7 @@ function save() {
 }
 
 function restore(saved) {
+  followFarShore(saved);
   const { rocket, power, camera } = game;
   Object.assign(rocket, saved.rocket, { engineOn: false });
   Object.assign(power, saved.power);

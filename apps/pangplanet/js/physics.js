@@ -8,7 +8,7 @@ import {
   TICKS_PER_SECOND,
   WORMHOLE_EXIT_GAP,
 } from './world.js';
-import { bodies, galacticPull } from './universe.js';
+import { bodies, deepSpacePull } from './universe.js';
 
 // Bearings follow Scratch: 0 is world up, positive turns clockwise, unit vector (sin, cos).
 export function bearingBetween(fromX, fromY, toX, toY) {
@@ -117,10 +117,10 @@ export function advance(rocket, dt) {
   rocket.x += rocket.vx * dt;
   rocket.y += rocket.vy * dt;
   rocket.landed = false;
-  const edgePull = galacticPull(rocket.x, rocket.y);
-  if (edgePull) {
-    rocket.vx += edgePull[0] * dt;
-    rocket.vy += edgePull[1] * dt;
+  const outerPull = deepSpacePull(rocket.x, rocket.y);
+  if (outerPull) {
+    rocket.vx += outerPull[0] * dt;
+    rocket.vy += outerPull[1] * dt;
     holdToSpeedLimit(rocket);
   }
   const body = rocket.soi;
