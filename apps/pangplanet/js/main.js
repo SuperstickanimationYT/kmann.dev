@@ -88,7 +88,7 @@ import {
   systemsPassed,
 } from './science.js';
 import { cruise, dropOut, headingIntoWell, nextFtlTier } from './ftl.js';
-import { addPart, buildPlan, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
+import { addPart, buildPlan, engineNozzles, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
 import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
@@ -2340,7 +2340,9 @@ function puffExhaust(ticks) {
   const { particles, rocket } = game;
   game.clock += STEP_TICKS;
   drift(particles, ticks);
-  exhaust(particles, rocket, STEP_TICKS);
+  const ship = boardedShip();
+  if (ship) exhaust(particles, rocket, STEP_TICKS, SHIP.engineFlameScale, engineNozzles(ship));
+  else exhaust(particles, rocket, STEP_TICKS);
   for (const drone of game.drones) if (drone.flight) exhaust(particles, drone.flight, STEP_TICKS, DRONE_SCALE);
 }
 

@@ -116,6 +116,14 @@ export function buildPlan(ship) {
   return [...parts, ...openSpots(ship).map((spot) => ({ ...spot, open: true }))];
 }
 
+export function engineNozzles(ship) {
+  const { minCol, maxCol, minRow, maxRow } = partBounds(ship.parts);
+  const [midCol, midRow] = [(minCol + maxCol + 1) / 2, (minRow + maxRow + 1) / 2];
+  return ship.parts
+    .filter((part) => part.type === 'engine')
+    .map((part) => ({ part, forward: -(part.row + 1 - midRow) * SHIP.blockSize, sideways: (part.col + 0.5 - midCol) * SHIP.blockSize }));
+}
+
 export const chargeShip = (ship, light, seconds) => fillBatteries(ship.batteries, chargeRate(light) * countParts(ship, 'panel') * seconds);
 
 export const hydrogenCapacity = (ship) => countParts(ship, 'hydrogenTank') * FUSION.tankSize;
