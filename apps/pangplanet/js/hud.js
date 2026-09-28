@@ -170,6 +170,10 @@ export function createHud(root, actions, { cheats }) {
     chargeObservatory: find('[data-charge-observatory]'),
     depositInBank: find('[data-deposit-in-bank]'),
     takeFromBank: find('[data-take-from-bank]'),
+    buyPad: find('[data-buy-pad]'),
+    deployPad: find('[data-deploy-pad]'),
+    padsInHold: find('[data-pads-in-hold]'),
+    pickUpPad: find('[data-pick-up-pad]'),
     buyAntenna: find('[data-buy-antenna]'),
     deployAntenna: find('[data-deploy-antenna]'),
     antennasInHold: find('[data-antennas-in-hold]'),
@@ -281,6 +285,9 @@ export function createHud(root, actions, { cheats }) {
     deployBank: actions.deployBank,
     depositInBank: actions.depositInBank,
     takeFromBank: actions.takeFromBank,
+    buyPad: actions.buyPad,
+    deployPad: actions.deployPad,
+    pickUpPad: actions.pickUpPad,
     buyAntenna: actions.buyAntenna,
     deployAntenna: actions.deployAntenna,
     buyDrone: actions.buyDrone,
@@ -770,6 +777,10 @@ export function createHud(root, actions, { cheats }) {
   }
 
   function updateDrones(status) {
+    parts.buyPad.disabled = !status.canBuyPad;
+    setHidden(parts.deployPad, !status.canDeployPad);
+    setText(parts.padsInHold, String(status.padsInHold));
+    setHidden(parts.pickUpPad, !status.canPickUpPad);
     parts.buyAntenna.disabled = !status.canBuyAntenna;
     setHidden(parts.deployAntenna, !status.canDeployAntenna);
     setText(parts.antennasInHold, String(status.antennasInHold));

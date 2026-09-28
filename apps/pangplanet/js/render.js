@@ -8,7 +8,7 @@ import { rocketPoint } from './physics.js';
 import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
-import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, MARKET, ROCKET_HEIGHT } from './world.js';
+import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, LANDING_PAD, MARKET, ROCKET_HEIGHT } from './world.js';
 import { sailPose } from './science.js';
 import { brightestStar, storedCharge } from './solar.js';
 import { relativeSpeed, shipHeading } from './ships.js';
@@ -16,6 +16,7 @@ import { relativeSpeed, shipHeading } from './ships.js';
 const STAGE_HEIGHT_UNITS = 360;
 const ROCK_COUNT = 72;
 const ROCK_LIFT = 5;
+const PAD_SHAPE = { thickness: 8, light: 5, blinkTicks: 40, deck: '#4a5566', edge: '#c9d3e0' };
 const PLANTS_SHOWN_FROM_PPU = 0.05;
 const LABEL_BELOW_PX = 40;
 const LABEL_LINE_PX = 14;
@@ -493,6 +494,31 @@ export function createRenderer(canvas, sprites) {
     context.restore();
   }
 
+  function drawPad(pad) {
+    const [sx, sy] = toScreen(...rocketPoint(pad, -ROCKET_HEIGHT / 2, 0));
+    const scale = view.ppu;
+    const half = (LANDING_PAD.width / 2) * scale;
+    if (!onScreen(sx, sy, half + 20)) return;
+    if (half * 2 < OUTPOST_DOT_BELOW_PX) {
+      drawOutpostDot(sx, sy, 'Landing pad');
+      return;
+    }
+    const { thickness, light, blinkTicks, deck, edge } = PAD_SHAPE;
+    const lit = Math.floor(clock / blinkTicks) % 2 === 0;
+    withPose(sx, sy, pad.heading, () => {
+      context.fillStyle = deck;
+      context.fillRect(-half, -thickness * scale, half * 2, thickness * scale);
+      context.fillStyle = edge;
+      context.fillRect(-half, -thickness * scale, half * 2, Math.max(1, 2 * scale));
+      for (const [side, colour] of [[-1, lit ? '#ff5b4a' : '#5a2320'], [1, lit ? '#6dff8c' : '#1f5a2c']]) {
+        context.fillStyle = colour;
+        context.beginPath();
+        context.arc(side * (half - light * scale), -thickness * scale - light * scale, light * scale, 0, Math.PI * 2);
+        context.fill();
+      }
+    });
+  }
+
   function drawAntenna(antenna) {
     const [sx, sy] = toScreen(...rocketPoint(antenna, -ROCKET_HEIGHT / 2, ANTENNA_SHAPE.besideRocket));
     const { height, dish } = ANTENNA_SHAPE;
@@ -959,6 +985,7 @@ export function createRenderer(canvas, sprites) {
       scene.observatories.forEach(drawObservatory);
       scene.fleet.filter((ship) => ship !== scene.fleet[scene.boarded]).forEach((ship) => drawFleetShip(ship, null));
       scene.antennas.forEach(drawAntenna);
+      scene.pads.forEach(drawPad);
     }
     drawSignal(scene.antennas);
     drawPath(routePath, 'rgba(255, 150, 90, 0.55)', [8, 6]);
