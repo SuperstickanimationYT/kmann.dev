@@ -25,6 +25,7 @@ const STARDUST_CHANCE = 0.05;
 const BLACK_HOLE_CHANCE = 0.25;
 const BLACK_HOLE_COUNT = [1, 3];
 const BLACK_HOLE_SALT = 0xb1ac4;
+const MOON_CLEARANCE_FROM_BLACK_HOLE = 60000;
 const HOMEWORLD_SALT = 0xa11e5;
 const DEPOSIT_SALT = 0xde9051;
 const WORMHOLE_SALT = 0x77e11;
@@ -271,7 +272,7 @@ function generateSystem(sectorX, sectorY) {
   return [star, ...blackHoles, ...wormholeMouth(star, orbits, seed, sectorX, sectorY), ...planets, ...moons];
 }
 
-const clearOf = (bodies, moon) => bodies.every((body) => Math.hypot(body.x - moon.x, body.y - moon.y) > body.soi + moon.soi);
+const clearOf = (blackHoles, moon) => blackHoles.every((hole) => Math.hypot(hole.x - moon.x, hole.y - moon.y) > MOON_CLEARANCE_FROM_BLACK_HOLE + moon.soi);
 
 function moonCount(planet, integer) {
   if (planet.resource === 'gas') return integer(...MOON.countAroundGasGiant);
