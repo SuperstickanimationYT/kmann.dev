@@ -1,5 +1,6 @@
 import { speciesByKey } from './aliens.js';
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
+import { partBounds, partColour } from './fleet.js';
 import { haulerPose } from './haulers.js';
 import { runsOnStarlight } from './outposts.js';
 import { rocketPoint } from './physics.js';
@@ -37,8 +38,7 @@ const OBSERVATORY_SHAPE = { width: 48, height: 26, dome: 22, tube: 34, tubeWidth
 const SIGNAL_RING_MAX_PX = 50000;
 const PROMINENCE = { count: 7, height: 0.14, span: 0.22, ticksPerCycle: 1200, shownAbovePx: 25 };
 const SCOOP_STREAM = { dots: 24, ticksPerTrip: 75, sway: 0.05, sizePx: 3 };
-const SHIP_BLOCK = { size: 22, columns: 2, outline: '#0b1a2e' };
-const SHIP_BLOCK_COLOURS = { engine: '#ff8a3d', tank: '#c9d3e0', battery: '#ffc933', panel: '#1f4fa8', ftl: '#c58cff', scoop: '#3fe0d0', hydrogenTank: '#9fd8ff', reactor: '#ff5b8a' };
+const SHIP_BLOCK = { size: 22, outline: '#0b1a2e' };
 const HAULER_SCALE = 0.8;
 const SHIP_SCALE = 1.4;
 const SHIP_SPEED_SHOWN_WITHIN = 60000;
@@ -463,39 +463,49 @@ export function createRenderer(canvas, sprites) {
     });
   }
 
-  function shipLayout(blocks) {
-    const ordered = [...blocks.filter((type) => type !== 'engine'), ...blocks.filter((type) => type === 'engine')];
-    const { size, columns } = SHIP_BLOCK;
-    const rows = Math.max(1, Math.ceil(ordered.length / columns));
-    const height = rows * size;
-    const cells = ordered.map((type, index) => {
-      const row = Math.floor(index / columns);
-      const inRow = Math.min(columns, ordered.length - row * columns);
-      const column = index % columns;
-      return { type, x: (column - inRow / 2) * size, y: row * size - height / 2 };
-    });
-    return { cells, height };
+  function shipLayout(parts) {
+    const { size } = SHIP_BLOCK;
+    const { minCol, maxCol, minRow, maxRow } = partBounds(parts);
+    const [midCol, midRow] = [(minCol + maxCol + 1) / 2, (minRow + maxRow + 1) / 2];
+    const cells = parts.map((part) => ({ ...part, x: (part.col - midCol) * size, y: (part.row - midRow) * size }));
+    return { cells, width: (maxCol - minCol + 1) * size, height: (maxRow - minRow + 1) * size };
+  }
+
+  function tracePart({ type, turn, x, y }, scale) {
+    const size = SHIP_BLOCK.size * scale;
+    const [left, top] = [x * scale, y * scale];
+    const corners = [
+      [left, top],
+      [left + size, top],
+      [left + size, top + size],
+      [left, top + size],
+    ];
+    const outline = type === 'wedge' ? corners.filter((_, corner) => corner !== turn) : corners;
+    context.beginPath();
+    outline.forEach(([cx, cy], index) => (index ? context.lineTo(cx, cy) : context.moveTo(cx, cy)));
+    context.closePath();
   }
 
   function drawFleetShip(ship, pilot) {
     const [sx, sy] = toScreen(ship.x, ship.y);
-    const { cells, height } = shipLayout(ship.blocks);
+    const { cells, width, height } = shipLayout(ship.parts);
     const scale = view.ppu;
-    if (!onScreen(sx, sy, height * scale + 20)) return;
-    if (height * scale < OUTPOST_DOT_BELOW_PX) {
+    const span = Math.max(width, height);
+    if (!onScreen(sx, sy, span * scale + 20)) return;
+    if (span * scale < OUTPOST_DOT_BELOW_PX) {
       if (pilot) drawMarker(sx, sy, ship.heading, '#e2effd', 5);
       else drawOutpostDot(sx, sy, 'Ship');
       return;
     }
     if (pilot?.engineOn && pilot.throttle > 0) drawFlame({ ...pilot, heading: ship.heading }, Math.max(height / 2, FLAME_OFFSET / 2) / FLAME_OFFSET, ship);
-    const { size, outline } = SHIP_BLOCK;
     withPose(sx, sy, ship.heading, () => {
       context.lineWidth = Math.max(1, 2 * scale);
-      context.strokeStyle = outline;
-      for (const { type, x, y } of cells) {
-        context.fillStyle = SHIP_BLOCK_COLOURS[type];
-        context.fillRect(x * scale, y * scale, size * scale, size * scale);
-        context.strokeRect(x * scale, y * scale, size * scale, size * scale);
+      context.strokeStyle = SHIP_BLOCK.outline;
+      for (const cell of cells) {
+        context.fillStyle = partColour(cell);
+        tracePart(cell, scale);
+        context.fill();
+        context.stroke();
       }
     });
   }

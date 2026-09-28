@@ -673,6 +673,52 @@
   padding: 2px 8px;
 }
 
+.pp-ship-plan {
+  --pp-plan-cell: 24px;
+  display: grid;
+  justify-content: center;
+  max-height: 260px;
+  margin: 0 0 10px;
+  padding: 6px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #06101d;
+}
+
+.pp-plan-block,
+.pp-plan-spot {
+  width: var(--pp-plan-cell);
+  height: var(--pp-plan-cell);
+  padding: 0;
+  border: 0;
+}
+
+.pp-plan-block {
+  outline: 1px solid #0b1a2e;
+  outline-offset: -1px;
+  cursor: pointer;
+}
+
+.pp-plan-block:disabled {
+  cursor: default;
+}
+
+.pp-plan-spot {
+  border: 1px dashed rgba(160, 200, 255, 0.45);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pp-plan-spot:hover,
+.pp-plan-spot:focus-visible {
+  background: rgba(160, 200, 255, 0.2);
+}
+
+.pp-picker .pp-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .pp-picker {
   display: flex;
   flex-wrap: wrap;

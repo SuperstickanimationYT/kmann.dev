@@ -1,4 +1,5 @@
-import { GOLD, MAX_BATTERY_SLOTS } from './world.js';
+import { partBounds } from './fleet.js';
+import { GOLD, HULL_PAINTS, MAX_BATTERY_SLOTS, SHIP_BLOCKS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
 const TOAST_MS = 4500;
@@ -151,10 +152,12 @@ export function createHud(root, actions, { cheats }) {
     upgradeFtl: find('[data-upgrade-ftl]'),
     shipTitle: find('[data-ship-title]'),
     shipStats: find('[data-ship-stats]'),
-    shipBlocks: find('[data-ship-blocks]'),
+    shipPlan: find('[data-ship-plan]'),
     shipyard: find('[data-shipyard]'),
     shipyardNote: find('[data-shipyard-note]'),
     blockChoice: find('[data-block-choice]'),
+    hullPaint: find('[data-hull-paint]'),
+    wedgeTurn: find('[data-wedge-turn]'),
     boardShip: find('[data-board-ship]'),
     takeShipCharge: find('[data-take-ship-charge]'),
     leaveShipPanel: find('[data-leave-ship-panel]'),
@@ -316,10 +319,22 @@ export function createHud(root, actions, { cheats }) {
   parts.addHaulerStop.forEach((button) => button.addEventListener('click', () => actions.addHaulerStop(button.dataset.addHaulerStop)));
   find('[data-add-stop-choice]').addEventListener('click', () => parts.stopChoice.value && actions.addRemoteStop(parts.stopChoice.value));
   find('[data-add-build-stop]').addEventListener('click', () => parts.buildStar.value && actions.addBuildStop(parts.buildKind.value, parts.buildStar.value));
-  find('[data-add-block]').addEventListener('click', () => parts.blockChoice.value && actions.addShipBlock(parts.blockChoice.value));
-  parts.shipBlocks.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-remove-block]');
-    if (button) actions.removeShipBlock(Number(button.dataset.removeBlock));
+  parts.hullPaint.replaceChildren(...Object.entries(HULL_PAINTS).map(([value, { label }]) => new Option(label, value)));
+  const showStructureChoices = () => {
+    const type = parts.blockChoice.value;
+    setHidden(parts.hullPaint, !SHIP_BLOCKS[type]?.structural);
+    setHidden(parts.wedgeTurn, type !== 'wedge');
+  };
+  parts.blockChoice.addEventListener('change', showStructureChoices);
+  parts.shipPlan.addEventListener('click', (event) => {
+    const spot = event.target.closest('[data-open-spot]');
+    const block = event.target.closest('[data-remove-block]');
+    if (spot && parts.blockChoice.value) {
+      const [col, row] = spot.dataset.openSpot.split(',').map(Number);
+      actions.addShipBlock(parts.blockChoice.value, { col, row }, { paint: parts.hullPaint.value, turn: Number(parts.wedgeTurn.value) });
+    } else if (block) {
+      actions.removeShipBlock(Number(block.dataset.removeBlock));
+    }
   });
   parts.haulerStops.addEventListener('click', (event) => {
     const button = event.target.closest('[data-remove-stop]');
@@ -353,7 +368,7 @@ export function createHud(root, actions, { cheats }) {
   let shownUpgrades = '';
   let shownAlienSells = '';
   let shownStops = '';
-  let shownBlocks = '';
+  let shownPlan = '';
   let shownGoals = '';
   const shownOptions = new Map();
 
@@ -437,25 +452,38 @@ export function createHud(root, actions, { cheats }) {
     );
   }
 
-  function showBlocks(blocks, removable) {
-    const signature = `${removable}:${blocks.join('|')}`;
-    if (signature === shownBlocks) return;
-    shownBlocks = signature;
-    parts.shipBlocks.replaceChildren(
-      ...blocks.map((label, index) => {
-        const item = document.createElement('li');
-        item.append(label);
-        if (removable) {
-          const remove = document.createElement('button');
-          remove.type = 'button';
-          remove.className = 'pp-action';
-          remove.dataset.removeBlock = String(index);
-          remove.textContent = 'Remove';
-          item.append(remove);
-        }
-        return item;
-      }),
-    );
+  const WEDGE_CORNERS = ['0 0', '100% 0', '100% 100%', '0 100%'];
+
+  function planCell(cell, editable) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.style.gridColumn = String(cell.gridColumn);
+    button.style.gridRow = String(cell.gridRow);
+    if (cell.open) {
+      button.className = 'pp-plan-spot';
+      button.dataset.openSpot = `${cell.col},${cell.row}`;
+      button.setAttribute('aria-label', 'Attach the picked block here');
+      return button;
+    }
+    button.className = 'pp-plan-block';
+    button.style.background = cell.colour;
+    if (cell.type === 'wedge') button.style.clipPath = `polygon(${WEDGE_CORNERS.filter((_, corner) => corner !== cell.turn).join(', ')})`;
+    button.title = editable && !cell.removable ? `${cell.label} · holds other blocks on` : cell.label;
+    button.setAttribute('aria-label', button.title);
+    button.disabled = !editable || !cell.removable;
+    if (editable) button.dataset.removeBlock = String(cell.index);
+    return button;
+  }
+
+  function showPlan(plan, editable) {
+    const shown = plan.filter((cell) => editable || !cell.open);
+    const signature = `${editable}:${shown.map((cell) => `${cell.col},${cell.row},${cell.type},${cell.colour},${cell.turn},${cell.removable}`).join('|')}`;
+    if (signature === shownPlan) return;
+    shownPlan = signature;
+    const { minCol, maxCol, minRow, maxRow } = partBounds(shown);
+    parts.shipPlan.style.gridTemplateColumns = `repeat(${maxCol - minCol + 1}, var(--pp-plan-cell))`;
+    parts.shipPlan.style.gridTemplateRows = `repeat(${maxRow - minRow + 1}, var(--pp-plan-cell))`;
+    parts.shipPlan.replaceChildren(...shown.map((cell) => planCell({ ...cell, gridColumn: cell.col - minCol + 1, gridRow: cell.row - minRow + 1 }, editable)));
   }
 
   function updateShip({ canBuyShip, piloting, myShip, ftlLabel }) {
@@ -467,10 +495,11 @@ export function createHud(root, actions, { cheats }) {
     if (!myShip) return;
     setText(parts.shipTitle, myShip.title);
     setText(parts.shipStats, myShip.stats);
-    showBlocks(myShip.blocks, myShip.shipyard);
+    showPlan(myShip.plan, myShip.shipyard);
     setHidden(parts.shipyard, !myShip.shipyard || !myShip.blockChoices.length);
     setHidden(parts.shipyardNote, myShip.shipyard);
     showOptions(parts.blockChoice, myShip.blockChoices);
+    showStructureChoices();
     setHidden(parts.upgradeFtl, !myShip.shipyard || !myShip.ftlUpgrade);
     setText(parts.upgradeFtl, myShip.ftlUpgrade?.label ?? '');
     parts.upgradeFtl.disabled = !myShip.ftlUpgrade?.affordable;
