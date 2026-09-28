@@ -308,6 +308,8 @@ const inHold = (items) => items.filter((item) => !item.deployed);
 function targetInReach() {
   const { rocket } = game;
   if (rocket.destroyed || game.warp) return null;
+  const ship = !boardedShip() && nearestWithin(game.fleet, rocket, SHIP.boardingRange);
+  if (ship) return { kind: 'myShip', item: ship };
   if (Math.hypot(rocket.x - MARKET.x, rocket.y - MARKET.y) < MARKET.dockingRange) return { kind: 'market' };
   if (shipInReach()) return { kind: 'aliens', item: game.ship };
   const satellite = nearestWithin(deployed(game.satellites), rocket, SATELLITE.dockingRange);
@@ -316,8 +318,6 @@ function targetInReach() {
   if (bank) return { kind: 'bank', item: bank };
   const observatory = nearestWithin(deployed(game.observatories), rocket, OBSERVATORY.dockingRange);
   if (observatory) return { kind: 'observatory', item: observatory };
-  const ship = !boardedShip() && nearestWithin(game.fleet, rocket, SHIP.boardingRange);
-  if (ship) return { kind: 'myShip', item: ship };
   if (rocket.landed && withinReach(rocket, game.rig, MINING_RIG.reach)) return { kind: 'rig' };
   if (rocket.landed && rocket.soi?.species) return { kind: 'aliens', item: rocket.soi };
   const drone = nearDrone();
