@@ -8,7 +8,7 @@ export const SPEED_LIMIT = 100;
 export const WORMHOLE_EXIT_GAP = 100;
 
 export const SOI_MARGIN = 2000;
-export const BLACK_HOLE = { radius: 2500, soi: 60000, mass: 1e10, rings: { inner: 1.6, outer: 3.2, colour: 'rgba(255, 150, 60, 0.7)' } };
+export const BLACK_HOLE = { radius: 2500, soi: 200000, mass: 3e8, rings: { inner: 1.6, outer: 3.2, colour: 'rgba(255, 150, 60, 0.7)' } };
 export const massFor = (radius, surfaceGravity) => (surfaceGravity * radius * radius) / GRAVITATIONAL_CONSTANT;
 
 function linkWormholes(mouth, exit) {
