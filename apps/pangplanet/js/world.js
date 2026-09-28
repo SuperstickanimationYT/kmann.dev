@@ -224,6 +224,7 @@ export const TELESCOPE = { cost: 600 };
 export const AUTOPILOT = { cost: 1500 };
 export const PRICE_GROWTH = 1.5;
 export const ANTENNA = { cost: 800, range: 6e5, reach: 1500 };
+export const LANDING_PAD = { cost: 300, width: 300, safeSpeed: 40, marginOverHull: 25 };
 export const DRONE = { cost: 1500, batteries: 3, padReach: 1500, fuelMargin: 0.05 };
 export const RESCUE = { cost: 2500, fee: 50, speed: 300, reach: 300 };
 export const OFFLINE_CATCH_UP_SECONDS = 86400;

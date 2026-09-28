@@ -1,7 +1,7 @@
 import { goodwillFor, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
 import { abbreviate, createHud } from './hud.js';
-import { advance, altitude, bearingBetween, createRocket, forecast, placeOnSurface, sphereOfInfluence, wrapAngle } from './physics.js';
+import { advance, altitude, bearingBetween, createRocket, forecast, padBelow, placeOnSurface, setLandingPads, sphereOfInfluence, wrapAngle } from './physics.js';
 import { createRenderer } from './render.js';
 import {
   brightestStar,
@@ -132,6 +132,7 @@ import {
 import {
   ALIENS,
   ANTENNA,
+  LANDING_PAD,
   AUTOPILOT,
   BATTERY,
   BATTERY_BANK,
@@ -234,6 +235,8 @@ const game = {
   scooping: false,
   antennas: [],
   antennasInHold: 0,
+  pads: [],
+  padsInHold: 0,
   drones: [],
   haulers: [],
   haulerIndex: 0,
@@ -367,6 +370,9 @@ const droneInHold = () => game.drones.find((drone) => !drone.pad);
 const outpostsWelcome = () => !game.hostileHere;
 const canDeploySatellite = () => inHold(game.satellites).length > 0 && inOpenSpace() && outpostsWelcome();
 const canDeployRig = () => game.rig && !game.rig.deployed && onGround() && outpostsWelcome();
+const padsOverlapping = (spot) => nearestWithin(game.pads, spot, LANDING_PAD.width);
+const canDeployPad = () => game.padsInHold > 0 && onGround() && outpostsWelcome() && !padsOverlapping(game.rocket);
+const padUnderfoot = () => (game.rocket.landed ? padBelow(game.rocket) : null);
 const canDeployAntenna = () => game.antennasInHold > 0 && onGround() && outpostsWelcome();
 const canDeployDrone = () => Boolean(droneInHold()) && onGround() && inSignal(game.antennas, game.rocket.x, game.rocket.y) && outpostsWelcome();
 const canDeployBank = () => inHold(game.banks).length > 0 && inOpenSpace() && outpostsWelcome();
@@ -386,6 +392,7 @@ const PRICES = {
   bank: () => risingPrice(BATTERY_BANK.cost, game.banks.length),
   observatory: () => risingPrice(OBSERVATORY.cost, game.observatories.length),
   antenna: () => risingPrice(ANTENNA.cost, game.antennas.length + game.antennasInHold),
+  pad: () => risingPrice(LANDING_PAD.cost, game.pads.length + game.padsInHold),
   drone: () => risingPrice(DRONE.cost, game.drones.length),
   hauler: () => risingPrice(HAULER.cost, game.haulers.filter((hauler) => !hauler.builds).length),
   builder: () => risingPrice(BUILDER.cost, game.haulers.filter((hauler) => hauler.builds).length),
@@ -933,6 +940,22 @@ const actions = {
     observatory.deployed = false;
     openPanel(null);
   },
+  buyPad: () => {
+    if (pay('pad')) game.padsInHold += 1;
+  },
+  deployPad: () => {
+    if (!canDeployPad()) return;
+    game.pads.push(poseOf(game.rocket));
+    game.padsInHold -= 1;
+    setLandingPads(game.pads);
+  },
+  pickUpPad: () => {
+    const pad = padUnderfoot();
+    if (!pad) return;
+    game.pads.splice(game.pads.indexOf(pad), 1);
+    game.padsInHold += 1;
+    setLandingPads(game.pads);
+  },
   buyAntenna: () => {
     if (pay('antenna')) game.antennasInHold += 1;
   },
@@ -1220,6 +1243,7 @@ const PURCHASE_PRICES = {
   buyBank: PRICES.bank,
   buyObservatory: PRICES.observatory,
   buyAntenna: PRICES.antenna,
+  buyPad: PRICES.pad,
   buyDrone: PRICES.drone,
   buyHauler: PRICES.hauler,
   buyBuilder: PRICES.builder,
@@ -2542,7 +2566,7 @@ function status() {
     timewarp: game.timewarp,
     timewarpBought: timewarpBought(),
     timewarpHeld: inGravityWell(),
-    location: body ? body.name : outsideGalaxy(rocket.x, rocket.y) ? 'Outside the galaxy' : 'Deep space',
+    location: body ? `${body.name}${padBelow(rocket) ? ' · pad below' : ''}` : outsideGalaxy(rocket.x, rocket.y) ? 'Outside the galaxy' : 'Deep space',
     altitude: altitude(rocket),
     speed: Math.hypot(rocket.vx, rocket.vy),
     atSpeedLimit: !game.ftl && Math.hypot(rocket.vx, rocket.vy) >= SPEED_LIMIT - 0.01,
@@ -2613,6 +2637,10 @@ function status() {
     canDepositInBank: Boolean(dockedOf('bank')) && storedCharge(power.batteries) > 0 && roomToCharge(dockedOf('bank').batteries) > 0,
     canTakeFromBank: Boolean(dockedOf('bank')) && roomToCharge(power.batteries) > 0 && storedCharge(dockedOf('bank').batteries) > 0,
     canPickUpAntenna: Boolean(nearestAntenna()),
+    padsInHold: game.padsInHold,
+    canBuyPad: game.galactokens >= PRICES.pad(),
+    canDeployPad: Boolean(canDeployPad()),
+    canPickUpPad: Boolean(padUnderfoot()),
     nearDrone: Boolean(nearDrone()),
     antennasInHold: game.antennasInHold,
     canBuyAntenna: game.galactokens >= PRICES.antenna(),
@@ -2710,6 +2738,8 @@ function snapshot() {
     boarded: game.boarded,
     antennas: game.antennas,
     antennasInHold: game.antennasInHold,
+    pads: game.pads,
+    padsInHold: game.padsInHold,
     drones: game.drones.map((drone) => ({ ...drone, flight: drone.flight && { ...drone.flight, soi: null } })),
     haulers: game.haulers,
     gold: game.gold,
@@ -2784,6 +2814,8 @@ function restore(saved) {
   game.askBeforeBigBuys = saved.askBeforeBigBuys ?? true;
   game.ownsAutopilot = saved.ownsAutopilot ?? false;
   game.autopilotArmed = saved.autopilotArmed ?? false;
+  Object.assign(game, { pads: saved.pads ?? [], padsInHold: saved.padsInHold ?? 0 });
+  setLandingPads(game.pads);
   game.goalsDone = new Set(saved.goalsDone ?? []);
   game.showGoals = saved.showGoals ?? true;
   syncMouths();

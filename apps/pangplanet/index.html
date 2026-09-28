@@ -171,6 +171,8 @@
         <button type="button" class="pp-action pp-outpost" data-deploy-bank>Park battery bank here (<span data-banks-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-deploy-antenna>Set up antenna here (<span data-antennas-in-hold></span> in hold)</button>
         <button type="button" class="pp-action" data-pick-up-antenna>Pick up antenna</button>
+        <button type="button" class="pp-action pp-outpost" data-deploy-pad>Set up landing pad here (<span data-pads-in-hold></span> in hold)</button>
+        <button type="button" class="pp-action" data-pick-up-pad>Pick up landing pad</button>
         <button type="button" class="pp-action pp-outpost" data-deploy-drone>Park drone here (<span data-drones-in-hold></span> in hold)</button>
         <button type="button" class="pp-action pp-outpost" data-open-drone>Drone controls</button>
         <button type="button" class="pp-action pp-outpost" data-open-haulers>Haulers</button>
@@ -231,6 +233,10 @@
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-observatory>
           Observatory for <span data-price="observatory"></span>
+          <img src="img/galactokens.svg" alt="galactokens">
+        </button>
+        <button type="button" class="pp-action pp-outpost" data-buy-pad>
+          Landing pad for <span data-price="pad"></span>
           <img src="img/galactokens.svg" alt="galactokens">
         </button>
         <button type="button" class="pp-action pp-outpost" data-buy-antenna>
@@ -644,6 +650,7 @@
       </ul>
       <h4>Automate</h4>
       <ul>
+        <li>Landing pads go on any planet or moon. Touch down on one at up to 40, or 25 over your hull's limit if that's higher. Drones and ships get the same. The telemetry says "pad below" when you're over one.</li>
         <li>Antennas on planets and moons cover 600K. A drone in range repeats a route you record by flying it yourself, carrying charge between satellites, battery banks and mining rigs.</li>
         <li>Haulers fly a route of your outposts between stars, no antennas needed (Rocket, then Haulers). Builders park satellites and battery banks at any star on your map.</li>
       </ul>

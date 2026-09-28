@@ -2,6 +2,7 @@ import {
   CRASH_SPEED,
   GRAVITATIONAL_CONSTANT,
   HOME_BODY,
+  LANDING_PAD,
   MAX_FUEL,
   ROCKET_HEIGHT,
   SPEED_LIMIT,
@@ -25,6 +26,24 @@ export function sphereOfInfluence(x, y) {
 
 const SURFACE_SLACK = 0.001;
 const FATAL_KINDS = new Set(['star', 'blackhole']);
+
+const landingPads = [];
+
+export function setLandingPads(pads) {
+  landingPads.splice(0, landingPads.length, ...pads);
+}
+
+export function padBelow(rocket) {
+  const body = rocket.soi;
+  if (!body) return null;
+  const bearing = bearingBetween(body.x, body.y, rocket.x, rocket.y);
+  return landingPads.find((pad) => pad.site === body.name && Math.abs(wrapAngle(pad.heading - bearing)) * body.radius <= LANDING_PAD.width / 2) ?? null;
+}
+
+function safeLandingSpeed(rocket) {
+  const hullLimit = rocket.crashSpeed ?? CRASH_SPEED;
+  return padBelow(rocket) ? Math.max(LANDING_PAD.safeSpeed, hullLimit + LANDING_PAD.marginOverHull) : hullLimit;
+}
 
 export function surfaceClearance(body) {
   return body.radius + ROCKET_HEIGHT / 2;
@@ -79,7 +98,7 @@ function touchDown(rocket, body) {
     passThroughWormhole(rocket, body);
     return 'wormhole';
   }
-  const tooFast = !rocket.autopilot && Math.hypot(rocket.vx, rocket.vy) > (rocket.crashSpeed ?? CRASH_SPEED);
+  const tooFast = !rocket.autopilot && Math.hypot(rocket.vx, rocket.vy) > safeLandingSpeed(rocket);
   if (FATAL_KINDS.has(body.kind) || tooFast) {
     rocket.destroyed = true;
     rocket.engineOn = false;
