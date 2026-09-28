@@ -52,6 +52,7 @@ const RESOURCE_LABELS = {
   crystals: { text: 'crystals', colour: 'rgba(125, 243, 255, 0.9)' },
   stardust: { text: 'stardust', colour: 'rgba(226, 201, 255, 0.9)' },
 };
+const LIFE_LABEL = { text: 'life', colour: 'rgba(141, 255, 193, 0.9)' };
 const FLAME_CORE = { length: 0.55, width: 0.5 };
 const FLAME_GLOW = { behind: 20, radius: 30, colour: 'rgba(255, 170, 60, 0.35)' };
 const SMOKE_ALPHA = 0.35;
@@ -321,9 +322,10 @@ export function createRenderer(canvas, sprites) {
       const offset = Math.max(radius, 2) + (body.kind === 'wormhole' ? -8 : 14);
       const bounty = bountyWaiting(claimedBounties, body);
       const find = RESOURCE_LABELS[body.resource];
+      const life = body.life ? LIFE_LABEL : null;
       const species = speciesByKey[body.species];
-      const label = [body.name, bounty && `${bounty} bounty`, find?.text, species && `${species.name} homeworld`].filter(Boolean).join(' · ');
-      const colour = bounty ? 'rgba(255, 214, 110, 0.9)' : (species?.colour ?? find?.colour ?? 'rgba(185, 214, 245, 0.8)');
+      const label = [body.name, bounty && `${bounty} bounty`, life?.text, find?.text, species && `${species.name} homeworld`].filter(Boolean).join(' · ');
+      const colour = bounty ? 'rgba(255, 214, 110, 0.9)' : (species?.colour ?? life?.colour ?? find?.colour ?? 'rgba(185, 214, 245, 0.8)');
       if (onScreen(sx, sy, 40)) drawLabel(label, sx, sy + (body.kind === 'wormhole' ? -offset : offset), colour);
     }
   }

@@ -1,4 +1,4 @@
-import { crystalWorlds, homeworldSpecies, stardustWorlds, systemAt, systemsWithin } from './universe.js';
+import { crystalWorlds, homeworldSpecies, livingWorlds, stardustWorlds, systemAt, systemsWithin } from './universe.js';
 
 export const VISIT_RANGE = 4e6;
 const SUN_FILL = '#fff7dc';
@@ -23,6 +23,7 @@ function chartEntry({ star, planets, wormholes }, visited, watched) {
     stardust: visited ? stardustWorlds(planets) : 0,
     biosignature: learned(entry, 'biosignature') && Boolean(star.biosignature),
     aliens: visited ? homeworldSpecies(planets) : null,
+    life: visited ? livingWorlds(planets) : 0,
     wormhole: visited && wormholes.length > 0,
     ...entry,
   };
