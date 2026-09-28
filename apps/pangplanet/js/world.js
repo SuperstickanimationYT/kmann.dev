@@ -249,7 +249,7 @@ export const FTL = {
   chargePerUnit: 1 / 1.5e7,
   dropOutMargin: 20000,
 };
-export const SHIP = { hullCost: 3000, hullMass: 2, engineForce: 4, fuelPerTank: 100, boardingRange: 400, parkingGap: 3000, shipyardRange: 5000, refundShare: 0.5, startingParts: [{ type: 'tank', col: 0, row: 0 }, { type: 'engine', col: 0, row: 1 }] };
+export const SHIP = { hullCost: 3000, hullMass: 2, blockSize: 22, engineFlameScale: 0.7, engineForce: 4, fuelPerTank: 100, boardingRange: 400, parkingGap: 3000, shipyardRange: 5000, refundShare: 0.5, startingParts: [{ type: 'tank', col: 0, row: 0 }, { type: 'engine', col: 0, row: 1 }] };
 export const BATTERY_BANK = { cost: 600, blocks: { battery: 10 }, dockingRange: 1500 };
 export const OBSERVATORY = { cost: 900, blocks: { telescope: 1, battery: 4 }, dockingRange: 1500, minLight: 0.05, secondsPerBattery: 7200, edgeClarity: 0.2 };
 export const MAX_BATTERY_SLOTS = UPGRADES.batterySlots.levels.at(-1).value;

@@ -1,6 +1,6 @@
 import { speciesByKey } from './aliens.js';
 import { DRILL_OFFSET_SIDEWAYS } from './drill.js';
-import { partBounds, partColour } from './fleet.js';
+import { engineNozzles, partBounds, partColour } from './fleet.js';
 import { haulerPose } from './haulers.js';
 import { floraOf, hasFlora } from './plants.js';
 import { runsOnStarlight } from './outposts.js';
@@ -8,7 +8,7 @@ import { rocketPoint } from './physics.js';
 import { bountyWaiting } from './progression.js';
 import { planetTexture } from './textures.js';
 import { bodies } from './universe.js';
-import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, LANDING_PAD, MARKET, ROCKET_HEIGHT } from './world.js';
+import { ANTENNA, DRONE_SCALE, FLAME_OFFSET, LANDING_PAD, MARKET, ROCKET_HEIGHT, SHIP } from './world.js';
 import { sailPose } from './science.js';
 import { brightestStar, storedCharge } from './solar.js';
 import { relativeSpeed, shipHeading } from './ships.js';
@@ -44,7 +44,7 @@ const OBSERVATORY_SHAPE = { width: 48, height: 26, dome: 22, tube: 34, tubeWidth
 const SIGNAL_RING_MAX_PX = 50000;
 const PROMINENCE = { count: 7, height: 0.14, span: 0.22, ticksPerCycle: 1200, shownAbovePx: 25 };
 const SCOOP_STREAM = { dots: 24, ticksPerTrip: 75, sway: 0.05, sizePx: 3 };
-const SHIP_BLOCK = { size: 22, outline: '#0b1a2e' };
+const SHIP_OUTLINE = '#0b1a2e';
 const HAULER_SCALE = 0.8;
 const SHIP_SCALE = 1.4;
 const SHIP_SPEED_SHOWN_WITHIN = 60000;
@@ -595,7 +595,7 @@ export function createRenderer(canvas, sprites) {
   }
 
   function shipLayout(parts) {
-    const { size } = SHIP_BLOCK;
+    const size = SHIP.blockSize;
     const { minCol, maxCol, minRow, maxRow } = partBounds(parts);
     const [midCol, midRow] = [(minCol + maxCol + 1) / 2, (minRow + maxRow + 1) / 2];
     const cells = parts.map((part) => ({ ...part, x: (part.col - midCol) * size, y: (part.row - midRow) * size }));
@@ -603,7 +603,7 @@ export function createRenderer(canvas, sprites) {
   }
 
   function tracePart({ type, turn, x, y }, scale) {
-    const size = SHIP_BLOCK.size * scale;
+    const size = SHIP.blockSize * scale;
     const [left, top] = [x * scale, y * scale];
     const corners = [
       [left, top],
@@ -628,10 +628,13 @@ export function createRenderer(canvas, sprites) {
       else drawOutpostDot(sx, sy, 'Ship');
       return;
     }
-    if (pilot?.engineOn && pilot.throttle > 0) drawFlame({ ...pilot, heading: ship.heading }, Math.max(height / 2, FLAME_OFFSET / 2) / FLAME_OFFSET, ship);
+    if (pilot?.engineOn && pilot.throttle > 0) {
+      const pose = { ...pilot, heading: ship.heading };
+      for (const nozzle of engineNozzles(ship)) drawFlame(pose, SHIP.engineFlameScale, nozzle.part, nozzle);
+    }
     withPose(sx, sy, ship.heading, () => {
       context.lineWidth = Math.max(1, 2 * scale);
-      context.strokeStyle = SHIP_BLOCK.outline;
+      context.strokeStyle = SHIP_OUTLINE;
       for (const cell of cells) {
         context.fillStyle = partColour(cell);
         tracePart(cell, scale);
@@ -877,12 +880,12 @@ export function createRenderer(canvas, sprites) {
     return FLICKER_WAVES.reduce((sum, [speed, depth]) => sum + Math.sin(clock * speed + phase * speed) * depth, 0);
   }
 
-  function drawFlame(pose, size, identity) {
+  function drawFlame(pose, size, identity, nozzle = { forward: -FLAME_OFFSET * size, sideways: 0 }) {
     const phase = flamePhases.get(identity) ?? flamePhases.set(identity, Math.random() * 100).get(identity);
     const scale = view.ppu * size;
     const length = (scale * pose.throttle) / 100;
-    const [fx, fy] = toScreen(...rocketPoint(pose, -FLAME_OFFSET * size, 0));
-    const [gx, gy] = toScreen(...rocketPoint(pose, -(FLAME_OFFSET + FLAME_GLOW.behind * (pose.throttle / 100)) * size, 0));
+    const [fx, fy] = toScreen(...rocketPoint(pose, nozzle.forward, nozzle.sideways));
+    const [gx, gy] = toScreen(...rocketPoint(pose, nozzle.forward - FLAME_GLOW.behind * (pose.throttle / 100) * size, nozzle.sideways));
     const glowRadius = FLAME_GLOW.radius * scale * (1 + flicker(phase + 7) * 0.5);
     const glow = context.createRadialGradient(gx, gy, 0, gx, gy, glowRadius);
     glow.addColorStop(0, FLAME_GLOW.colour);

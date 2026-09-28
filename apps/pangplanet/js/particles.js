@@ -19,8 +19,8 @@ function spawn(particles, particle) {
   particles.push({ age: 0, ...particle });
 }
 
-function spewFrom(particles, pose, kind, look, scale, strength) {
-  const [x, y] = rocketPoint(pose, -(FLAME_OFFSET + DEPTH_INTO_FULL_FLAME * strength) * scale, 0);
+function spewFrom(particles, pose, kind, look, scale, strength, nozzle) {
+  const [x, y] = rocketPoint(pose, nozzle.forward - DEPTH_INTO_FULL_FLAME * strength * scale, nozzle.sideways);
   const bearing = pose.heading + Math.PI + jitter(look.spread);
   const speed = look.speed * scale * strength * (0.7 + Math.random() * 0.6);
   spawn(particles, {
@@ -38,12 +38,14 @@ function spewFrom(particles, pose, kind, look, scale, strength) {
 
 const randomCount = (expected) => Math.floor(expected + Math.random());
 
-export function exhaust(particles, pose, ticks, scale = 1) {
+export function exhaust(particles, pose, ticks, scale = 1, nozzles = [{ forward: -FLAME_OFFSET * scale, sideways: 0 }]) {
   if (!pose.engineOn || pose.throttle <= 0 || pose.destroyed) return;
   const strength = pose.throttle / 100;
   const output = ticks * (0.4 + strength);
-  for (let i = randomCount(SPARKS_PER_TICK * output); i > 0; i--) spewFrom(particles, pose, 'spark', SPARK, scale, strength);
-  for (let i = randomCount(SMOKE_PER_TICK * output); i > 0; i--) spewFrom(particles, pose, 'smoke', SMOKE, scale, strength);
+  for (const nozzle of nozzles) {
+    for (let i = randomCount(SPARKS_PER_TICK * output); i > 0; i--) spewFrom(particles, pose, 'spark', SPARK, scale, strength, nozzle);
+    for (let i = randomCount(SMOKE_PER_TICK * output); i > 0; i--) spewFrom(particles, pose, 'smoke', SMOKE, scale, strength, nozzle);
+  }
 }
 
 function burst(particles, { x, y }, kind, count, speed, look) {
