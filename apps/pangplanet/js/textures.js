@@ -8,7 +8,7 @@ const worker = new Worker(new URL('./texture-worker.js', import.meta.url), { typ
 let bakingBody = null;
 
 worker.onmessage = ({ data }) => {
-  baked.set(bakingBody, data.bitmap);
+  baked.set(bakingBody, { surface: data.surface, sky: data.sky });
   bakingBody = null;
 };
 
@@ -17,7 +17,7 @@ const sizeToCover = (radiusPx) => TEXTURE_SIZES.find((size) => size >= radiusPx)
 export function planetTexture(body, radiusPx) {
   const texture = baked.get(body);
   const size = texture ? sizeToCover(radiusPx) : TEXTURE_SIZES[0];
-  if (!texture || texture.width < size) wanted.set(body, size);
+  if (!texture || texture.surface.width < size) wanted.set(body, size);
   return texture ?? null;
 }
 

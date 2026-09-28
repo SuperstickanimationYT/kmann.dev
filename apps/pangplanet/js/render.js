@@ -22,6 +22,8 @@ const LABEL_SEPARATOR = ', ';
 const LABEL_SEPARATOR_COLOUR = 'rgba(185, 214, 245, 0.6)';
 const SHOWN_FROM_PPU = { minor: 3e-3, intermediate: 1e-3, major: 0 };
 const CLEAR_OF_MAJOR_BODY_PX = 12;
+const ORBIT_RING = { colour: 'rgba(185, 214, 245, 0.14)', shownFromPx: 16, shownUpToPx: 50000 };
+const CLOUD_TURN_TICKS = 30 * 60 * 5;
 const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
 const TEXTURED_ABOVE_PX = 6;
@@ -184,15 +186,17 @@ export function createRenderer(canvas, sprites) {
     context.fill();
   }
 
-  function drawTexture(image, sx, sy, radius, fill, overscan) {
+  function drawTexture(image, sx, sy, radius, fill, overscan, turn = 0) {
     const reach = radius * overscan;
     context.save();
     discPath(sx, sy, radius);
-    context.fillStyle = fill;
-    context.fill();
+    if (fill) {
+      context.fillStyle = fill;
+      context.fill();
+    }
     context.clip();
     context.translate(sx, sy);
-    context.rotate(-view.angle);
+    context.rotate(turn - view.angle);
     context.drawImage(image, -reach, -reach, reach * 2, reach * 2);
     context.restore();
   }
@@ -213,7 +217,8 @@ export function createRenderer(canvas, sprites) {
     if (look.atmosphere) drawGlow(sx, sy, radius, 1.04, look.atmosphere);
 
     const sprite = sprites[body.look];
-    const texture = body.planet ? radius > TEXTURED_ABOVE_PX && planetTexture(body, radius) : sprite?.bitmap;
+    const layers = body.planet && radius > TEXTURED_ABOVE_PX ? planetTexture(body, radius) : null;
+    const texture = body.planet ? layers?.surface : sprite?.bitmap;
     if (!texture || radius > HUGE_DISC_PX) {
       context.fillStyle = look.fill;
       discPath(sx, sy, radius);
@@ -222,6 +227,7 @@ export function createRenderer(canvas, sprites) {
       withPose(sx, sy, 0, () => drawSprite(sprite, radius / sprite.pivot[0]));
     } else {
       drawTexture(texture, sx, sy, radius, look.fill, body.planet ? 1 : TEXTURE_OVERSCAN);
+      if (layers?.sky) drawTexture(layers.sky, sx, sy, radius, null, 1, cloudTurn(body));
     }
     if (look.rim) {
       context.strokeStyle = look.rim;
@@ -230,6 +236,23 @@ export function createRenderer(canvas, sprites) {
       context.stroke();
     }
     if (look.rock) drawRocks(body, look.rock);
+  }
+
+  function cloudTurn(body) {
+    const direction = body.planet.seed % 2 ? 1 : -1;
+    return direction * ((clock / CLOUD_TURN_TICKS) % 1) * Math.PI * 2;
+  }
+
+  function drawOrbitRing(body) {
+    if (!body.orbitCenter) return;
+    const radiusPx = Math.hypot(body.x - body.orbitCenter.x, body.y - body.orbitCenter.y) * view.ppu;
+    if (radiusPx < ORBIT_RING.shownFromPx || radiusPx > ORBIT_RING.shownUpToPx) return;
+    const [cx, cy] = toScreen(body.orbitCenter.x, body.orbitCenter.y);
+    if (!onScreen(cx, cy, radiusPx)) return;
+    context.strokeStyle = ORBIT_RING.colour;
+    context.lineWidth = 1;
+    discPath(cx, cy, radiusPx);
+    context.stroke();
   }
 
   function drawRocks(body, colour) {
@@ -843,6 +866,7 @@ export function createRenderer(canvas, sprites) {
     context.fillRect(0, 0, view.width, view.height);
     drawStars();
     const shownBodies = bodiesToShow();
+    shownBodies.forEach(drawOrbitRing);
     shownBodies.forEach(drawBody);
     shownBodies.filter((body) => body.kind === 'star').forEach(drawProminences);
     drawBodyLabels(shownBodies, scene.claimedBounties);
