@@ -451,19 +451,9 @@
       </header>
       <p>A ship is built from blocks snapped together side by side, as many as you can afford. Engines push; every block adds mass, so a heavier ship speeds up more slowly. Each engine burns 1 fuel a second at full throttle, and each tank holds 100. Solar panel blocks charge the ship's batteries, even while it's parked. Your rocket flies inside and takes the controls; when you leave, the ship stays where it is.</p>
       <p data-ship-stats></p>
-      <div class="pp-ship-plan" data-ship-plan></div>
+      <div class="pp-ship-plan" data-ship-plan title="Open the ship builder"></div>
       <p class="pp-hint" data-shipyard-note>Park the ship beside the market to add or remove blocks. Removed blocks refund half their price.</p>
-      <div class="pp-picker" data-shipyard hidden>
-        <select data-block-choice aria-label="Block"></select>
-        <select data-hull-paint aria-label="Paint"></select>
-        <select data-wedge-turn aria-label="Wedge direction">
-          <option value="0">◢</option>
-          <option value="1">◣</option>
-          <option value="2">◤</option>
-          <option value="3">◥</option>
-        </select>
-        <p class="pp-hint">Pick a block, then tap a dashed square to attach it. Tap a block to remove it; half its price comes back.</p>
-      </div>
+      <button type="button" class="pp-action pp-buy" data-open-builder>Open ship builder</button>
       <button type="button" class="pp-action pp-upgrade" data-upgrade-ftl hidden></button>
       <div class="pp-actions">
         <button type="button" class="pp-action" data-board-ship>Take the controls</button>
@@ -472,6 +462,41 @@
         </button>
         <button type="button" class="pp-action" data-leave-ship-panel>Leave ship</button>
       </div>
+    </section>
+    <section class="pp-builder" data-ship-builder hidden aria-label="Ship builder">
+      <header class="pp-builder-bar">
+        <h3 data-builder-title>Ship builder</h3>
+        <span class="pp-balance" title="Your galactokens"><img src="img/galactokens.svg" alt="Galactokens"> <span data-balance>0</span></span>
+        <button type="button" class="pp-action pp-builder-done" data-close-builder>Done</button>
+      </header>
+      <p class="pp-builder-stats" data-builder-stats></p>
+      <div class="pp-builder-view" data-builder-view>
+        <div class="pp-builder-board" data-builder-board></div>
+        <div class="pp-builder-zoom">
+          <button type="button" data-builder-zoom="in" aria-label="Zoom in">+</button>
+          <button type="button" data-builder-zoom="out" aria-label="Zoom out">−</button>
+          <button type="button" data-builder-fit aria-label="Fit the whole ship">⤢</button>
+        </div>
+        <div class="pp-builder-inspect" data-builder-inspect hidden></div>
+      </div>
+      <footer class="pp-builder-tools">
+        <div class="pp-builder-modes" role="group" aria-label="Builder mode">
+          <button type="button" data-builder-mode="place">Place</button>
+          <button type="button" data-builder-mode="erase">Erase</button>
+          <button type="button" data-builder-mode="inspect">Inspect</button>
+        </div>
+        <div class="pp-picker" data-builder-place-tools>
+          <select data-block-choice aria-label="Block"></select>
+          <select data-hull-paint aria-label="Paint"></select>
+          <select data-wedge-turn aria-label="Wedge direction">
+            <option value="0">◢</option>
+            <option value="1">◣</option>
+            <option value="2">◤</option>
+            <option value="3">◥</option>
+          </select>
+        </div>
+        <p class="pp-hint" data-builder-hint></p>
+      </footer>
     </section>
     <section class="pp-panel" data-panel="observatory" hidden aria-label="Observatory">
       <header>

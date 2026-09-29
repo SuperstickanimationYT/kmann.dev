@@ -1,5 +1,6 @@
 import { partBounds } from './fleet.js';
-import { GOLD, HULL_PAINTS, MAX_BATTERY_SLOTS, SHIP_BLOCKS } from './world.js';
+import { bindShipBuilder, wedgeClip } from './ship-builder.js';
+import { GOLD, MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
 const TOAST_MS = 4500;
@@ -153,11 +154,8 @@ export function createHud(root, actions, { cheats }) {
     shipTitle: find('[data-ship-title]'),
     shipStats: find('[data-ship-stats]'),
     shipPlan: find('[data-ship-plan]'),
-    shipyard: find('[data-shipyard]'),
     shipyardNote: find('[data-shipyard-note]'),
-    blockChoice: find('[data-block-choice]'),
-    hullPaint: find('[data-hull-paint]'),
-    wedgeTurn: find('[data-wedge-turn]'),
+    openBuilder: find('[data-open-builder]'),
     boardShip: find('[data-board-ship]'),
     takeShipCharge: find('[data-take-ship-charge]'),
     leaveShipPanel: find('[data-leave-ship-panel]'),
@@ -326,23 +324,19 @@ export function createHud(root, actions, { cheats }) {
   parts.addHaulerStop.forEach((button) => button.addEventListener('click', () => actions.addHaulerStop(button.dataset.addHaulerStop)));
   find('[data-add-stop-choice]').addEventListener('click', () => parts.stopChoice.value && actions.addRemoteStop(parts.stopChoice.value));
   find('[data-add-build-stop]').addEventListener('click', () => parts.buildStar.value && actions.addBuildStop(parts.buildKind.value, parts.buildStar.value));
-  parts.hullPaint.replaceChildren(...Object.entries(HULL_PAINTS).map(([value, { label }]) => new Option(label, value)));
-  const showStructureChoices = () => {
-    const type = parts.blockChoice.value;
-    setHidden(parts.hullPaint, !SHIP_BLOCKS[type]?.structural);
-    setHidden(parts.wedgeTurn, type !== 'wedge');
-  };
-  parts.blockChoice.addEventListener('change', showStructureChoices);
-  parts.shipPlan.addEventListener('click', (event) => {
-    const spot = event.target.closest('[data-open-spot]');
-    const block = event.target.closest('[data-remove-block]');
-    if (spot && parts.blockChoice.value) {
-      const [col, row] = spot.dataset.openSpot.split(',').map(Number);
-      actions.addShipBlock(parts.blockChoice.value, { col, row }, { paint: parts.hullPaint.value, turn: Number(parts.wedgeTurn.value) });
-    } else if (block) {
-      actions.removeShipBlock(Number(block.dataset.removeBlock));
-    }
-  });
+  const builder = bindShipBuilder(find('[data-ship-builder]'), { addBlock: actions.addShipBlock, removeBlock: actions.removeShipBlock, showOptions });
+  parts.openBuilder.addEventListener('click', builder.open);
+  parts.shipPlan.addEventListener('click', builder.open);
+  find('[data-close-builder]').addEventListener('click', builder.close);
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key !== 'Escape' || !builder.isOpen()) return;
+      event.stopImmediatePropagation();
+      builder.close();
+    },
+    { capture: true },
+  );
   parts.haulerStops.addEventListener('click', (event) => {
     const button = event.target.closest('[data-remove-stop]');
     if (button) actions.removeHaulerStop(Number(button.dataset.removeStop));
@@ -459,38 +453,28 @@ export function createHud(root, actions, { cheats }) {
     );
   }
 
-  const WEDGE_CORNERS = ['0 0', '100% 0', '100% 100%', '0 100%'];
-
-  function planCell(cell, editable) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.style.gridColumn = String(cell.gridColumn);
-    button.style.gridRow = String(cell.gridRow);
-    if (cell.open) {
-      button.className = 'pp-plan-spot';
-      button.dataset.openSpot = `${cell.col},${cell.row}`;
-      button.setAttribute('aria-label', 'Attach the picked block here');
-      return button;
-    }
-    button.className = 'pp-plan-block';
-    button.style.background = cell.colour;
-    if (cell.type === 'wedge') button.style.clipPath = `polygon(${WEDGE_CORNERS.filter((_, corner) => corner !== cell.turn).join(', ')})`;
-    button.title = editable && !cell.removable ? `${cell.label} · holds other blocks on` : cell.label;
-    button.setAttribute('aria-label', button.title);
-    button.disabled = !editable || !cell.removable;
-    if (editable) button.dataset.removeBlock = String(cell.index);
-    return button;
+  function planCell(cell) {
+    const block = document.createElement('span');
+    block.className = 'pp-plan-block';
+    block.style.gridColumn = String(cell.gridColumn);
+    block.style.gridRow = String(cell.gridRow);
+    block.style.background = cell.colour;
+    if (cell.type === 'wedge') block.style.clipPath = wedgeClip(cell.turn);
+    return block;
   }
 
-  function showPlan(plan, editable) {
-    const shown = plan.filter((cell) => editable || !cell.open);
-    const signature = `${editable}:${shown.map((cell) => `${cell.col},${cell.row},${cell.type},${cell.colour},${cell.turn},${cell.removable}`).join('|')}`;
+  function showPlan(plan) {
+    const shown = plan.filter((cell) => !cell.open);
+    const signature = shown.map((cell) => `${cell.col},${cell.row},${cell.colour},${cell.turn}`).join('|');
     if (signature === shownPlan) return;
     shownPlan = signature;
     const { minCol, maxCol, minRow, maxRow } = partBounds(shown);
-    parts.shipPlan.style.gridTemplateColumns = `repeat(${maxCol - minCol + 1}, var(--pp-plan-cell))`;
-    parts.shipPlan.style.gridTemplateRows = `repeat(${maxRow - minRow + 1}, var(--pp-plan-cell))`;
-    parts.shipPlan.replaceChildren(...shown.map((cell) => planCell({ ...cell, gridColumn: cell.col - minCol + 1, gridRow: cell.row - minRow + 1 }, editable)));
+    const columns = maxCol - minCol + 1;
+    const rows = maxRow - minRow + 1;
+    parts.shipPlan.style.setProperty('--pp-plan-cell', `min(24px, calc((100cqw - 12px) / ${columns}), calc(140px / ${rows}))`);
+    parts.shipPlan.style.gridTemplateColumns = `repeat(${columns}, var(--pp-plan-cell))`;
+    parts.shipPlan.style.gridTemplateRows = `repeat(${rows}, var(--pp-plan-cell))`;
+    parts.shipPlan.replaceChildren(...shown.map((cell) => planCell({ ...cell, gridColumn: cell.col - minCol + 1, gridRow: cell.row - minRow + 1 })));
   }
 
   function updateShip({ canBuyShip, piloting, myShip, ftlLabel }) {
@@ -502,11 +486,10 @@ export function createHud(root, actions, { cheats }) {
     if (!myShip) return;
     setText(parts.shipTitle, myShip.title);
     setText(parts.shipStats, myShip.stats);
-    showPlan(myShip.plan, myShip.shipyard);
-    setHidden(parts.shipyard, !myShip.shipyard || !myShip.blockChoices.length);
+    showPlan(myShip.plan);
     setHidden(parts.shipyardNote, myShip.shipyard);
-    showOptions(parts.blockChoice, myShip.blockChoices);
-    showStructureChoices();
+    setText(parts.openBuilder, myShip.shipyard ? 'Open ship builder' : 'Inspect ship blocks');
+    builder.update(myShip);
     setHidden(parts.upgradeFtl, !myShip.shipyard || !myShip.ftlUpgrade);
     setText(parts.upgradeFtl, myShip.ftlUpgrade?.label ?? '');
     parts.upgradeFtl.disabled = !myShip.ftlUpgrade?.affordable;
@@ -587,6 +570,7 @@ export function createHud(root, actions, { cheats }) {
 
   function showPanel(name) {
     for (const [key, panel] of Object.entries(parts.panels)) setHidden(panel, key !== name);
+    if (name !== 'myShip') builder.close();
   }
 
   function update(status) {
