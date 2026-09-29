@@ -30,8 +30,8 @@ function firstWellAlong(x, y, dx, dy) {
 export const headingIntoWell = (rocket) => firstWellAlong(rocket.x, rocket.y, Math.sin(rocket.heading), Math.cos(rocket.heading)) === 0;
 
 export function dropOut(rocket) {
-  rocket.vx = Math.sin(rocket.heading) * SPEED_LIMIT;
-  rocket.vy = Math.cos(rocket.heading) * SPEED_LIMIT;
+  rocket.vx = 0;
+  rocket.vy = 0;
 }
 
 export function cruise(rocket, ship, dt) {

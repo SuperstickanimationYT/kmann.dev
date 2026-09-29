@@ -90,7 +90,7 @@ import {
   systemsPassed,
 } from './science.js';
 import { cruise, dropOut, headingIntoWell, nextFtlTier } from './ftl.js';
-import { addPart, buildPlan, engineNozzles, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
+import { addPart, breakArmor, buildPlan, engineNozzles, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
 import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, crystalsSeen, foundPlanets, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
@@ -285,7 +285,7 @@ const boardedShip = () => game.fleet[game.boarded] ?? null;
 function applyCraft() {
   applyUpgrades(game.upgrades, game.rocket, game.power);
   const ship = boardedShip();
-  Object.assign(game.rocket, ship ? flightStats(ship) : { burnRate: 1 });
+  Object.assign(game.rocket, ship ? flightStats(ship) : { burnRate: 1, armor: 0 });
 }
 
 applyCraft();
@@ -1496,11 +1496,20 @@ const FTL_DROP_OUT_NEWS = {
 function stepFtl() {
   const { rocket } = game;
   const ship = boardedShip();
+  streamAround();
   const reason = cruise(rocket, ship, STEP_TICKS);
   moveWithPilot(ship, rocket);
   if (!reason) return;
   game.ftl = false;
-  hud.toast(FTL_DROP_OUT_NEWS[reason]);
+  const warpNote = game.timewarp > 1 ? ' Time warp is back to 1×.' : '';
+  game.timewarp = 1;
+  hud.toast(FTL_DROP_OUT_NEWS[reason] + warpNote);
+}
+
+function absorbCrash() {
+  breakArmor(boardedShip());
+  applyCraft();
+  hud.toast('An armour block broke and absorbed the impact.');
 }
 
 function wreckShip() {
@@ -2291,7 +2300,8 @@ function simulate() {
     if (game.recording) noteStep(game.recording, fuelBefore, rocket);
     if (hit === 'crash' && boardedShip()) wreckShip();
     else if (hit === 'crash') explode();
-    if (hit === 'land') rewardFirstLanding();
+    if (hit === 'cushioned') absorbCrash();
+    if (hit === 'land' || hit === 'cushioned') rewardFirstLanding();
     if (hit === 'wormhole') throughWormhole(rocket.soi);
     if (game.recording && !inSignal(game.antennas, rocket.x, rocket.y)) stopRecording('Out of antenna range. Recording stopped.');
     stepDrones();

@@ -41,7 +41,13 @@ export const flightStats = (ship) => ({
   burnRate: countParts(ship, 'engine'),
   fuelCapacity: countParts(ship, 'tank') * SHIP.fuelPerTank,
   crashSpeed: CRASH_SPEED,
+  armor: countParts(ship, 'armor'),
 });
+
+export function breakArmor(ship) {
+  const armor = ship.parts.find((part) => part.type === 'armor');
+  if (armor) Object.assign(armor, { type: 'plate', paint: 'steel' });
+}
 
 export const hasFtl = (ship) => countParts(ship, 'ftl') > 0;
 
