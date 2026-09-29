@@ -67,6 +67,8 @@ const SYLLABLES = ['ka', 've', 'tri', 'nor', 'zu', 'lo', 'mi', 'xan', 'dar', 'th
 export function setGalaxySeed(seed) {
   galaxySeed = seed;
 }
+
+export const currentGalaxySeed = () => galaxySeed;
 const loadedSectors = new Map();
 
 export const sectorOf = (x, y) => [Math.round(x / SECTOR_SIZE), Math.round(y / SECTOR_SIZE)];
@@ -181,7 +183,7 @@ function sectorSeed(sectorX, sectorY) {
 const within = (next, [min, max]) => min + next() * (max - min);
 const pick = (next, list) => list[Math.floor(next() * list.length)];
 
-function starName(next) {
+export function starName(next) {
   const syllables = Array.from({ length: 2 + Math.floor(next() * 2) }, () => pick(next, SYLLABLES)).join('');
   return syllables[0].toUpperCase() + syllables.slice(1);
 }
