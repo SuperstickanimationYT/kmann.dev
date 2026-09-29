@@ -1,6 +1,7 @@
 import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
 import { luminosityOf, seedFromRetiredLookDraws, warmthAt, worldLook } from './climate.js';
+import { REAL_SYSTEMS, buildRealSystem } from './real-systems.js';
 import { ALIENS, CORE, DEPOSITS, FAR_SHORE, GENERATED_BOUNTY, HOME_SYSTEM as SOLAR_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, farShoreSystem, massFor } from './world.js';
 
 export const DEFAULT_GALAXY_SEED = 0x9a1a7;
@@ -94,6 +95,10 @@ function speciesAt(x, y) {
 }
 
 const CORE_SYSTEM = coreSystem({ x: GALAXY.x, y: GALAXY.y });
+const REAL_SYSTEM_BODIES = new Map(REAL_SYSTEMS.map(({ sector, system }) => {
+  const [x, y] = sectorCenter(...sector);
+  return [`${sector}`, buildRealSystem(system, { x, y })];
+}));
 const unlockedBodies = [];
 
 export const coreGate = CORE_SYSTEM.coreGate;
@@ -237,6 +242,7 @@ function generateSystem(sectorX, sectorY) {
   if (sectorX === 0 && sectorY === 0) return [];
   if (isCoreSector(sectorX, sectorY)) return CORE_SYSTEM.bodies;
   if (isFarShoreSector(sectorX, sectorY)) return FAR_SHORE_SYSTEM.bodies;
+  if (REAL_SYSTEM_BODIES.has(`${sectorX},${sectorY}`)) return REAL_SYSTEM_BODIES.get(`${sectorX},${sectorY}`);
   if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return [];
   const seed = sectorSeed(sectorX, sectorY);
   const { next, integer } = createRandom(seed);
@@ -328,6 +334,7 @@ function moonsOf(star, planet, index, seed, richness) {
 
 function canHostWormhole(sectorX, sectorY) {
   if (Math.max(Math.abs(sectorX), Math.abs(sectorY)) <= WORMHOLE_CLEAR_OF_HOME_IN_SECTORS || isCoreSector(sectorX, sectorY)) return false;
+  if (REAL_SYSTEM_BODIES.has(`${sectorX},${sectorY}`)) return false;
   if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return false;
   return rollsStar(createRandom(sectorSeed(sectorX, sectorY)).next);
 }
