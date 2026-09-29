@@ -1718,15 +1718,19 @@ canvas.addEventListener('pointermove', (event) => {
 
 canvas.addEventListener('pointerup', (event) => {
   pointersDown.delete(event.pointerId);
-  if (rocketTap?.pointerId !== event.pointerId) return;
+  if (rocketTap?.pointerId === event.pointerId) rocketTap.released = true;
+});
+
+canvas.addEventListener('click', () => {
+  const tapped = rocketTap?.released;
   rocketTap = null;
-  if (!game.rocket.destroyed) openPanel('rocket');
+  if (tapped && !game.rocket.destroyed) openPanel('rocket');
 });
 
 for (const type of ['pointercancel', 'pointerleave']) {
   canvas.addEventListener(type, (event) => {
     pointersDown.delete(event.pointerId);
-    rocketTap = null;
+    if (!rocketTap?.released) rocketTap = null;
   });
 }
 
