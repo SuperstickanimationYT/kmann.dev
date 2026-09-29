@@ -1846,7 +1846,7 @@ function mapInfo() {
   const details = [
     entry.name,
     worldsNote(entry, moonsSeen(entry)),
-    bountyNote(entry),
+    bountyNote(entry, moonsSeen(entry)),
     entry.visited ? 'visited' : observationNote(entry),
     `${abbreviate(distance)} away`,
     entry.crystals ? `${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'}` : null,
@@ -1884,10 +1884,11 @@ function worldsNote(entry, showMoons) {
   return moons ? `${counted(planets, 'planet')}, ${counted(moons, 'moon')}` : counted(planets, 'planet');
 }
 
-function bountyNote(entry) {
-  const planets = systemAt(entry.x, entry.y)?.planets ?? [];
-  const total = planets.reduce((sum, planet) => sum + (planet.bounty ?? 0), 0);
-  const unclaimed = planets.reduce((sum, planet) => sum + bountyWaiting(game.claimedBounties, planet), 0);
+function bountyNote(entry, showMoons) {
+  if (!showMoons && !learned(entry, 'planets')) return null;
+  const bodies = (systemAt(entry.x, entry.y)?.planets ?? []).filter((body) => showMoons || !body.moon);
+  const total = bodies.reduce((sum, body) => sum + (body.bounty ?? 0), 0);
+  const unclaimed = bodies.reduce((sum, body) => sum + bountyWaiting(game.claimedBounties, body), 0);
   if (!total) return null;
   if (unclaimed === total) return `up to ${total} in bounties`;
   if (unclaimed === 0) return `all ${total} in bounties claimed`;
