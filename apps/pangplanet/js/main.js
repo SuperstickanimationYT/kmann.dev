@@ -1219,7 +1219,7 @@ const actions = {
     if (!canStudy(game.gct, word, game.science)) return;
     game.science -= GCT.studyScience;
     game.gct.known.add(word);
-    hud.toast(`Studied a GCT word: ${meaningOf(word)}.`);
+    hud.toast(`Studied a Galactic Common Tongue word: ${meaningOf(word)}.`);
   },
   setShowGoals: (show) => (game.showGoals = show),
   confirmBuy: (stopAsking) => {
@@ -1805,7 +1805,7 @@ function surveyTerritory() {
 }
 
 function hearGct(lines) {
-  for (const word of hear(game.gct, lines)) hud.toast(`You worked out a GCT word: ${meaningOf(word)}.`);
+  for (const word of hear(game.gct, lines)) hud.toast(`You learned a Galactic Common Tongue word: ${meaningOf(word)}.`);
 }
 
 function settleToll(message) {

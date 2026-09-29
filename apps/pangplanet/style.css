@@ -986,6 +986,16 @@
   margin-top: 8px;
 }
 
+.pp-panel .pp-gct-caption {
+  margin: 0 0 8px;
+  color: #c9d3e0;
+  font-size: 12px;
+}
+
+.pp-panel .pp-gct-line + .pp-gct-caption {
+  margin: 8px 0 0;
+}
+
 .pp-gct-chunk {
   display: inline-flex;
   align-items: flex-start;
