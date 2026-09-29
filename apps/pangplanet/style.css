@@ -962,6 +962,101 @@
   font: inherit;
 }
 
+.pp-gct {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #06101d;
+  color: #8dffc1;
+}
+
+.pp-gct:empty {
+  display: none;
+}
+
+.pp-panel .pp-gct-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 2px 4px;
+  margin: 0;
+}
+
+.pp-panel .pp-gct-line + .pp-gct-line {
+  margin-top: 8px;
+}
+
+.pp-gct-chunk {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.pp-gct-word {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.pp-gct-glyphs {
+  display: inline-flex;
+  gap: 1px;
+}
+
+.pp-gct-glyph {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.pp-gct-dot {
+  fill: currentColor;
+  stroke: none;
+}
+
+.pp-gct-space {
+  opacity: 0.45;
+}
+
+.pp-gct-gloss {
+  color: #c9d3e0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pp-lexicon-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-lexicon-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #06101d;
+  color: #8dffc1;
+}
+
+.pp-lexicon-meaning {
+  flex: 1;
+  color: #fff;
+  font-size: 14px;
+}
+
+.pp-lexicon-list .pp-action {
+  padding: 3px 10px;
+  font-size: 13px;
+}
+
 .pp-restart {
   background: #7a1010;
   color: #fff;
