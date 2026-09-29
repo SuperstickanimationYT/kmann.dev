@@ -22,17 +22,15 @@ const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map
 
 export function createGalaxyMap(canvas) {
   const context = canvas.getContext('2d');
-  const view = { mode: 'nearby', zoom: 1, size: 0, scale: 1, centerX: 0, centerY: 0, panX: 0, panY: 0 };
+  const view = { mode: 'nearby', zoom: 1, size: 0, ratio: 1, scale: 1, centerX: 0, centerY: 0, panX: 0, panY: 0 };
   let system = null;
   let selected = null;
   let selectedPlanet = null;
 
   function fit() {
-    const ratio = window.devicePixelRatio || 1;
     view.size = canvas.clientWidth;
-    canvas.width = Math.round(view.size * ratio);
-    canvas.height = Math.round(view.size * ratio);
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    canvas.width = Math.round(view.size * view.ratio);
+    canvas.height = Math.round(view.size * view.ratio);
   }
 
   function frameOn(focus, radius) {
@@ -187,7 +185,12 @@ export function createGalaxyMap(canvas) {
   }
 
   function draw({ chart, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
-    if (canvas.clientWidth !== view.size) fit();
+    const ratio = window.devicePixelRatio || 1;
+    if (canvas.clientWidth !== view.size || ratio !== view.ratio) {
+      view.ratio = ratio;
+      fit();
+    }
+    context.setTransform(view.ratio, 0, 0, view.ratio, 0, 0);
     context.fillStyle = '#02060d';
     context.fillRect(0, 0, view.size, view.size);
     if (view.mode === 'system') {
