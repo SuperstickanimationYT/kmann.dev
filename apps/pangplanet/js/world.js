@@ -240,6 +240,7 @@ export const SHIP_BLOCKS = {
   scoop: { cost: 4000, mass: 1, label: 'Magnetic scoop', colour: '#3fe0d0' },
   hydrogenTank: { cost: 1500, mass: 1, label: 'Hydrogen tank', colour: '#9fd8ff' },
   reactor: { cost: 12000, mass: 2, label: 'Fusion reactor', colour: '#ff5b8a' },
+  armor: { cost: 500, mass: 1, label: 'Armour', colour: '#5a5f66' },
   plate: { cost: 20, mass: 0.25, label: 'Hull plate', structural: true },
   wedge: { cost: 20, mass: 0.25, label: 'Hull wedge', structural: true },
 };

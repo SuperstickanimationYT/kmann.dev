@@ -99,6 +99,10 @@ function touchDown(rocket, body) {
     return 'wormhole';
   }
   const tooFast = !rocket.autopilot && Math.hypot(rocket.vx, rocket.vy) > safeLandingSpeed(rocket);
+  if (tooFast && !FATAL_KINDS.has(body.kind) && rocket.armor > 0) {
+    placeOnSurface(rocket, body, bearingBetween(body.x, body.y, rocket.x, rocket.y));
+    return 'cushioned';
+  }
   if (FATAL_KINDS.has(body.kind) || tooFast) {
     rocket.destroyed = true;
     rocket.engineOn = false;
