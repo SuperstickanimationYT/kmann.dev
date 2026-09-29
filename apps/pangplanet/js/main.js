@@ -92,7 +92,7 @@ import { cruise, dropOut, headingIntoWell, nextFtlTier } from './ftl.js';
 import { addPart, buildPlan, engineNozzles, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
-import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
+import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, crystalsSeen, foundPlanets, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture } from './textures.js';
 import { bindHold, bindHoldButtons, bindJoystick, bindPanZoom, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
@@ -102,7 +102,6 @@ import {
   FAR_SHORE_IN_SECTORS,
   SECTOR_SIZE,
   coreGate,
-  crystalWorlds,
   followFarShore,
   homeworldNear,
   homeworldSpecies,
@@ -1560,7 +1559,7 @@ function watchTheSky(seconds) {
 }
 
 function observationNews(entry, detail) {
-  if (detail === 'planets') return `counted the worlds around ${entry.name}: ${worldsNote(entry, false)}`;
+  if (detail === 'planets') return `found a planet around ${entry.name}: ${worldsNote(entry, false)} so far`;
   if (detail === 'crystals' && entry.crystals) return `spotted ${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'} at ${entry.name}`;
   if (detail === 'biosignature' && entry.biosignature) return `picked up a possible biosignature at ${entry.name}`;
   return null;
@@ -1874,19 +1873,23 @@ function observationNote(entry) {
   return 'seen through telescope, not yet observed';
 }
 
+const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
 function worldsNote(entry, showMoons) {
-  if (!showMoons && !learned(entry, 'planets')) return 'planets unknown';
   const bodies = systemAt(entry.x, entry.y)?.planets ?? [];
+  if (!showMoons) {
+    const found = foundPlanets(entry, bodies).length;
+    if (found) return `at least ${counted(found, 'planet')}`;
+    return entry.watched > 0 ? 'no planets found yet' : 'planets unknown';
+  }
   const moons = bodies.filter((body) => body.moon).length;
   const planets = bodies.length - moons;
-  const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
-  if (!showMoons) return `${counted(planets, 'planet')}, moons unknown`;
   return moons ? `${counted(planets, 'planet')}, ${counted(moons, 'moon')}` : counted(planets, 'planet');
 }
 
 function bountyNote(entry, showMoons) {
-  if (!showMoons && !learned(entry, 'planets')) return null;
-  const bodies = (systemAt(entry.x, entry.y)?.planets ?? []).filter((body) => showMoons || !body.moon);
+  const allBodies = systemAt(entry.x, entry.y)?.planets ?? [];
+  const bodies = showMoons ? allBodies : foundPlanets(entry, allBodies);
   const total = bodies.reduce((sum, body) => sum + (body.bounty ?? 0), 0);
   const unclaimed = bodies.reduce((sum, body) => sum + bountyWaiting(game.claimedBounties, body), 0);
   if (!total) return null;
@@ -2831,13 +2834,13 @@ function restore(saved) {
       continue;
     }
     const planets = system?.planets ?? [];
-    entry.crystals ??= crystalWorlds(planets);
     entry.stardust ??= entry.visited ? stardustWorlds(planets) : 0;
     if (learned(entry, 'biosignature')) entry.biosignature = Boolean(system.star.biosignature);
     entry.aliens ??= entry.visited ? homeworldSpecies(planets) : null;
     entry.life ??= entry.visited ? livingWorlds(planets) : 0;
     entry.wormhole ??= entry.visited && system.wormholes.length > 0;
     entry.watched ??= FULLY_OBSERVED;
+    entry.crystals = crystalsSeen(entry, planets);
   }
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };
