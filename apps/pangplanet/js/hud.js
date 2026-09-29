@@ -830,11 +830,22 @@ export function createHud(root, actions, { cheats }) {
     return row;
   }
 
-  function showGct(container, lines, known) {
-    const signature = `${lines.join('|')}:${lines.flatMap(readLine).map((token) => known.has(token.word)).join()}`;
+  function gctCaption(text) {
+    const caption = document.createElement('p');
+    caption.className = 'pp-gct-caption';
+    caption.textContent = text;
+    return caption;
+  }
+
+  function showGct(container, speakers, lines, known) {
+    const learned = lines.flatMap(readLine).map((token) => known.has(token.word));
+    const signature = `${speakers}:${lines.join('|')}:${learned.join()}`;
     if (shownGct.get(container) === signature) return;
     shownGct.set(container, signature);
-    container.replaceChildren(...lines.map((line) => gctLine(line, known)));
+    if (lines.length === 0) return container.replaceChildren();
+    const said = gctCaption(`The ${speakers} say, in the Galactic Common Tongue:`);
+    const unknownLegend = learned.includes(false) ? [gctCaption("? = a word you haven't learned yet")] : [];
+    container.replaceChildren(said, ...lines.map((line) => gctLine(line, known)), ...unknownLegend);
   }
 
   function lexiconEntry({ word, heard, meaning, canStudy }) {
@@ -867,7 +878,7 @@ export function createHud(root, actions, { cheats }) {
   function updateAlien(alien, gctKnown) {
     if (!alien) return;
     parts.alienGct.style.color = alien.colour;
-    showGct(parts.alienGct, alien.lines, gctKnown);
+    showGct(parts.alienGct, alien.name, alien.lines, gctKnown);
     const signed = alien.relation > 0 ? `+${alien.relation}` : String(alien.relation);
     setText(parts.alienName, alien.title);
     setHidden(parts.raidShip, !alien.raidable);
@@ -948,7 +959,7 @@ export function createHud(root, actions, { cheats }) {
   function updateToll(toll, gctKnown) {
     if (!toll) return;
     parts.tollGct.style.color = toll.colour;
-    showGct(parts.tollGct, toll.lines, gctKnown);
+    showGct(parts.tollGct, toll.name, toll.lines, gctKnown);
     setText(parts.tollDemand, `The ${toll.name} demand ${toll.price} galactokens to pass through their system. Refusing angers them.`);
     parts.payToll.disabled = !toll.canPay;
   }
