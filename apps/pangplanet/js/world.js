@@ -32,12 +32,12 @@ const EARTH_SURFACE_GRAVITY = 0.1;
 const MOON_GRAVITY_IN_EARTHS = 0.165;
 const SURFACE_DEFAULTS = { variation: 15, darkness: 35, polarCap: 0, bands: 0, craters: 0, land: false, landColor: '#7eff00', landCover: 47, clouds: 0, lava: 0, haze: 0, hazeColor: '#8fb8ff' };
 
-function orbiting(center, distance, bearingDegrees) {
+export function orbiting(center, distance, bearingDegrees) {
   const bearing = (bearingDegrees * Math.PI) / 180;
   return { x: center.x + Math.sin(bearing) * distance, y: center.y + Math.cos(bearing) * distance };
 }
 
-function surfaceBody({ name, x, y, radius, gravityInEarths, seed, surface, rings, bounty, resource = null }) {
+export function surfaceBody({ name, x, y, radius, gravityInEarths, seed, surface, rings, bounty, resource = null }) {
   const planet = { ...SURFACE_DEFAULTS, seed, ...surface };
   return {
     name,
