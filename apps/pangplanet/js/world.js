@@ -140,6 +140,7 @@ export function coreSystem(center) {
 }
 
 export const FAR_SHORE = {
+  name: 'Leviathan',
   blackHole: { radius: 40000, soi: 110000, mass: 5e11, science: 600, rings: { inner: 1.5, outer: 3, colour: 'rgba(150, 190, 255, 0.55)' } },
   gateOrbit: 900000,
   saturnGap: 90000,
@@ -149,7 +150,7 @@ export const FAR_SHORE = {
 const SATURN_WORMHOLE = { name: 'Saturn Wormhole', ...WORMHOLE_MOUTH };
 
 export function farShoreSystem(center) {
-  const hole = { name: 'Leviathan', ...center, ...FAR_SHORE.blackHole, kind: 'blackhole', look: 'blackhole', anchorsSystem: true, mapFill: '#8fb8ff' };
+  const hole = { name: FAR_SHORE.name, ...center, ...FAR_SHORE.blackHole, kind: 'blackhole', look: 'blackhole', anchorsSystem: true, mapFill: '#8fb8ff' };
   const worlds = [
     {
       name: 'Tidewater',
