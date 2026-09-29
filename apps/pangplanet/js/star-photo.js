@@ -68,6 +68,9 @@ function drawGlow(context, colour, radius) {
 export function createStarPhoto(canvas) {
   const context = canvas.getContext('2d');
   let shown = '';
+  canvas.addEventListener('contextrestored', () => {
+    shown = '';
+  });
 
   function develop({ name, colour, brightness }) {
     const ratio = window.devicePixelRatio || 1;
