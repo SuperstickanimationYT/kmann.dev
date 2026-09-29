@@ -1,7 +1,7 @@
 import { speciesByKey } from './aliens.js';
 import { GALAXY, SECTOR_SIZE } from './universe.js';
 
-const VIEW_RADIUS = { nearby: 5.5e7, star: 5.5e7, galaxy: GALAXY.radius * 1.08 };
+const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08 };
 const SYSTEM_MARGIN = 1.15;
 const ZOOM_STEP = 1.5;
 const ZOOM_LIMITS = { min: 0.25, max: 40 };
@@ -22,7 +22,7 @@ const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map
 
 export function createGalaxyMap(canvas) {
   const context = canvas.getContext('2d');
-  const view = { mode: 'nearby', zoom: 1, size: 0, scale: 1, centerX: 0, centerY: 0, star: null };
+  const view = { mode: 'nearby', zoom: 1, size: 0, scale: 1, centerX: 0, centerY: 0, panX: 0, panY: 0 };
   let system = null;
   let selected = null;
   let selectedPlanet = null;
@@ -36,8 +36,8 @@ export function createGalaxyMap(canvas) {
   }
 
   function frameOn(focus, radius) {
-    view.centerX = focus.x;
-    view.centerY = focus.y;
+    view.centerX = focus.x + view.panX;
+    view.centerY = focus.y + view.panY;
     view.scale = view.size / 2 / (radius / view.zoom);
   }
 
@@ -194,7 +194,7 @@ export function createGalaxyMap(canvas) {
       frameOn(system.star, systemRadius(system));
       drawSystem(bountyWaiting, findsLeft);
     } else {
-      const focus = { nearby: rocket, star: view.star, galaxy: GALAXY }[view.mode];
+      const focus = { nearby: rocket, galaxy: GALAXY }[view.mode];
       frameOn(focus, VIEW_RADIUS[view.mode]);
       drawGalaxy();
       if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
@@ -240,6 +240,8 @@ export function createGalaxyMap(canvas) {
   function showView(mode) {
     view.mode = mode;
     view.zoom = 1;
+    view.panX = 0;
+    view.panY = 0;
     selectedPlanet = null;
   }
 
@@ -248,17 +250,29 @@ export function createGalaxyMap(canvas) {
     showView('system');
   }
 
-  function centerOn(star) {
-    view.mode = 'star';
-    view.star = star;
-  }
-
   const showingSystem = () => view.mode === 'system';
 
-  function zoom(direction) {
-    const factor = direction === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP;
-    view.zoom = Math.min(ZOOM_LIMITS.max, Math.max(ZOOM_LIMITS.min, view.zoom * factor));
+  function pan(dxPx, dyPx) {
+    view.panX -= dxPx / view.scale;
+    view.panY += dyPx / view.scale;
   }
 
-  return { draw, pick, showView, showSystem, showingSystem, centerOn, zoom };
+  function zoomAt(factor, clientX, clientY) {
+    const box = canvas.getBoundingClientRect();
+    const fromMiddleX = clientX - box.left - view.size / 2;
+    const fromMiddleY = clientY - box.top - view.size / 2;
+    const zoomed = Math.min(ZOOM_LIMITS.max, Math.max(ZOOM_LIMITS.min, view.zoom * factor));
+    const growth = zoomed / view.zoom;
+    view.zoom = zoomed;
+    view.panX += (fromMiddleX / view.scale) * (1 - 1 / growth);
+    view.panY -= (fromMiddleY / view.scale) * (1 - 1 / growth);
+    view.scale *= growth;
+  }
+
+  function zoom(direction) {
+    const box = canvas.getBoundingClientRect();
+    zoomAt(direction === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP, box.left + box.width / 2, box.top + box.height / 2);
+  }
+
+  return { draw, pick, showView, showSystem, showingSystem, pan, zoomAt, zoom };
 }
