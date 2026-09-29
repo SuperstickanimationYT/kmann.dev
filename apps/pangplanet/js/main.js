@@ -1088,6 +1088,7 @@ const actions = {
     game.crystals = 0;
   },
   sellScience: () => {
+    if (game.science > 0) markGoals(GOALS.filter((goal) => goal.key === 'sellScience' && !game.goalsDone.has(goal.key)));
     game.galactokens += game.science * SCIENCE.sellPrice;
     game.science = 0;
   },
