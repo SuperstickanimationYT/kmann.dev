@@ -136,8 +136,14 @@ export function scoopHydrogen(ship, light, seconds) {
   ship.hydrogen = Math.min(hydrogenCapacity(ship), ship.hydrogen + lifted);
 }
 
-export function runReactor(ship, seconds) {
-  const charge = Math.min(roomToCharge(ship.batteries), countParts(ship, 'reactor') * FUSION.chargePerSecond * seconds, ship.hydrogen / FUSION.hydrogenPerCharge);
+export function runReactor(ship, tank, seconds) {
+  const reactors = countParts(ship, 'reactor');
+  const fuel = Math.min(flightStats(ship).fuelCapacity - tank.fuel, reactors * FUSION.fuelPerSecond * seconds, ship.hydrogen / FUSION.hydrogenPerFuel);
+  if (fuel > 0) {
+    tank.fuel += fuel;
+    ship.hydrogen -= fuel * FUSION.hydrogenPerFuel;
+  }
+  const charge = Math.min(roomToCharge(ship.batteries), reactors * FUSION.chargePerSecond * seconds, ship.hydrogen / FUSION.hydrogenPerCharge);
   if (charge <= 0) return;
   fillBatteries(ship.batteries, charge);
   ship.hydrogen -= charge * FUSION.hydrogenPerCharge;

@@ -1523,7 +1523,7 @@ function runShips(seconds) {
     const light = piloted ? sunlight(ship.x, ship.y) : (ship.light ?? 0);
     chargeShip(ship, light, seconds);
     scoopHydrogen(ship, light, seconds);
-    if (!piloted) runReactor(ship, seconds);
+    if (!piloted) runReactor(ship, ship, seconds);
   }
   noteScooping();
 }
@@ -2262,7 +2262,7 @@ function simulate() {
   let simTicks = 0;
   for (let i = 0; i < game.timewarp && !rocket.destroyed; i++) {
     if (game.recording) noteControls(game.recording, rocket);
-    if (boardedShip()) runReactor(boardedShip(), STEP_SECONDS);
+    if (boardedShip()) runReactor(boardedShip(), rocket, STEP_SECONDS);
     if (game.ftl) {
       stepFtl();
       stepDrones();
