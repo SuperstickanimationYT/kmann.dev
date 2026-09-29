@@ -1,3 +1,4 @@
+import { alienLines, canStudy, createGctLog, gctLogFromSave, gctLogToSave, hear, meaningOf, tollLines } from './gct.js';
 import { goodwillFor, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
 import { abbreviate, createHud } from './hud.js';
@@ -131,6 +132,7 @@ import {
 } from './wormholes.js';
 import {
   ALIENS,
+  GCT,
   ANTENNA,
   LANDING_PAD,
   AUTOPILOT,
@@ -254,6 +256,7 @@ const game = {
   starChart: createStarChart(),
   ownsTelescope: false,
   relations: startingRelations(),
+  gct: createGctLog(),
   hostileHere: null,
   tollDue: null,
   tollSettledAt: null,
@@ -1123,6 +1126,7 @@ const actions = {
     const terms = homeworld && sampleTerms(homeworld);
     if (!terms || terms.answer) return;
     game.samplePermits.set(bodyKey(homeworld), rollSampleAnswer());
+    hearGct(alienInfo(homeworld).lines.slice(-1));
   },
   paySampleFee: () => {
     const homeworld = dockedOf('aliens');
@@ -1210,6 +1214,13 @@ const actions = {
     markGoals(GOALS.filter((goal) => goal.key === 'sellBattery' && !game.goalsDone.has(goal.key)));
   },
   toggleGoals: () => openPanel(game.panel === 'goals' ? null : 'goals'),
+  toggleLexicon: () => openPanel(game.panel === 'lexicon' ? null : 'lexicon'),
+  studyWord: (word) => {
+    if (!canStudy(game.gct, word, game.science)) return;
+    game.science -= GCT.studyScience;
+    game.gct.known.add(word);
+    hud.toast(`Studied a GCT word: ${meaningOf(word)}.`);
+  },
   setShowGoals: (show) => (game.showGoals = show),
   confirmBuy: (stopAsking) => {
     const pending = game.pendingBuy;
@@ -1329,6 +1340,7 @@ function dock() {
   game.docked = target.item ?? null;
   openPanel(target.kind);
   if (target.kind === 'aliens') {
+    hearGct(alienInfo(target.item).lines);
     const { name } = speciesByKey[target.item.species];
     earnScience(`contact:${target.item.species}`, SCIENCE.contact, `first contact with the ${name}`);
   }
@@ -1337,13 +1349,14 @@ function dock() {
 const alienTitle = (host) => `${speciesByKey[host.species].name}${host === game.ship ? ' freighter' : ''}`;
 
 function alienInfo(homeworld) {
-  const { name, wants, rival } = speciesByKey[homeworld.species];
+  const { name, wants, rival, colour } = speciesByKey[homeworld.species];
   const relation = game.relations[homeworld.species];
   const friendly = mood(relation) === 'friendly';
   const price = tipPrice(relation);
   const goods = TRADE_GOODS[wants];
-  return {
+  const info = {
     name,
+    colour,
     mood: mood(relation),
     relation: Math.round(relation),
     friendly,
@@ -1362,6 +1375,16 @@ function alienInfo(homeworld) {
     raidCost: `${name} -${ALIENS.ships.raidAnger}, ${speciesByKey[rival].name} +${ALIENS.ships.rivalGoodwill}`,
     sample: sampleTerms(homeworld),
   };
+  return { ...info, lines: alienLines(info) };
+}
+
+function lexiconEntries() {
+  return Object.entries(game.gct.heard).map(([word, heard]) => ({
+    word,
+    heard,
+    meaning: game.gct.known.has(word) ? meaningOf(word) : null,
+    canStudy: canStudy(game.gct, word, game.science),
+  }));
 }
 
 function homeworldMarket(homeworld, wants) {
@@ -1774,6 +1797,11 @@ function surveyTerritory() {
   if (game.warp || game.panel === 'toll' || game.tollSettledAt === starKey(game.hostileHere.star)) return;
   game.tollDue = game.hostileHere;
   openPanel('toll');
+  hearGct(tollLines(ALIENS.toll.galactokens));
+}
+
+function hearGct(lines) {
+  for (const word of hear(game.gct, lines)) hud.toast(`You worked out a GCT word: ${meaningOf(word)}.`);
 }
 
 function settleToll(message) {
@@ -2580,7 +2608,10 @@ function status() {
     tooFastToDock: tooFastToDock(),
     dockAction: dockAction(),
     alien: dockedOf('aliens') && alienInfo(dockedOf('aliens')),
-    toll: game.tollDue && { name: speciesByKey[game.tollDue.species].name, price: ALIENS.toll.galactokens, canPay: game.galactokens >= ALIENS.toll.galactokens },
+    toll: game.tollDue && { name: speciesByKey[game.tollDue.species].name, colour: speciesByKey[game.tollDue.species].colour, price: ALIENS.toll.galactokens, canPay: game.galactokens >= ALIENS.toll.galactokens, lines: tollLines(ALIENS.toll.galactokens) },
+    gctKnown: game.gct.known,
+    gctHeard: Object.keys(game.gct.heard).length > 0,
+    lexicon: game.panel === 'lexicon' ? lexiconEntries() : null,
     outpostBan: game.hostileHere ? `The ${speciesByKey[game.hostileHere.species].name} won't let you build outposts here.` : '',
     gold: game.gold,
     satellite: dockedOf('satellite'),
@@ -2756,6 +2787,7 @@ function snapshot() {
     starChart: [...game.starChart],
     ownsTelescope: game.ownsTelescope,
     relations: game.relations,
+    gct: gctLogToSave(game.gct),
     tollSettledAt: game.tollSettledAt,
     gatewayOpen: game.gatewayOpen,
     wormholeLinks: [...game.wormholeLinks],
@@ -2806,6 +2838,7 @@ function restore(saved) {
   }
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };
+  game.gct = gctLogFromSave(saved.gct);
   game.tollSettledAt = saved.tollSettledAt ?? null;
   game.gatewayOpen = saved.gatewayOpen ?? false;
   game.wormholeLinks = new Map(saved.wormholeLinks ?? []);

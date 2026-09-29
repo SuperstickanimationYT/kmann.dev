@@ -179,6 +179,7 @@
         <button type="button" class="pp-action" data-open-ship hidden>Ship</button>
         <button type="button" class="pp-action pp-warp-button" data-toggle-ftl hidden><span data-ftl-label></span> <kbd>J</kbd></button>
         <button type="button" class="pp-action" data-leave-ship hidden>Leave ship</button>
+        <button type="button" class="pp-action" data-open-lexicon data-lexicon-when-heard hidden>GCT lexicon</button>
         <button type="button" class="pp-action pp-outpost" data-place-mouth></button>
         <button type="button" class="pp-action pp-outpost" data-launch-sail>Launch solar sail (<span data-sails-in-hold></span> in hold)</button>
       </div>
@@ -308,6 +309,7 @@
         <span class="pp-balance" title="Your galactokens"><img src="img/galactokens.svg" alt="Galactokens"> <span data-balance>0</span></span>
         <button type="button" class="pp-close" data-close aria-label="Close">X</button>
       </header>
+      <div class="pp-gct" data-alien-gct></div>
       <p data-alien-mood></p>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-buy" data-ask-for-tip>
@@ -315,6 +317,7 @@
           <img src="img/science.svg" alt="science">
         </button>
         <button type="button" class="pp-action" data-raid-ship hidden><span data-raid-cost></span></button>
+        <button type="button" class="pp-action" data-open-lexicon>GCT lexicon</button>
         <button type="button" class="pp-action" data-ask-to-sample hidden>
           <img src="img/science.svg" alt=""> Ask to drill a sample
         </button>
@@ -355,6 +358,7 @@
         <h3>Toll</h3>
         <button type="button" class="pp-close" data-close aria-label="Refuse">X</button>
       </header>
+      <div class="pp-gct" data-toll-gct></div>
       <p data-toll-demand></p>
       <div class="pp-actions">
         <button type="button" class="pp-action pp-buy" data-pay-toll>
@@ -363,6 +367,16 @@
         </button>
         <button type="button" class="pp-action" data-refuse-toll>Refuse</button>
       </div>
+    </section>
+
+    <section class="pp-panel pp-lexicon" data-panel="lexicon" hidden aria-label="GCT lexicon">
+      <header>
+        <h3>GCT lexicon</h3>
+        <button type="button" class="pp-close" data-close aria-label="Close">X</button>
+      </header>
+      <p>Every species speaks the Galactic Common Tongue. Each shape's corners give its value, from circle (0) to pentagon (5); a dot marks a digit of a base-6 number, and ⊥ separates words. Hear a word <span data-lexicon-hearings></span> times to work it out, or study it for <span data-lexicon-price></span> science.</p>
+      <ul class="pp-lexicon-list" data-lexicon-list></ul>
+      <p class="pp-hint" data-lexicon-empty>No words heard yet. Visit an alien homeworld or freighter.</p>
     </section>
 
     <section class="pp-panel" data-panel="confirmBuy" hidden aria-label="Confirm purchase">

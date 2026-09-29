@@ -1,6 +1,7 @@
 import { partBounds } from './fleet.js';
+import { NUMBERS, drawSpace, drawWord, glossOf, readLine } from './gct.js';
 import { bindShipBuilder, wedgeClip } from './ship-builder.js';
-import { GOLD, MAX_BATTERY_SLOTS } from './world.js';
+import { GCT, GOLD, MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
 const TOAST_MS = 4500;
@@ -215,6 +216,12 @@ export function createHud(root, actions, { cheats }) {
     sellToAliens: find('[data-sell-to-aliens]'),
     alienOffer: find('[data-alien-offer]'),
     tollDemand: find('[data-toll-demand]'),
+    tollGct: find('[data-toll-gct]'),
+    alienGct: find('[data-alien-gct]'),
+    openLexicon: [...root.querySelectorAll('[data-open-lexicon]')],
+    lexiconWhenHeard: find('[data-lexicon-when-heard]'),
+    lexiconList: find('[data-lexicon-list]'),
+    lexiconEmpty: find('[data-lexicon-empty]'),
     payToll: find('[data-pay-toll]'),
     refuseToll: find('[data-refuse-toll]'),
     outpostBan: find('[data-outpost-ban]'),
@@ -241,6 +248,13 @@ export function createHud(root, actions, { cheats }) {
   };
 
   root.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', actions.closePanels));
+  parts.openLexicon.forEach((button) => button.addEventListener('click', actions.toggleLexicon));
+  parts.lexiconList.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-study-word]');
+    if (button) actions.studyWord(button.dataset.studyWord);
+  });
+  setText(find('[data-lexicon-hearings]'), String(GCT.hearingsToLearn));
+  setText(find('[data-lexicon-price]'), String(GCT.studyScience));
   parts.mine.addEventListener('click', actions.mine);
   parts.stopDrill.addEventListener('click', actions.stopDrill);
   parts.buy.addEventListener('click', actions.buyFuel);
@@ -368,6 +382,8 @@ export function createHud(root, actions, { cheats }) {
   let shownDestinations = '';
   let shownUpgrades = '';
   let shownAlienSells = '';
+  let shownLexicon = '';
+  const shownGct = new Map();
   let shownStops = '';
   let shownPlan = '';
   let shownGoals = '';
@@ -672,8 +688,10 @@ export function createHud(root, actions, { cheats }) {
     updateDrones(status);
     updateHaulers(status);
     updateWormholes(status);
-    updateAlien(status.alien);
-    updateToll(status.toll);
+    updateAlien(status.alien, status.gctKnown);
+    updateToll(status.toll, status.gctKnown);
+    setHidden(parts.lexiconWhenHeard, !status.gctHeard);
+    updateLexicon(status.lexicon);
     setText(parts.outpostBan, status.outpostBan);
     setHidden(parts.outpostBan, !status.outpostBan);
     showDestinations(status.warpDestinations);
@@ -788,8 +806,68 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.finishRecording, !status.canFinishRecording);
   }
 
-  function updateAlien(alien) {
+  function gctWord(token, known) {
+    const word = document.createElement('span');
+    word.className = 'pp-gct-word';
+    const gloss = document.createElement('span');
+    gloss.className = 'pp-gct-gloss';
+    gloss.textContent = glossOf(token, known);
+    word.setAttribute('aria-label', gloss.textContent === '?' ? 'unknown word' : gloss.textContent);
+    word.append(drawWord(token.glyphs, token.dotted), gloss);
+    return word;
+  }
+
+  function gctLine(line, known) {
+    const row = document.createElement('p');
+    row.className = 'pp-gct-line';
+    readLine(line).forEach((token, index) => {
+      const chunk = document.createElement('span');
+      chunk.className = 'pp-gct-chunk';
+      if (index > 0) chunk.append(drawSpace());
+      chunk.append(gctWord(token, known));
+      row.append(chunk);
+    });
+    return row;
+  }
+
+  function showGct(container, lines, known) {
+    const signature = `${lines.join('|')}:${lines.flatMap(readLine).map((token) => known.has(token.word)).join()}`;
+    if (shownGct.get(container) === signature) return;
+    shownGct.set(container, signature);
+    container.replaceChildren(...lines.map((line) => gctLine(line, known)));
+  }
+
+  function lexiconEntry({ word, heard, meaning, canStudy }) {
+    const item = document.createElement('li');
+    const glyphs = word === NUMBERS ? drawWord(['0'], true) : drawWord([...word]);
+    const label = document.createElement('span');
+    label.className = 'pp-lexicon-meaning';
+    label.textContent = meaning ?? `??? (heard ${heard} of ${GCT.hearingsToLearn})`;
+    item.append(glyphs, label);
+    if (meaning) return item;
+    const study = document.createElement('button');
+    study.type = 'button';
+    study.className = 'pp-action pp-buy';
+    study.dataset.studyWord = word;
+    study.disabled = !canStudy;
+    study.textContent = `Study · ${GCT.studyScience}`;
+    item.append(study);
+    return item;
+  }
+
+  function updateLexicon(entries) {
+    if (!entries) return;
+    const signature = entries.map(({ word, heard, meaning, canStudy }) => `${word}:${heard}:${meaning}:${canStudy}`).join('|');
+    if (signature === shownLexicon) return;
+    shownLexicon = signature;
+    setHidden(parts.lexiconEmpty, entries.length > 0);
+    parts.lexiconList.replaceChildren(...entries.map(lexiconEntry));
+  }
+
+  function updateAlien(alien, gctKnown) {
     if (!alien) return;
+    parts.alienGct.style.color = alien.colour;
+    showGct(parts.alienGct, alien.lines, gctKnown);
     const signed = alien.relation > 0 ? `+${alien.relation}` : String(alien.relation);
     setText(parts.alienName, alien.title);
     setHidden(parts.raidShip, !alien.raidable);
@@ -867,8 +945,10 @@ export function createHud(root, actions, { cheats }) {
     );
   }
 
-  function updateToll(toll) {
+  function updateToll(toll, gctKnown) {
     if (!toll) return;
+    parts.tollGct.style.color = toll.colour;
+    showGct(parts.tollGct, toll.lines, gctKnown);
     setText(parts.tollDemand, `The ${toll.name} demand ${toll.price} galactokens to pass through their system. Refusing angers them.`);
     parts.payToll.disabled = !toll.canPay;
   }
