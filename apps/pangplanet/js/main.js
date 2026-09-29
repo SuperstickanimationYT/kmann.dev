@@ -95,7 +95,7 @@ import { showWorldMenu } from './menu.js';
 import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture } from './textures.js';
-import { bindHold, bindHoldButtons, bindJoystick, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
+import { bindHold, bindHoldButtons, bindJoystick, bindPanZoom, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
 import {
   DEFAULT_GALAXY_SEED,
@@ -784,9 +784,6 @@ const actions = {
     game.mapPlanet = null;
   },
   mapZoom: (direction) => galaxyMap.zoom(direction),
-  mapCenter: () => {
-    if (game.mapSelection && !galaxyMap.showingSystem()) galaxyMap.centerOn(game.mapSelection);
-  },
   pickOnMap: (clientX, clientY) => {
     const picked = galaxyMap.pick(game.starChart, clientX, clientY);
     if (galaxyMap.showingSystem()) game.mapPlanet = picked;
@@ -1322,6 +1319,7 @@ const CHEATS = {
 const hud = createHud(stage, actions, { cheats: Boolean(world?.cheats) });
 const tour = createTour(stage, { onEnd: () => (game.tourSeen = true), openGuide: () => openPanel('help') });
 const galaxyMap = createGalaxyMap(stage.querySelector('[data-map]'));
+bindPanZoom(stage.querySelector('[data-map]'), { pan: galaxyMap.pan, zoomAt: galaxyMap.zoomAt, tap: actions.pickOnMap });
 const starPhoto = createStarPhoto(stage.querySelector('[data-star-photo]'));
 
 function shipInReach() {
@@ -2661,7 +2659,6 @@ function status() {
     canBuyTelescope: !game.ownsTelescope && game.galactokens >= TELESCOPE.cost,
     mapInfo: mapInfo(),
     canCloseUp: Boolean(game.mapSelection?.visited) && !galaxyMap.showingSystem(),
-    canCenterMap: Boolean(game.mapSelection) && !galaxyMap.showingSystem(),
     bank: dockedOf('bank'),
     canBuyBank: game.galactokens >= PRICES.bank(),
     canBuyShip: game.galactokens >= PRICES.ship(),

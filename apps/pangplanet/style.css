@@ -619,6 +619,7 @@
   margin: 0 auto 10px;
   border-radius: 10px;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .pp-map-details {

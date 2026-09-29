@@ -144,7 +144,6 @@ export function createHud(root, actions, { cheats }) {
     mapInfo: find('[data-map-info]'),
     warpSlider: find('[data-warp-slider]'),
     mapCloseUp: find('[data-map-close-up]'),
-    mapCenter: find('[data-map-center]'),
     bountyHere: find('[data-bounty-here]'),
     buyBank: find('[data-buy-bank]'),
     buyShip: find('[data-buy-ship]'),
@@ -553,10 +552,8 @@ export function createHud(root, actions, { cheats }) {
   find('[data-start-tour]').addEventListener('click', actions.startTour);
   find('[data-restart]').addEventListener('click', actions.restart);
   find('[data-map-toggle]').addEventListener('click', actions.toggleMap);
-  find('[data-map]').addEventListener('click', (event) => actions.pickOnMap(event.clientX, event.clientY));
   root.querySelectorAll('[data-map-view]').forEach((button) => button.addEventListener('click', () => actions.mapView(button.dataset.mapView)));
   parts.mapCloseUp.addEventListener('click', actions.mapCloseUp);
-  parts.mapCenter.addEventListener('click', actions.mapCenter);
   root.querySelectorAll('[data-map-zoom]').forEach((button) => button.addEventListener('click', () => actions.mapZoom(button.dataset.mapZoom)));
   const cheatsToggle = find('[data-cheats-toggle]');
   cheatsToggle.hidden = !cheats;
@@ -678,7 +675,6 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.scan, !status.ownsTelescope);
     setText(parts.mapInfo, status.mapInfo);
     setHidden(parts.mapCloseUp, !status.canCloseUp);
-    setHidden(parts.mapCenter, !status.canCenterMap);
     setHidden(parts.bountyHere, !status.bountyHere);
     setText(parts.bountyHere, `Bounty ${status.bountyHere}`);
     updateSatellite(status);
