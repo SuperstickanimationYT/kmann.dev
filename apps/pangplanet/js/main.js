@@ -283,6 +283,8 @@ const game = {
 };
 
 const boardedShip = () => game.fleet[game.boarded] ?? null;
+const shipName = (ship) => `Ship ${game.fleet.indexOf(ship) + 1}`;
+const parkedShips = () => game.fleet.filter((ship) => ship !== boardedShip()).map((ship) => ({ name: shipName(ship), x: ship.x, y: ship.y }));
 
 function applyCraft() {
   applyUpgrades(game.upgrades, game.rocket, game.power);
@@ -2594,7 +2596,7 @@ function shipInfo() {
   if (!ship) return null;
   const piloting = ship === boardedShip();
   return {
-    title: `Ship ${game.fleet.indexOf(ship) + 1}`,
+    title: shipName(ship),
     stats: describeShip(ship),
     plan: buildPlan(ship),
     shipyard: Boolean(shipInShipyard()),
@@ -2768,6 +2770,7 @@ function frame(time) {
       chart: game.starChart,
       bookmarks: game.bookmarks,
       onlyBookmarks: game.bookmarksOnly,
+      myShips: parkedShips(),
       rocket,
       warpRange: game.ownsWarpDrive ? warpRange() : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,

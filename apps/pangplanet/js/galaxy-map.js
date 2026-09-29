@@ -20,6 +20,8 @@ const OBSERVATORY_TEAL = 'rgba(63, 224, 208, 0.35)';
 const NEBULA_ALPHA = { emission: 0.35, reflection: 0.35, dark: 0.75 };
 const NEBULA_NAMES_ABOVE_PX = 40;
 const PUFF_VISIBLE_RADII = 1.5;
+const MY_SHIP_CYAN = '#5ee7ff';
+const MY_SHIP_PX = 5;
 
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
@@ -215,6 +217,21 @@ export function createGalaxyMap(canvas) {
     }
   }
 
+  function drawMyShips(ships) {
+    for (const { name, x, y } of ships) {
+      const [mx, my] = toMap(x, y);
+      context.fillStyle = MY_SHIP_CYAN;
+      context.beginPath();
+      context.moveTo(mx, my - MY_SHIP_PX);
+      context.lineTo(mx + MY_SHIP_PX, my);
+      context.lineTo(mx, my + MY_SHIP_PX);
+      context.lineTo(mx - MY_SHIP_PX, my);
+      context.closePath();
+      context.fill();
+      label(name, x, y, 16);
+    }
+  }
+
   function drawRocket(rocket) {
     const [mx, my] = toMap(rocket.x, rocket.y);
     context.fillStyle = '#6dff8c';
@@ -226,7 +243,7 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, bookmarks, onlyBookmarks, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
+  function draw({ chart, bookmarks, onlyBookmarks, myShips, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
     bookmarked = bookmarks;
     bookmarksOnly = onlyBookmarks;
     const ratio = window.devicePixelRatio || 1;
@@ -256,6 +273,7 @@ export function createGalaxyMap(canvas) {
     }
     drawRoute(routePath, drones);
     if (ship) disk(ship.x, ship.y, 3.5, ship.colour);
+    drawMyShips(myShips);
     drawRocket(rocket);
   }
 
