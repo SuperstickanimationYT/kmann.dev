@@ -67,6 +67,7 @@ import {
 } from './drones.js';
 import { flyDescent, mustTakeOver } from './autopilot.js';
 import { createGalaxyMap } from './galaxy-map.js';
+import { NEBULA_KINDS, nebulaAt } from './nebulae.js';
 import { apparentBrightness, createStarPhoto } from './star-photo.js';
 import { GOALS, currentGoal, newlyReachedGoals } from './goals.js';
 import { flyShip, launchShip, nextShipDelayTicks, relativeSpeed, shipGone } from './ships.js';
@@ -234,6 +235,7 @@ const game = {
   boarded: null,
   ftl: false,
   scooping: false,
+  nebulaName: null,
   antennas: [],
   antennasInHold: 0,
   pads: [],
@@ -1779,6 +1781,12 @@ const chartedDestinations = () => warpDestinations(game.rocket, game.power, warp
 
 let ticksSinceCharting = CHART_EVERY_TICKS;
 
+function noteNebula() {
+  const nebula = nebulaAt(game.rocket.x, game.rocket.y)?.nebula;
+  if (nebula && nebula.name !== game.nebulaName) hud.toast(`Entering the ${nebula.name} Nebula. ${NEBULA_KINDS[nebula.kind].about}`);
+  game.nebulaName = nebula?.name ?? null;
+}
+
 function chartVisits() {
   ticksSinceCharting += STEP_TICKS;
   if (ticksSinceCharting < CHART_EVERY_TICKS) return;
@@ -1786,6 +1794,7 @@ function chartVisits() {
   const { rocket } = game;
   if (chartVisitsNear(game.starChart, rocket.x, rocket.y)) hud.toast('New star system added to your galaxy map.');
   studySurroundings();
+  noteNebula();
   surveyTerritory();
 }
 

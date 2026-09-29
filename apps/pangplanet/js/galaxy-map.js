@@ -1,4 +1,5 @@
 import { speciesByKey } from './aliens.js';
+import { NEBULA_KINDS, nebulaeWithin } from './nebulae.js';
 import { GALAXY, SECTOR_SIZE } from './universe.js';
 
 const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08 };
@@ -16,6 +17,9 @@ const STARDUST_VIOLET = '#e2c9ff';
 const LIFE_GREEN = '#8dffc1';
 const WORMHOLE_PURPLE = '#c58cff';
 const OBSERVATORY_TEAL = 'rgba(63, 224, 208, 0.35)';
+const NEBULA_ALPHA = { emission: 0.35, reflection: 0.35, dark: 0.75 };
+const NEBULA_NAMES_ABOVE_PX = 40;
+const PUFF_VISIBLE_RADII = 1.5;
 
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
@@ -81,6 +85,31 @@ export function createGalaxyMap(canvas) {
     context.arc(mx, my, radius, 0, Math.PI * 2);
     context.fill();
     ring(GALAXY.x, GALAXY.y, GALAXY.radius, 'rgba(140, 170, 255, 0.45)', false);
+  }
+
+  function drawNebulae() {
+    const reach = view.size / view.scale;
+    for (const nebula of nebulaeWithin(view.centerX, view.centerY, reach)) {
+      const [r, g, b] = NEBULA_KINDS[nebula.kind].colour;
+      for (const puff of nebula.puffs) {
+        const [mx, my] = toMap(puff.x, puff.y);
+        const radius = puff.radius * view.scale * PUFF_VISIBLE_RADII;
+        const cloud = context.createRadialGradient(mx, my, 0, mx, my, radius);
+        cloud.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${NEBULA_ALPHA[nebula.kind]})`);
+        cloud.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+        context.fillStyle = cloud;
+        context.fillRect(mx - radius, my - radius, radius * 2, radius * 2);
+      }
+      if (nebula.radius * view.scale > NEBULA_NAMES_ABOVE_PX) nebulaLabel(`${nebula.name} Nebula`, nebula.x, nebula.y);
+    }
+  }
+
+  function nebulaLabel(text, x, y) {
+    const [mx, my] = toMap(x, y);
+    context.font = 'italic 12px "Trebuchet MS", "Segoe UI", sans-serif';
+    context.textAlign = 'center';
+    context.fillStyle = 'rgba(220, 210, 240, 0.55)';
+    context.fillText(text, mx, my);
   }
 
   function drawStars(chart) {
@@ -200,6 +229,7 @@ export function createGalaxyMap(canvas) {
       const focus = { nearby: rocket, galaxy: GALAXY }[view.mode];
       frameOn(focus, VIEW_RADIUS[view.mode]);
       drawGalaxy();
+      drawNebulae();
       if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
       if (telescopeRange) ring(rocket.x, rocket.y, telescopeRange, 'rgba(63, 224, 208, 0.6)', true);
       for (const observatory of observatories) {
