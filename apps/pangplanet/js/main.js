@@ -255,6 +255,8 @@ const game = {
   upgrades: createUpgrades(),
   claimedBounties: new Set(),
   starChart: createStarChart(),
+  bookmarks: new Set(),
+  bookmarksOnly: false,
   ownsTelescope: false,
   relations: startingRelations(),
   gct: createGctLog(),
@@ -785,6 +787,15 @@ const actions = {
     game.mapPlanet = null;
   },
   mapZoom: (direction) => galaxyMap.zoom(direction),
+  toggleBookmark: () => {
+    if (!game.mapSelection || galaxyMap.showingSystem()) return;
+    const key = starKey(game.mapSelection);
+    if (game.bookmarks.has(key)) game.bookmarks.delete(key);
+    else game.bookmarks.add(key);
+  },
+  toggleBookmarksOnly: () => {
+    game.bookmarksOnly = !game.bookmarksOnly;
+  },
   pickOnMap: (clientX, clientY) => {
     const picked = galaxyMap.pick(game.starChart, clientX, clientY);
     if (galaxyMap.showingSystem()) game.mapPlanet = picked;
@@ -2683,6 +2694,10 @@ function status() {
     canBuyTelescope: !game.ownsTelescope && game.galactokens >= TELESCOPE.cost,
     mapInfo: mapInfo(),
     canCloseUp: Boolean(game.mapSelection?.visited) && !galaxyMap.showingSystem(),
+    canBookmark: Boolean(game.mapSelection) && !galaxyMap.showingSystem(),
+    bookmarked: Boolean(game.mapSelection) && game.bookmarks.has(starKey(game.mapSelection)),
+    hasBookmarks: game.bookmarks.size > 0,
+    bookmarksOnly: game.bookmarksOnly,
     bank: dockedOf('bank'),
     canBuyBank: game.galactokens >= PRICES.bank(),
     canBuyShip: game.galactokens >= PRICES.ship(),
@@ -2751,6 +2766,8 @@ function frame(time) {
   if (game.panel === 'map') {
     galaxyMap.draw({
       chart: game.starChart,
+      bookmarks: game.bookmarks,
+      onlyBookmarks: game.bookmarksOnly,
       rocket,
       warpRange: game.ownsWarpDrive ? warpRange() : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
@@ -2811,6 +2828,7 @@ function snapshot() {
     upgrades: game.upgrades,
     claimedBounties: [...game.claimedBounties],
     starChart: [...game.starChart],
+    bookmarks: [...game.bookmarks],
     ownsTelescope: game.ownsTelescope,
     relations: game.relations,
     gct: gctLogToSave(game.gct),
@@ -2844,6 +2862,7 @@ function restore(saved) {
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
   game.starChart = new Map(saved.starChart ?? []);
+  game.bookmarks = new Set(saved.bookmarks ?? []);
   game.crystals = saved.crystals ?? 0;
   game.stardust = saved.stardust ?? 0;
   Object.assign(game, { science: saved.science ?? 0, studies: new Set(saved.studies ?? []), sails: (saved.sails ?? []).map(sailFromOldSave), sailsInHold: saved.sailsInHold ?? 0 });

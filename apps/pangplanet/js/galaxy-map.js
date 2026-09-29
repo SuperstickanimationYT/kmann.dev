@@ -30,6 +30,8 @@ export function createGalaxyMap(canvas) {
   let system = null;
   let selected = null;
   let selectedPlanet = null;
+  let bookmarked = new Set();
+  let bookmarksOnly = false;
 
   function fit() {
     view.size = canvas.clientWidth;
@@ -112,9 +114,19 @@ export function createGalaxyMap(canvas) {
     context.fillText(text, mx, my);
   }
 
+  const shownStars = (chart) => [...chart].filter(([key]) => !bookmarksOnly || bookmarked.has(key));
+
+  function bookmarkMark(entry) {
+    const [mx, my] = toMap(entry.x, entry.y);
+    context.font = '12px "Trebuchet MS", "Segoe UI", sans-serif';
+    context.textAlign = 'center';
+    context.fillStyle = BOUNTY_GOLD;
+    context.fillText('★', mx, my - STAR_DOT_PX - 4);
+  }
+
   function drawStars(chart) {
     const showLabels = view.scale * SECTOR_SIZE > LABELS_ABOVE_PX_PER_SECTOR;
-    for (const entry of chart.values()) {
+    for (const [key, entry] of shownStars(chart)) {
       const [mx, my] = toMap(entry.x, entry.y);
       if (!onMap(mx, my)) continue;
       context.beginPath();
@@ -134,7 +146,8 @@ export function createGalaxyMap(canvas) {
       else if (entry.life) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, LIFE_GREEN, false);
       else if (entry.biosignature && !entry.visited) ring(entry.x, entry.y, (STAR_DOT_PX + 11) / view.scale, LIFE_GREEN, true);
       if (entry === selected) ring(entry.x, entry.y, (STAR_DOT_PX + 5) / view.scale, BOUNTY_GOLD, false);
-      if (showLabels || entry === selected) label(entry.name, entry.x, entry.y, 15);
+      if (bookmarked.has(key)) bookmarkMark(entry);
+      if (showLabels || entry === selected || bookmarked.has(key)) label(entry.name, entry.x, entry.y, 15);
     }
   }
 
@@ -213,7 +226,9 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
+  function draw({ chart, bookmarks, onlyBookmarks, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
+    bookmarked = bookmarks;
+    bookmarksOnly = onlyBookmarks;
     const ratio = window.devicePixelRatio || 1;
     if (canvas.clientWidth !== view.size || ratio !== view.ratio) {
       view.ratio = ratio;
@@ -266,7 +281,7 @@ export function createGalaxyMap(canvas) {
       selectedPlanet = nearestOnMap(system.planets, clientX, clientY);
       return selectedPlanet;
     }
-    selected = nearestOnMap(chart.values(), clientX, clientY);
+    selected = nearestOnMap(shownStars(chart).map(([, entry]) => entry), clientX, clientY);
     return selected;
   }
 

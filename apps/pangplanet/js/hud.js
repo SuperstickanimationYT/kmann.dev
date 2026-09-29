@@ -144,6 +144,8 @@ export function createHud(root, actions, { cheats }) {
     mapInfo: find('[data-map-info]'),
     warpSlider: find('[data-warp-slider]'),
     mapCloseUp: find('[data-map-close-up]'),
+    mapBookmark: find('[data-map-bookmark]'),
+    mapBookmarksOnly: find('[data-map-bookmarks-only]'),
     bountyHere: find('[data-bounty-here]'),
     buyBank: find('[data-buy-bank]'),
     buyShip: find('[data-buy-ship]'),
@@ -554,6 +556,8 @@ export function createHud(root, actions, { cheats }) {
   find('[data-map-toggle]').addEventListener('click', actions.toggleMap);
   root.querySelectorAll('[data-map-view]').forEach((button) => button.addEventListener('click', () => actions.mapView(button.dataset.mapView)));
   parts.mapCloseUp.addEventListener('click', actions.mapCloseUp);
+  parts.mapBookmark.addEventListener('click', actions.toggleBookmark);
+  parts.mapBookmarksOnly.addEventListener('click', actions.toggleBookmarksOnly);
   root.querySelectorAll('[data-map-zoom]').forEach((button) => button.addEventListener('click', () => actions.mapZoom(button.dataset.mapZoom)));
   const cheatsToggle = find('[data-cheats-toggle]');
   cheatsToggle.hidden = !cheats;
@@ -675,6 +679,11 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.scan, !status.ownsTelescope);
     setText(parts.mapInfo, status.mapInfo);
     setHidden(parts.mapCloseUp, !status.canCloseUp);
+    setHidden(parts.mapBookmark, !status.canBookmark);
+    setText(parts.mapBookmark, status.bookmarked ? 'Remove bookmark' : 'Bookmark');
+    setHidden(parts.mapBookmarksOnly, !status.hasBookmarks && !status.bookmarksOnly);
+    setText(parts.mapBookmarksOnly, status.bookmarksOnly ? 'All stars' : 'Bookmarked only');
+    parts.mapBookmarksOnly.setAttribute('aria-pressed', String(status.bookmarksOnly));
     setHidden(parts.bountyHere, !status.bountyHere);
     setText(parts.bountyHere, `Bounty ${status.bountyHere}`);
     updateSatellite(status);
