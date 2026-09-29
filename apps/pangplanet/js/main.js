@@ -1355,6 +1355,7 @@ function alienInfo(homeworld) {
   const price = tipPrice(relation);
   const goods = TRADE_GOODS[wants];
   const info = {
+    species: homeworld.species,
     name,
     colour,
     mood: mood(relation),
@@ -2612,7 +2613,7 @@ function status() {
     tooFastToDock: tooFastToDock(),
     dockAction: dockAction(),
     alien: dockedOf('aliens') && alienInfo(dockedOf('aliens')),
-    toll: game.tollDue && { name: speciesByKey[game.tollDue.species].name, colour: speciesByKey[game.tollDue.species].colour, price: ALIENS.toll.galactokens, canPay: game.galactokens >= ALIENS.toll.galactokens, lines: tollLines(ALIENS.toll.galactokens) },
+    toll: game.tollDue && { species: game.tollDue.species, name: speciesByKey[game.tollDue.species].name, colour: speciesByKey[game.tollDue.species].colour, price: ALIENS.toll.galactokens, canPay: game.galactokens >= ALIENS.toll.galactokens, lines: tollLines(ALIENS.toll.galactokens) },
     gctKnown: game.gct.known,
     gctHeard: Object.keys(game.gct.heard).length > 0,
     lexicon: game.panel === 'lexicon' ? lexiconEntries() : null,

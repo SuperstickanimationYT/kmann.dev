@@ -968,10 +968,44 @@
   border-radius: 8px;
   background: #06101d;
   color: #8dffc1;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .pp-gct:empty {
   display: none;
+}
+
+.pp-gct-speech {
+  flex: 1;
+  min-width: 0;
+}
+
+.pp-portrait {
+  flex: none;
+  width: 56px;
+  height: 56px;
+}
+
+.pp-ink {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pp-ink-thin {
+  stroke-width: 1.5;
+}
+
+.pp-ink-backed {
+  fill: #06101d;
+}
+
+.pp-ink-solid {
+  fill: currentColor;
 }
 
 .pp-panel .pp-gct-line {
