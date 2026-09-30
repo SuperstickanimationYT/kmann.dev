@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Song Studio &mdash; kmann314</title>
+<meta name="description" content="Make music in your browser: click notes onto a grid, stack melody, chords, bass and drums, and stay in a pentatonic scale so every note sounds good.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Song Studio</h2>
+    </div>
+  </div>
+
+  <div class="shell ss-app">
+    <section class="ss-bar" aria-label="Transport">
+      <button class="ss-play" type="button" data-play aria-pressed="false">
+        <span class="ss-play-icon" aria-hidden="true"></span><span data-play-label>Play</span>
+      </button>
+      <button class="ss-button ss-record" type="button" data-record aria-pressed="false" title="While playing, notes you play on the keyboard get added to the grid">
+        <span class="ss-dot" aria-hidden="true"></span>Record
+      </button>
+      <label class="ss-field ss-tempo">
+        <span>Tempo <output data-tempo-value></output></span>
+        <input type="range" min="50" max="200" step="1" data-tempo>
+      </label>
+      <label class="ss-field ss-name">
+        <span>Song name</span>
+        <input class="ss-input" type="text" maxlength="60" data-name>
+      </label>
+      <div class="ss-group">
+        <button class="ss-button" type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
+        <button class="ss-button" type="button" data-redo title="Redo (Ctrl+Y)">Redo</button>
+      </div>
+      <div class="ss-group ss-push">
+        <button class="ss-button" type="button" data-new>New song</button>
+        <button class="ss-button" type="button" data-demo>Demo song</button>
+        <button class="ss-button" type="button" data-share>Copy share link</button>
+        <button class="ss-button ss-primary" type="button" data-wav>Save as WAV</button>
+      </div>
+    </section>
+
+    <section class="ss-bar ss-settings" aria-label="Song settings">
+      <label class="ss-field">
+        <span>Key</span>
+        <select class="ss-input" data-key></select>
+      </label>
+      <label class="ss-field ss-scale">
+        <span>Scale</span>
+        <select class="ss-input" data-scale></select>
+      </label>
+      <label class="ss-field">
+        <span>Bars</span>
+        <select class="ss-input" data-bars></select>
+      </label>
+      <label class="ss-field">
+        <span>Beats per bar</span>
+        <select class="ss-input" data-beats>
+          <option value="4">4</option>
+          <option value="3">3 (waltz)</option>
+        </select>
+      </label>
+      <label class="ss-field">
+        <span>Grid</span>
+        <select class="ss-input" data-steps>
+          <option value="2">Eighth notes</option>
+          <option value="3">Triplets</option>
+          <option value="4">Sixteenth notes</option>
+        </select>
+      </label>
+      <label class="ss-field ss-slider">
+        <span>Swing</span>
+        <input type="range" min="0" max="0.6" step="0.05" data-swing>
+      </label>
+      <label class="ss-field ss-slider">
+        <span>Echo</span>
+        <input type="range" min="0" max="1" step="0.05" data-reverb>
+      </label>
+    </section>
+
+    <section class="ss-tracks" aria-label="Tracks">
+      <div class="ss-track-list" data-tracks></div>
+      <div class="ss-group">
+        <button class="ss-button" type="button" data-add-melody>+ Instrument</button>
+        <button class="ss-button" type="button" data-add-drums>+ Drums</button>
+      </div>
+    </section>
+
+    <section class="ss-editor" aria-label="Note grid">
+      <div class="ss-editor-bar">
+        <label class="ss-field ss-track-name">
+          <span>Track</span>
+          <input class="ss-input" type="text" maxlength="30" data-track-name>
+        </label>
+        <label class="ss-field" data-melody-only>
+          <span>Instrument</span>
+          <select class="ss-input" data-instrument></select>
+        </label>
+        <div class="ss-field" data-melody-only>
+          <span>Octave</span>
+          <div class="ss-stepper">
+            <button class="ss-button" type="button" data-octave="-1" aria-label="Octave down">&minus;</button>
+            <output data-octave-value></output>
+            <button class="ss-button" type="button" data-octave="1" aria-label="Octave up">+</button>
+          </div>
+        </div>
+        <label class="ss-check" data-melody-only title="Each note plays a three-note chord built from the scale">
+          <input type="checkbox" data-chords>
+          <span>Play chords</span>
+        </label>
+        <div class="ss-group ss-push">
+          <button class="ss-button" type="button" data-surprise>Surprise me</button>
+          <button class="ss-button" type="button" data-clear>Clear track</button>
+        </div>
+      </div>
+      <div class="ss-grid">
+        <canvas class="ss-labels" data-labels></canvas>
+        <div class="ss-scroll" data-scroller>
+          <canvas class="ss-canvas" data-grid></canvas>
+        </div>
+      </div>
+      <p class="ss-hint">
+        Click a square to add a note, drag right to hold it longer, click a note to remove it.
+        Play live with <kbd>A</kbd>&ndash;<kbd>'</kbd> and <kbd>Q</kbd>&ndash;<kbd>]</kbd>. <kbd>Space</kbd> plays and stops.
+        <span class="ss-status" data-status role="status"></span>
+      </p>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
