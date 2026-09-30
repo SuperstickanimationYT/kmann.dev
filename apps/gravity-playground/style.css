@@ -59,8 +59,14 @@
   border-color: var(--link);
 }
 
-.gp-selected[hidden] {
-  display: none;
+.gp-panel [hidden] {
+  display: none !important;
+}
+
+.gp-cones {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .gp-field {

@@ -7,8 +7,8 @@ export const radiusOf = (mass) => RADIUS_PER_CUBE_ROOT_MASS * Math.cbrt(mass);
 
 let nextId = 1;
 
-export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false }) {
-  return { id: nextId++, x, y, vx, vy, mass, pinned, trail: [] };
+export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false, test = false }) {
+  return { id: nextId++, x, y, vx, vy, mass, pinned, test, trail: [] };
 }
 
 export const cloneBodies = (bodies) => bodies.map((body) => ({ ...body, trail: [] }));

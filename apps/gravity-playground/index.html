@@ -46,6 +46,27 @@
       </div>
 
       <fieldset>
+        <legend>Spacetime</legend>
+        <div class="gp-actions gp-laws">
+          <button type="button" data-spacetime="newton">Newton</button>
+          <button type="button" data-spacetime="cones">2+1 relativity</button>
+        </div>
+        <div class="gp-cones" data-cones-only hidden>
+          <p class="gp-note">General relativity with 2 space dimensions. Masses don't pull: each one cuts a wedge out of space (hatched) and glues the edges together, turning flat space into a cone. Balls fly straight; one that reaches a wedge's edge carries on from the opposite edge. Masses stay put.</p>
+          <label class="gp-field">
+            <span>Wedge cut points <output data-cut-label></output></span>
+            <input type="range" name="cutAngle" min="0" max="359" step="1" value="0">
+          </label>
+          <p class="gp-note">Where the wedge is cut from is a drawing choice, like where you cut a paper cone: every direction gives the same cone.</p>
+          <label class="gp-toggle"><input type="checkbox" name="newCone"> Place masses instead of balls</label>
+          <div class="gp-actions">
+            <button type="button" data-beam>Parallel beam</button>
+            <button type="button" data-flash>Flash of light</button>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset data-newton-only>
         <legend>Force law</legend>
         <div class="gp-actions gp-laws">
           <button type="button" data-law="1">1/r</button>
@@ -66,7 +87,7 @@
           <span>Mass <output data-new-mass-label></output></span>
           <input type="range" name="newMass" min="0" max="1000" step="1">
         </label>
-        <label class="gp-toggle"><input type="checkbox" name="autoOrbit" checked> Tap puts it in a circular orbit</label>
+        <label class="gp-toggle" data-newton-only><input type="checkbox" name="autoOrbit" checked> Tap puts it in a circular orbit</label>
         <label class="gp-toggle"><input type="checkbox" name="newPinned"> Pinned in place</label>
       </fieldset>
 
@@ -91,7 +112,7 @@
           <input type="range" name="speed" min="-2" max="3" step="0.25" value="0">
         </label>
         <label class="gp-toggle"><input type="checkbox" name="trails" checked> Trails</label>
-        <label class="gp-toggle"><input type="checkbox" name="merge" checked> Merge on collision</label>
+        <label class="gp-toggle" data-newton-only><input type="checkbox" name="merge" checked> Merge on collision</label>
         <label class="gp-field">
           <span>Scene</span>
           <select name="scene" data-scene></select>
@@ -110,6 +131,12 @@
           <li>Drag a body: grab and throw it. Click one: select it.</li>
           <li>Right-click a body: delete it. Right- or middle-drag: pan. Wheel: zoom.</li>
           <li>Keys: <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>T</kbd> trails, <kbd>F</kbd> fit view, <kbd>Esc</kbd> deselect.</li>
+        </ul>
+        <p><strong>2+1 relativity</strong></p>
+        <ul>
+          <li>Drag or tap to launch or drop test balls; tick "Place masses" to add cones instead. Drag a mass to move it.</li>
+          <li>A ball dropped at rest stays at rest: nothing falls. Parallel beam shows paths crossing behind a mass; Flash shows two overlapping wavefronts, which is why you'd see double images.</li>
+          <li>Switching to 2+1 turns light bodies (wedge under 1°) into balls that keep their velocity, so orbits fly apart in straight lines.</li>
         </ul>
         <p><strong>Touch</strong></p>
         <ul>

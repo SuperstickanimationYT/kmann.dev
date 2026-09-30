@@ -1,3 +1,4 @@
+import { wedgeOf } from './cones.js';
 import { radiusOf } from './physics.js';
 
 const GRID_SPACING = 100;
@@ -14,6 +15,12 @@ const MASS_COLOURS = [
 const SELECTED_RING = '#5fe3ff';
 const PINNED_RING = 'rgba(255, 255, 255, 0.55)';
 const PREDICTION = 'rgba(95, 227, 255, 0.55)';
+const TEST_BALL = [95, 227, 255];
+const TEST_BALL_RADIUS_PX = 3;
+const MISSING_SPACE = 'rgba(0, 0, 0, 0.72)';
+const MISSING_HATCH = 'rgba(95, 227, 255, 0.12)';
+const WEDGE_EDGE = 'rgba(95, 227, 255, 0.55)';
+const HATCH_SPACING_PX = 10;
 
 function colourOf(mass) {
   const logMass = Math.log10(Math.max(1, mass));
@@ -92,21 +99,88 @@ export function createView(canvas) {
     context.stroke();
   }
 
+  function tracePath(points) {
+    context.beginPath();
+    let penDown = false;
+    for (const point of points) {
+      if (!point) {
+        penDown = false;
+        continue;
+      }
+      const [sx, sy] = toScreen(...point);
+      if (penDown) context.lineTo(sx, sy);
+      else context.moveTo(sx, sy);
+      penDown = true;
+    }
+  }
+
   function drawTrail(body) {
     if (body.trail.length < 2) return;
-    context.strokeStyle = rgb(colourOf(body.mass), 0.35);
+    context.strokeStyle = body.test ? rgb(TEST_BALL, 0.5) : rgb(colourOf(body.mass), 0.35);
     context.lineWidth = 1.5;
-    context.beginPath();
-    body.trail.forEach(([x, y], index) => {
-      const [sx, sy] = toScreen(x, y);
-      if (index === 0) context.moveTo(sx, sy);
-      else context.lineTo(sx, sy);
-    });
+    tracePath(body.trail);
     context.lineTo(...toScreen(body.x, body.y));
     context.stroke();
   }
 
+  function drawTestBall(body, { selected, ghost = false }) {
+    const [sx, sy] = toScreen(body.x, body.y);
+    context.globalAlpha = ghost ? 0.5 : 1;
+    context.fillStyle = rgb(TEST_BALL);
+    context.beginPath();
+    context.arc(sx, sy, TEST_BALL_RADIUS_PX, 0, Math.PI * 2);
+    context.fill();
+    if (selected) ring(sx, sy, TEST_BALL_RADIUS_PX + 6, SELECTED_RING, []);
+    context.globalAlpha = 1;
+  }
+
+  function drawWedge(cone, cutAngle) {
+    const wedge = wedgeOf(cone, cutAngle);
+    const [sx, sy] = toScreen(wedge.x, wedge.y);
+    const reach = Math.hypot(width, height) * 2 + Math.hypot(sx - width / 2, sy - height / 2);
+    const corner = (bearing) => [sx + Math.cos(bearing) * reach, sy + Math.sin(bearing) * reach];
+    context.save();
+    context.beginPath();
+    context.moveTo(sx, sy);
+    const steps = Math.max(1, Math.ceil(wedge.angle / 0.2));
+    for (let i = 0; i <= steps; i++) context.lineTo(...corner(wedge.from + (wedge.angle * i) / steps));
+    context.closePath();
+    context.fillStyle = MISSING_SPACE;
+    context.fill();
+    context.clip();
+    context.strokeStyle = MISSING_HATCH;
+    context.lineWidth = 1;
+    context.beginPath();
+    for (let offset = -reach; offset < reach; offset += HATCH_SPACING_PX) {
+      context.moveTo(sx + offset - reach, sy - reach);
+      context.lineTo(sx + offset + reach, sy + reach);
+    }
+    context.stroke();
+    context.restore();
+    context.save();
+    context.strokeStyle = WEDGE_EDGE;
+    context.setLineDash([6, 5]);
+    context.lineWidth = 1.5;
+    for (const bearing of [wedge.from, wedge.to]) {
+      context.beginPath();
+      context.moveTo(sx, sy);
+      context.lineTo(...corner(bearing));
+      context.stroke();
+    }
+    context.restore();
+    if (wedge.angle < Math.PI / 180) return;
+    const labelAt = toScreen(wedge.x + Math.cos(cutAngle) * (radiusOf(cone.mass) + 60 / camera.zoom), wedge.y + Math.sin(cutAngle) * (radiusOf(cone.mass) + 60 / camera.zoom));
+    context.fillStyle = WEDGE_EDGE;
+    context.font = '12px "Trebuchet MS", "Segoe UI", sans-serif';
+    context.textAlign = 'center';
+    context.fillText(`${Math.round((wedge.angle * 180) / Math.PI)}° missing`, ...labelAt);
+  }
+
   function drawBody(body, { selected, ghost = false }) {
+    if (body.test) {
+      drawTestBall(body, { selected, ghost });
+      return;
+    }
     const [sx, sy] = toScreen(body.x, body.y);
     const radius = Math.max(MIN_DRAWN_RADIUS_PX, radiusOf(body.mass) * camera.zoom);
     const colour = colourOf(body.mass);
@@ -146,12 +220,7 @@ export function createView(canvas) {
     context.strokeStyle = PREDICTION;
     context.lineWidth = 1.5;
     context.setLineDash([5, 5]);
-    context.beginPath();
-    path.forEach(([x, y], index) => {
-      const [sx, sy] = toScreen(x, y);
-      if (index === 0) context.moveTo(sx, sy);
-      else context.lineTo(sx, sy);
-    });
+    tracePath(path);
     context.stroke();
     context.setLineDash([]);
     const [fromX, fromY] = toScreen(body.x, body.y);
@@ -165,10 +234,11 @@ export function createView(canvas) {
     drawBody(body, { selected: false, ghost: true });
   }
 
-  function draw({ bodies, selected, launch, trails }) {
+  function draw({ bodies, selected, launch, trails, cutAngle }) {
     context.fillStyle = '#060f1c';
     context.fillRect(0, 0, width, height);
     drawGrid();
+    if (cutAngle !== null) for (const cone of bodies.filter((body) => !body.test)) drawWedge(cone, cutAngle);
     if (trails) bodies.forEach(drawTrail);
     for (const body of bodies) drawBody(body, { selected: body === selected });
     if (launch) drawLaunch(launch);
