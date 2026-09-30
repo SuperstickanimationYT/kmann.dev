@@ -14,6 +14,7 @@ export function launchShip(species, star, transitRadius) {
   const speed = between(SHIPS.speed);
   const stardust = Math.random() < SHIPS.cargo.stardustChance ? 1 : 0;
   return {
+    id: Math.random().toString(36).slice(2),
     species,
     x: star.x - along.y * offset - along.x * halfChord,
     y: star.y + along.x * offset - along.y * halfChord,

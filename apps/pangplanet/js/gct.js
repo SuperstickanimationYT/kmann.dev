@@ -87,15 +87,18 @@ export function alienLines({ mood, wants, refusesTrade, sample }) {
 
 export const tollLines = (price) => [`413 3140 ${numberInGct(price)} 140 30`, '413 402 41205 315 400'];
 
-export const createGctLog = () => ({ heard: {}, known: new Set() });
+export const createGctLog = () => ({ heard: {}, known: new Set(), heardFrom: new Set() });
 
-export const gctLogFromSave = (saved) => ({ heard: { ...saved?.heard }, known: new Set(saved?.known ?? []) });
+export const gctLogFromSave = (saved) => ({ heard: { ...saved?.heard }, known: new Set(saved?.known ?? []), heardFrom: new Set(saved?.heardFrom ?? []) });
 
-export const gctLogToSave = (log) => ({ heard: log.heard, known: [...log.known] });
+export const gctLogToSave = (log) => ({ heard: log.heard, known: [...log.known], heardFrom: [...log.heardFrom] });
 
-export function hear(log, lines) {
+export function hear(log, lines, speaker) {
   const learned = [];
   for (const word of new Set(lines.flatMap(wordsIn))) {
+    const hearing = `${word}@${speaker}`;
+    if (log.heardFrom.has(hearing)) continue;
+    log.heardFrom.add(hearing);
     log.heard[word] = (log.heard[word] ?? 0) + 1;
     if (!log.known.has(word) && log.heard[word] >= GCT.hearingsToLearn) {
       log.known.add(word);

@@ -6,8 +6,9 @@ Zorani, Quillith and Vessk all speak GCT. Players decode it over time.
 
 - Alien panels (homeworlds and freighters) greet you by mood, say what the species wants,
   refuse trade when hostile, and answer sample requests. The toll panel demands payment.
-- Each word shown counts as heard once per panel opening. After 3 hearings its meaning
-  appears under the glyphs; until then it shows `?`.
+- A word counts as heard once per speaker: each homeworld, each freighter and each
+  hostile system's toll. Reopening the same panel doesn't count again. After 3 speakers
+  its meaning appears under the glyphs; until then it shows `?`.
 - The lexicon (alien panel, or the rocket menu once any word is heard) lists heard words.
   An unknown word can be studied for 40 science.
 - Numbers count as one word: once learned, every dotted number shows its value.
