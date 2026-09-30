@@ -94,8 +94,9 @@ import { addPart, breakArmor, buildPlan, engineNozzles, canFit, canPlace, canRem
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
 import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, crystalsSeen, foundPlanets, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
+import { forgetNebulaTextures } from './nebula-sky.js';
 import { loadSprites } from './sprites.js';
-import { bakeNextTexture } from './textures.js';
+import { bakeNextTexture, forgetPlanetTextures } from './textures.js';
 import { bindHold, bindHoldButtons, bindJoystick, bindPanZoom, bindPinchZoom, bindTapButtons, bindVerticalSlider } from './touch.js';
 import { createTour } from './tour.js';
 import {
@@ -2944,6 +2945,11 @@ async function start() {
   startAutosave();
   const sprites = await loadSprites();
   renderer = createRenderer(canvas, sprites);
+  canvas.addEventListener('contextrestored', async () => {
+    forgetNebulaTextures();
+    forgetPlanetTextures();
+    Object.assign(sprites, await loadSprites());
+  });
   streamAround();
   chartVisitsNear(game.starChart, game.rocket.x, game.rocket.y);
   renderer.resize();

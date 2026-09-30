@@ -12,7 +12,7 @@ const DUST_STRENGTH = 0.85;
 const DUST_DIMMING = 0.55;
 
 const textures = new Map();
-const patterns = new WeakMap();
+let patterns = new WeakMap();
 
 function cloudTexture(kind) {
   if (textures.has(kind)) return textures.get(kind);
@@ -43,6 +43,11 @@ function cloudPattern(context, kind) {
   const byKind = patterns.get(context);
   if (!byKind.has(kind)) byKind.set(kind, context.createPattern(cloudTexture(kind), 'repeat'));
   return byKind.get(kind);
+}
+
+export function forgetNebulaTextures() {
+  textures.clear();
+  patterns = new WeakMap();
 }
 
 const positiveModulo = (value, modulus) => ((value % modulus) + modulus) % modulus;
