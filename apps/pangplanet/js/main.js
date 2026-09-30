@@ -192,7 +192,7 @@ const WARP_TICKS = 60;
 const AUTOSAVE_MS = 5000;
 const SAVED_ROCKET_FIELDS = ['x', 'y', 'vx', 'vy', 'heading', 'throttle', 'fuel', 'destroyed'];
 const ARRIVAL_VIEW_IN_STANDOFFS = 3;
-const CHEAT_GALACTOKENS = 10000;
+const FREE_BALANCES = ['galactokens', 'crystals', 'stardust', 'science'];
 const CHEAT_SKIP_SECONDS = 600;
 const CHEAT_REVEAL_RANGE = 1.5e8;
 const CHEAT_SHIP_GAP = 800;
@@ -261,6 +261,7 @@ const game = {
   starChart: createStarChart(),
   seeders: new Map(),
   bookmarks: new Set(),
+  paidBalances: null,
   bookmarksOnly: false,
   ownsTelescope: false,
   relations: startingRelations(),
@@ -1314,8 +1315,14 @@ for (const [name, priceOf] of Object.entries(PURCHASE_PRICES)) {
 }
 
 const CHEATS = {
-  galactokens: () => {
-    game.galactokens += CHEAT_GALACTOKENS;
+  everythingFree: () => {
+    if (game.paidBalances) {
+      Object.assign(game, game.paidBalances);
+      game.paidBalances = null;
+      return;
+    }
+    game.paidBalances = Object.fromEntries(FREE_BALANCES.map((key) => [key, game[key]]));
+    pinFreeBalances();
   },
   fuel: () => {
     game.rocket.fuel = game.rocket.fuelCapacity;
@@ -2658,6 +2665,7 @@ function status() {
   const destinations = planningWarp ? chartedDestinations() : [];
   const unchartedInRange = planningWarp ? warpDestinations(rocket, power, warpRange()).length - destinations.length : 0;
   return {
+    everythingFree: Boolean(game.paidBalances),
     galactokens: game.galactokens,
     fuel: rocket.fuel,
     fuelFraction: rocket.fuel / rocket.fuelCapacity,
@@ -2793,6 +2801,10 @@ let renderer;
 let lastTime = 0;
 let backlog = 0;
 
+function pinFreeBalances() {
+  for (const key of FREE_BALANCES) game[key] = Infinity;
+}
+
 function frame(time) {
   backlog += Math.min((time - lastTime) / 1000, STEP_SECONDS * MAX_STEPS_PER_FRAME);
   lastTime = time;
@@ -2800,6 +2812,7 @@ function frame(time) {
     tick();
     backlog -= STEP_SECONDS;
   }
+  if (game.paidBalances) pinFreeBalances();
   const { rocket } = game;
   game.forecast = rocket.landed || rocket.destroyed || game.ftl ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   catchUpToNow();
@@ -2866,6 +2879,7 @@ function snapshot() {
     crystals: game.crystals,
     stardust: game.stardust,
     science: game.science,
+    ...game.paidBalances,
     studies: [...game.studies],
     sails: game.sails,
     sailsInHold: game.sailsInHold,
