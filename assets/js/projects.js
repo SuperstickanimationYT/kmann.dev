@@ -7,6 +7,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Gravity Playground',
+    href: 'apps/gravity-playground/',
+    poster: 'assets/img/posters/gravity-playground.webp',
+    blurb: 'Fling planets in 2D and switch gravity between 1/r, 1/r², 1/r³ and beyond.',
+    status: 'live',
+  },
+  {
     title: 'PangPlanet',
     href: 'apps/pangplanet/',
     poster: 'assets/img/posters/pangplanet.webp',
