@@ -22,6 +22,8 @@ const UPGRADE_TEXT = {
   warpRange: { name: 'Warp range', describe: (value) => `${formatDistance(value)} jumps` },
 };
 
+const countText = (count) => (count === Infinity ? '∞' : String(count));
+
 function setText(element, text) {
   if (element.textContent !== text) element.textContent = text;
 }
@@ -43,6 +45,7 @@ export function createHud(root, actions, { cheats }) {
   const find = (selector) => root.querySelector(selector);
   const parts = {
     tokens: find('[data-tokens]'),
+    everythingFree: find('[data-everything-free]'),
     balances: [...root.querySelectorAll('[data-balance]')],
     charging: find('[data-charging]'),
     fuel: find('[data-fuel]'),
@@ -580,7 +583,8 @@ export function createHud(root, actions, { cheats }) {
   }
 
   function update(status) {
-    setText(parts.tokens, String(status.galactokens));
+    setText(parts.tokens, countText(status.galactokens));
+    setText(parts.everythingFree, status.everythingFree ? 'on' : 'off');
     parts.balances.forEach((balance) => setText(balance, status.galactokens.toLocaleString()));
     setHidden(parts.charging, !status.charging);
     parts.charging.classList.toggle('is-dim', status.sunlight < DIM_SATELLITE_LIGHT);
@@ -636,13 +640,13 @@ export function createHud(root, actions, { cheats }) {
     setHidden(parts.goldCounter, status.gold === 0 && !status.rig);
     setText(parts.gold, String(status.gold));
     setHidden(parts.crystalCounter, status.crystals === 0);
-    setText(parts.crystals, String(status.crystals));
+    setText(parts.crystals, countText(status.crystals));
     setHidden(parts.sellCrystals, status.crystals === 0);
     setHidden(parts.stardustCounter, status.stardust === 0);
-    setText(parts.stardust, String(status.stardust));
+    setText(parts.stardust, countText(status.stardust));
     setHidden(parts.sellStardust, status.stardust === 0);
     setHidden(parts.scienceCounter, status.science === 0);
-    setText(parts.science, String(status.science));
+    setText(parts.science, countText(status.science));
     setHidden(parts.sellScience, status.science === 0);
     parts.buySail.disabled = !status.canBuySail;
     setHidden(parts.launchSail, status.sailsInHold === 0);
