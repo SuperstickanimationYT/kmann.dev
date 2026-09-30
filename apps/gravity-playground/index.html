@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravity Playground &mdash; kmann314</title>
+<meta name="description" content="A 2D gravity sandbox: fling planets, pin stars and switch the force law between 1/r, 1/r², 1/r³ and more.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Gravity Playground</h2>
+    </div>
+  </div>
+
+  <div class="shell gp-layout">
+    <div class="app-stage gp-stage">
+      <canvas data-stage aria-label="Gravity simulation. Drag on empty space to launch a planet."></canvas>
+      <p class="gp-status" data-status></p>
+    </div>
+
+    <form class="gp-panel" data-controls>
+      <div class="gp-actions">
+        <button type="button" class="gp-primary" data-pause>Pause</button>
+        <button type="button" data-frame>Fit view</button>
+        <button type="button" data-clear>Clear</button>
+      </div>
+
+      <fieldset>
+        <legend>Force law</legend>
+        <div class="gp-actions gp-laws">
+          <button type="button" data-law="1">1/r</button>
+          <button type="button" data-law="2">1/r²</button>
+          <button type="button" data-law="3">1/r³</button>
+          <button type="button" data-law="-1">r</button>
+        </div>
+        <label class="gp-field">
+          <span>Force &prop; <output data-law-label></output></span>
+          <input type="range" name="exponent" min="-1" max="4" step="0.1" value="2">
+        </label>
+        <p class="gp-note">In a truly 2D universe gravity would fall off as 1/r. Real 3D gravity is 1/r². Only 1/r² (and r) give closed elliptical orbits; others make orbits precess into rosettes, and 1/r³ or steeper can't hold a stable orbit at all.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>New planet</legend>
+        <label class="gp-field">
+          <span>Mass <output data-new-mass-label></output></span>
+          <input type="range" name="newMass" min="0" max="1000" step="1">
+        </label>
+        <label class="gp-toggle"><input type="checkbox" name="autoOrbit" checked> Tap puts it in a circular orbit</label>
+        <label class="gp-toggle"><input type="checkbox" name="newPinned"> Pinned in place</label>
+      </fieldset>
+
+      <fieldset class="gp-selected" data-selected hidden>
+        <legend>Selected body</legend>
+        <label class="gp-field">
+          <span>Mass <output data-selected-mass-label></output></span>
+          <input type="range" name="selectedMass" min="0" max="1000" step="1">
+        </label>
+        <label class="gp-toggle"><input type="checkbox" name="selectedPinned"> Pinned in place</label>
+        <div class="gp-actions">
+          <button type="button" data-circularize>Circular orbit</button>
+          <button type="button" data-delete>Delete</button>
+          <button type="button" data-deselect>Done</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Simulation</legend>
+        <label class="gp-field">
+          <span>Speed <output data-speed-label></output></span>
+          <input type="range" name="speed" min="-2" max="3" step="0.25" value="0">
+        </label>
+        <label class="gp-toggle"><input type="checkbox" name="trails" checked> Trails</label>
+        <label class="gp-toggle"><input type="checkbox" name="merge" checked> Merge on collision</label>
+        <label class="gp-field">
+          <span>Scene</span>
+          <select name="scene" data-scene></select>
+        </label>
+        <div class="gp-actions">
+          <button type="button" data-load-scene>Load scene</button>
+        </div>
+      </fieldset>
+
+      <details class="gp-help">
+        <summary>Controls</summary>
+        <p><strong>Mouse</strong></p>
+        <ul>
+          <li>Drag empty space: launch a planet; the arrow is its velocity and the dashed line its path.</li>
+          <li>Click empty space: drop a planet.</li>
+          <li>Drag a body: grab and throw it. Click one: select it.</li>
+          <li>Right-click a body: delete it. Right- or middle-drag: pan. Wheel: zoom.</li>
+          <li>Keys: <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>T</kbd> trails, <kbd>F</kbd> fit view, <kbd>Esc</kbd> deselect.</li>
+        </ul>
+        <p><strong>Touch</strong></p>
+        <ul>
+          <li>Drag empty space: launch a planet. Tap: drop one.</li>
+          <li>Drag a body: grab and throw it. Tap one: select it, then delete it from the panel.</li>
+          <li>Two fingers: pan and pinch to zoom.</li>
+        </ul>
+      </details>
+    </form>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
