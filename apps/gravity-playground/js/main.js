@@ -1,3 +1,4 @@
+import { driftThroughCones, isCone, outOfMissingSpace, wedgeAngleOf } from './cones.js';
 import { circularVelocity, cloneBodies, createBody, leapfrogStep, STEP_SECONDS, strongestPullOn } from './physics.js';
 import { SCENES } from './scenes.js';
 import { createView, noteTrails } from './view.js';
@@ -13,6 +14,12 @@ const PREDICTION_SECONDS = 4;
 const PREDICTION_PAIR_BUDGET = 400000;
 const THROW_SMOOTHING = 0.5;
 const WHEEL_ZOOM = 1.0015;
+const TEST_BALL_MASS = 0.1;
+const TEST_BALL_RANGE = 30000;
+const DEGREES = Math.PI / 180;
+const SMALLEST_WEDGE = 1 * DEGREES;
+const BEAM = { balls: 15, halfWidth: 260, startBehind: 420, speed: 160 };
+const FLASH = { rays: 96, distance: 260, speed: 160 };
 const EXPONENT_SUPERSCRIPTS = { '-': '⁻', '.': '·', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
 
 const canvas = document.querySelector('[data-stage]');
@@ -20,7 +27,7 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { exponent: 2, merge: true, trails: true, speed: 1, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, merge: true, trails: true, speed: 1, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, paused: false };
 let bodies = [];
 let selected = null;
 let launch = null;
@@ -40,8 +47,73 @@ function lawLabel(exponent) {
   return `1/r${[...String(exponent)].map((character) => EXPONENT_SUPERSCRIPTS[character]).join('')}`;
 }
 
+const inCones = () => settings.spacetime === 'cones';
+
+function stepWorld(world, { trails }) {
+  if (inCones()) driftThroughCones(world, settings.cutAngle, STEP_SECONDS, { trails });
+  else leapfrogStep(world, settings);
+}
+
+function intoConesAndBalls() {
+  for (const body of bodies) {
+    if (body.test) continue;
+    if (wedgeAngleOf(body.mass) < SMALLEST_WEDGE) Object.assign(body, { test: true, pinned: false });
+    else Object.assign(body, { vx: 0, vy: 0 });
+  }
+}
+
+function setSpacetime(spacetime) {
+  settings.spacetime = spacetime;
+  if (inCones()) intoConesAndBalls();
+  else bodies = bodies.filter(isCone);
+  bodies.forEach((body) => (body.trail = []));
+  if (selected && !bodies.includes(selected)) select(null);
+  document.querySelectorAll('[data-newton-only]').forEach((element) => (element.hidden = inCones()));
+  document.querySelectorAll('[data-cones-only]').forEach((element) => (element.hidden = !inCones()));
+  showSelected();
+  showSettings();
+}
+
+function heaviestCone() {
+  return bodies.filter(isCone).reduce((heaviest, body) => (!heaviest || body.mass > heaviest.mass ? body : heaviest), null) ?? { x: view.camera.x, y: view.camera.y };
+}
+
+function addTestBall(x, y, vx, vy) {
+  const [freeX, freeY] = outOfMissingSpace(bodies, settings.cutAngle, [x, y]);
+  bodies.push(createBody({ x: freeX, y: freeY, vx, vy, mass: TEST_BALL_MASS, test: true }));
+}
+
+function dropFarTestBalls() {
+  const { x, y } = view.camera;
+  bodies = bodies.filter((body) => !body.test || Math.hypot(body.x - x, body.y - y) < TEST_BALL_RANGE);
+}
+
+const acrossTheCut = () => [Math.cos(settings.cutAngle + Math.PI / 2), Math.sin(settings.cutAngle + Math.PI / 2)];
+
+function fireBeam() {
+  const target = heaviestCone();
+  const [alongX, alongY] = acrossTheCut();
+  for (let i = 0; i < BEAM.balls; i++) {
+    const across = -BEAM.halfWidth + (2 * BEAM.halfWidth * i) / (BEAM.balls - 1);
+    const x = target.x - alongX * BEAM.startBehind - alongY * across;
+    const y = target.y - alongY * BEAM.startBehind + alongX * across;
+    addTestBall(x, y, alongX * BEAM.speed, alongY * BEAM.speed);
+  }
+}
+
+function fireFlash() {
+  const target = heaviestCone();
+  const [alongX, alongY] = acrossTheCut();
+  const [x, y] = [target.x - alongX * FLASH.distance, target.y - alongY * FLASH.distance];
+  for (let i = 0; i < FLASH.rays; i++) {
+    const bearing = (i / FLASH.rays) * Math.PI * 2;
+    addTestBall(x, y, Math.cos(bearing) * FLASH.speed, Math.sin(bearing) * FLASH.speed);
+  }
+}
+
 function loadScene(key) {
   bodies = SCENES[key].build(settings.exponent);
+  if (inCones()) intoConesAndBalls();
   selected = null;
   view.resize();
   view.frame(bodies);
@@ -58,7 +130,8 @@ function showSelected() {
   if (!selected) return;
   form.selectedMass.value = sliderFromMass(selected.mass);
   form.selectedPinned.checked = selected.pinned;
-  find('[data-selected-mass-label]').textContent = selected.mass.toLocaleString();
+  const wedge = inCones() && isCone(selected) ? ` · ${Math.round(wedgeAngleOf(selected.mass) / DEGREES)}° wedge` : '';
+  find('[data-selected-mass-label]').textContent = `${selected.mass.toLocaleString()}${wedge}`;
 }
 
 function removeBody(body) {
@@ -72,6 +145,8 @@ function showSettings() {
   find('[data-new-mass-label]').textContent = settings.newMass.toLocaleString();
   find('[data-speed-label]').textContent = `${settings.speed}×`;
   find('[data-pause]').textContent = settings.paused ? 'Play' : 'Pause';
+  document.querySelectorAll('[data-spacetime]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.spacetime === settings.spacetime)));
+  find('[data-cut-label]').textContent = `${Math.round(settings.cutAngle / DEGREES)}°`;
 }
 
 function togglePause() {
@@ -80,11 +155,13 @@ function togglePause() {
 }
 
 function newBodyAt(x, y, velocity) {
+  if (inCones() && !settings.newCone) return createBody({ x, y, mass: TEST_BALL_MASS, test: true, ...velocity });
+  if (inCones()) return createBody({ x, y, mass: settings.newMass });
   return createBody({ x, y, mass: settings.newMass, pinned: settings.newPinned, ...(settings.newPinned ? {} : velocity) });
 }
 
 function tapVelocity(x, y) {
-  if (!settings.autoOrbit) return { vx: 0, vy: 0 };
+  if (inCones() || !settings.autoOrbit) return { vx: 0, vy: 0 };
   return circularVelocity(strongestPullOn(bodies, x, y, settings.exponent), x, y, settings.exponent);
 }
 
@@ -98,7 +175,9 @@ function predictPath() {
   const steps = Math.min(PREDICTION_SECONDS / STEP_SECONDS, PREDICTION_PAIR_BUDGET / Math.max(1, world.length ** 2));
   const path = [[ghost.x, ghost.y]];
   for (let i = 0; i < steps && world.includes(ghost); i++) {
-    leapfrogStep(world, settings);
+    const [beforeX, beforeY] = [ghost.x, ghost.y];
+    stepWorld(world, { trails: false });
+    if (Math.hypot(ghost.x - beforeX, ghost.y - beforeY) > Math.hypot(ghost.vx, ghost.vy) * STEP_SECONDS * 2) path.push(null);
     if (i % 4 === 0) path.push([ghost.x, ghost.y]);
   }
   launch.path = path;
@@ -142,7 +221,8 @@ function cancelSingleGestures() {
 function releaseGrab(throwIt) {
   const { body, wasPinned, vx, vy } = grab;
   body.pinned = wasPinned;
-  if (!wasPinned) Object.assign(body, throwIt ? { vx, vy } : { vx: 0, vy: 0 });
+  if (!wasPinned) Object.assign(body, throwIt && !(inCones() && isCone(body)) ? { vx, vy } : { vx: 0, vy: 0 });
+  if (inCones() && body.test) [body.x, body.y] = outOfMissingSpace(bodies, settings.cutAngle, [body.x, body.y]);
   grab = null;
 }
 
@@ -202,7 +282,8 @@ function pointerUp(event) {
   if (launch) {
     const dragged = Math.hypot(event.clientX - launch.x, event.clientY - launch.y) >= TAP_MAX_PX;
     const { body } = launch;
-    if (!settings.newPinned) Object.assign(body, dragged ? launchVelocity() : tapVelocity(body.x, body.y));
+    if (body.test || (!inCones() && !settings.newPinned)) Object.assign(body, dragged ? launchVelocity() : tapVelocity(body.x, body.y));
+    if (body.test) [body.x, body.y] = outOfMissingSpace(bodies, settings.cutAngle, [body.x, body.y]);
     bodies.push(body);
     launch = null;
   }
@@ -261,6 +342,14 @@ function bindPanel() {
     bodies.forEach((body) => (body.trail = []));
   });
   form.merge.addEventListener('change', () => (settings.merge = form.merge.checked));
+  document.querySelectorAll('[data-spacetime]').forEach((button) => button.addEventListener('click', () => setSpacetime(button.dataset.spacetime)));
+  form.cutAngle.addEventListener('input', () => {
+    settings.cutAngle = Number(form.cutAngle.value) * DEGREES;
+    showSettings();
+  });
+  form.newCone.addEventListener('change', () => (settings.newCone = form.newCone.checked));
+  find('[data-beam]').addEventListener('click', fireBeam);
+  find('[data-flash]').addEventListener('click', fireFlash);
   form.selectedMass.addEventListener('input', () => {
     if (!selected) return;
     selected.mass = massFromSlider(Number(form.selectedMass.value));
@@ -272,7 +361,7 @@ function bindPanel() {
     if (selected.pinned) Object.assign(selected, { vx: 0, vy: 0 });
   });
   find('[data-circularize]').addEventListener('click', () => {
-    if (!selected || selected.pinned) return;
+    if (!selected || selected.pinned || inCones()) return;
     const others = bodies.filter((body) => body !== selected);
     Object.assign(selected, circularVelocity(strongestPullOn(others, selected.x, selected.y, settings.exponent), selected.x, selected.y, settings.exponent));
   });
@@ -310,9 +399,15 @@ function bindKeys() {
   });
 }
 
+const counted = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
 function showStatus() {
   const paused = settings.paused ? ' · paused' : '';
-  find('[data-status]').textContent = `${bodies.length} bod${bodies.length === 1 ? 'y' : 'ies'} · force ∝ ${lawLabel(settings.exponent)}${paused}`;
+  const cones = bodies.filter(isCone).length;
+  const description = inCones()
+    ? `${counted(cones, 'mass', 'masses')} · ${counted(bodies.length - cones, 'ball', 'balls')} · 2+1 relativity`
+    : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}`;
+  find('[data-status]').textContent = description + paused;
 }
 
 let lastTime = null;
@@ -325,17 +420,18 @@ function frame(time) {
     backlog += seconds * settings.speed;
     let steps = 0;
     while (backlog >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
-      leapfrogStep(bodies, settings);
+      stepWorld(bodies, settings);
       backlog -= STEP_SECONDS;
       steps++;
     }
     if (steps === MAX_STEPS_PER_FRAME) backlog = 0;
+    if (inCones()) dropFarTestBalls();
     if (selected && !bodies.includes(selected)) select(null);
     if (grab && !bodies.includes(grab.body)) grab = null;
     if (settings.trails) noteTrails(bodies);
     if (launch) predictPath();
   }
-  view.draw({ bodies, selected, launch, trails: settings.trails });
+  view.draw({ bodies, selected, launch, trails: settings.trails, cutAngle: inCones() ? settings.cutAngle : null });
   showStatus();
   window.requestAnimationFrame(frame);
 }
