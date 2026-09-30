@@ -2,7 +2,7 @@ import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
 import { luminosityOf, seedFromRetiredLookDraws, warmthAt, worldLook } from './climate.js';
 import { REAL_SYSTEMS, buildRealSystem } from './real-systems.js';
-import { ALIENS, CORE, DEPOSITS, FAR_SHORE, GENERATED_BOUNTY, HOME_SYSTEM as SOLAR_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, farShoreSystem, massFor } from './world.js';
+import { ALIENS, CORE, DEPOSITS, DWARF_GALAXIES, FAR_SHORE, GENERATED_BOUNTY, HOME_SYSTEM as SOLAR_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, dwarfCore, farShoreSystem, massFor } from './world.js';
 
 export const DEFAULT_GALAXY_SEED = 0x9a1a7;
 let galaxySeed = DEFAULT_GALAXY_SEED;
@@ -130,6 +130,27 @@ function coreRichness(x, y) {
 
 export const outsideGalaxy = (x, y) => Math.hypot(x - GALAXY.x, y - GALAXY.y) > GALAXY.radius;
 
+const STARS_BY_AGE = { young: STAR_TYPES.slice(2), old: STAR_TYPES.slice(0, 2) };
+
+export const DWARFS = DWARF_GALAXIES.map(({ centerInSectors, radiusInSectors, widthRatio, stars, richness, ...dwarf }) => {
+  const [x, y] = sectorCenter(...centerInSectors);
+  const radius = radiusInSectors * SECTOR_SIZE;
+  return { ...dwarf, x, y, radius, width: radius * widthRatio, axis: Math.atan2(GALAXY.y - y, GALAXY.x - x), starTypes: STARS_BY_AGE[stars], richness: () => richness, homeworlds: false, centerSector: centerInSectors };
+});
+
+const MAIN_GALAXY = { name: null, starChance: STAR_CHANCE, starTypes: STAR_TYPES, richness: coreRichness, homeworlds: true };
+
+function insideDwarf(dwarf, x, y) {
+  const [dx, dy] = [x - dwarf.x, y - dwarf.y];
+  const along = dx * Math.cos(dwarf.axis) + dy * Math.sin(dwarf.axis);
+  const across = -dx * Math.sin(dwarf.axis) + dy * Math.cos(dwarf.axis);
+  return (along / dwarf.radius) ** 2 + (across / dwarf.width) ** 2 <= 1;
+}
+
+export const galaxyAt = (x, y) => (outsideGalaxy(x, y) ? (DWARFS.find((dwarf) => insideDwarf(dwarf, x, y)) ?? null) : MAIN_GALAXY);
+
+const DWARF_CORES = new Map(DWARFS.filter((dwarf) => dwarf.blackHole).map((dwarf) => [`${dwarf.centerSector}`, [dwarfCore(dwarf, { x: dwarf.x, y: dwarf.y })]]));
+
 const nearFarShore = (x, y) => Math.hypot(x - farShoreX, y - farShoreY) < FAR_SHORE.calmReach;
 
 function pullToward(x, y, target) {
@@ -138,10 +159,11 @@ function pullToward(x, y, target) {
 }
 
 export function deepSpacePull(x, y) {
-  if (!outsideGalaxy(x, y) || nearFarShore(x, y)) return null;
-  const toFarShore = Math.hypot(farShoreX - x, farShoreY - y);
-  const toGalaxyEdge = Math.hypot(GALAXY.x - x, GALAXY.y - y) - GALAXY.radius;
-  return pullToward(x, y, toFarShore < toGalaxyEdge ? { x: farShoreX, y: farShoreY } : GALAXY);
+  if (galaxyAt(x, y) || nearFarShore(x, y)) return null;
+  const shores = [{ x: farShoreX, y: farShoreY, radius: 0 }, GALAXY, ...DWARFS];
+  const edgeDistance = (shore) => Math.hypot(shore.x - x, shore.y - y) - shore.radius;
+  const nearest = shores.reduce((best, shore) => (edgeDistance(shore) < edgeDistance(best) ? shore : best));
+  return pullToward(x, y, nearest);
 }
 
 const POSITION_IN_KEY = /@(-?\d+),(-?\d+)$/;
@@ -236,7 +258,7 @@ function generatePlanet(next, star, orbit, index, seed, richness) {
   };
 }
 
-const rollsStar = (next) => next() <= STAR_CHANCE;
+const rollsStar = (next, chance = STAR_CHANCE) => next() <= chance;
 const isCoreSector = (sectorX, sectorY) => sectorX === GALAXY_CENTER_IN_SECTORS[0] && sectorY === GALAXY_CENTER_IN_SECTORS[1];
 const isFarShoreSector = (sectorX, sectorY) => sectorX === FAR_SHORE_IN_SECTORS[0] && sectorY === FAR_SHORE_IN_SECTORS[1];
 
@@ -245,14 +267,16 @@ function generateSystem(sectorX, sectorY) {
   if (isCoreSector(sectorX, sectorY)) return CORE_SYSTEM.bodies;
   if (isFarShoreSector(sectorX, sectorY)) return FAR_SHORE_SYSTEM.bodies;
   if (REAL_SYSTEM_BODIES.has(`${sectorX},${sectorY}`)) return REAL_SYSTEM_BODIES.get(`${sectorX},${sectorY}`);
-  if (outsideGalaxy(...sectorCenter(sectorX, sectorY))) return [];
+  if (DWARF_CORES.has(`${sectorX},${sectorY}`)) return DWARF_CORES.get(`${sectorX},${sectorY}`);
+  const [centerX, centerY] = sectorCenter(sectorX, sectorY);
+  const home = galaxyAt(centerX, centerY);
+  if (!home) return [];
   const seed = sectorSeed(sectorX, sectorY);
   const { next, integer } = createRandom(seed);
-  if (!rollsStar(next)) return [];
+  if (!rollsStar(next, home.starChance)) return [];
 
-  const type = pick(next, STAR_TYPES);
+  const type = pick(next, home.starTypes);
   const radius = within(next, type.radius);
-  const [centerX, centerY] = sectorCenter(sectorX, sectorY);
   const star = {
     name: starName(next),
     x: centerX + within(next, [-STAR_SPREAD, STAR_SPREAD]) * SECTOR_SIZE,
@@ -269,13 +293,13 @@ function generateSystem(sectorX, sectorY) {
   const orbits = [];
   let orbit = radius * FIRST_ORBIT_IN_STAR_RADII;
   const count = integer(...PLANET_COUNT);
-  const richness = coreRichness(star.x, star.y);
+  const richness = home.richness(star.x, star.y);
   for (let index = 0; index < count; index++) {
     orbit += within(next, ORBIT_GAP);
     orbits.push(orbit);
     planets.push(generatePlanet(next, star, orbit, index, seed, richness));
   }
-  settleHomeworld(star, planets, seed);
+  if (home.homeworlds) settleHomeworld(star, planets, seed);
   const blackHoles = blackHolesBetween(star, orbits, seed);
   const moons = planets.flatMap((planet, index) => moonsOf(star, planet, index, seed, richness)).filter((moon) => clearOf(blackHoles, moon));
   for (const world of [...planets, ...moons]) if (supportsLife(world)) world.life = true;

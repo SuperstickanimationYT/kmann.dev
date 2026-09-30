@@ -1,8 +1,15 @@
 import { speciesByKey } from './aliens.js';
 import { NEBULA_KINDS, nebulaeWithin } from './nebulae.js';
-import { GALAXY, SECTOR_SIZE } from './universe.js';
+import { DWARFS, GALAXY, SECTOR_SIZE } from './universe.js';
 
-const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08 };
+const NEIGHBOURS = [GALAXY, ...DWARFS];
+const neighboursEdge = (axis, side) => side * Math.max(...NEIGHBOURS.map((galaxy) => side * (galaxy[axis] + side * galaxy.radius)));
+const NEIGHBOURS_FRAME = {
+  x: (neighboursEdge('x', -1) + neighboursEdge('x', 1)) / 2,
+  y: (neighboursEdge('y', -1) + neighboursEdge('y', 1)) / 2,
+  radius: (Math.max(neighboursEdge('x', 1) - neighboursEdge('x', -1), neighboursEdge('y', 1) - neighboursEdge('y', -1)) / 2) * 1.08,
+};
+const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08, neighbours: NEIGHBOURS_FRAME.radius };
 const SYSTEM_MARGIN = 1.15;
 const ZOOM_STEP = 1.5;
 const ZOOM_LIMITS = { min: 0.25, max: 40 };
@@ -89,6 +96,25 @@ export function createGalaxyMap(canvas) {
     context.arc(mx, my, radius, 0, Math.PI * 2);
     context.fill();
     ring(GALAXY.x, GALAXY.y, GALAXY.radius, 'rgba(140, 170, 255, 0.45)', false);
+    DWARFS.forEach(drawDwarf);
+  }
+
+  function drawDwarf({ name, x, y, radius, width, axis, mapTint: [r, g, b] }) {
+    const [mx, my] = toMap(x, y);
+    const radiusPx = radius * view.scale;
+    context.save();
+    context.translate(mx, my);
+    context.rotate(-axis);
+    context.scale(1, width / radius);
+    const glow = context.createRadialGradient(0, 0, 0, 0, 0, radiusPx);
+    glow.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.3)`);
+    glow.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.04)`);
+    context.fillStyle = glow;
+    context.beginPath();
+    context.arc(0, 0, radiusPx, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+    nebulaLabel(name, x, y);
   }
 
   function drawNebulae() {
@@ -258,7 +284,7 @@ export function createGalaxyMap(canvas) {
       frameOn(system.star, systemRadius(system));
       drawSystem(bountyWaiting, findsLeft);
     } else {
-      const focus = { nearby: rocket, galaxy: GALAXY }[view.mode];
+      const focus = { nearby: rocket, galaxy: GALAXY, neighbours: NEIGHBOURS_FRAME }[view.mode];
       frameOn(focus, VIEW_RADIUS[view.mode]);
       drawGalaxy();
       drawNebulae();
