@@ -29,6 +29,7 @@ const SHOWN_FROM_PPU = { minor: 3e-3, intermediate: 1e-3, major: 0 };
 const CLEAR_OF_MAJOR_BODY_PX = 12;
 const ORBIT_RING = { colour: 'rgba(185, 214, 245, 0.14)', shownFromPx: 16, shownUpToPx: 50000 };
 const CLOUD_TURN_TICKS = 30 * 60 * 5;
+const SEEDER_TUMBLE_TICKS = 30 * 60;
 const HUGE_DISC_PX = 60000;
 const TEXTURE_OVERSCAN = 1.04;
 const TEXTURED_ABOVE_PX = 6;
@@ -66,6 +67,7 @@ const LOOKS = {
   earth: { fill: '#2b6fb0', rock: '#3fbf2a', atmosphere: 'rgba(110, 180, 255, 0.35)' },
   moon: { fill: '#bdbdbd', rock: '#8a8a8a' },
   wormhole: { fill: '#0c0c0c', rim: 'rgba(170, 120, 255, 0.55)' },
+  seeder: { fill: '#3a3d33', dot: '#9dff5c', glow: 'rgba(157, 255, 92, 0.12)' },
   blackhole: { fill: '#000', dot: '#ff963c', rim: 'rgba(255, 200, 120, 0.9)', glow: 'rgba(255, 140, 60, 0.3)' },
   sun: { fill: '#fff7dc', glow: 'rgba(255, 236, 170, 0.45)' },
 };
@@ -231,6 +233,8 @@ export function createRenderer(canvas, sprites) {
       context.fill();
     } else if (body.look === 'wormhole') {
       withPose(sx, sy, 0, () => drawSprite(sprite, radius / sprite.pivot[0]));
+    } else if (body.look === 'seeder') {
+      withPose(sx, sy, ((clock / SEEDER_TUMBLE_TICKS) % 1) * Math.PI * 2, () => drawSprite(sprite, radius / sprite.pivot[1]));
     } else {
       drawTexture(texture, sx, sy, radius, look.fill, body.planet ? 1 : TEXTURE_OVERSCAN);
       if (layers?.sky) drawTexture(layers.sky, sx, sy, radius, null, 1, cloudTurn(body));
@@ -957,7 +961,7 @@ export function createRenderer(canvas, sprites) {
     context.restore();
   }
 
-  const tierOf = (body) => (body.moon || body.kind === 'wormhole' ? 'intermediate' : 'major');
+  const tierOf = (body) => (body.moon || body.kind === 'wormhole' || body.kind === 'seeder' ? 'intermediate' : 'major');
   const shownAtZoom = (tier) => view.ppu >= SHOWN_FROM_PPU[tier];
 
   function standsApart(body, majorBodies) {

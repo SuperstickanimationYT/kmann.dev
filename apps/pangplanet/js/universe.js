@@ -2,7 +2,7 @@ import { createRandom } from '../../planet-textures/js/random.js';
 import { SPECIES } from './aliens.js';
 import { luminosityOf, seedFromRetiredLookDraws, warmthAt, worldLook } from './climate.js';
 import { REAL_SYSTEMS, buildRealSystem } from './real-systems.js';
-import { ALIENS, CORE, DEPOSITS, DWARF_GALAXIES, FAR_SHORE, GENERATED_BOUNTY, HOME_SYSTEM as SOLAR_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, dwarfCore, farShoreSystem, massFor } from './world.js';
+import { ALIENS, ANCIENT_SEEDER, CORE, DEPOSITS, DWARF_GALAXIES, FAR_SHORE, GENERATED_BOUNTY, HOME_SYSTEM as SOLAR_SYSTEM, SOI_MARGIN, WORMHOLE_MOUTH, blackHole, coreSystem, dwarfCore, farShoreSystem, massFor } from './world.js';
 
 export const DEFAULT_GALAXY_SEED = 0x9a1a7;
 let galaxySeed = DEFAULT_GALAXY_SEED;
@@ -36,6 +36,9 @@ const WORMHOLE_REACH_IN_SECTORS = [10, 30];
 const WORMHOLE_CLEAR_OF_HOME_IN_SECTORS = 6;
 const WORMHOLE_BEYOND_PLANETS = 150000;
 const BIOSIGNATURE_SALT = 0xb105;
+const SEEDER_SALT = 0x5eed3;
+const SEEDER_CHANCE = 1 / 30;
+const SEEDER_OFFSET_IN_SECTORS = [0.35, 0.5];
 const ZERO_CELSIUS_IN_KELVIN = 273;
 const LIVABLE = { minCelsius: 0, maxCelsius: 50, minWater: 20, minAtmosphere: 20 };
 const MOON_SALT = 0x6d0015;
@@ -119,7 +122,7 @@ export function setBuiltMouths(mouths) {
 }
 
 function rebuildBodies() {
-  bodies.splice(0, bodies.length, ...HOME_SYSTEM, ...unlockedBodies, ...builtMouths, ...[...loadedSectors.values()].flatMap((sector) => sector.bodies));
+  bodies.splice(0, bodies.length, ...HOME_SYSTEM, ...unlockedBodies, ...builtMouths, ...[...loadedSectors.values()].flatMap((sector) => (sector.seeder ? [...sector.bodies, sector.seeder] : sector.bodies)));
 }
 
 function coreRichness(x, y) {
@@ -486,6 +489,32 @@ export function systemAt(x, y) {
   return systemBodies.length ? describeSystem(systemBodies) : null;
 }
 
+const hasLandmarkSystem = (sectorX, sectorY) =>
+  (sectorX === 0 && sectorY === 0) || isCoreSector(sectorX, sectorY) || isFarShoreSector(sectorX, sectorY) || REAL_SYSTEM_BODIES.has(`${sectorX},${sectorY}`) || DWARF_CORES.has(`${sectorX},${sectorY}`);
+
+function seederIn(sectorX, sectorY) {
+  if (hasLandmarkSystem(sectorX, sectorY)) return null;
+  const [centerX, centerY] = sectorCenter(sectorX, sectorY);
+  if (!galaxyAt(centerX, centerY)) return null;
+  const { next } = createRandom(sectorSeed(sectorX, sectorY) ^ SEEDER_SALT);
+  if (next() >= SEEDER_CHANCE) return null;
+  const offset = () => (next() < 0.5 ? -1 : 1) * within(next, SEEDER_OFFSET_IN_SECTORS) * SECTOR_SIZE;
+  return { name: `${starName(next)} Seeder`, x: centerX + offset(), y: centerY + offset(), ...ANCIENT_SEEDER };
+}
+
+export function seedersWithin(x, y, range) {
+  const [sectorX, sectorY] = sectorOf(x, y);
+  const reach = Math.ceil(range / SECTOR_SIZE) + 1;
+  const seeders = [];
+  for (let dx = -reach; dx <= reach; dx++) {
+    for (let dy = -reach; dy <= reach; dy++) {
+      const seeder = loadedSectors.get(`${sectorX + dx},${sectorY + dy}`)?.seeder ?? seederIn(sectorX + dx, sectorY + dy);
+      if (seeder && Math.hypot(seeder.x - x, seeder.y - y) <= range) seeders.push(seeder);
+    }
+  }
+  return seeders;
+}
+
 const worldsWith = (resource) => (planets) => planets.filter((planet) => planet.resource === resource).length;
 export const crystalWorlds = worldsWith('crystals');
 export const stardustWorlds = worldsWith('stardust');
@@ -515,7 +544,7 @@ export function streamSectors(anchors) {
       for (let dy = -LOAD_REACH; dy <= LOAD_REACH; dy++) {
         const key = `${sectorX + dx},${sectorY + dy}`;
         if (loadedSectors.has(key)) continue;
-        loadedSectors.set(key, { x: sectorX + dx, y: sectorY + dy, bodies: generateSystem(sectorX + dx, sectorY + dy) });
+        loadedSectors.set(key, { x: sectorX + dx, y: sectorY + dy, bodies: generateSystem(sectorX + dx, sectorY + dy), seeder: seederIn(sectorX + dx, sectorY + dy) });
         changed = true;
       }
     }
