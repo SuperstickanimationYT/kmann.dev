@@ -4,15 +4,12 @@ import { DWARFS, GALAXY, SECTOR_SIZE } from './universe.js';
 
 const NEIGHBOURS = [GALAXY, ...DWARFS];
 const neighboursEdge = (axis, side) => side * Math.max(...NEIGHBOURS.map((galaxy) => side * (galaxy[axis] + side * galaxy.radius)));
-const NEIGHBOURS_FRAME = {
-  x: (neighboursEdge('x', -1) + neighboursEdge('x', 1)) / 2,
-  y: (neighboursEdge('y', -1) + neighboursEdge('y', 1)) / 2,
-  radius: (Math.max(neighboursEdge('x', 1) - neighboursEdge('x', -1), neighboursEdge('y', 1) - neighboursEdge('y', -1)) / 2) * 1.08,
-};
-const VIEW_RADIUS = { nearby: 5.5e7, galaxy: GALAXY.radius * 1.08, neighbours: NEIGHBOURS_FRAME.radius };
+const NEIGHBOURS_SPAN = Math.max(neighboursEdge('x', 1) - neighboursEdge('x', -1), neighboursEdge('y', 1) - neighboursEdge('y', -1));
+const SKY_RADIUS = 5.5e7;
+const FARTHEST_SKY_RADIUS = NEIGHBOURS_SPAN * 0.8;
 const SYSTEM_MARGIN = 1.15;
 const ZOOM_STEP = 1.5;
-const ZOOM_LIMITS = { min: 0.25, max: 40 };
+const ZOOM_LIMITS = { sky: { min: SKY_RADIUS / FARTHEST_SKY_RADIUS, max: 40 }, system: { min: 0.25, max: 40 } };
 const STAR_DOT_PX = 3;
 const SYSTEM_STAR_MIN_PX = 6;
 const PLANET_MIN_PX = 3;
@@ -38,7 +35,7 @@ const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map
 
 export function createGalaxyMap(canvas) {
   const context = canvas.getContext('2d');
-  const view = { mode: 'nearby', zoom: 1, size: 0, ratio: 1, scale: 1, centerX: 0, centerY: 0, panX: 0, panY: 0 };
+  const view = { mode: 'sky', zoom: 1, size: 0, ratio: 1, scale: 1, centerX: 0, centerY: 0, panX: 0, panY: 0 };
   let system = null;
   let selected = null;
   let selectedPlanet = null;
@@ -302,8 +299,7 @@ export function createGalaxyMap(canvas) {
       frameOn(system.star, systemRadius(system));
       drawSystem(bountyWaiting, findsLeft);
     } else {
-      const focus = { nearby: rocket, galaxy: GALAXY, neighbours: NEIGHBOURS_FRAME }[view.mode];
-      frameOn(focus, VIEW_RADIUS[view.mode]);
+      frameOn(rocket, SKY_RADIUS);
       drawGalaxy();
       drawNebulae();
       if (warpRange) ring(rocket.x, rocket.y, warpRange, 'rgba(160, 120, 255, 0.7)', false);
@@ -370,9 +366,12 @@ export function createGalaxyMap(canvas) {
 
   function zoomAt(factor, clientX, clientY) {
     const box = canvas.getBoundingClientRect();
-    const fromMiddleX = clientX - box.left - view.size / 2;
-    const fromMiddleY = clientY - box.top - view.size / 2;
-    const zoomed = Math.min(ZOOM_LIMITS.max, Math.max(ZOOM_LIMITS.min, view.zoom * factor));
+    zoomAround(factor, clientX - box.left - view.size / 2, clientY - box.top - view.size / 2);
+  }
+
+  function zoomAround(factor, fromMiddleX, fromMiddleY) {
+    const { min, max } = ZOOM_LIMITS[view.mode];
+    const zoomed = Math.min(max, Math.max(min, view.zoom * factor));
     const growth = zoomed / view.zoom;
     view.zoom = zoomed;
     view.panX += (fromMiddleX / view.scale) * (1 - 1 / growth);
@@ -381,8 +380,7 @@ export function createGalaxyMap(canvas) {
   }
 
   function zoom(direction) {
-    const box = canvas.getBoundingClientRect();
-    zoomAt(direction === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP, box.left + box.width / 2, box.top + box.height / 2);
+    zoomAround(direction === 'in' ? ZOOM_STEP : 1 / ZOOM_STEP, 0, 0);
   }
 
   return { draw, pick, showView, showSystem, showingSystem, pan, zoomAt, zoom };
