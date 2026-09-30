@@ -1,7 +1,6 @@
 export const REFERENCE_DISTANCE = 200;
 const PULL_AT_REFERENCE = 3125 / REFERENCE_DISTANCE ** 2;
 const RADIUS_PER_CUBE_ROOT_MASS = 4;
-const SOFTENING_SHARE_OF_RADII = 0.15;
 export const STEP_SECONDS = 1 / 240;
 
 export const radiusOf = (mass) => RADIUS_PER_CUBE_ROOT_MASS * Math.cbrt(mass);
@@ -14,9 +13,12 @@ export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false }) {
 
 export const cloneBodies = (bodies) => bodies.map((body) => ({ ...body, trail: [] }));
 
-function pullStrength(mass, distanceSquared, softeningSquared, exponent) {
-  const softened = distanceSquared + softeningSquared;
-  return PULL_AT_REFERENCE * mass * (REFERENCE_DISTANCE / Math.sqrt(softened)) ** exponent;
+const pullAt = (mass, distance, exponent) => PULL_AT_REFERENCE * mass * (REFERENCE_DISTANCE / distance) ** exponent;
+
+function pullBetween(a, b, distance, exponent) {
+  const surface = Math.max(radiusOf(a.mass), radiusOf(b.mass));
+  if (distance >= surface) return pullAt(1, distance, exponent);
+  return pullAt(1, surface, exponent) * (distance / surface);
 }
 
 function accelerations(bodies, exponent) {
@@ -27,11 +29,9 @@ function accelerations(bodies, exponent) {
       const b = bodies[j];
       const dx = b.x - a.x;
       const dy = b.y - a.y;
-      const distanceSquared = dx * dx + dy * dy;
-      const distance = Math.sqrt(distanceSquared);
+      const distance = Math.hypot(dx, dy);
       if (distance === 0) continue;
-      const softeningSquared = ((radiusOf(a.mass) + radiusOf(b.mass)) * SOFTENING_SHARE_OF_RADII) ** 2;
-      const perMass = pullStrength(1, distanceSquared, softeningSquared, exponent) / distance;
+      const perMass = pullBetween(a, b, distance, exponent) / distance;
       pulls[i].ax += dx * perMass * b.mass;
       pulls[i].ay += dy * perMass * b.mass;
       pulls[j].ax -= dx * perMass * a.mass;
@@ -96,9 +96,9 @@ export function strongestPullOn(bodies, x, y, exponent) {
   let strongest = null;
   let strongestPull = 0;
   for (const body of bodies) {
-    const distanceSquared = (body.x - x) ** 2 + (body.y - y) ** 2;
-    if (distanceSquared === 0) continue;
-    const pull = pullStrength(body.mass, distanceSquared, 0, exponent);
+    const distance = Math.hypot(body.x - x, body.y - y);
+    if (distance === 0) continue;
+    const pull = pullAt(body.mass, distance, exponent);
     if (pull > strongestPull) {
       strongest = body;
       strongestPull = pull;
@@ -112,7 +112,7 @@ export function circularVelocity(centre, x, y, exponent, clockwise = false) {
   const dx = x - centre.x;
   const dy = y - centre.y;
   const distance = Math.hypot(dx, dy);
-  const speed = Math.sqrt(pullStrength(centre.mass, distance * distance, 0, exponent) * distance);
+  const speed = Math.sqrt(pullAt(centre.mass, distance, exponent) * distance);
   const turn = clockwise ? -1 : 1;
   return { vx: centre.vx - (turn * dy * speed) / distance, vy: centre.vy + (turn * dx * speed) / distance };
 }
