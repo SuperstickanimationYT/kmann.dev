@@ -104,11 +104,11 @@ import {
   SECTOR_SIZE,
   coreGate,
   followFarShore,
+  galaxyAt,
   homeworldNear,
   homeworldSpecies,
   livingWorlds,
   openGateway,
-  outsideGalaxy,
   setBuiltMouths,
   setGalaxySeed,
   stardustWorlds,
@@ -283,6 +283,12 @@ const game = {
 };
 
 const boardedShip = () => game.fleet[game.boarded] ?? null;
+function locationInSpace({ x, y }) {
+  const home = galaxyAt(x, y);
+  if (!home) return 'Between galaxies';
+  return home.name ?? 'Deep space';
+}
+
 const shipName = (ship) => `Ship ${game.fleet.indexOf(ship) + 1}`;
 const parkedShips = () => game.fleet.filter((ship) => ship !== boardedShip()).map((ship) => ({ name: shipName(ship), x: ship.x, y: ship.y }));
 
@@ -2636,7 +2642,7 @@ function status() {
     timewarp: game.timewarp,
     timewarpBought: timewarpBought(),
     timewarpHeld: inGravityWell(),
-    location: body ? `${body.name}${padBelow(rocket) ? ' · pad below' : ''}` : outsideGalaxy(rocket.x, rocket.y) ? 'Outside the galaxy' : 'Deep space',
+    location: body ? `${body.name}${padBelow(rocket) ? ' · pad below' : ''}` : locationInSpace(rocket),
     altitude: altitude(rocket),
     speed: Math.hypot(rocket.vx, rocket.vy),
     atSpeedLimit: !game.ftl && Math.hypot(rocket.vx, rocket.vy) >= SPEED_LIMIT - 0.01,

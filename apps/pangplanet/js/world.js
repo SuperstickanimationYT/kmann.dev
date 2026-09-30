@@ -191,6 +191,33 @@ export function farShoreSystem(center) {
   return { bodies: [hole, ...worlds, farGate], saturnGate };
 }
 
+export const DWARF_GALAXIES = [
+  {
+    name: 'Large Magellanic Cloud',
+    centerInSectors: [84, -473],
+    radiusInSectors: 20,
+    widthRatio: 0.8,
+    starChance: 0.6,
+    stars: 'young',
+    richness: { crystals: 0.5, stardust: 8, deposit: 2 },
+    nebula: { name: 'Tarantula', kind: 'emission', offsetInSectors: [4, -3], radiusInSectors: 8 },
+    mapTint: [170, 200, 255],
+  },
+  {
+    name: 'Sagittarius Dwarf',
+    centerInSectors: [285, -25],
+    radiusInSectors: 24,
+    widthRatio: 0.35,
+    starChance: 0.35,
+    stars: 'old',
+    richness: { crystals: 0.5, stardust: 1, deposit: 1 },
+    blackHole: { name: 'M54', radius: 45000, soi: 130000, mass: 7e11, science: 1500, rings: { inner: 1.5, outer: 2.8, colour: 'rgba(255, 170, 120, 0.6)' }, mapFill: '#ffaa78' },
+    mapTint: [255, 210, 170],
+  },
+];
+
+export const dwarfCore = ({ blackHole: hole }, center) => ({ ...hole, ...center, kind: 'blackhole', look: 'blackhole', anchorsSystem: true });
+
 export const DEPOSITS = { crystals: [10, 25], stardust: [3, 8] };
 
 export const MARKET = { x: 1000, y: -50000, scale: 3, dockingRange: 1000 };

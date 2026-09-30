@@ -1,5 +1,5 @@
 import { createRandom } from '../../planet-textures/js/random.js';
-import { SECTOR_SIZE, currentGalaxySeed, outsideGalaxy, starName } from './universe.js';
+import { DWARFS, SECTOR_SIZE, currentGalaxySeed, galaxyAt, starName } from './universe.js';
 
 const BLOCK_IN_SECTORS = 25;
 const BLOCK_SIZE = BLOCK_IN_SECTORS * SECTOR_SIZE;
@@ -12,6 +12,7 @@ const REACH_IN_RADII = 1.6;
 const LOCAL_BUBBLE = 4 * SECTOR_SIZE;
 const SALT = 0x4eb01a;
 const INSIDE_DENSITY = 0.15;
+const FIXED_SALT = 0x7a2a7e1a;
 
 export const NEBULA_KINDS = {
   emission: { share: 0.5, colour: [255, 96, 150], about: 'Its hydrogen glows red, lit by hot young stars.' },
@@ -37,20 +38,31 @@ function pickKind(roll) {
   return 'emission';
 }
 
-function generateBlock(seed, blockX, blockY) {
-  const { next, integer, between } = createRandom(blockSeed(seed, blockX, blockY));
-  if (next() >= CHANCE_PER_BLOCK) return [];
-  const radius = between(...RADIUS_IN_SECTORS) * SECTOR_SIZE;
-  const x = (blockX + between(0.2, 0.8)) * BLOCK_SIZE;
-  const y = (blockY + between(0.2, 0.8)) * BLOCK_SIZE;
-  if (outsideGalaxy(x, y) || Math.hypot(x, y) < LOCAL_BUBBLE + radius * REACH_IN_RADII) return [];
-  const puffs = Array.from({ length: integer(...PUFF_COUNT) }, () => {
+function puffsAround({ next, integer, between }, x, y, radius) {
+  return Array.from({ length: integer(...PUFF_COUNT) }, () => {
     const bearing = next() * Math.PI * 2;
     const offset = next() * radius * PUFF_SPREAD;
     return { x: x + Math.cos(bearing) * offset, y: y + Math.sin(bearing) * offset, radius: between(...PUFF_RADIUS) * radius };
   });
+}
+
+function generateBlock(seed, blockX, blockY) {
+  const random = createRandom(blockSeed(seed, blockX, blockY));
+  const { next, between } = random;
+  if (next() >= CHANCE_PER_BLOCK) return [];
+  const radius = between(...RADIUS_IN_SECTORS) * SECTOR_SIZE;
+  const x = (blockX + between(0.2, 0.8)) * BLOCK_SIZE;
+  const y = (blockY + between(0.2, 0.8)) * BLOCK_SIZE;
+  if (!galaxyAt(x, y) || Math.hypot(x, y) < LOCAL_BUBBLE + radius * REACH_IN_RADII) return [];
+  const puffs = puffsAround(random, x, y, radius);
   return [{ name: starName(next), kind: pickKind(next()), x, y, radius, puffs }];
 }
+
+const FIXED_NEBULAE = DWARFS.filter((dwarf) => dwarf.nebula).map(({ x: dwarfX, y: dwarfY, nebula }, index) => {
+  const [x, y] = [dwarfX + nebula.offsetInSectors[0] * SECTOR_SIZE, dwarfY + nebula.offsetInSectors[1] * SECTOR_SIZE];
+  const radius = nebula.radiusInSectors * SECTOR_SIZE;
+  return { name: nebula.name, kind: nebula.kind, x, y, radius, puffs: puffsAround(createRandom(FIXED_SALT + index), x, y, radius) };
+});
 
 function nebulaeInBlock(blockX, blockY) {
   const seed = currentGalaxySeed();
@@ -60,13 +72,14 @@ function nebulaeInBlock(blockX, blockY) {
 }
 
 export function nebulaeWithin(x, y, range) {
-  const found = [];
+  const reaches = (nebula) => Math.hypot(nebula.x - x, nebula.y - y) <= range + nebula.radius * REACH_IN_RADII;
+  const found = FIXED_NEBULAE.filter(reaches);
   const [fromX, toX] = [Math.floor((x - range) / BLOCK_SIZE) - 1, Math.floor((x + range) / BLOCK_SIZE) + 1];
   const [fromY, toY] = [Math.floor((y - range) / BLOCK_SIZE) - 1, Math.floor((y + range) / BLOCK_SIZE) + 1];
   for (let blockX = fromX; blockX <= toX; blockX++) {
     for (let blockY = fromY; blockY <= toY; blockY++) {
       for (const nebula of nebulaeInBlock(blockX, blockY)) {
-        if (Math.hypot(nebula.x - x, nebula.y - y) <= range + nebula.radius * REACH_IN_RADII) found.push(nebula);
+        if (reaches(nebula)) found.push(nebula);
       }
     }
   }
