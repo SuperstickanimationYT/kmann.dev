@@ -19,7 +19,7 @@ const STEPS = [
       keys: 'Space switches the engine on and off. Q and E turn, Shift and Ctrl set the throttle.',
     },
   },
-  { target: '.pp-telemetry', text: 'Where you are, your altitude and your speed. Touch down slower than 10 or the rocket explodes.' },
+  { target: '.pp-telemetry', text: 'Where you are, your altitude and your speed. Touch down slower than 30 m/s or the rocket explodes.' },
   { target: '.pp-fuel', text: 'Fuel. Land on any planet or moon and drill to refill, or buy it at the market beside Earth.' },
   { target: '.pp-tokens', text: 'Galactokens. The first landing on each planet or moon pays a bounty. Spend them at the market.' },
   {

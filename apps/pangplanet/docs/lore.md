@@ -49,6 +49,15 @@ A trade exchange run by human brokers, humanity's only trading post.
   the exchange, so you start with 200. You're one of the first to fly out and find goods
   instead of waiting for freighters: the brokers' supplier.
 
+## Scale
+
+- One game unit is 10 cm, so Earth's surface gravity comes out at 9 m/s². The rocket is
+  9 m tall; planets are tiny (Earth's radius is 1 km).
+- In this galaxy c, the speed of light, is 300 m/s: normal flight's top speed. FTL drives
+  go past it, so their speeds read as multiples of c (10c to 10,000c). The in-game help
+  says so.
+- Code keeps its own units (units per tick); `js/units.js` converts for display.
+
 ## How it shows up in game
 
 | Lore | Mechanic |

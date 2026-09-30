@@ -2,6 +2,7 @@ import { partBounds } from './fleet.js';
 import { NUMBERS, drawSpace, drawWord, glossOf, readLine } from './gct.js';
 import { drawPortrait } from './portraits.js';
 import { bindShipBuilder, wedgeClip } from './ship-builder.js';
+import { formatDistance, formatLightSpeed, formatSpeed } from './units.js';
 import { GCT, GOLD, MAX_BATTERY_SLOTS } from './world.js';
 
 const DIM_SATELLITE_LIGHT = 0.05;
@@ -15,24 +16,11 @@ const UPGRADE_TEXT = {
   panels: { name: 'Solar panels', describe: (value) => `${value}× charging` },
   tank: { name: 'Fuel tank', describe: (value) => `${value} fuel` },
   engine: { name: 'Engine', describe: (value) => `${value}× thrust` },
-  hull: { name: 'Landing legs', describe: (value) => `land under ${value}` },
-  telescope: { name: 'Telescope', describe: (value) => `${abbreviate(value)} range` },
+  hull: { name: 'Landing legs', describe: (value) => `land under ${formatSpeed(value)}` },
+  telescope: { name: 'Telescope', describe: (value) => `${formatDistance(value)} range` },
   timewarp: { name: 'Time warp', describe: (value) => `up to ${value}x` },
-  warpRange: { name: 'Warp range', describe: (value) => `${abbreviate(value)} jumps` },
+  warpRange: { name: 'Warp range', describe: (value) => `${formatDistance(value)} jumps` },
 };
-
-const SUFFIXES = ['', 'K', 'M', 'B', 'T'];
-
-export function abbreviate(value, decimals = 1) {
-  let tier = 0;
-  let scaled = value;
-  while (Math.abs(scaled) >= 1000 && tier < SUFFIXES.length - 1) {
-    scaled /= 1000;
-    tier++;
-  }
-  const factor = 10 ** (tier === 0 ? 0 : decimals);
-  return `${Math.floor(scaled * factor) / factor}${SUFFIXES[tier]}`;
-}
 
 function setText(element, text) {
   if (element.textContent !== text) element.textContent = text;
@@ -545,7 +533,7 @@ export function createHud(root, actions, { cheats }) {
         button.className = 'pp-action pp-destination';
         button.dataset.star = star.name;
         button.disabled = !affordable;
-        button.textContent = `${star.name} · ${abbreviate(distance)} away · ${cost.toFixed(2)} batteries`;
+        button.textContent = `${star.name} · ${formatDistance(distance)} away · ${cost.toFixed(2)} batteries`;
         return button;
       }),
     );
@@ -602,9 +590,9 @@ export function createHud(root, actions, { cheats }) {
     parts.warpKnob.style.bottom = `${((status.timewarp - 1) / (status.timewarpBought - 1)) * 100}%`;
     parts.warpSlider.classList.toggle('is-held', status.timewarpHeld);
     setText(parts.location, status.location);
-    setText(parts.altitude, status.altitude === null ? '—' : abbreviate(status.altitude));
-    const speedNote = status.inFtl ? ' (FTL)' : status.atSpeedLimit ? ' (top)' : '';
-    setText(parts.speed, `${abbreviate(status.speed)}${speedNote}`);
+    setText(parts.altitude, status.altitude === null ? '—' : formatDistance(status.altitude));
+    const speed = status.inFtl ? `${formatLightSpeed(status.speed)} (FTL)` : `${formatSpeed(status.speed)}${status.atSpeedLimit ? ' (top)' : ''}`;
+    setText(parts.speed, speed);
     setText(parts.throttle, `${Math.round(status.throttle)}%`);
     setText(parts.engine, status.engineOn ? 'on' : 'off');
     parts.engine.classList.toggle('is-on', status.engineOn);

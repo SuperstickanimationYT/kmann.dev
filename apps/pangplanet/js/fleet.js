@@ -1,6 +1,6 @@
 import { ftlSpeed } from './ftl.js';
-import { abbreviate } from './hud.js';
 import { chargeRate, fillBatteries, roomToCharge, storedCharge } from './solar.js';
+import { formatLightSpeed } from './units.js';
 import { placeVessel } from './vessels.js';
 import { CRASH_SPEED, FUSION, HULL_PAINTS, SHIP, SHIP_BLOCKS } from './world.js';
 
@@ -175,6 +175,6 @@ export function describeShip(ship) {
   const charge = ship.batteries.length ? ` · charge ${storedCharge(ship.batteries).toFixed(1)}/${ship.batteries.length}` : '';
   const capacity = hydrogenCapacity(ship);
   const hydrogen = capacity ? ` · hydrogen ${Math.floor(ship.hydrogen)}/${capacity}` : '';
-  const ftl = hasFtl(ship) ? ` · FTL tier ${ship.ftlTier}, up to ${abbreviate(ftlSpeed(ship))}` : '';
+  const ftl = hasFtl(ship) ? ` · FTL tier ${ship.ftlTier}, up to ${formatLightSpeed(ftlSpeed(ship))}` : '';
   return `${ship.parts.length} blocks · mass ${shipMass(ship)} · thrust ${thrust.toFixed(2)}× · fuel ${Math.round(ship.fuel)}/${fuelCapacity}${charge}${hydrogen}${ftl}`;
 }
