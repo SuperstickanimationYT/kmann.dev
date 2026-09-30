@@ -30,9 +30,11 @@ hostility plays out through the economy and logistics. There is no combat.
 
 ## Biosignatures
 
-- Life means an alien homeworld; there are no bacteria-only worlds.
+- Life means an alien homeworld or simple life. Simple life grows on rocky worlds and moons
+  that aren't homeworlds, at 0–50 °C with water and atmosphere of 20 or more. Its first
+  sample pays 150 science.
 - The telescope (and solar sails) flag possible biosignatures on the stars they chart. No
-  homeworld goes unflagged, and 3 flags in 4 are real. The false alarm chance per lifeless
+  homeworld or living world goes unflagged, and 3 flags in 4 are real. The false alarm chance per lifeless
   system is derived from the homeworld chance (1 in 21 at 1 in 8).
 - Flags are seeded per system, so rescanning never changes them. Visiting settles it: the
   map shows the species' colour, or notes the false alarm.

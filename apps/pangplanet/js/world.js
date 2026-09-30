@@ -116,6 +116,8 @@ export const CORE = {
   richness: { radiusInSectors: 25, crystals: 3, stardust: 6, deposit: 2 },
 };
 
+export const ANCIENT_SEEDER = { radius: 700, soi: 8000, mass: 0, kind: 'seeder', look: 'seeder', science: 500, stardust: 2 };
+
 export const WORMHOLE_MOUTH = { radius: 3000, soi: 5000, mass: 3e7, kind: 'wormhole', look: 'wormhole' };
 
 const GATEWAY = { name: 'Core Gateway', ...WORMHOLE_MOUTH };

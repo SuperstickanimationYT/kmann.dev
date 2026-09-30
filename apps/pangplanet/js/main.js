@@ -110,6 +110,7 @@ import {
   homeworldSpecies,
   livingWorlds,
   openGateway,
+  seedersWithin,
   setBuiltMouths,
   setGalaxySeed,
   stardustWorlds,
@@ -133,6 +134,7 @@ import {
 } from './wormholes.js';
 import {
   ALIENS,
+  ANCIENT_SEEDER,
   GCT,
   ANTENNA,
   LANDING_PAD,
@@ -256,6 +258,7 @@ const game = {
   upgrades: createUpgrades(),
   claimedBounties: new Set(),
   starChart: createStarChart(),
+  seeders: new Map(),
   bookmarks: new Set(),
   bookmarksOnly: false,
   ownsTelescope: false,
@@ -781,8 +784,11 @@ const actions = {
     const { rocket } = game;
     if (!game.ownsTelescope || rocket.destroyed) return;
     const found = scanFrom(game.starChart, rocket.x, rocket.y, telescopeRange());
+    const seeders = chartSeeders(rocket.x, rocket.y, telescopeRange());
     const learnMore = game.observatories.length ? '' : ' An observatory can learn what orbits them.';
-    hud.toast(found ? `Telescope found ${found} new star${found === 1 ? '' : 's'}.${learnMore}` : 'No new stars in telescope range.');
+    const seederNote = seeders ? ` It also caught ${seeders} Ancient Seeder${seeders === 1 ? '' : 's'} drifting between the stars.` : '';
+    const starNote = found ? `Telescope found ${found} new star${found === 1 ? '' : 's'}.${learnMore}` : 'No new stars in telescope range.';
+    hud.toast(starNote + seederNote);
   },
   toggleMap: () => openPanel(game.panel === 'map' ? null : 'map'),
   mapView: (mode) => {
@@ -1326,7 +1332,10 @@ const CHEATS = {
     const { ship, rocket } = game;
     if (ship) Object.assign(ship, { x: rocket.x + CHEAT_SHIP_GAP, y: rocket.y, vx: rocket.vx, vy: rocket.vy });
   },
-  revealNearby: () => scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE, FULLY_OBSERVED),
+  revealNearby: () => {
+    scanFrom(game.starChart, game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE, FULLY_OBSERVED);
+    chartSeeders(game.rocket.x, game.rocket.y, CHEAT_REVEAL_RANGE);
+  },
   goHome: () => {
     const { rocket, drill } = game;
     stopRecording('Teleported. Recording stopped.');
@@ -1823,6 +1832,7 @@ function chartVisits() {
   ticksSinceCharting = 0;
   const { rocket } = game;
   if (chartVisitsNear(game.starChart, rocket.x, rocket.y)) hud.toast('New star system added to your galaxy map.');
+  if (chartSeeders(rocket.x, rocket.y, VISIT_RANGE)) hud.toast('An Ancient Seeder drifts nearby. Land on it gently to open it.');
   studySurroundings();
   noteNebula();
   surveyTerritory();
@@ -2042,8 +2052,28 @@ function wakeGateway() {
   hud.toast('The Core Gateway woke up. It now links the galactic core and the Sun, both ways.');
 }
 
+function chartSeeders(x, y, range) {
+  const found = seedersWithin(x, y, range).filter((seeder) => !game.seeders.has(bodyKey(seeder)));
+  for (const seeder of found) game.seeders.set(bodyKey(seeder), { name: seeder.name, x: seeder.x, y: seeder.y });
+  return found.length;
+}
+
+const seederStudyKey = (seeder) => `seeder:${bodyKey(seeder)}`;
+const chartedSeeders = () => [...game.seeders.values()].map((seeder) => ({ ...seeder, opened: game.studies.has(seederStudyKey(seeder)) }));
+
+function openSeeder(seeder) {
+  if (!study(game.studies, seederStudyKey(seeder), 1)) return;
+  game.science += ANCIENT_SEEDER.science;
+  game.stardust += ANCIENT_SEEDER.stardust;
+  hud.toast(`You opened the ${seeder.name}. Its hold still carries Ancient seed stock. +${ANCIENT_SEEDER.science} science, +${ANCIENT_SEEDER.stardust} stardust.`);
+}
+
 function rewardFirstLanding() {
   const body = game.rocket.soi;
+  if (body.kind === 'seeder') {
+    openSeeder(body);
+    return;
+  }
   const bounty = claimBounty(game.claimedBounties, body);
   const science = study(game.studies, `landing:${bodyKey(body)}`, body.landingScience ?? SCIENCE.landing);
   game.galactokens += bounty;
@@ -2778,6 +2808,7 @@ function frame(time) {
       bookmarks: game.bookmarks,
       onlyBookmarks: game.bookmarksOnly,
       myShips: parkedShips(),
+      seeders: chartedSeeders(),
       rocket,
       warpRange: game.ownsWarpDrive ? warpRange() : 0,
       telescopeRange: game.ownsTelescope ? telescopeRange() : 0,
@@ -2838,6 +2869,7 @@ function snapshot() {
     upgrades: game.upgrades,
     claimedBounties: [...game.claimedBounties],
     starChart: [...game.starChart],
+    seeders: [...game.seeders],
     bookmarks: [...game.bookmarks],
     ownsTelescope: game.ownsTelescope,
     relations: game.relations,
@@ -2872,6 +2904,7 @@ function restore(saved) {
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
   game.starChart = new Map(saved.starChart ?? []);
+  game.seeders = new Map(saved.seeders ?? []);
   game.bookmarks = new Set(saved.bookmarks ?? []);
   game.crystals = saved.crystals ?? 0;
   game.stardust = saved.stardust ?? 0;

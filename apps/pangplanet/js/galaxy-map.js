@@ -29,6 +29,9 @@ const NEBULA_NAMES_ABOVE_PX = 40;
 const PUFF_VISIBLE_RADII = 1.5;
 const MY_SHIP_CYAN = '#5ee7ff';
 const MY_SHIP_PX = 5;
+const SEEDER_LIME = '#9dff5c';
+const OPENED_SEEDER_LIME = 'rgba(157, 255, 92, 0.35)';
+const SEEDER_PX = 4;
 
 const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const systemRadius = ({ star, planets }) => Math.max(star.radius, ...planets.map((planet) => distanceBetween(star, planet))) * SYSTEM_MARGIN;
@@ -258,6 +261,21 @@ export function createGalaxyMap(canvas) {
     }
   }
 
+  function drawSeeders(seeders) {
+    context.lineWidth = 1.5;
+    for (const { name, x, y, opened } of seeders) {
+      const [mx, my] = toMap(x, y);
+      if (!onMap(mx, my)) continue;
+      context.strokeStyle = opened ? OPENED_SEEDER_LIME : SEEDER_LIME;
+      context.beginPath();
+      context.arc(mx, my, SEEDER_PX, 0, Math.PI * 2);
+      context.moveTo(mx, my - SEEDER_PX * 2);
+      context.lineTo(mx, my + SEEDER_PX * 2);
+      context.stroke();
+      if (!opened && view.scale * SECTOR_SIZE > LABELS_ABOVE_PX_PER_SECTOR) label(name, x, y, 16);
+    }
+  }
+
   function drawRocket(rocket) {
     const [mx, my] = toMap(rocket.x, rocket.y);
     context.fillStyle = '#6dff8c';
@@ -269,7 +287,7 @@ export function createGalaxyMap(canvas) {
     context.fill();
   }
 
-  function draw({ chart, bookmarks, onlyBookmarks, myShips, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
+  function draw({ chart, bookmarks, onlyBookmarks, myShips, seeders, rocket, warpRange, telescopeRange, observatories, observatoryRange, bountyWaiting, findsLeft, routePath, drones, ship, wormholeLinks }) {
     bookmarked = bookmarks;
     bookmarksOnly = onlyBookmarks;
     const ratio = window.devicePixelRatio || 1;
@@ -299,6 +317,7 @@ export function createGalaxyMap(canvas) {
     }
     drawRoute(routePath, drones);
     if (ship) disk(ship.x, ship.y, 3.5, ship.colour);
+    drawSeeders(seeders);
     drawMyShips(myShips);
     drawRocket(rocket);
   }
