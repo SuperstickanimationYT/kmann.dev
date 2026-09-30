@@ -33,6 +33,22 @@ across thousands of worlds. In game, every world tagged with a species is a colo
 start with one rocket, a few galactokens and no GCT, which is why you decode it word by
 word.
 
+## The Earth market
+
+A trade exchange run by human brokers, humanity's only trading post.
+
+- Brokers buy what you bring back and resell it to Zorani freighters, which call at the
+  Solar System for that cargo. They pay you 10 per gold, sell it on for 15 and keep the
+  difference. Selling to the Zorani yourself cuts them out, hence the 1.5× price.
+- The brokers are human, so trading with them needs no GCT. They know just enough to
+  trade and don't teach it.
+- Haulers deliver only here: the exchange takes contracted automated drops, aliens don't.
+- It sells human-built and resold alien tech. The top upgrade tiers need crystals and
+  stardust because humans can't make those parts themselves.
+- Galactokens are the Galaxy's common currency. Humans only started earning them through
+  the exchange, so you start with 200. You're one of the first to fly out and find goods
+  instead of waiting for freighters: the brokers' supplier.
+
 ## How it shows up in game
 
 | Lore | Mechanic |
@@ -42,6 +58,7 @@ word.
 | Seeders spread life | Simple-life worlds; Ancient Seeders between the stars |
 | GCT came from Ancient script | Six-glyph writing, decoded by hearing words |
 | Humans arrived last | Weak start; all three species already know GCT |
+| Human brokers run the exchange | Market near Earth pays market price; Zorani pay 1.5× when friendly; haulers sell only there |
 
 ## Ancient Seeders
 
