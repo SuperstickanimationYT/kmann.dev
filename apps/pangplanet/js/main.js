@@ -1151,7 +1151,7 @@ const actions = {
     const terms = homeworld && sampleTerms(homeworld);
     if (!terms || terms.answer) return;
     game.samplePermits.set(bodyKey(homeworld), rollSampleAnswer());
-    hearGct(alienInfo(homeworld).lines.slice(-1));
+    hearGct(alienInfo(homeworld).lines.slice(-1), speakerOf(homeworld));
   },
   paySampleFee: () => {
     const homeworld = dockedOf('aliens');
@@ -1369,7 +1369,7 @@ function dock() {
   game.docked = target.item ?? null;
   openPanel(target.kind);
   if (target.kind === 'aliens') {
-    hearGct(alienInfo(target.item).lines);
+    hearGct(alienInfo(target.item).lines, speakerOf(target.item));
     const { name } = speciesByKey[target.item.species];
     earnScience(`contact:${target.item.species}`, SCIENCE.contact, `first contact with the ${name}`);
   }
@@ -1848,11 +1848,13 @@ function surveyTerritory() {
   if (game.warp || game.panel === 'toll' || game.tollSettledAt === starKey(game.hostileHere.star)) return;
   game.tollDue = game.hostileHere;
   openPanel('toll');
-  hearGct(tollLines(ALIENS.toll.galactokens));
+  hearGct(tollLines(ALIENS.toll.galactokens), `toll:${starKey(game.hostileHere.star)}`);
 }
 
-function hearGct(lines) {
-  for (const word of hear(game.gct, lines)) hud.toast(`You learned a Galactic Common Tongue word: ${meaningOf(word)}.`);
+const speakerOf = (alien) => (alien === game.ship ? `freighter:${alien.id}` : `homeworld:${bodyKey(alien)}`);
+
+function hearGct(lines, speaker) {
+  for (const word of hear(game.gct, lines, speaker)) hud.toast(`You learned a Galactic Common Tongue word: ${meaningOf(word)}.`);
 }
 
 function settleToll(message) {
