@@ -9,7 +9,7 @@ const visitedBeyondHome = (game) => [...game.studies].some((key) => key.startsWi
 
 export const GOALS = [
   { key: 'liftOff', text: 'Lift off from Earth', reached: (game) => !game.rocket.landed },
-  { key: 'moonLanding', text: 'Land on the Moon, slower than 10', reached: (game) => studied(game, 'landing:Moon@') },
+  { key: 'moonLanding', text: 'Land on the Moon under 30 m/s', reached: (game) => studied(game, 'landing:Moon@') },
   { key: 'drill', text: 'Drill while landed: tap the rocket, then Mine fuel', reached: (game) => studied(game, 'sample:') },
   { key: 'market', text: 'Dock at the market beside Earth', reached: (game) => game.panel === 'market' },
   { key: 'panels', text: 'Buy solar panels at the market', reached: (game) => game.power.ownsPanels },

@@ -1,7 +1,7 @@
 import { alienLines, canStudy, createGctLog, gctLogFromSave, gctLogToSave, hear, meaningOf, tollLines } from './gct.js';
 import { goodwillFor, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
-import { abbreviate, createHud } from './hud.js';
+import { createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, padBelow, placeOnSurface, setLandingPads, sphereOfInfluence, wrapAngle } from './physics.js';
 import { createRenderer } from './render.js';
 import {
@@ -119,6 +119,7 @@ import {
   systemAt,
   systemsWithin,
 } from './universe.js';
+import { formatDistance, formatLightSpeed } from './units.js';
 import { canWarpFrom, jumpTo, totalCharge, warpDestinations } from './warp.js';
 import {
   ageWormholes,
@@ -1875,14 +1876,14 @@ function planetInfo(planet) {
   const waiting = bountyWaiting(game.claimedBounties, planet);
   const details = [
     planet.name,
-    `${abbreviate(planet.radius)} radius`,
+    `${formatDistance(planet.radius)} radius`,
     DRILL_FINDS[planet.resource] ? depositNote(planet) : null,
     planet.resource === 'gas' ? 'gas giant: double fuel' : null,
     planet.species ? `${speciesByKey[planet.species].name} homeworld` : null,
     planet.territory && !planet.species ? `${speciesByKey[planet.territory].name} territory` : null,
     waiting ? `${waiting} bounty waiting` : null,
     planet.bounty && !waiting ? 'bounty claimed' : null,
-    `${abbreviate(Math.hypot(planet.x - game.rocket.x, planet.y - game.rocket.y))} away`,
+    `${formatDistance(Math.hypot(planet.x - game.rocket.x, planet.y - game.rocket.y))} away`,
   ];
   return details.filter(Boolean).join(' · ');
 }
@@ -1898,7 +1899,7 @@ function mapInfo() {
     worldsNote(entry, moonsSeen(entry)),
     bountyNote(entry, moonsSeen(entry)),
     entry.visited ? 'visited' : observationNote(entry),
-    `${abbreviate(distance)} away`,
+    `${formatDistance(distance)} away`,
     entry.crystals ? `${entry.crystals} crystal world${entry.crystals === 1 ? '' : 's'}` : null,
     entry.stardust ? `${entry.stardust} stardust world${entry.stardust === 1 ? '' : 's'}` : null,
     lifeNote(entry),
@@ -2590,7 +2591,7 @@ function buildChoices(builder) {
   return [...game.starChart.entries()]
     .sort(([, a], [, b]) => distance(a) - distance(b))
     .slice(0, BUILDER.starChoices)
-    .map(([key, entry]) => ({ value: key, label: `${entry.name} · ${abbreviate(distance(entry), 0)} away` }));
+    .map(([key, entry]) => ({ value: key, label: `${entry.name} · ${formatDistance(distance(entry))} away` }));
 }
 
 function haulerInfo() {
@@ -2627,7 +2628,7 @@ function ftlUpgrade(ship) {
   if (!next) return null;
   const crystals = next.crystals ? ` + ${next.crystals} crystals` : '';
   const stardust = next.stardust ? ` + ${next.stardust} stardust` : '';
-  return { label: `Upgrade FTL to tier ${ship.ftlTier + 1} (up to ${abbreviate(next.speed)}) · ${next.cost.toLocaleString()}${crystals}${stardust}`, affordable: canAfford(next, game) };
+  return { label: `Upgrade FTL to tier ${ship.ftlTier + 1} (up to ${formatLightSpeed(next.speed)}) · ${next.cost.toLocaleString()}${crystals}${stardust}`, affordable: canAfford(next, game) };
 }
 
 function shipInfo() {
