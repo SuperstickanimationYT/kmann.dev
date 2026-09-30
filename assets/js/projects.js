@@ -1,5 +1,12 @@
 const PROJECTS = [
   {
+    title: 'Conlang Studio',
+    href: 'apps/conlang-studio/',
+    poster: 'assets/img/posters/conlang-studio.webp',
+    blurb: 'Draw an alphabet, grow a dictionary, write grammar rules and check your conlang.',
+    status: 'live',
+  },
+  {
     title: 'FractalExplorer',
     href: 'apps/fractal-explorer/',
     poster: 'assets/img/posters/fractal-explorer.webp',

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conlang Studio &mdash; kmann314</title>
+<meta name="description" content="Build a constructed language fast: draw your own alphabet or use Latin letters, keep a dictionary, write grammar rules and check what's correct.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Conlang Studio</h2>
+    </div>
+  </div>
+
+  <div class="shell cl-app">
+    <div class="cl-toolbar">
+      <label class="cl-field cl-picker">
+        <span>Language</span>
+        <select class="cl-input" data-language></select>
+      </label>
+      <label class="cl-field cl-picker">
+        <span>Name</span>
+        <input type="text" class="cl-input" data-name autocomplete="off">
+      </label>
+      <div class="cl-actions">
+        <button type="button" data-new>New</button>
+        <button type="button" data-example>Add example</button>
+        <button type="button" data-export>Export</button>
+        <button type="button" data-import>Import</button>
+        <button type="button" data-delete>Delete</button>
+        <input type="file" accept=".json,application/json" data-import-file hidden>
+      </div>
+    </div>
+
+    <div class="cl-tabs" role="tablist">
+      <button type="button" role="tab" data-tab="alphabet">1 · Alphabet</button>
+      <button type="button" role="tab" data-tab="words">2 · Words</button>
+      <button type="button" role="tab" data-tab="grammar">3 · Grammar</button>
+      <button type="button" role="tab" data-tab="write">4 · Write &amp; check</button>
+    </div>
+
+    <section class="cl-panel" role="tabpanel" data-panel="alphabet"></section>
+    <section class="cl-panel" role="tabpanel" data-panel="words" hidden></section>
+    <section class="cl-panel" role="tabpanel" data-panel="grammar" hidden></section>
+    <section class="cl-panel" role="tabpanel" data-panel="write" hidden></section>
+
+    <p class="cl-note cl-footnote">Everything saves in this browser as you go. Export to back a language up or move it to another device.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
