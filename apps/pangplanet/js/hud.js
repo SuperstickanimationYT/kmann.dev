@@ -61,6 +61,8 @@ export function createHud(root, actions, { cheats }) {
     throttleKnob: find('[data-throttle-knob]'),
     throttleLabel: find('[data-throttle-label]'),
     volume: find('[data-volume]'),
+    ambientMusic: find('[data-ambient-music]'),
+    milestoneMusic: find('[data-milestone-music]'),
     goal: find('[data-goal]'),
     goalCount: find('[data-goal-count]'),
     goalText: find('[data-goal-text]'),
@@ -557,6 +559,8 @@ export function createHud(root, actions, { cheats }) {
   parts.goal.addEventListener('click', actions.toggleGoals);
   parts.showGoals.addEventListener('change', () => actions.setShowGoals(parts.showGoals.checked));
   parts.volume.addEventListener('input', () => actions.setVolume(Number(parts.volume.value) / 100));
+  parts.ambientMusic.addEventListener('input', () => actions.setAmbientMusic(Number(parts.ambientMusic.value) / 100));
+  parts.milestoneMusic.addEventListener('input', () => actions.setMilestoneMusic(Number(parts.milestoneMusic.value) / 100));
   parts.touchControls.forEach((radio) => radio.addEventListener('change', () => actions.setTouchControls(radio.value)));
   cheatsToggle.addEventListener('click', actions.toggleCheats);
   root.querySelectorAll('[data-cheat]').forEach((button) => button.addEventListener('click', () => actions.cheat(button.dataset.cheat)));
@@ -572,8 +576,10 @@ export function createHud(root, actions, { cheats }) {
     if (entered) fullscreenHintTimer = window.setTimeout(() => root.classList.remove('is-clearing-fullscreen-hint'), FULLSCREEN_HINT_MS);
   });
 
-  function showSettings({ volume, touchControls }) {
+  function showSettings({ volume, ambientMusic, milestoneMusic, touchControls }) {
     parts.volume.value = String(Math.round(volume * 100));
+    parts.ambientMusic.value = String(Math.round(ambientMusic * 100));
+    parts.milestoneMusic.value = String(Math.round(milestoneMusic * 100));
     parts.touchControls.forEach((radio) => (radio.checked = radio.value === touchControls));
   }
 

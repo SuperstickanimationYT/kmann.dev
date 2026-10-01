@@ -70,6 +70,8 @@ import { createGalaxyMap } from './galaxy-map.js';
 import { NEBULA_KINDS, nebulaAt } from './nebulae.js';
 import { apparentBrightness, createStarPhoto } from './star-photo.js';
 import { GOALS, currentGoal, newlyReachedGoals } from './goals.js';
+import { milestoneToast, newlyReachedMilestones } from './milestones.js';
+import { createSoundtrack } from './music/soundtrack.js';
 import { flyShip, launchShip, nextShipDelayTicks, relativeSpeed, shipGone } from './ships.js';
 import { createHauler, haulerPose, passTime, removeStop, secondsUntilDue, settleHauler } from './haulers.js';
 import { blast, createParticles, drift, exhaust, flash } from './particles.js';
@@ -203,6 +205,7 @@ const SOUNDS = { machine: 'sfx/machine.wav', blender: 'sfx/blender.mp3', buzzWhi
 const audio = Object.fromEntries(Object.entries(SOUNDS).map(([name, src]) => [name, new Audio(src)]));
 
 const settings = readSettings();
+const soundtrack = createSoundtrack({ ambientVolume: settings.ambientMusic, milestoneVolume: settings.milestoneMusic });
 
 function play(name) {
   const voice = audio[name].cloneNode();
@@ -283,6 +286,7 @@ const game = {
   tourSeen: false,
   askBeforeBigBuys: true,
   goalsDone: new Set(),
+  milestonesHeard: new Set(),
   showGoals: true,
   pendingBuy: null,
   forecast: null,
@@ -864,6 +868,16 @@ const actions = {
   toggleSettings: () => openPanel(game.panel === 'settings' ? null : 'settings'),
   setVolume: (volume) => {
     settings.volume = volume;
+    writeSettings(settings);
+  },
+  setAmbientMusic: (volume) => {
+    settings.ambientMusic = volume;
+    soundtrack.setAmbientVolume(volume);
+    writeSettings(settings);
+  },
+  setMilestoneMusic: (volume) => {
+    settings.milestoneMusic = volume;
+    soundtrack.setMilestoneVolume(volume);
     writeSettings(settings);
   },
   setTouchControls: (scheme) => {
@@ -2503,6 +2517,16 @@ function markGoals(goals, { quiet = false } = {}) {
   }
 }
 
+function markMilestones({ quiet = false } = {}) {
+  for (const milestone of newlyReachedMilestones(game)) {
+    game.milestonesHeard.add(milestone.key);
+    if (quiet) continue;
+    soundtrack.celebrate(milestone.key);
+    const message = milestoneToast(milestone, game);
+    if (message) hud.toast(message);
+  }
+}
+
 function goalsStatus() {
   const current = currentGoal(game.goalsDone);
   return {
@@ -2817,6 +2841,8 @@ function frame(time) {
   game.forecast = rocket.landed || rocket.destroyed || game.ftl ? null : forecast(rocket, FORECAST_STEPS, FORECAST_STEP_TICKS);
   catchUpToNow();
   markGoals(newlyReachedGoals(game));
+  markMilestones();
+  soundtrack.update();
   renderer.draw(game, routePaths());
   if (game.panel === 'map') {
     galaxyMap.draw({
@@ -2858,6 +2884,7 @@ function snapshot() {
     tourSeen: game.tourSeen,
     askBeforeBigBuys: game.askBeforeBigBuys,
     goalsDone: [...game.goalsDone],
+    milestonesHeard: [...game.milestonesHeard],
     showGoals: game.showGoals,
     timewarp: game.timewarp,
     zoom: camera.zoom,
@@ -2957,6 +2984,7 @@ function restore(saved) {
   Object.assign(game, { pads: saved.pads ?? [], padsInHold: saved.padsInHold ?? 0 });
   setLandingPads(game.pads);
   game.goalsDone = new Set(saved.goalsDone ?? []);
+  game.milestonesHeard = new Set(saved.milestonesHeard ?? []);
   game.showGoals = saved.showGoals ?? true;
   syncMouths();
   if (game.gatewayOpen) openGateway();
@@ -2964,6 +2992,14 @@ function restore(saved) {
   camera.zoom = saved.zoom;
   streamAround();
   rocket.soi = sphereOfInfluence(rocket.x, rocket.y);
+}
+
+function startMusic() {
+  for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => soundtrack.unlock());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') soundtrack.pause();
+    else soundtrack.unlock();
+  });
 }
 
 function startAutosave() {
@@ -2992,6 +3028,8 @@ async function start() {
     catchUp((Date.now() - saved.savedAt) / 1000);
   }
   markGoals(newlyReachedGoals(game), { quiet: true });
+  markMilestones({ quiet: true });
+  startMusic();
   startAutosave();
   const sprites = await loadSprites();
   renderer = createRenderer(canvas, sprites);
