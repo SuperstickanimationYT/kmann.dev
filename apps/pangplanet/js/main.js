@@ -92,7 +92,7 @@ import {
   systemsPassed,
 } from './science.js';
 import { cruise, dropOut, headingIntoWell, nextFtlTier } from './ftl.js';
-import { addPart, breakArmor, buildPlan, engineNozzles, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
+import { addPart, breakArmor, buildPlan, engineNozzles, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, hydrogenCapacity, hydrogenShare, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
 import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, crystalsSeen, foundPlanets, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
@@ -152,6 +152,7 @@ import {
   DRONE_SCALE,
   FUEL_PACK,
   FUEL_PER_PUMP,
+  FUSION,
   GOLD,
   HAULER,
   HOME_BODY,
@@ -242,6 +243,7 @@ const game = {
   boarded: null,
   ftl: false,
   scooping: false,
+  hydrogenLow: false,
   nebulaName: null,
   antennas: [],
   antennasInHold: 0,
@@ -1608,6 +1610,19 @@ function runShips(seconds) {
     if (!piloted) runReactor(ship, ship, seconds);
   }
   noteScooping();
+  noteLowHydrogen();
+}
+
+function noteLowHydrogen() {
+  const ship = boardedShip();
+  const share = ship ? hydrogenShare(ship) : null;
+  if (share === null || share >= FUSION.lowClearsAt) {
+    game.hydrogenLow = false;
+    return;
+  }
+  if (share >= FUSION.lowShare || game.hydrogenLow) return;
+  game.hydrogenLow = true;
+  hud.toast(`Hydrogen low: ${Math.floor(ship.hydrogen)} of ${hydrogenCapacity(ship)} left. Scoop near a star before the reactor runs dry.`);
 }
 
 function noteScooping() {
@@ -2790,6 +2805,7 @@ function status() {
     ownsPanels: power.ownsPanels,
     panelsDeployed: power.panelsDeployed,
     charging: power.panelsDeployed && roomToCharge(power.batteries) > 0 && sunlight(rocket.x, rocket.y) > 0,
+    hydrogenLow: game.hydrogenLow,
     canBuyPanels: !power.ownsPanels && game.galactokens >= SOLAR_PANELS.cost,
     canBuyBattery: freeBatterySlots(power) > 0 && game.galactokens >= BATTERY.cost,
     canSellBatteries: chargedBatteries(power) > 0,

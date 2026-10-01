@@ -48,6 +48,7 @@ export function createHud(root, actions, { cheats }) {
     everythingFree: find('[data-everything-free]'),
     balances: [...root.querySelectorAll('[data-balance]')],
     charging: find('[data-charging]'),
+    hydrogenLow: find('[data-hydrogen-low]'),
     fuel: find('[data-fuel]'),
     fuelBar: find('[data-fuel-bar]'),
     warp: find('[data-warp]'),
@@ -595,6 +596,7 @@ export function createHud(root, actions, { cheats }) {
     setText(parts.everythingFree, status.everythingFree ? 'on' : 'off');
     parts.balances.forEach((balance) => setText(balance, status.galactokens.toLocaleString()));
     setHidden(parts.charging, !status.charging);
+    setHidden(parts.hydrogenLow, !status.hydrogenLow);
     parts.charging.classList.toggle('is-dim', status.sunlight < DIM_SATELLITE_LIGHT);
     setText(parts.fuel, String(Math.floor(status.fuel)));
     parts.fuelBar.style.width = `${status.fuelFraction * 100}%`;

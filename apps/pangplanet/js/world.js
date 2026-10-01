@@ -274,7 +274,7 @@ export const SHIP_BLOCKS = {
   wedge: { cost: 20, mass: 0.25, label: 'Hull wedge', structural: true },
 };
 export const HULL_PAINTS = { steel: { label: 'Steel', colour: '#8a97a8' }, white: { label: 'White', colour: '#e6edf5' }, red: { label: 'Red', colour: '#d8453a' }, blue: { label: 'Blue', colour: '#2f6fd8' }, green: { label: 'Green', colour: '#3faa55' }, gold: { label: 'Gold', colour: '#e8c33a' } };
-export const FUSION = { tankSize: 100, scoopPerSecond: 1, scoopMinLight: 0.1, chargePerSecond: 2.5, hydrogenPerCharge: 1, fuelPerSecond: 0.5, hydrogenPerFuel: 1 };
+export const FUSION = { tankSize: 100, scoopPerSecond: 1, scoopMinLight: 0.1, chargePerSecond: 2.5, hydrogenPerCharge: 1, fuelPerSecond: 0.5, hydrogenPerFuel: 1, lowShare: 0.2, lowClearsAt: 0.25 };
 export const FTL = {
   tiers: [{ speed: 1e3 }, { speed: 1e4, cost: 30000, crystals: 5 }, { speed: 1e5, cost: 80000, crystals: 10, stardust: 3 }, { speed: 1e6, cost: 200000, stardust: 10 }],
   chargePerUnit: 1 / 1.5e7,
