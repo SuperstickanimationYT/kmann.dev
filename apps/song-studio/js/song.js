@@ -35,32 +35,6 @@ export function blankSong() {
   return song;
 }
 
-const notesFrom = (rows) => rows.map(([row, step, length]) => ({ row, step, length }));
-
-export function demoSong() {
-  const song = { name: 'Sunny loop', tempo: 100, key: 0, scale: 'majorPentatonic', bars: 2, beatsPerBar: 4, stepsPerBeat: 4, swing: 0.2, reverb: 0.3, tracks: [] };
-  const melody = newTrack(song, 'melody', 'marimba');
-  melody.notes = notesFrom([[7, 0, 2], [5, 2, 2], [4, 4, 2], [5, 6, 2], [7, 8, 3], [8, 11, 1], [7, 12, 4], [5, 16, 2], [4, 18, 2], [3, 20, 2], [4, 22, 2], [5, 24, 6], [3, 30, 2]]);
-  song.tracks.push(melody);
-  const chords = newTrack(song, 'melody', 'pad');
-  chords.name = 'Chords';
-  chords.chords = true;
-  chords.volume = 0.6;
-  chords.notes = notesFrom([[0, 0, 8], [4, 8, 8], [1, 16, 8], [3, 24, 8]]);
-  song.tracks.push(chords);
-  const bass = newTrack(song, 'melody', 'bass');
-  bass.notes = notesFrom([[0, 0, 4], [5, 6, 2], [4, 8, 4], [4, 14, 2], [1, 16, 4], [6, 22, 2], [3, 24, 4], [3, 30, 2]]);
-  song.tracks.push(bass);
-  const drums = newTrack(song, 'drums');
-  drums.volume = 0.7;
-  const kicks = [0, 6, 10, 16, 22, 26].map((step) => [0, step, 1]);
-  const snares = [4, 12, 20, 28].map((step) => [2, step, 1]);
-  const hats = Array.from({ length: 15 }, (_, i) => [4, i * 2, 1]);
-  drums.notes = notesFrom([...kicks, ...snares, ...hats, [5, 30, 1]]);
-  song.tracks.push(drums);
-  return song;
-}
-
 const number = (value, min, max, fallback) => (Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback);
 
 export function normalizeSong(raw) {
@@ -125,7 +99,7 @@ export async function decodeShare(code) {
 const STORAGE_KEY = 'song-studio';
 const HISTORY_LIMIT = 100;
 
-export function createStore() {
+export function createStore(firstSong) {
   let saved = null;
   try {
     saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -134,7 +108,7 @@ export function createStore() {
   const undoStack = [];
   const redoStack = [];
   const store = {
-    song: saved ? normalizeSong(saved) : demoSong(),
+    song: saved ? normalizeSong(saved) : firstSong(),
     selectedId: null,
     get track() {
       return store.song.tracks.find((track) => track.id === store.selectedId) ?? store.song.tracks[0];
