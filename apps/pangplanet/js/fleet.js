@@ -134,6 +134,8 @@ export const chargeShip = (ship, light, seconds) => fillBatteries(ship.batteries
 
 export const hydrogenCapacity = (ship) => countParts(ship, 'hydrogenTank') * FUSION.tankSize;
 
+export const hydrogenShare = (ship) => (hydrogenCapacity(ship) ? ship.hydrogen / hydrogenCapacity(ship) : null);
+
 export const canScoop = (ship, light) => countParts(ship, 'scoop') > 0 && light >= FUSION.scoopMinLight && ship.hydrogen < hydrogenCapacity(ship);
 
 export function scoopHydrogen(ship, light, seconds) {
