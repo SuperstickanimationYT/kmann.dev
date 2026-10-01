@@ -147,6 +147,7 @@ export function createHud(root, actions, { cheats }) {
     leaveShip: find('[data-leave-ship]'),
     toggleFtl: find('[data-toggle-ftl]'),
     ftlLabel: find('[data-ftl-label]'),
+    ftlButton: find('[data-ftl-button]'),
     upgradeFtl: find('[data-upgrade-ftl]'),
     shipTitle: find('[data-ship-title]'),
     shipStats: find('[data-ship-stats]'),
@@ -495,6 +496,7 @@ export function createHud(root, actions, { cheats }) {
     parts.buyShip.disabled = !canBuyShip;
     setHidden(parts.toggleFtl, !ftlLabel);
     setText(parts.ftlLabel, ftlLabel ?? '');
+    setHidden(parts.ftlButton, !ftlLabel);
     setHidden(parts.openShip, !piloting);
     setHidden(parts.leaveShip, !piloting);
     if (!myShip) return;
@@ -611,6 +613,7 @@ export function createHud(root, actions, { cheats }) {
     setText(parts.engine, status.engineOn ? 'on' : 'off');
     parts.engine.classList.toggle('is-on', status.engineOn);
     parts.engineButtons.forEach((button) => button.classList.toggle('is-on', status.engineOn));
+    parts.ftlButton.classList.toggle('is-on', status.inFtl);
     parts.throttleKnob.style.bottom = `${status.throttle}%`;
     setText(parts.throttleLabel, `${Math.round(status.throttle)}%`);
     setHidden(parts.dockPrompt, !status.canDock);
