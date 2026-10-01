@@ -1,0 +1,399 @@
+.ss-app {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ss-app [hidden] {
+  display: none !important;
+}
+
+.ss-app :focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.ss-bar,
+.ss-tracks,
+.ss-editor {
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.ss-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  padding: 14px 16px;
+}
+
+.ss-settings {
+  padding-block: 10px 12px;
+}
+
+.ss-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ss-push {
+  margin-left: auto;
+}
+
+.ss-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.ss-field output {
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.ss-name {
+  flex: 1 1 140px;
+  max-width: 220px;
+}
+
+.ss-scale {
+  flex: 1 1 200px;
+  max-width: 300px;
+}
+
+.ss-tempo {
+  width: 150px;
+}
+
+.ss-slider {
+  width: 110px;
+}
+
+.ss-input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 15px;
+}
+
+.ss-app input[type="range"] {
+  width: 100%;
+  margin: 8px 0;
+  accent-color: var(--link);
+}
+
+.ss-button,
+.ss-toggle {
+  padding: 7px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ss-button:hover:not(:disabled),
+.ss-toggle:hover:not(:disabled) {
+  border-color: var(--edge-bright);
+}
+
+.ss-button:disabled,
+.ss-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ss-primary {
+  background: var(--accent);
+  border-color: var(--edge-bright);
+}
+
+.ss-play {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 118px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #3fd08a, #1f9d63);
+  color: #04160d;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 0 18px rgba(63, 208, 138, 0.35);
+}
+
+.ss-play-icon {
+  width: 0;
+  height: 0;
+  border-block: 8px solid transparent;
+  border-left: 13px solid currentColor;
+}
+
+.ss-play[aria-pressed="true"] {
+  background: linear-gradient(180deg, #ff8a7a, #e0513f);
+  color: #1f0603;
+  box-shadow: 0 0 18px rgba(255, 110, 90, 0.35);
+}
+
+.ss-play[aria-pressed="true"] .ss-play-icon {
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.ss-record {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ss-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #7a3b3b;
+}
+
+.ss-record[aria-pressed="true"] {
+  border-color: #ff6b6b;
+}
+
+.ss-record[aria-pressed="true"] .ss-dot {
+  background: #ff5252;
+  box-shadow: 0 0 8px #ff5252;
+  animation: ss-blink 1s steps(2) infinite;
+}
+
+@keyframes ss-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.ss-tracks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+}
+
+.ss-track-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ss-track {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 190px;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-left: 5px solid var(--track);
+  border-radius: 10px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.ss-track.is-selected {
+  border-color: var(--track);
+  box-shadow: 0 0 0 1px var(--track), 0 0 16px color-mix(in srgb, var(--track) 35%, transparent);
+}
+
+.ss-track.is-muted .ss-track-pick {
+  opacity: 0.45;
+}
+
+.ss-track-pick {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ss-track-swatch {
+  grid-row: span 2;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--track);
+}
+
+.ss-track-title {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ss-track-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.ss-track-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ss-track-controls input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  margin: 0 4px 0 0;
+  accent-color: var(--track);
+}
+
+.ss-toggle {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.ss-muted[aria-pressed="true"] {
+  background: #7a2e2e;
+  border-color: #ff6b6b;
+}
+
+.ss-solo[aria-pressed="true"] {
+  background: #7a6420;
+  border-color: #fcc419;
+}
+
+.ss-editor {
+  overflow: hidden;
+}
+
+.ss-editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.ss-track-name {
+  flex: 0 1 180px;
+}
+
+.ss-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ss-stepper .ss-button {
+  width: 34px;
+  padding-inline: 0;
+}
+
+.ss-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ss-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--link);
+}
+
+.ss-grid {
+  display: flex;
+  background: #060f1c;
+}
+
+.ss-labels {
+  flex: none;
+  display: block;
+  border-right: 1px solid var(--edge);
+  cursor: pointer;
+}
+
+.ss-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.ss-canvas {
+  display: block;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.ss-hint {
+  margin: 0;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--edge);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+.ss-hint kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 12px;
+}
+
+.ss-status {
+  margin-left: 8px;
+  color: var(--link);
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .ss-push {
+    margin-left: 0;
+  }
+
+  .ss-track {
+    width: 100%;
+  }
+
+  .ss-track-list {
+    width: 100%;
+  }
+}

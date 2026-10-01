@@ -34,4 +34,11 @@ const PROJECTS = [
     blurb: 'Dial in or roll random procedural planets and save them as PNG textures.',
     status: 'live',
   },
+  {
+    title: 'Song Studio',
+    href: 'apps/song-studio/',
+    poster: 'assets/img/posters/song-studio.webp',
+    blurb: 'Click notes onto a grid, stack melody, chords, bass and drums, and every note stays in key.',
+    status: 'live',
+  },
 ];
