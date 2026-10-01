@@ -139,7 +139,10 @@
         <button type="button" data-hold="ArrowUp" aria-label="Throttle up">+</button>
       </div>
       <div class="pp-joystick pp-joystick-only" data-joystick aria-label="Steering joystick"><span class="pp-joystick-knob" data-joystick-knob></span></div>
-      <button type="button" class="pp-touch-engine pp-joystick-only" data-engine-hold data-engine-button>Hold to burn</button>
+      <div class="pp-touch-group pp-joystick-only">
+        <button type="button" class="pp-touch-engine" data-tap="j" data-ftl-button hidden>FTL</button>
+        <button type="button" class="pp-touch-engine" data-engine-hold data-engine-button>Hold to burn</button>
+      </div>
     </div>
     <div class="pp-warp pp-throttle pp-joystick-only" title="Throttle" data-throttle-slider>
       <span class="pp-warp-caption">Throttle</span>
@@ -716,7 +719,7 @@
         <div><dt>Tap rocket</dt><dd>Rocket menu: mine fuel, solar panels, warp drive</dd></div>
         <div><dt>Prompts</dt><dd>Tap to enter the market or respawn</dd></div>
         <div><dt>&#x1F5FA;</dt><dd>Galaxy map</dd></div>
-        <div><dt>&#x2699;</dt><dd>Settings: sound volume, background and milestone music volume, and a joystick layout: drag it to point the rocket, hold the burn button, set throttle on the right</dd></div>
+        <div><dt>&#x2699;</dt><dd>Settings: sound volume, background and milestone music volume, and a joystick layout: drag it to point the rocket, hold the burn button, set throttle on the right. In a ship with an FTL drive, the FTL button beside it engages or drops out of FTL</dd></div>
       </dl>
       <dl class="pp-keys pp-keyboard-only">
         <div><dt><kbd>Space</kbd></dt><dd>Engine on / off</dd></div>
