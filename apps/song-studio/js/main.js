@@ -1,14 +1,15 @@
 import { setBars, setBeatsPerBar, setScale, setStepsPerBeat, surprise } from './arrange.js';
 import { el, find } from './dom.js';
+import { DEMOS } from './demos.js';
 import { createPlayer, renderSong, wavBlob } from './engine.js';
 import { createGrid, noteAt } from './grid.js';
 import { INSTRUMENTS } from './instruments.js';
 import { NOTE_NAMES, SCALES } from './music.js';
-import { BAR_CHOICES, MAX_TRACKS, blankSong, createStore, decodeShare, demoSong, encodeShare, hasNotes, newTrack, stepSeconds, totalSteps, trackRows } from './song.js';
+import { BAR_CHOICES, MAX_TRACKS, blankSong, createStore, decodeShare, encodeShare, hasNotes, newTrack, stepSeconds, totalSteps, trackRows } from './song.js';
 
 const LIVE_KEYS = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'BracketLeft', 'BracketRight'];
 
-const store = createStore();
+const store = createStore(DEMOS[0].build);
 const player = createPlayer(() => store.song, (step) => grid.setPlayStep(step));
 const grid = createGrid({ labels: find('[data-labels]'), canvas: find('[data-grid]'), scroller: find('[data-scroller]') }, store, {
   onPreview: (track, row) => player.preview(track, row),
@@ -197,7 +198,13 @@ find('[data-new]').addEventListener('click', () => {
   store.replace(blankSong());
   say('Started a new song. Undo brings the old one back.');
 });
-find('[data-demo]').addEventListener('click', () => store.replace(demoSong()));
+const demoPicker = find('[data-demo]');
+demoPicker.append(...DEMOS.map((demo, index) => el('option', { value: index }, demo.name)));
+demoPicker.addEventListener('change', () => {
+  store.replace(DEMOS[demoPicker.value].build());
+  demoPicker.value = '';
+  say('Loaded a demo. Undo brings back your song.');
+});
 
 find('[data-share]').addEventListener('click', async () => {
   const url = `${location.origin}${location.pathname}#s=${await encodeShare(store.song)}`;

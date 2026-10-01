@@ -67,6 +67,13 @@
   max-width: 300px;
 }
 
+.ss-demo {
+  width: auto;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .ss-tempo {
   width: 150px;
 }
