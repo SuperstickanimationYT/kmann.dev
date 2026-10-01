@@ -4,7 +4,7 @@ const SAVE_VERSION = 1;
 const LEGACY_WORLD_NAME = 'My world';
 const WORLD_FILE_FORMAT = 'pangplanet-world';
 const SETTINGS_KEY = 'pangplanet-settings';
-const DEFAULT_SETTINGS = { volume: 1, touchControls: 'buttons' };
+const DEFAULT_SETTINGS = { volume: 1, ambientMusic: 0.5, milestoneMusic: 0.8, touchControls: 'buttons' };
 
 const worldSaveKey = (id) => `pangplanet-world-${id}`;
 const newWorldId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
