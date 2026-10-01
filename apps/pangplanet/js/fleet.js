@@ -136,11 +136,11 @@ export const hydrogenCapacity = (ship) => countParts(ship, 'hydrogenTank') * FUS
 
 export const hydrogenShare = (ship) => (hydrogenCapacity(ship) ? ship.hydrogen / hydrogenCapacity(ship) : null);
 
-export const canScoop = (ship, light) => countParts(ship, 'scoop') > 0 && light >= FUSION.scoopMinLight && ship.hydrogen < hydrogenCapacity(ship);
+export const canScoop = (ship, supply) => countParts(ship, 'scoop') > 0 && supply >= FUSION.scoopMinLight && ship.hydrogen < hydrogenCapacity(ship);
 
-export function scoopHydrogen(ship, light, seconds) {
-  if (!canScoop(ship, light)) return;
-  const lifted = countParts(ship, 'scoop') * FUSION.scoopPerSecond * light * seconds;
+export function scoopHydrogen(ship, supply, seconds) {
+  if (!canScoop(ship, supply)) return;
+  const lifted = countParts(ship, 'scoop') * FUSION.scoopPerSecond * supply * seconds;
   ship.hydrogen = Math.min(hydrogenCapacity(ship), ship.hydrogen + lifted);
 }
 

@@ -117,6 +117,7 @@ import {
   setGalaxySeed,
   stardustWorlds,
   starsWithin,
+  streamAt,
   streamSectors,
   systemAt,
   systemsWithin,
@@ -1606,12 +1607,14 @@ function runShips(seconds) {
     const piloted = ship === boardedShip();
     const light = piloted ? sunlight(ship.x, ship.y) : (ship.light ?? 0);
     chargeShip(ship, light, seconds);
-    scoopHydrogen(ship, light, seconds);
+    scoopHydrogen(ship, hydrogenSupply(ship, light), seconds);
     if (!piloted) runReactor(ship, ship, seconds);
   }
   noteScooping();
   noteLowHydrogen();
 }
+
+const hydrogenSupply = (ship, light) => Math.max(light, streamAt(ship.x, ship.y)?.density ?? 0);
 
 function noteLowHydrogen() {
   const ship = boardedShip();
@@ -1627,9 +1630,16 @@ function noteLowHydrogen() {
 
 function noteScooping() {
   const ship = boardedShip();
-  const scooping = Boolean(ship) && canScoop(ship, sunlight(ship.x, ship.y));
-  if (scooping && !game.scooping) hud.toast('The magnetic scoop is lifting hydrogen off the star. Closer is faster, but its gravity well is fatal.');
+  const light = ship ? sunlight(ship.x, ship.y) : 0;
+  const scooping = Boolean(ship) && canScoop(ship, hydrogenSupply(ship, light));
+  if (scooping && !game.scooping) hud.toast(scoopingNews(ship, light));
   game.scooping = scooping;
+}
+
+function scoopingNews(ship, light) {
+  const stream = streamAt(ship.x, ship.y);
+  if (stream && stream.density > light) return `The magnetic scoop is sweeping hydrogen out of the ${stream.name}, even at FTL.`;
+  return 'The magnetic scoop is lifting hydrogen off the star. Closer is faster, but its gravity well is fatal.';
 }
 
 function advanceOutposts(seconds) {

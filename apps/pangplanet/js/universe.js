@@ -150,7 +150,25 @@ function insideDwarf(dwarf, x, y) {
   return (along / dwarf.radius) ** 2 + (across / dwarf.width) ** 2 <= 1;
 }
 
-export const galaxyAt = (x, y) => (outsideGalaxy(x, y) ? (DWARFS.find((dwarf) => insideDwarf(dwarf, x, y)) ?? null) : MAIN_GALAXY);
+export const STREAMS = DWARFS.filter((dwarf) => dwarf.stream).map(({ stream: { lengthInSectors, widthInSectors, ...stream }, x, y, radius, axis }) => ({
+  ...stream,
+  x,
+  y,
+  axis,
+  reach: radius + lengthInSectors * SECTOR_SIZE,
+  halfWidth: (widthInSectors / 2) * SECTOR_SIZE,
+}));
+
+function insideStream(stream, x, y) {
+  const [dx, dy] = [x - stream.x, y - stream.y];
+  const along = dx * Math.cos(stream.axis) + dy * Math.sin(stream.axis);
+  const across = -dx * Math.sin(stream.axis) + dy * Math.cos(stream.axis);
+  return along >= 0 && along <= stream.reach && Math.abs(across) <= stream.halfWidth;
+}
+
+export const streamAt = (x, y) => STREAMS.find((stream) => insideStream(stream, x, y)) ?? null;
+
+export const galaxyAt =(x, y) => (outsideGalaxy(x, y) ? (DWARFS.find((dwarf) => insideDwarf(dwarf, x, y)) ?? null) : MAIN_GALAXY);
 
 const DWARF_CORES = new Map(DWARFS.filter((dwarf) => dwarf.blackHole).map((dwarf) => [`${dwarf.centerSector}`, [dwarfCore(dwarf, { x: dwarf.x, y: dwarf.y })]]));
 
