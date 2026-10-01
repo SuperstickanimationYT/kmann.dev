@@ -24,6 +24,8 @@ export const priceFromAliens = (relation, marketPrice) => (mood(relation) === 'f
 
 export const goodwillFor = (marketValue) => marketValue / ALIENS.tokensPerRelation;
 
+export const mindsLosing = (key, resource) => resource === 'stardust' || speciesByKey[key].wants === resource;
+
 export function tipPrice(relation) {
   const warmth = Math.max(0, (relation - ALIENS.friendlyAt) / (100 - ALIENS.friendlyAt));
   return Math.round((ALIENS.tip.science * (1 - ALIENS.tip.maxDiscount * warmth)) / 10) * 10;
