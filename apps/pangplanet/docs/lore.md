@@ -33,6 +33,17 @@ across thousands of worlds. In game, every world tagged with a species is a colo
 start with one rocket, a few galactokens and no GCT, which is why you decode it word by
 word.
 
+## Who minds what
+
+The three species don't care what humans do in their colony systems, only what humans take.
+
+- **Stardust** is the core of every species' best tech and is rare everywhere, so all three
+  guard it.
+- **Quillith** run their economy on crystals and treat their systems' crystal as reserves.
+- **Zorani** freighters cross the galaxy for gold. Gold from their own systems is theirs.
+- **Vessk** want charged batteries, which come from starlight, not the ground. Nothing in
+  their systems' rock matters to them.
+
 ## The Earth market
 
 A trade exchange run by human brokers, humanity's only trading post.

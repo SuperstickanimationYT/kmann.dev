@@ -47,12 +47,19 @@ hostility plays out through the economy and logistics. There is no combat.
   at -40.
 - Selling a species what it wants raises relations by 1 per 50 galactokens of market
   value.
-- Each crystal found in its territory costs 5 relation, each stardust 15.
+- A species minds you taking what it values from its colony systems (any system with one of
+  its homeworlds):
+  - Stardust: every species, 15 relation per find. All three build their best tech from it.
+  - Crystals: Quillith only, 5 relation per find.
+  - Gold: Zorani only. A mining rig in a Zorani system costs 1 relation per 50 galactokens
+    of gold collected, the same rate selling them gold earns. Deploying there warns you.
+  - Rigs keep the system they were deployed in; rigs from older saves cost nothing.
 
 ## Friendly perks
 
 - **Stardust tip**: pay science, and the species names the nearest system with stardust
-  that you haven't visited, within 5 sectors of its homeworld. The system is charted with
+  that you haven't visited, within 5 sectors of its homeworld and outside every colony
+  system, so mining it never costs relations. The system is charted with
   its stardust count filled in, so the violet ring shows on the galaxy map. The price
   starts at 200 science and drops as the species gets friendlier.
 - They pay 1.5× the market price for the resource they want. Everyone else pays the

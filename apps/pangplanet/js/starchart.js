@@ -88,7 +88,7 @@ export const isCharted = (chart, star) => chart.has(starKey(star));
 export function stardustTip(chart, homeworld, range) {
   const unknownStardust = ({ star, planets }) => {
     const known = chart.get(starKey(star));
-    return stardustWorlds(planets) > 0 && !known?.visited && !known?.stardust;
+    return stardustWorlds(planets) > 0 && !known?.visited && !known?.stardust && !planets.some((planet) => planet.territory);
   };
   const system = systemsWithin(homeworld.x, homeworld.y, range).find(unknownStardust);
   if (!system) return null;

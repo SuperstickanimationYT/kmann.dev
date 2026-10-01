@@ -1,5 +1,5 @@
 import { alienLines, canStudy, createGctLog, gctLogFromSave, gctLogToSave, hear, meaningOf, tollLines } from './gct.js';
-import { goodwillFor, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
+import { goodwillFor, mindsLosing, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
 import { createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, padBelow, placeOnSurface, setLandingPads, sphereOfInfluence, wrapAngle } from './physics.js';
@@ -493,7 +493,7 @@ const STOP_KINDS = {
     locate: () => deployedOrNull(game.rig),
     act: (stop, hauler, keep) => {
       loadRig(game.rig, hauler, keep);
-      hauler.gold += collectGold(game.rig);
+      hauler.gold += takeRigGold();
     },
     describe: () => `Mining rig on ${game.rig?.site || 'nowhere'}: load batteries, collect gold`,
   },
@@ -918,6 +918,8 @@ const actions = {
     if (!canDeployRig()) return;
     deployRig(game.rig, game.rocket);
     openPanel(null);
+    const owner = game.rig.territory;
+    if (owner && mindsLosing(owner, 'gold')) hud.toast(`This is a ${speciesByKey[owner].name} system. They want its gold, so every bit you take costs relations.`);
   },
   loadRig: () => {
     if (!game.rig) return;
@@ -925,11 +927,11 @@ const actions = {
     noteRecording('loadRig');
   },
   collectGold: () => {
-    if (game.rig) game.gold += collectGold(game.rig);
+    if (game.rig) game.gold += takeRigGold({ announce: true });
   },
   pickUpRig: () => {
     if (!game.rig) return;
-    game.gold += collectGold(game.rig);
+    game.gold += takeRigGold({ announce: true });
     game.rig.deployed = false;
     openPanel(null);
   },
@@ -1499,9 +1501,19 @@ function sampleTerms(homeworld) {
 
 function angerOwners(body, resource) {
   const anger = ALIENS.miningAnger[resource];
-  if (!body.territory || !anger) return '';
+  if (!body.territory || !anger || !mindsLosing(body.territory, resource)) return '';
   shiftRelation(game.relations, body.territory, -anger);
   return ` The ${speciesByKey[body.territory].name} noticed: relations -${anger}.`;
+}
+
+function takeRigGold({ announce = false } = {}) {
+  const collected = collectGold(game.rig);
+  const owner = game.rig.territory;
+  if (!collected || !owner || !mindsLosing(owner, 'gold')) return collected;
+  const anger = goodwillFor(collected * GOLD.sellPrice);
+  shiftRelation(game.relations, owner, -anger);
+  if (announce) hud.toast(`The ${speciesByKey[owner].name} want this system's gold for themselves: relations -${anger.toFixed(1)}.`);
+  return collected;
 }
 
 const streamAround = () => streamSectors([game.rocket, ...parkedDrones().map(dronePose)]);

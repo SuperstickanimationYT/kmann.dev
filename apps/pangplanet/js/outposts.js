@@ -52,7 +52,7 @@ export function rigFromSave({ charge, ...saved }) {
 
 export function deployRig(rig, rocket) {
   placeVessel(rig, rocket);
-  Object.assign(rig, { heading: rocket.heading, site: rocket.soi.name });
+  Object.assign(rig, { heading: rocket.heading, site: rocket.soi.name, territory: rocket.soi.territory ?? null });
 }
 
 export function loadRig(rig, power, keep = 0) {
