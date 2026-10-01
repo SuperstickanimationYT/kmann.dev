@@ -203,6 +203,7 @@ export const DWARF_GALAXIES = [
     stars: 'young',
     richness: { crystals: 0.5, stardust: 8, deposit: 2 },
     nebula: { name: 'Tarantula', kind: 'emission', offsetInSectors: [4, -3], radiusInSectors: 8 },
+    stream: { name: 'Magellanic Stream', lengthInSectors: 160, widthInSectors: 10, density: 0.2 },
     mapTint: [170, 200, 255],
   },
   {

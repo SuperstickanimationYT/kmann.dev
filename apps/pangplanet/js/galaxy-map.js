@@ -1,6 +1,6 @@
 import { speciesByKey } from './aliens.js';
 import { NEBULA_KINDS, nebulaeWithin } from './nebulae.js';
-import { DWARFS, GALAXY, SECTOR_SIZE } from './universe.js';
+import { DWARFS, GALAXY, SECTOR_SIZE, STREAMS } from './universe.js';
 
 const NEIGHBOURS = [GALAXY, ...DWARFS];
 const neighboursEdge = (axis, side) => side * Math.max(...NEIGHBOURS.map((galaxy) => side * (galaxy[axis] + side * galaxy.radius)));
@@ -23,6 +23,7 @@ const WORMHOLE_PURPLE = '#c58cff';
 const OBSERVATORY_TEAL = 'rgba(63, 224, 208, 0.35)';
 const NEBULA_ALPHA = { emission: 0.35, reflection: 0.35, dark: 0.75 };
 const NEBULA_NAMES_ABOVE_PX = 40;
+const STREAM_TINT = (alpha) => `rgba(255, 140, 180, ${alpha})`;
 const PUFF_VISIBLE_RADII = 1.5;
 const MY_SHIP_CYAN = '#5ee7ff';
 const MY_SHIP_PX = 5;
@@ -96,7 +97,23 @@ export function createGalaxyMap(canvas) {
     context.arc(mx, my, radius, 0, Math.PI * 2);
     context.fill();
     ring(GALAXY.x, GALAXY.y, GALAXY.radius, 'rgba(140, 170, 255, 0.45)', false);
+    STREAMS.forEach(drawStream);
     DWARFS.forEach(drawDwarf);
+  }
+
+  function drawStream({ name, x, y, axis, reach, halfWidth }) {
+    const [mx, my] = toMap(x, y);
+    const [lengthPx, halfWidthPx] = [reach * view.scale, halfWidth * view.scale];
+    context.save();
+    context.translate(mx, my);
+    context.rotate(-axis);
+    const fade = context.createLinearGradient(0, 0, lengthPx, 0);
+    fade.addColorStop(0, STREAM_TINT(0.5));
+    fade.addColorStop(1, STREAM_TINT(0.1));
+    context.fillStyle = fade;
+    context.fillRect(0, -halfWidthPx, lengthPx, halfWidthPx * 2);
+    context.restore();
+    nebulaLabel(name, x + Math.cos(axis) * reach * 0.6, y + Math.sin(axis) * reach * 0.6);
   }
 
   function drawDwarf({ name, x, y, radius, width, axis, mapTint: [r, g, b] }) {
