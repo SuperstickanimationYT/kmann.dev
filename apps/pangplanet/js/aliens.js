@@ -24,6 +24,11 @@ export const priceFromAliens = (relation, marketPrice) => (mood(relation) === 'f
 
 export const goodwillFor = (marketValue) => marketValue / ALIENS.tokensPerRelation;
 
+export function brokenPromise(leaving, { distance, landed }) {
+  if (landed && !leaving.startedLanded) return 'land';
+  return distance < leaving.distance - ALIENS.toll.turnBackSlack ? 'head back in' : null;
+}
+
 export const mindsLosing = (key, resource) => resource === 'stardust' || speciesByKey[key].wants === resource;
 
 export function tipPrice(relation) {

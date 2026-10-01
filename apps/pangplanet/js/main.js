@@ -1,5 +1,5 @@
 import { alienLines, canStudy, createGctLog, gctLogFromSave, gctLogToSave, hear, meaningOf, tollLines } from './gct.js';
-import { goodwillFor, mindsLosing, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
+import { brokenPromise, goodwillFor, mindsLosing, mood, priceFromAliens, shiftRelation, speciesByKey, startingRelations, tipPrice } from './aliens.js';
 import { createDrill, deployDrill, drillAwaitingClick, drillBusy, startDrilling, stopDrill, updateDrill } from './drill.js';
 import { createHud } from './hud.js';
 import { advance, altitude, bearingBetween, createRocket, forecast, padBelow, placeOnSurface, setLandingPads, sphereOfInfluence, wrapAngle } from './physics.js';
@@ -272,6 +272,7 @@ const game = {
   hostileHere: null,
   tollDue: null,
   tollSettledAt: null,
+  turningBack: null,
   ship: null,
   shipClock: nextShipDelayTicks(),
   gatewayOpen: false,
@@ -1205,6 +1206,12 @@ const actions = {
     shiftRelation(game.relations, due.species, -ALIENS.toll.refusalAnger);
     settleToll(`Refused the ${speciesByKey[due.species].name} toll. Relations -${ALIENS.toll.refusalAnger}.`);
   },
+  turnBack: () => {
+    const due = game.tollDue;
+    if (!due) return;
+    game.turningBack = { species: due.species, star: starKey(due.star), distance: distanceToStar(due), startedLanded: game.rocket.landed };
+    settleToll(`Told the ${speciesByKey[due.species].name} you're leaving. Keep heading away from their star and don't land in their system, or it counts as refusing.`);
+  },
   alienBuyFuel: () => {
     const market = dockedMarket();
     const { rocket } = game;
@@ -1872,9 +1879,30 @@ function chartVisits() {
   surveyTerritory();
 }
 
+const distanceToStar = (home) => Math.hypot(game.rocket.x - home.star.x, game.rocket.y - home.star.y);
+
+function watchTurningBack() {
+  const leaving = game.turningBack;
+  const home = game.hostileHere;
+  if (!leaving) return;
+  if (!home || starKey(home.star) !== leaving.star) {
+    game.turningBack = null;
+    if (!home) hud.toast(`You left the ${speciesByKey[leaving.species].name} system without trouble.`);
+    return;
+  }
+  if (!game.rocket.landed) leaving.startedLanded = false;
+  leaving.distance = Math.max(leaving.distance, distanceToStar(home));
+  const broken = brokenPromise(leaving, { distance: distanceToStar(home), landed: game.rocket.landed });
+  if (!broken) return;
+  game.turningBack = null;
+  shiftRelation(game.relations, leaving.species, -ALIENS.toll.refusalAnger);
+  hud.toast(`The ${speciesByKey[leaving.species].name} saw you ${broken} after promising to leave. Counted as refusing: relations -${ALIENS.toll.refusalAnger}.`);
+}
+
 function surveyTerritory() {
   const { rocket } = game;
   game.hostileHere = rocket.destroyed ? null : hostileNear(rocket);
+  watchTurningBack();
   if (!game.hostileHere) {
     game.tollSettledAt = null;
     return;
@@ -2931,6 +2959,7 @@ function snapshot() {
     relations: game.relations,
     gct: gctLogToSave(game.gct),
     tollSettledAt: game.tollSettledAt,
+    turningBack: game.turningBack,
     gatewayOpen: game.gatewayOpen,
     wormholeLinks: [...game.wormholeLinks],
     mined: [...game.mined],
@@ -2984,6 +3013,7 @@ function restore(saved) {
   game.relations = { ...startingRelations(), ...saved.relations };
   game.gct = gctLogFromSave(saved.gct);
   game.tollSettledAt = saved.tollSettledAt ?? null;
+  game.turningBack = saved.turningBack ?? null;
   game.gatewayOpen = saved.gatewayOpen ?? false;
   game.wormholeLinks = new Map(saved.wormholeLinks ?? []);
   game.mined = new Map(saved.mined ?? []);

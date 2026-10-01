@@ -219,6 +219,7 @@ export function createHud(root, actions, { cheats }) {
     lexiconEmpty: find('[data-lexicon-empty]'),
     payToll: find('[data-pay-toll]'),
     refuseToll: find('[data-refuse-toll]'),
+    turnBack: find('[data-turn-back]'),
     outpostBan: find('[data-outpost-ban]'),
     raidShip: find('[data-raid-ship]'),
     alienMarket: find('[data-alien-market]'),
@@ -313,6 +314,7 @@ export function createHud(root, actions, { cheats }) {
     sellToAliens: actions.sellToAliens,
     payToll: actions.payToll,
     refuseToll: actions.refuseToll,
+    turnBack: actions.turnBack,
     raidShip: actions.raidShip,
     alienBuyFuel: actions.alienBuyFuel,
     alienFillTank: actions.alienFillTank,
@@ -967,7 +969,7 @@ export function createHud(root, actions, { cheats }) {
     if (!toll) return;
     parts.tollGct.style.color = toll.colour;
     showGct(parts.tollGct, toll, gctKnown);
-    setText(parts.tollDemand, `The ${toll.name} demand ${toll.price} galactokens to pass through their system. Refusing angers them.`);
+    setText(parts.tollDemand, `The ${toll.name} demand ${toll.price} galactokens to pass through their system. Refusing angers them. Turning back is free if you leave without landing.`);
     parts.payToll.disabled = !toll.canPay;
   }
 

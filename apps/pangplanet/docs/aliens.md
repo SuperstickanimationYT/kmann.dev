@@ -72,8 +72,14 @@ Hostile species refuse to give tips. They never sell false ones.
 A hostile species' system is the space within 4M of its homeworld star, the range that
 counts as visiting.
 
-- **Toll**: entering their system opens a toll panel: pay 300 galactokens, or refuse for
-  -10 relation. Closing the panel refuses. Asked once per visit; leaving resets it.
+- **Toll**: entering their system opens a toll panel with three choices:
+  - Pay 300 galactokens.
+  - Turn back: free, as long as you leave. Moving more than 200k closer to their star than
+    your farthest point since turning back, or landing anywhere in the system, counts as
+    refusing. Warping or FTL out is fine.
+  - Refuse: -10 relation. Closing the panel refuses.
+
+  Asked once per visit; leaving resets it.
 - **Hauler raids**: a hauler arriving at a stop in their system has a 30% chance of losing
   half its gold and charge, then pauses 60s (stall kind `raided`).
 - **No outposts**: satellites, banks, rigs, antennas and drones can't be deployed in their
