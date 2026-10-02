@@ -56,6 +56,22 @@ function figureEight(exponent) {
   );
 }
 
+const DISK = { starMass: 1000, planetesimals: 1000, planetesimalMass: 0.015, inner: 70, outer: 320, stirring: 0.03 };
+
+function protoplanetaryDisk(exponent) {
+  const star = createBody({ x: 0, y: 0, mass: DISK.starMass });
+  const planetesimals = Array.from({ length: DISK.planetesimals }, () => {
+    const distance = DISK.inner + Math.random() * (DISK.outer - DISK.inner);
+    const bearing = Math.random() * Math.PI * 2;
+    const planetesimal = orbiting(star, distance, bearing, DISK.planetesimalMass, exponent);
+    const speed = Math.hypot(planetesimal.vx, planetesimal.vy);
+    planetesimal.vx += (Math.random() - 0.5) * DISK.stirring * speed;
+    planetesimal.vy += (Math.random() - 0.5) * DISK.stirring * speed;
+    return planetesimal;
+  });
+  return [star, ...planetesimals];
+}
+
 function centredAtRest(bodies) {
   const free = bodies.filter((body) => !body.pinned);
   const mass = bodies.reduce((sum, body) => sum + body.mass, 0);
@@ -74,5 +90,6 @@ export const SCENES = {
   starAndPlanets: { name: 'Star and planets', build: (exponent) => centredAtRest(starAndPlanets(exponent)) },
   binaryStars: { name: 'Binary stars', build: (exponent) => centredAtRest(binaryStars(exponent)) },
   figureEight: { name: 'Three-body figure eight (1/r²)', build: figureEight },
+  protoplanetaryDisk: { name: 'Protoplanetary disk', build: (exponent) => centredAtRest(protoplanetaryDisk(exponent)) },
   empty: { name: 'Empty space', build: () => [] },
 };

@@ -9,9 +9,13 @@ const TAP_MAX_PX = 6;
 const TAP_MAX_MS = 400;
 const GRAB_SLACK_PX = 10;
 const LAUNCH_SPEED_PER_UNIT = 1.2;
-const MAX_STEPS_PER_FRAME = 400;
+const PHYSICS_SHARE_OF_FRAME = 0.6;
+const PHYSICS_MS_PER_FRAME = { least: 8, most: 40 };
+const SPEED_SMOOTHING = 0.9;
+const SLOWED_BELOW = 0.9;
 const PREDICTION_SECONDS = 4;
-const PREDICTION_PAIR_BUDGET = 400000;
+const PREDICTION_PAIR_BUDGET = 250000;
+const PREDICTION_BODIES = 24;
 const THROW_SMOOTHING = 0.5;
 const WHEEL_ZOOM = 1.0015;
 const TEST_BALL_MASS = 0.1;
@@ -169,10 +173,13 @@ function launchVelocity() {
   return { vx: (launch.body.x - launch.pullX) * LAUNCH_SPEED_PER_UNIT, vy: (launch.body.y - launch.pullY) * LAUNCH_SPEED_PER_UNIT };
 }
 
+const heaviest = (count) => (bodies.length <= count ? bodies : [...bodies].sort((a, b) => b.mass - a.mass).slice(0, count));
+
 function predictPath() {
-  const world = [...cloneBodies(bodies), { ...launch.body, ...launchVelocity(), trail: [] }];
+  const world = [...cloneBodies(heaviest(PREDICTION_BODIES)), { ...launch.body, ...launchVelocity(), trail: [] }];
   const ghost = world.at(-1);
-  const steps = Math.min(PREDICTION_SECONDS / STEP_SECONDS, PREDICTION_PAIR_BUDGET / Math.max(1, world.length ** 2));
+  const pairs = (world.length * (world.length - 1)) / 2;
+  const steps = Math.min(PREDICTION_SECONDS / STEP_SECONDS, PREDICTION_PAIR_BUDGET / Math.max(1, pairs));
   const path = [[ghost.x, ghost.y]];
   for (let i = 0; i < steps && world.includes(ghost); i++) {
     const [beforeX, beforeY] = [ghost.x, ghost.y];
@@ -253,7 +260,7 @@ function pointerMove(event) {
   }
   if (launch) {
     Object.assign(launch, { pullX: x, pullY: y });
-    predictPath();
+    if (settings.paused) predictPath();
   }
 }
 
@@ -399,7 +406,7 @@ function bindKeys() {
   });
 }
 
-const counted = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+const counted = (count, one, many) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
 function showStatus() {
   const paused = settings.paused ? ' · paused' : '';
@@ -407,24 +414,29 @@ function showStatus() {
   const description = inCones()
     ? `${counted(cones, 'mass', 'masses')} · ${counted(bodies.length - cones, 'ball', 'balls')} · 2+1 relativity`
     : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}`;
-  find('[data-status]').textContent = description + paused;
+  const slowed = !settings.paused && achievedSpeed < settings.speed * SLOWED_BELOW ? ` · slowed to ${achievedSpeed.toFixed(2)}×` : '';
+  find('[data-status]').textContent = description + paused + slowed;
 }
 
 let lastTime = null;
 let backlog = 0;
+let achievedSpeed = 1;
 
 function frame(time) {
   const seconds = lastTime === null ? 0 : Math.min(0.1, (time - lastTime) / 1000);
   lastTime = time;
   if (!settings.paused) {
     backlog += seconds * settings.speed;
+    const budget = Math.min(PHYSICS_MS_PER_FRAME.most, Math.max(PHYSICS_MS_PER_FRAME.least, seconds * 1000 * PHYSICS_SHARE_OF_FRAME));
+    const deadline = performance.now() + budget;
     let steps = 0;
-    while (backlog >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
+    while (backlog >= STEP_SECONDS && performance.now() < deadline) {
       stepWorld(bodies, settings);
       backlog -= STEP_SECONDS;
       steps++;
     }
-    if (steps === MAX_STEPS_PER_FRAME) backlog = 0;
+    if (backlog >= STEP_SECONDS) backlog = 0;
+    if (seconds > 0) achievedSpeed = achievedSpeed * SPEED_SMOOTHING + ((steps * STEP_SECONDS) / seconds) * (1 - SPEED_SMOOTHING);
     if (inCones()) dropFarTestBalls();
     if (selected && !bodies.includes(selected)) select(null);
     if (grab && !bodies.includes(grab.body)) grab = null;
