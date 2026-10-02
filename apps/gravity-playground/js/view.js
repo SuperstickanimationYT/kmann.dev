@@ -1,5 +1,5 @@
 import { wedgeOf } from './cones.js';
-import { radiusOf } from './physics.js';
+import { isCollisionless, KINDS, radiusOf } from './physics.js';
 
 const GRID_SPACING = 100;
 const TRAIL_POINTS = 400;
@@ -9,6 +9,10 @@ const MIN_DRAWN_RADIUS_PX = 4;
 const DUST_BELOW_MASS = 0.1;
 const DUST_RADIUS_PX = 1.2;
 const DUST = 'rgba(190, 170, 140, 0.8)';
+const STARLIGHT = 'rgba(235, 240, 255, 0.85)';
+const STAR_RADIUS_PX = 1.1;
+const DARK_MATTER = 'rgba(165, 125, 255, 0.28)';
+const DARK_MATTER_RADIUS_PX = 1.6;
 const MASS_COLOURS = [
   [1, [143, 163, 184]],
   [30, [79, 155, 224]],
@@ -37,11 +41,13 @@ function colourOf(mass) {
 
 const rgb = ([r, g, b], alpha = 1) => `rgba(${r}, ${g}, ${b}, ${alpha})`;
 
-const isDust = (body) => !body.test && body.mass < DUST_BELOW_MASS;
+const isDust = (body) => !body.test && body.kind === KINDS.solid && body.mass < DUST_BELOW_MASS;
+
+const isSpeck = (body) => !body.test && (isDust(body) || isCollisionless(body));
 
 export function noteTrails(bodies) {
   for (const body of bodies) {
-    if (isDust(body)) continue;
+    if (isSpeck(body)) continue;
     const last = body.trail.at(-1);
     if (last && Math.hypot(last[0] - body.x, last[1] - body.y) < TRAIL_MIN_GAP) continue;
     body.trail.push([body.x, body.y]);
@@ -182,13 +188,13 @@ export function createView(canvas) {
     context.fillText(`${Math.round((wedge.angle * 180) / Math.PI)}° missing`, ...labelAt);
   }
 
-  function drawDust(bodies) {
-    context.fillStyle = DUST;
+  function drawSpecks(bodies, belongs, colour, radiusOfSpeck) {
+    context.fillStyle = colour;
     context.beginPath();
     for (const body of bodies) {
-      if (!isDust(body)) continue;
+      if (!belongs(body)) continue;
       const [sx, sy] = toScreen(body.x, body.y);
-      const radius = Math.max(DUST_RADIUS_PX, radiusOf(body.mass) * camera.zoom);
+      const radius = radiusOfSpeck(body);
       if (sx < -radius || sy < -radius || sx > width + radius || sy > height + radius) continue;
       context.moveTo(sx + radius, sy);
       context.arc(sx, sy, radius, 0, Math.PI * 2);
@@ -260,8 +266,10 @@ export function createView(canvas) {
     drawGrid();
     if (cutAngle !== null) for (const cone of bodies.filter((body) => !body.test)) drawWedge(cone, cutAngle);
     if (trails) bodies.forEach(drawTrail);
-    drawDust(bodies);
-    for (const body of bodies) if (!isDust(body)) drawBody(body, { selected: body === selected });
+    drawSpecks(bodies, (body) => !body.test && body.kind === KINDS.darkMatter, DARK_MATTER, () => DARK_MATTER_RADIUS_PX);
+    drawSpecks(bodies, isDust, DUST, (body) => Math.max(DUST_RADIUS_PX, radiusOf(body.mass) * camera.zoom));
+    drawSpecks(bodies, (body) => !body.test && body.kind === KINDS.star, STARLIGHT, () => STAR_RADIUS_PX);
+    for (const body of bodies) if (!isSpeck(body)) drawBody(body, { selected: body === selected });
     if (launch) drawLaunch(launch);
   }
 
@@ -270,7 +278,7 @@ export function createView(canvas) {
     let nearest = null;
     let nearestGap = Infinity;
     for (const body of bodies) {
-      if (isDust(body)) continue;
+      if (isSpeck(body)) continue;
       const gap = Math.hypot(body.x - x, body.y - y) * camera.zoom - Math.max(MIN_DRAWN_RADIUS_PX, radiusOf(body.mass) * camera.zoom);
       if (gap < slackPx && gap < nearestGap) {
         nearest = body;

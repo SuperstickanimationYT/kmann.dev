@@ -79,6 +79,8 @@
           <input type="range" name="exponent" min="-1" max="4" step="0.1" value="2">
         </label>
         <p class="gp-note">In a truly 2D universe gravity would fall off as 1/r. Real 3D gravity is 1/r². Only 1/r² (and r) give closed elliptical orbits; others make orbits precess into rosettes, and 1/r³ or steeper can't hold a stable orbit at all.</p>
+        <label class="gp-toggle"><input type="checkbox" name="mond"> MOND: strengthen weak pulls</label>
+        <p class="gp-note">MOND (Modified Newtonian Dynamics) makes gravity stronger wherever it is weak, which speeds up outer orbits in galaxies without dark matter. Here it boosts each body's total pull, an approximation that doesn't conserve momentum exactly. Reload a galaxy after switching so its orbits match.</p>
       </fieldset>
 
       <fieldset>
@@ -131,6 +133,11 @@
           <li>Drag a body: grab and throw it. Click one: select it.</li>
           <li>Right-click a body: delete it. Right- or middle-drag: pan. Wheel: zoom.</li>
           <li>Keys: <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>T</kbd> trails, <kbd>F</kbd> fit view, <kbd>Esc</kbd> deselect.</li>
+        </ul>
+        <p><strong>Galaxies</strong></p>
+        <ul>
+          <li>Stars (white specks) and dark matter (faint violet) pass through each other instead of merging, and can't be grabbed.</li>
+          <li>Compare "Galaxy" with "Galaxy without dark matter": without a halo the disk forms a bar and flings its outskirts away. Tick MOND and reload the bare galaxy to see whether MOND holds it together instead.</li>
         </ul>
         <p><strong>2+1 relativity</strong></p>
         <ul>

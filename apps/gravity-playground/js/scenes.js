@@ -1,4 +1,4 @@
-import { circularVelocity, createBody } from './physics.js';
+import { circularVelocity, createBody, KINDS, updatePulls } from './physics.js';
 
 const FIGURE_EIGHT = {
   size: 160,
@@ -72,6 +72,59 @@ function protoplanetaryDisk(exponent) {
   return [star, ...planetesimals];
 }
 
+const GALAXY = { stars: 700, diskMass: 840, diskScale: 50, diskCutoff: 0.98, starStirring: 0.1, darkParticles: 500, haloMass: 4000, haloRadius: 350 };
+const MERGER = { starsEach: 500, darkParticlesEach: 300, separation: 1100, offset: 350, closingSpeed: 160 };
+
+const pointAt = (distance, bearing) => ({ x: Math.cos(bearing) * distance, y: Math.sin(bearing) * distance });
+
+function scatterGalaxy({ darkMatter, stars, darkParticles }) {
+  const disk = Array.from({ length: stars }, () => {
+    const distance = -GALAXY.diskScale * Math.log(1 - Math.random() * GALAXY.diskCutoff);
+    return createBody({ ...pointAt(distance, Math.random() * Math.PI * 2), mass: GALAXY.diskMass / stars, kind: KINDS.star });
+  });
+  if (!darkMatter) return disk;
+  const halo = Array.from({ length: darkParticles }, () =>
+    createBody({ ...pointAt(Math.random() * GALAXY.haloRadius, Math.random() * Math.PI * 2), mass: GALAXY.haloMass / darkParticles, kind: KINDS.darkMatter }),
+  );
+  return [...disk, ...halo];
+}
+
+function setOrbiting(body, clockwise) {
+  const distance = Math.hypot(body.x, body.y);
+  const inward = -(body.ax * body.x + body.ay * body.y) / distance;
+  const speed = Math.sqrt(Math.max(0, inward * distance));
+  if (body.kind === KINDS.darkMatter) {
+    const heading = Math.random() * Math.PI * 2;
+    Object.assign(body, { vx: Math.cos(heading) * speed, vy: Math.sin(heading) * speed });
+    return;
+  }
+  const turn = clockwise ? -1 : 1;
+  const stir = () => (Math.random() - 0.5) * 2 * GALAXY.starStirring * speed;
+  Object.assign(body, { vx: (-turn * body.y * speed) / distance + stir(), vy: (turn * body.x * speed) / distance + stir() });
+}
+
+function galaxy(law, { darkMatter = true, clockwise = false, stars = GALAXY.stars, darkParticles = GALAXY.darkParticles } = {}) {
+  const bodies = scatterGalaxy({ darkMatter, stars, darkParticles });
+  updatePulls(bodies, law);
+  bodies.forEach((body) => setOrbiting(body, clockwise));
+  return bodies;
+}
+
+function moved(bodies, { x, y, vx, vy }) {
+  for (const body of bodies) Object.assign(body, { x: body.x + x, y: body.y + y, vx: body.vx + vx, vy: body.vy + vy });
+  return bodies;
+}
+
+function galaxyMerger(law, { darkMatter }) {
+  const { starsEach: stars, darkParticlesEach: darkParticles, separation, offset, closingSpeed } = MERGER;
+  const first = galaxy(law, { darkMatter, stars, darkParticles });
+  const second = galaxy(law, { darkMatter, stars, darkParticles, clockwise: true });
+  return [
+    ...moved(first, { x: -separation / 2, y: -offset / 2, vx: closingSpeed / 2, vy: 0 }),
+    ...moved(second, { x: separation / 2, y: offset / 2, vx: -closingSpeed / 2, vy: 0 }),
+  ];
+}
+
 function centredAtRest(bodies) {
   const free = bodies.filter((body) => !body.pinned);
   const mass = bodies.reduce((sum, body) => sum + body.mass, 0);
@@ -87,9 +140,13 @@ function centredAtRest(bodies) {
 }
 
 export const SCENES = {
-  starAndPlanets: { name: 'Star and planets', build: (exponent) => centredAtRest(starAndPlanets(exponent)) },
-  binaryStars: { name: 'Binary stars', build: (exponent) => centredAtRest(binaryStars(exponent)) },
-  figureEight: { name: 'Three-body figure eight (1/r²)', build: figureEight },
-  protoplanetaryDisk: { name: 'Protoplanetary disk', build: (exponent) => centredAtRest(protoplanetaryDisk(exponent)) },
+  starAndPlanets: { name: 'Star and planets', build: ({ exponent }) => centredAtRest(starAndPlanets(exponent)) },
+  binaryStars: { name: 'Binary stars', build: ({ exponent }) => centredAtRest(binaryStars(exponent)) },
+  figureEight: { name: 'Three-body figure eight (1/r²)', build: ({ exponent }) => figureEight(exponent) },
+  protoplanetaryDisk: { name: 'Protoplanetary disk', build: ({ exponent }) => centredAtRest(protoplanetaryDisk(exponent)) },
+  galaxy: { name: 'Galaxy', build: (law) => centredAtRest(galaxy(law)) },
+  bareGalaxy: { name: 'Galaxy without dark matter', build: (law) => centredAtRest(galaxy(law, { darkMatter: false })) },
+  galaxyMerger: { name: 'Galaxy merger', build: (law) => centredAtRest(galaxyMerger(law, { darkMatter: true })) },
+  bareGalaxyMerger: { name: 'Galaxy merger without dark matter', build: (law) => centredAtRest(galaxyMerger(law, { darkMatter: false })) },
   empty: { name: 'Empty space', build: () => [] },
 };
