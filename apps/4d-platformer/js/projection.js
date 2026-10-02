@@ -1,5 +1,6 @@
 import { add, dot, lerpPoint, scale, sub } from './vec.js';
 import { boxSegments } from './shapes.js';
+import { platformStyle } from './paint.js';
 import { playerBox, RESPAWN_BELOW_Y, surfaceBelow, UP, Y } from './world.js';
 
 export const FOV_HALF_ANGLE_TAN = 1;
@@ -36,7 +37,7 @@ function sceneSegments(game, settings) {
   const segments = [];
   const addAll = (pairs, style) => pairs.forEach(([a, b]) => segments.push({ a, b, style }));
   if (settings.floor) addAll(world.floor.segments, { kind: 'floor' });
-  world.platforms.forEach(p => addAll(p.segments, { kind: 'platform', hue: p.hue }));
+  world.platforms.forEach(p => addAll(p.segments, platformStyle(p)));
   const { min, max } = playerBox(game);
   const bodyCenter = min.map((v, axis) => (v + max[axis]) / 2);
   const bodyHalf = min.map((v, axis) => (max[axis] - v) / 2);

@@ -1,7 +1,7 @@
 import { add, cross, dot, normalize, scale, sub } from './vec.js';
 import { hypercubeEdges, hypercubeVertices } from './shapes.js';
 import { dropLine, FOV_HALF_ANGLE_TAN, LINE_SUBDIVISIONS, retinaSegments, visiblePlatformCenters } from './projection.js';
-import { drawCaption, drawLabel, FRAME_COLOR, labelColor, lineColor, strokeSegment } from './paint.js';
+import { drawCaption, drawLabel, FRAME_COLOR, labelColor, lineColor, platformStyle, solidColor, strokeSegment } from './paint.js';
 import { playerBox, RIGHT, UP, Y } from './world.js';
 
 const OUTSIDE_CAMERA_POSITION = [-13, 13, -11];
@@ -15,6 +15,7 @@ const DROP_OVER_VOID_COLOR = 'hsl(0 90% 60%)';
 const PICTURE_LIGHTNESS = 68;
 const PANEL_MARGIN = 16;
 const CAPTION_SPACE = 20;
+const BANNER_SPACE = 22;
 const SQUARE_CORNERS = hypercubeVertices([0, 0], [1, 1]);
 const SQUARE_EDGES = hypercubeEdges(2);
 
@@ -49,13 +50,6 @@ function boxFaces(min, max) {
     }
   }
   return faces;
-}
-
-function solidColor(body, shade, colorOn) {
-  if (body.kind === 'floor') return `hsl(210 10% ${12 + 22 * shade}%)`;
-  if (body.kind === 'player') return `hsl(0 0% ${45 + 45 * shade}%)`;
-  if (!colorOn) return `hsl(210 30% ${25 + 40 * shade}%)`;
-  return `hsl(${body.hue} 70% ${22 + 38 * shade}%)`;
 }
 
 function fillSolidBox(ctx, project, body, colorOn) {
@@ -122,7 +116,7 @@ function drawOutsideView(ctx, panel, game, camera, settings) {
 
   if (settings.floor) fillSolidBox(ctx, project, { ...game.world.floor, kind: 'floor' }, settings.color);
   const bodies = [
-    ...game.world.platforms.map(p => ({ min: p.min, max: p.max, kind: 'platform', hue: p.hue })),
+    ...game.world.platforms.map(p => ({ min: p.min, max: p.max, ...platformStyle(p) })),
     { ...playerBox(game), kind: 'player' },
   ].sort((a, b) => distanceFromViewer(b) - distanceFromViewer(a));
   bodies.forEach(body => fillSolidBox(ctx, project, body, settings.color));
@@ -171,7 +165,7 @@ function drawPicture(ctx, panel, game, camera, settings) {
 
 function layoutPanels(view, showOutside) {
   const left = PANEL_MARGIN;
-  const top = PANEL_MARGIN + CAPTION_SPACE;
+  const top = PANEL_MARGIN + BANNER_SPACE + CAPTION_SPACE;
   const width = view.width - 2 * PANEL_MARGIN;
   const height = view.height - top - PANEL_MARGIN;
   const count = showOutside ? 2 : 1;
