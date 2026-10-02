@@ -119,6 +119,11 @@
           <span>Scene</span>
           <select name="scene" data-scene></select>
         </label>
+        <label class="gp-field">
+          <span>Stars per galaxy <output data-galaxy-stars-label></output></span>
+          <input type="range" name="galaxyStars" min="0" max="1000" step="1">
+        </label>
+        <p class="gp-note">Used when a galaxy scene loads. More stars show finer structure such as spiral arms, but run slower.</p>
         <div class="gp-actions">
           <button type="button" data-load-scene>Load scene</button>
         </div>

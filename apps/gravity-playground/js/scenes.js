@@ -72,19 +72,22 @@ function protoplanetaryDisk(exponent) {
   return [star, ...planetesimals];
 }
 
-const GALAXY = { stars: 700, diskMass: 840, diskScale: 50, diskCutoff: 0.98, starStirring: 0.1, darkParticles: 500, haloMass: 4000, haloRadius: 350 };
-const MERGER = { starsEach: 500, darkParticlesEach: 300, separation: 1100, offset: 350, closingSpeed: 160 };
+export const GALAXY = { stars: 700, diskMass: 840, diskScale: 50, diskCutoff: 0.98, starStirring: 0.1, starSoftening: 24, darkParticles: 500, darkSoftening: 60, haloMass: 4000, haloRadius: 350 };
+const MERGER = { darkParticlesEach: 300, separation: 1100, offset: 350, closingSpeed: 160 };
 
 const pointAt = (distance, bearing) => ({ x: Math.cos(bearing) * distance, y: Math.sin(bearing) * distance });
 
+const starSofteningFor = (stars) => GALAXY.starSoftening * Math.sqrt(GALAXY.stars / stars);
+
 function scatterGalaxy({ darkMatter, stars, darkParticles }) {
+  const softening = starSofteningFor(stars);
   const disk = Array.from({ length: stars }, () => {
     const distance = -GALAXY.diskScale * Math.log(1 - Math.random() * GALAXY.diskCutoff);
-    return createBody({ ...pointAt(distance, Math.random() * Math.PI * 2), mass: GALAXY.diskMass / stars, kind: KINDS.star });
+    return createBody({ ...pointAt(distance, Math.random() * Math.PI * 2), mass: GALAXY.diskMass / stars, kind: KINDS.star, softening });
   });
   if (!darkMatter) return disk;
   const halo = Array.from({ length: darkParticles }, () =>
-    createBody({ ...pointAt(Math.random() * GALAXY.haloRadius, Math.random() * Math.PI * 2), mass: GALAXY.haloMass / darkParticles, kind: KINDS.darkMatter }),
+    createBody({ ...pointAt(Math.random() * GALAXY.haloRadius, Math.random() * Math.PI * 2), mass: GALAXY.haloMass / darkParticles, kind: KINDS.darkMatter, softening: GALAXY.darkSoftening }),
   );
   return [...disk, ...halo];
 }
@@ -115,8 +118,8 @@ function moved(bodies, { x, y, vx, vy }) {
   return bodies;
 }
 
-function galaxyMerger(law, { darkMatter }) {
-  const { starsEach: stars, darkParticlesEach: darkParticles, separation, offset, closingSpeed } = MERGER;
+function galaxyMerger(law, { darkMatter, stars }) {
+  const { darkParticlesEach: darkParticles, separation, offset, closingSpeed } = MERGER;
   const first = galaxy(law, { darkMatter, stars, darkParticles });
   const second = galaxy(law, { darkMatter, stars, darkParticles, clockwise: true });
   return [
@@ -144,9 +147,9 @@ export const SCENES = {
   binaryStars: { name: 'Binary stars', build: ({ exponent }) => centredAtRest(binaryStars(exponent)) },
   figureEight: { name: 'Three-body figure eight (1/r²)', build: ({ exponent }) => figureEight(exponent) },
   protoplanetaryDisk: { name: 'Protoplanetary disk', build: ({ exponent }) => centredAtRest(protoplanetaryDisk(exponent)) },
-  galaxy: { name: 'Galaxy', build: (law) => centredAtRest(galaxy(law)) },
-  bareGalaxy: { name: 'Galaxy without dark matter', build: (law) => centredAtRest(galaxy(law, { darkMatter: false })) },
-  galaxyMerger: { name: 'Galaxy merger', build: (law) => centredAtRest(galaxyMerger(law, { darkMatter: true })) },
-  bareGalaxyMerger: { name: 'Galaxy merger without dark matter', build: (law) => centredAtRest(galaxyMerger(law, { darkMatter: false })) },
+  galaxy: { name: 'Galaxy', build: (settings) => centredAtRest(galaxy(settings, { stars: settings.galaxyStars })) },
+  bareGalaxy: { name: 'Galaxy without dark matter', build: (settings) => centredAtRest(galaxy(settings, { darkMatter: false, stars: settings.galaxyStars })) },
+  galaxyMerger: { name: 'Galaxy merger', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: true, stars: settings.galaxyStars })) },
+  bareGalaxyMerger: { name: 'Galaxy merger without dark matter', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: false, stars: settings.galaxyStars })) },
   empty: { name: 'Empty space', build: () => [] },
 };
