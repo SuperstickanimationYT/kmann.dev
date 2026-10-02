@@ -6,6 +6,9 @@ const TRAIL_POINTS = 400;
 const TRAIL_MIN_GAP = 2;
 const GLOW_FROM_MASS = 300;
 const MIN_DRAWN_RADIUS_PX = 4;
+const DUST_BELOW_MASS = 0.1;
+const DUST_RADIUS_PX = 1.2;
+const DUST = 'rgba(190, 170, 140, 0.8)';
 const MASS_COLOURS = [
   [1, [143, 163, 184]],
   [30, [79, 155, 224]],
@@ -34,8 +37,11 @@ function colourOf(mass) {
 
 const rgb = ([r, g, b], alpha = 1) => `rgba(${r}, ${g}, ${b}, ${alpha})`;
 
+const isDust = (body) => !body.test && body.mass < DUST_BELOW_MASS;
+
 export function noteTrails(bodies) {
   for (const body of bodies) {
+    if (isDust(body)) continue;
     const last = body.trail.at(-1);
     if (last && Math.hypot(last[0] - body.x, last[1] - body.y) < TRAIL_MIN_GAP) continue;
     body.trail.push([body.x, body.y]);
@@ -176,6 +182,20 @@ export function createView(canvas) {
     context.fillText(`${Math.round((wedge.angle * 180) / Math.PI)}° missing`, ...labelAt);
   }
 
+  function drawDust(bodies) {
+    context.fillStyle = DUST;
+    context.beginPath();
+    for (const body of bodies) {
+      if (!isDust(body)) continue;
+      const [sx, sy] = toScreen(body.x, body.y);
+      const radius = Math.max(DUST_RADIUS_PX, radiusOf(body.mass) * camera.zoom);
+      if (sx < -radius || sy < -radius || sx > width + radius || sy > height + radius) continue;
+      context.moveTo(sx + radius, sy);
+      context.arc(sx, sy, radius, 0, Math.PI * 2);
+    }
+    context.fill();
+  }
+
   function drawBody(body, { selected, ghost = false }) {
     if (body.test) {
       drawTestBall(body, { selected, ghost });
@@ -240,7 +260,8 @@ export function createView(canvas) {
     drawGrid();
     if (cutAngle !== null) for (const cone of bodies.filter((body) => !body.test)) drawWedge(cone, cutAngle);
     if (trails) bodies.forEach(drawTrail);
-    for (const body of bodies) drawBody(body, { selected: body === selected });
+    drawDust(bodies);
+    for (const body of bodies) if (!isDust(body)) drawBody(body, { selected: body === selected });
     if (launch) drawLaunch(launch);
   }
 
@@ -249,6 +270,7 @@ export function createView(canvas) {
     let nearest = null;
     let nearestGap = Infinity;
     for (const body of bodies) {
+      if (isDust(body)) continue;
       const gap = Math.hypot(body.x - x, body.y - y) * camera.zoom - Math.max(MIN_DRAWN_RADIUS_PX, radiusOf(body.mass) * camera.zoom);
       if (gap < slackPx && gap < nearestGap) {
         nearest = body;
