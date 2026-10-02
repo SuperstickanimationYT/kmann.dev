@@ -20,22 +20,56 @@ export const GOAL_LABEL = 'goal';
 const PLATFORM_HUE_START = 85;
 const PLATFORM_HUE_SPAN = 290;
 
-function buildWorld(layout) {
-  const { n } = layout;
-  const floor = box(layout.floor.center, layout.floor.half, { isFloor: true });
+const WALL_THICKNESS = 0.5;
+
+function numberedPlatforms(layout) {
   const ordinaryCount = layout.platforms.filter(p => !p.goal).length;
   let platformNumber = 0;
-  const platforms = layout.platforms.map(p => {
+  return layout.platforms.map(p => {
     if (p.goal) return box(p.center, p.half, { isGoal: true, label: GOAL_LABEL });
     const hue = Math.round(PLATFORM_HUE_START + platformNumber * PLATFORM_HUE_SPAN / ordinaryCount) % 360;
     return box(p.center, p.half, { hue, label: String(++platformNumber) });
   });
+}
+
+function furniture(objects) {
+  const named = new Set();
+  return objects.flatMap(({ name, hue, parts }) => {
+    const firstOfName = !named.has(name);
+    named.add(name);
+    return parts.map((part, index) => box(part.center, part.half, { hue, label: name, post: part.post, marked: firstOfName && index === 0 }));
+  });
+}
+
+function roomShell({ min, max }) {
+  const center = min.map((v, axis) => (v + max[axis]) / 2);
+  const half = min.map((v, axis) => (max[axis] - v) / 2);
+  const slabBeyond = (axis, side) => {
+    const slabCenter = [...center];
+    const slabHalf = half.map(h => h + WALL_THICKNESS);
+    slabCenter[axis] = (side > 0 ? max[axis] : min[axis]) + side * WALL_THICKNESS / 2;
+    slabHalf[axis] = WALL_THICKNESS / 2;
+    return box(slabCenter, slabHalf, { hidden: true });
+  };
+  const walls = range(min.length).flatMap(axis => [-1, 1].map(side => slabBeyond(axis, side)));
+  const floor = walls.splice(walls.findIndex(wall => wall.max[Y] === min[Y]), 1)[0];
+  return { floor, walls, outline: box(center, half).segments, bounds: { min, max } };
+}
+
+function buildWorld(layout) {
+  const { n } = layout;
+  const shell = layout.room ? roomShell(layout.room) : null;
+  const floor = shell ? shell.floor : box(layout.floor.center, layout.floor.half, { isFloor: true });
+  const platforms = layout.objects ? furniture(layout.objects) : numberedPlatforms(layout);
   const axes = range(n);
   return {
     n,
     floor,
     platforms,
-    solids: [floor, ...platforms],
+    solids: [floor, ...platforms, ...(shell ? shell.walls : [])],
+    outline: shell ? shell.outline : [],
+    bounds: shell?.bounds,
+    eyeView: Boolean(layout.eyeView),
     start: layout.start,
     axes,
     horizontalAxes: axes.filter(axis => axis !== Y),
@@ -111,10 +145,18 @@ function wishDirection({ world, player }, input) {
   return length > 1 ? scale(direction, 1 / length) : direction;
 }
 
+function keepInside(bounds, feet) {
+  return feet.map((v, axis) => {
+    const [low, high] = axis === Y ? [bounds.min[axis], bounds.max[axis] - PLAYER_HEIGHT] : [bounds.min[axis] + PLAYER_HALF_WIDTH, bounds.max[axis] - PLAYER_HALF_WIDTH];
+    return Math.min(high, Math.max(low, v));
+  });
+}
+
 function fly(game, input, dt) {
-  const { player } = game;
+  const { world, player } = game;
   const move = add(wishDirection(game, input), scale(player.basis[UP], input.vertical));
   player.feet = add(player.feet, scale(move, FLY_SPEED * dt));
+  if (world.bounds) player.feet = keepInside(world.bounds, player.feet);
   player.verticalSpeed = 0;
   player.grounded = false;
 }

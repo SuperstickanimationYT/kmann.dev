@@ -22,13 +22,22 @@ export function boxSegments(center, half) {
   return hypercubeEdges(center.length).map(([i, j]) => [vertices[i], vertices[j]]);
 }
 
+function postSegments(center, half) {
+  const [bottom, top] = [[...center], [...center]];
+  bottom[1] -= half[1];
+  top[1] += half[1];
+  return [[bottom, top]];
+}
+
 export function box(center, half, extra = {}) {
+  const segments = extra.hidden ? [] : extra.post ? postSegments(center, half) : boxSegments(center, half);
   return {
     center,
     half,
+    marked: true,
     ...extra,
     min: center.map((c, axis) => c - half[axis]),
     max: center.map((c, axis) => c + half[axis]),
-    segments: boxSegments(center, half),
+    segments,
   };
 }
