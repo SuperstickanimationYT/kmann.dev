@@ -14,14 +14,12 @@ let nextId = 1;
 
 export const KINDS = { solid: 'solid', star: 'star', darkMatter: 'darkMatter' };
 
-const SOFTENING = { [KINDS.star]: 24, [KINDS.darkMatter]: 60 };
-
 export const isCollisionless = (body) => body.kind === KINDS.star || body.kind === KINDS.darkMatter;
 
-const softeningOf = (body) => SOFTENING[body.kind] ?? radiusOf(body.mass);
+const softeningOf = (body) => body.softening ?? radiusOf(body.mass);
 
-export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false, test = false, kind = KINDS.solid }) {
-  return { id: nextId++, x, y, vx, vy, mass, pinned, test, kind, trail: [] };
+export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false, test = false, kind = KINDS.solid, softening }) {
+  return { id: nextId++, x, y, vx, vy, mass, pinned, test, kind, softening, trail: [] };
 }
 
 export const cloneBodies = (bodies) => bodies.map((body) => ({ ...body, trail: [] }));

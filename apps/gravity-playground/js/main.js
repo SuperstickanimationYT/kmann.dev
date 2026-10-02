@@ -1,9 +1,10 @@
 import { driftThroughCones, isCone, outOfMissingSpace, wedgeAngleOf } from './cones.js';
 import { circularVelocity, cloneBodies, createBody, leapfrogStep, STEP_SECONDS, strongestPullOn } from './physics.js';
-import { SCENES } from './scenes.js';
+import { GALAXY, SCENES } from './scenes.js';
 import { createView, noteTrails } from './view.js';
 
 const MASS_RANGE = { min: 0.1, max: 3000, sliderSteps: 1000 };
+const GALAXY_STARS_RANGE = { min: 300, max: 12000, sliderSteps: 1000 };
 const DEFAULT_NEW_MASS = 1;
 const TAP_MAX_PX = 6;
 const TAP_MAX_MS = 400;
@@ -31,7 +32,7 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, merge: true, trails: true, speed: 1, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, merge: true, trails: true, speed: 1, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
 let bodies = [];
 let selected = null;
 let launch = null;
@@ -40,8 +41,10 @@ let pan = null;
 let pinch = null;
 const pointers = new Map();
 
-const massFromSlider = (value) => Number((MASS_RANGE.min * (MASS_RANGE.max / MASS_RANGE.min) ** (value / MASS_RANGE.sliderSteps)).toPrecision(2));
-const sliderFromMass = (mass) => Math.round((Math.log(mass / MASS_RANGE.min) / Math.log(MASS_RANGE.max / MASS_RANGE.min)) * MASS_RANGE.sliderSteps);
+const fromLogSlider = ({ min, max, sliderSteps }, value) => Number((min * (max / min) ** (value / sliderSteps)).toPrecision(2));
+const toLogSlider = ({ min, max, sliderSteps }, amount) => Math.round((Math.log(amount / min) / Math.log(max / min)) * sliderSteps);
+const massFromSlider = (value) => fromLogSlider(MASS_RANGE, value);
+const sliderFromMass = (mass) => toLogSlider(MASS_RANGE, mass);
 
 function lawLabel(exponent) {
   if (exponent === 0) return 'constant';
@@ -147,6 +150,7 @@ function showSettings() {
   find('[data-law-label]').textContent = lawLabel(settings.exponent);
   document.querySelectorAll('[data-law]').forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.law) === settings.exponent)));
   find('[data-new-mass-label]').textContent = settings.newMass.toLocaleString();
+  find('[data-galaxy-stars-label]').textContent = settings.galaxyStars.toLocaleString();
   find('[data-speed-label]').textContent = `${settings.speed}×`;
   find('[data-pause]').textContent = settings.paused ? 'Play' : 'Pause';
   document.querySelectorAll('[data-spacetime]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.spacetime === settings.spacetime)));
@@ -332,6 +336,11 @@ function setExponent(exponent) {
 function bindPanel() {
   form.addEventListener('submit', (event) => event.preventDefault());
   form.newMass.value = sliderFromMass(DEFAULT_NEW_MASS);
+  form.galaxyStars.value = toLogSlider(GALAXY_STARS_RANGE, settings.galaxyStars);
+  form.galaxyStars.addEventListener('input', () => {
+    settings.galaxyStars = fromLogSlider(GALAXY_STARS_RANGE, Number(form.galaxyStars.value));
+    showSettings();
+  });
   form.exponent.addEventListener('input', () => setExponent(Number(form.exponent.value)));
   document.querySelectorAll('[data-law]').forEach((button) => button.addEventListener('click', () => setExponent(Number(button.dataset.law))));
   form.newMass.addEventListener('input', () => {
