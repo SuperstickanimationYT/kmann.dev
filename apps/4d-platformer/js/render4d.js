@@ -1,6 +1,7 @@
 import { hypercubeEdges, hypercubeVertices } from './shapes.js';
-import { LINE_SUBDIVISIONS, retinaSegments, visiblePlatformCenters } from './projection.js';
+import { LINE_SUBDIVISIONS, retinaPoint, retinaSegments, visiblePlatformCenters } from './projection.js';
 import { drawLabel, FRAME_COLOR, labelColor, lineColor, strokeSegment } from './paint.js';
+import { playerBox } from './world.js';
 
 const VIEWER_DISTANCE = 4.2;
 const VIEWER_BASE_YAW = 35 * Math.PI / 180;
@@ -10,9 +11,15 @@ const WOBBLE_PERIOD_S = 4;
 const RETINA_SIZE_OF_VIEW = 0.3;
 const AUTO_CONTRAST_SMOOTHING = 0.15;
 const FLAT_LIGHTNESS = 68;
+const SHADOW_LIGHTNESS = 45;
+const SHADOW_ALPHA = 0.55;
+const SHADOW_DROP_LIGHTNESS = 62;
+const SHADOW_DROP_DASH = [3, 4];
 const RETINA_BOX_DEPTHS = { near: VIEWER_DISTANCE - Math.sqrt(3), far: VIEWER_DISTANCE + Math.sqrt(3) };
 const CUBE_VERTICES = hypercubeVertices([0, 0, 0], [1, 1, 1]);
 const CUBE_EDGES = hypercubeEdges(3);
+
+const onBoxFloor = r => [r[0], -1, r[2]];
 
 function viewerYaw(settings, timeS) {
   const wobble = settings.wobble ? WOBBLE_AMPLITUDE * Math.sin(2 * Math.PI * timeS / WOBBLE_PERIOD_S) : 0;
@@ -64,6 +71,32 @@ export function createRenderer4D() {
     strokeSegment(ctx, a, b);
   }
 
+  function drawShadows(ctx, view, game, camera, settings, yaw, retinaPieces) {
+    const toFloor = r => cubeToScreen(view, onBoxFloor(r), yaw);
+    ctx.save();
+    ctx.globalAlpha = SHADOW_ALPHA;
+    ctx.lineWidth = 1;
+    for (const { ra, rb, style } of retinaPieces) {
+      if (style.kind === 'floor') continue;
+      ctx.strokeStyle = lineColor(style, SHADOW_LIGHTNESS, settings.color);
+      strokeSegment(ctx, toFloor(ra), toFloor(rb));
+    }
+
+    const { min, max } = playerBox(game);
+    const playerCenter = retinaPoint(game, camera, min.map((v, axis) => (v + max[axis]) / 2));
+    const drops = visiblePlatformCenters(game, camera).map(({ platform, r }) => ({
+      r,
+      style: { kind: 'platform', hue: platform.hue },
+    }));
+    if (playerCenter) drops.push({ r: playerCenter, style: { kind: 'player' } });
+    ctx.setLineDash(SHADOW_DROP_DASH);
+    for (const { r, style } of drops) {
+      ctx.strokeStyle = lineColor(style, SHADOW_DROP_LIGHTNESS, settings.color);
+      strokeSegment(ctx, cubeToScreen(view, r, yaw), toFloor(r));
+    }
+    ctx.restore();
+  }
+
   function draw(ctx, view, game, camera, settings, timeS) {
     const yaw = viewerYaw(settings, timeS);
     if (settings.frame) {
@@ -74,7 +107,10 @@ export function createRenderer4D() {
       }
     }
 
-    const pieces = retinaSegments(game, camera, settings).map(({ ra, rb, style }) => {
+    const retinaPieces = retinaSegments(game, camera, settings);
+    if (settings.shadows) drawShadows(ctx, view, game, camera, settings, yaw, retinaPieces);
+
+    const pieces = retinaPieces.map(({ ra, rb, style }) => {
       const a = cubeToScreen(view, ra, yaw);
       const b = cubeToScreen(view, rb, yaw);
       return { a, b, style, depth: (a.depth + b.depth) / 2 };

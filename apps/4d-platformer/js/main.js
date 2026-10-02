@@ -19,6 +19,7 @@ const SHORTCUTS = {
   7: 'labels',
   8: 'floor',
   9: 'dropLine',
+  g: 'shadows',
   f: 'fly',
   r: 'reveal',
 };
@@ -34,6 +35,7 @@ const settings = {
   labels: true,
   floor: true,
   dropLine: true,
+  shadows: true,
   fly: false,
   reveal: false,
 };
