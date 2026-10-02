@@ -20,8 +20,8 @@ const SQUARE_EDGES = hypercubeEdges(2);
 
 function outsideProjector(panel) {
   const forward = normalize(sub(OUTSIDE_CAMERA_TARGET, OUTSIDE_CAMERA_POSITION));
-  const right = normalize(cross(forward, [0, 1, 0]));
-  const up = cross(right, forward);
+  const right = normalize(cross([0, 1, 0], forward));
+  const up = cross(forward, right);
   const focal = panel.half / Math.tan(OUTSIDE_CAMERA_FOV / 2);
   return p => {
     const d = sub(p, OUTSIDE_CAMERA_POSITION);
