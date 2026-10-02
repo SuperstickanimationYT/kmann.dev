@@ -32,7 +32,7 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, merge: true, trails: true, speed: 1, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
 let bodies = [];
 let selected = null;
 let launch = null;
@@ -353,6 +353,7 @@ function bindPanel() {
     settings.speed = 2 ** Number(form.speed.value);
     showSettings();
   });
+  form.glow.addEventListener('change', () => (settings.glow = form.glow.checked));
   form.trails.addEventListener('change', () => {
     settings.trails = form.trails.checked;
     bodies.forEach((body) => (body.trail = []));
@@ -404,6 +405,10 @@ const KEYS = {
     form.trails.checked = !form.trails.checked;
     form.trails.dispatchEvent(new Event('change'));
   },
+  g: () => {
+    form.glow.checked = !form.glow.checked;
+    form.glow.dispatchEvent(new Event('change'));
+  },
   f: () => view.frame(bodies),
 };
 
@@ -453,7 +458,7 @@ function frame(time) {
     if (settings.trails) noteTrails(bodies);
     if (launch) predictPath();
   }
-  view.draw({ bodies, selected, launch, trails: settings.trails, cutAngle: inCones() ? settings.cutAngle : null });
+  view.draw({ bodies, selected, launch, trails: settings.trails, glow: settings.glow, cutAngle: inCones() ? settings.cutAngle : null });
   showStatus();
   window.requestAnimationFrame(frame);
 }
