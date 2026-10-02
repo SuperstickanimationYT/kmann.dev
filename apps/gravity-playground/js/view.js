@@ -215,7 +215,7 @@ export function createView(canvas) {
     context.restore();
   }
 
-  function drawLaunch({ body, aimX, aimY, path }) {
+  function drawLaunch({ body, pullX, pullY, path }) {
     context.save();
     context.strokeStyle = PREDICTION;
     context.lineWidth = 1.5;
@@ -224,7 +224,7 @@ export function createView(canvas) {
     context.stroke();
     context.setLineDash([]);
     const [fromX, fromY] = toScreen(body.x, body.y);
-    const [toX, toY] = toScreen(aimX, aimY);
+    const [toX, toY] = toScreen(2 * body.x - pullX, 2 * body.y - pullY);
     context.strokeStyle = SELECTED_RING;
     context.beginPath();
     context.moveTo(fromX, fromY);

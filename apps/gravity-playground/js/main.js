@@ -166,7 +166,7 @@ function tapVelocity(x, y) {
 }
 
 function launchVelocity() {
-  return { vx: (launch.aimX - launch.body.x) * LAUNCH_SPEED_PER_UNIT, vy: (launch.aimY - launch.body.y) * LAUNCH_SPEED_PER_UNIT };
+  return { vx: (launch.body.x - launch.pullX) * LAUNCH_SPEED_PER_UNIT, vy: (launch.body.y - launch.pullY) * LAUNCH_SPEED_PER_UNIT };
 }
 
 function predictPath() {
@@ -204,7 +204,7 @@ function pointerDown(event) {
     body.pinned = true;
     return;
   }
-  launch = { ...start, body: newBodyAt(x, y, {}), aimX: x, aimY: y, path: [] };
+  launch = { ...start, body: newBodyAt(x, y, {}), pullX: x, pullY: y, path: [] };
 }
 
 function pinchState() {
@@ -252,7 +252,7 @@ function pointerMove(event) {
     return;
   }
   if (launch) {
-    Object.assign(launch, { aimX: x, aimY: y });
+    Object.assign(launch, { pullX: x, pullY: y });
     predictPath();
   }
 }
