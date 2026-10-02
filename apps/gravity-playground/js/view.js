@@ -1,6 +1,6 @@
 import { wedgeOf } from './cones.js';
 import { createGlow } from './glow.js';
-import { isCollisionless, KINDS, radiusOf } from './physics.js';
+import { isCollisionless, KINDS, radiusOf, sizeOf } from './physics.js';
 
 const GRID_SPACING = 100;
 const TRAIL_POINTS = 400;
@@ -14,6 +14,8 @@ const STARLIGHT = 'rgba(235, 240, 255, 0.85)';
 const STAR_RADIUS_PX = 1.1;
 const DARK_MATTER = 'rgba(165, 125, 255, 0.28)';
 const DARK_MATTER_RADIUS_PX = 1.6;
+const GAS = 'rgba(255, 150, 110, 0.35)';
+const GAS_RADIUS_PX = 2;
 const MASS_COLOURS = [
   [1, [143, 163, 184]],
   [30, [79, 155, 224]],
@@ -183,7 +185,7 @@ export function createView(canvas) {
     }
     context.restore();
     if (wedge.angle < Math.PI / 180) return;
-    const labelAt = toScreen(wedge.x + Math.cos(cutAngle) * (radiusOf(cone.mass) + 60 / camera.zoom), wedge.y + Math.sin(cutAngle) * (radiusOf(cone.mass) + 60 / camera.zoom));
+    const labelAt = toScreen(wedge.x + Math.cos(cutAngle) * (sizeOf(cone) + 60 / camera.zoom), wedge.y + Math.sin(cutAngle) * (sizeOf(cone) + 60 / camera.zoom));
     context.fillStyle = WEDGE_EDGE;
     context.font = '12px "Trebuchet MS", "Segoe UI", sans-serif';
     context.textAlign = 'center';
@@ -210,7 +212,7 @@ export function createView(canvas) {
       return;
     }
     const [sx, sy] = toScreen(body.x, body.y);
-    const radius = Math.max(MIN_DRAWN_RADIUS_PX, radiusOf(body.mass) * camera.zoom);
+    const radius = Math.max(MIN_DRAWN_RADIUS_PX, sizeOf(body) * camera.zoom);
     const colour = colourOf(body.mass);
     context.globalAlpha = ghost ? 0.5 : 1;
     if (body.mass >= GLOW_FROM_MASS) {
@@ -264,6 +266,7 @@ export function createView(canvas) {
 
   const isGalacticStar = (body) => !body.test && body.kind === KINDS.star;
   const isDarkMatter = (body) => !body.test && body.kind === KINDS.darkMatter;
+  const isGasParcel = (body) => !body.test && body.kind === KINDS.gas;
 
   function draw({ bodies, selected, launch, trails, glow, cutAngle }) {
     context.fillStyle = '#060f1c';
@@ -273,6 +276,7 @@ export function createView(canvas) {
     if (trails) bodies.forEach(drawTrail);
     if (glow) glowLayer.draw(context, bodies.filter(isGalacticStar), { toScreen, zoom: camera.zoom, width, height });
     else drawSpecks(bodies, isDarkMatter, DARK_MATTER, () => DARK_MATTER_RADIUS_PX);
+    drawSpecks(bodies, isGasParcel, GAS, () => GAS_RADIUS_PX);
     drawSpecks(bodies, isDust, DUST, (body) => Math.max(DUST_RADIUS_PX, radiusOf(body.mass) * camera.zoom));
     if (!glow) drawSpecks(bodies, isGalacticStar, STARLIGHT, () => STAR_RADIUS_PX);
     for (const body of bodies) if (!isSpeck(body)) drawBody(body, { selected: body === selected });
@@ -285,7 +289,7 @@ export function createView(canvas) {
     let nearestGap = Infinity;
     for (const body of bodies) {
       if (isSpeck(body)) continue;
-      const gap = Math.hypot(body.x - x, body.y - y) * camera.zoom - Math.max(MIN_DRAWN_RADIUS_PX, radiusOf(body.mass) * camera.zoom);
+      const gap = Math.hypot(body.x - x, body.y - y) * camera.zoom - Math.max(MIN_DRAWN_RADIUS_PX, sizeOf(body) * camera.zoom);
       if (gap < slackPx && gap < nearestGap) {
         nearest = body;
         nearestGap = gap;

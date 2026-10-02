@@ -179,3 +179,49 @@ export function touchingPairs(touching) {
     }
   }
 }
+
+export function forEachWithin(x, y, reach, visit) {
+  const reachSquared = reach * reach;
+  let top = 0;
+  stack[top++] = 0;
+  while (top > 0) {
+    const node = stack[--top];
+    if (mass[node] === 0 || farFromBox(node, x, y, reach)) continue;
+    if (firstChild[node] !== NO_CHILDREN) {
+      top = pushChildren(node, top);
+      continue;
+    }
+    for (let other = firstBody[node]; other !== NO_BODY; other = nextBody[other]) {
+      const dx = xs[other] - x;
+      const dy = ys[other] - y;
+      const squared = dx * dx + dy * dy;
+      if (squared <= reachSquared) visit(other, Math.sqrt(squared));
+    }
+  }
+}
+
+export function gatherWithin(x, y, reach, found, gapsFound, start) {
+  const reachSquared = reach * reach;
+  let end = start;
+  let top = 0;
+  stack[top++] = 0;
+  while (top > 0) {
+    const node = stack[--top];
+    if (mass[node] === 0 || farFromBox(node, x, y, reach)) continue;
+    if (firstChild[node] !== NO_CHILDREN) {
+      top = pushChildren(node, top);
+      continue;
+    }
+    for (let other = firstBody[node]; other !== NO_BODY; other = nextBody[other]) {
+      const dx = xs[other] - x;
+      const dy = ys[other] - y;
+      const squared = dx * dx + dy * dy;
+      if (squared > reachSquared) continue;
+      if (end >= found.length) return -1;
+      found[end] = other;
+      gapsFound[end] = Math.sqrt(squared);
+      end++;
+    }
+  }
+  return end;
+}
