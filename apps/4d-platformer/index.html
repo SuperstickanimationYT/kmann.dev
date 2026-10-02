@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4D Platformer &mdash; kmann314</title>
+<meta name="description" content="Jump between floating platforms in four dimensions, seen as a 3D wireframe photo of the 4D world. A 3D practice mode shows the same idea one dimension down.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">4D Platformer</h2>
+    </div>
+  </div>
+
+  <div class="shell fd-layout">
+    <div class="app-stage fd-stage">
+      <canvas data-stage aria-label="A 4D platformer drawn as a 3D wireframe photo of the 4D world. Play with the keyboard."></canvas>
+    </div>
+
+    <aside class="fd-panel">
+      <div class="fd-actions fd-modes">
+        <button type="button" data-mode="4" aria-pressed="true">4D</button>
+        <button type="button" data-mode="3" aria-pressed="false">3D practice</button>
+      </div>
+      <p class="fd-note" data-dimension="4">The box is a 3D photo of the 4D world, taken by your camera. Land on all 10 platforms.</p>
+      <p class="fd-note" data-dimension="3" hidden>The same level with one dimension fewer. The picture is what your camera sees, the same kind of picture 4D mode shows one dimension up. Turn on the outside view to see your camera inside the world.</p>
+
+      <pre class="fd-readout" data-status></pre>
+
+      <div class="fd-actions">
+        <button type="button" data-respawn>Respawn <kbd>H</kbd></button>
+      </div>
+
+      <fieldset>
+        <legend>Controls</legend>
+        <ul class="fd-keys">
+          <li><kbd>W</kbd><kbd>S</kbd> forward, back</li>
+          <li><kbd>A</kbd><kbd>D</kbd> left, right</li>
+          <li data-dimension="4"><kbd>Q</kbd><kbd>E</kbd> kata, ana (the 4th direction)</li>
+          <li><kbd>Space</kbd> jump</li>
+          <li><kbd>&larr;</kbd><kbd>&rarr;</kbd> turn toward left, right</li>
+          <li data-dimension="4"><kbd>&uarr;</kbd><kbd>&darr;</kbd> turn toward ana, kata</li>
+          <li data-dimension="4"><kbd>Z</kbd><kbd>X</kbd> spin right and ana around you</li>
+          <li><kbd>M</kbd> switch 4D and 3D</li>
+        </ul>
+        <p class="fd-note">Needs a keyboard.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>View</legend>
+        <label class="fd-toggle" data-dimension="3" hidden><input type="checkbox" data-setting="outside"> Outside view <kbd>P</kbd></label>
+        <label class="fd-toggle"><input type="checkbox" data-setting="color"> Platform colors <kbd>2</kbd></label>
+        <label class="fd-toggle" data-dimension="4"><input type="checkbox" data-setting="brightness"> Depth brightness <kbd>3</kbd></label>
+        <label class="fd-toggle" data-dimension="4"><input type="checkbox" data-setting="autoContrast"> Auto-contrast <kbd>4</kbd></label>
+        <label class="fd-toggle" data-dimension="4"><input type="checkbox" data-setting="width"> Depth thickness <kbd>5</kbd></label>
+        <label class="fd-toggle" data-dimension="4"><input type="checkbox" data-setting="wobble"> Wobble the box <kbd>1</kbd></label>
+        <label class="fd-toggle"><input type="checkbox" data-setting="frame"> Picture frame <kbd>6</kbd></label>
+        <label class="fd-toggle"><input type="checkbox" data-setting="labels"> Platform numbers <kbd>7</kbd></label>
+        <label class="fd-toggle"><input type="checkbox" data-setting="floor"> Floor <kbd>8</kbd></label>
+        <label class="fd-toggle"><input type="checkbox" data-setting="dropLine"> Drop line <kbd>9</kbd></label>
+        <label class="fd-toggle"><input type="checkbox" data-setting="fly"> Fly, no gravity <kbd>F</kbd></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Check yourself</legend>
+        <label class="fd-toggle"><input type="checkbox" data-setting="reveal"> Show true offsets <kbd>R</kbd></label>
+        <p class="fd-note">Guess where a platform is, then check: the offset from your feet to its top, in your own directions.</p>
+        <pre class="fd-readout" data-reveal hidden></pre>
+      </fieldset>
+
+      <details class="fd-help">
+        <summary>How to read the picture</summary>
+        <p>The wireframe box is your camera's photo. Its three directions are right, up and ana. How far ahead something is shows as size: farther things are smaller and closer to the box's center.</p>
+        <p>Each platform looks like a flat box inside a flat box. The big outer one is its near side, the small inner one its far side.</p>
+        <p>Your white body stays at the same spot in the box. Watch the world move, not you.</p>
+        <p><strong>To jump to a platform,</strong> turn until it sits directly above or below your body in the box. Then it is straight ahead, and only the distance is left to judge.</p>
+        <ul>
+          <li><kbd>W</kbd><kbd>S</kbd> zoom the scene in or out.</li>
+          <li><kbd>A</kbd><kbd>D</kbd> slide it left or right; <kbd>Q</kbd><kbd>E</kbd> slide it front to back.</li>
+          <li><kbd>Z</kbd><kbd>X</kbd> turn it like a turntable without changing sizes. Learn this turn first.</li>
+          <li>The drop line under you ends in a cross where you would land. It turns red over the void.</li>
+          <li>Brighter, thicker lines are nearer to you inside the box, not in the 4D world.</li>
+          <li>If the box seems to flip inside out, turn on the wobble.</li>
+        </ul>
+        <p>New to this? Start in 3D practice. The outside view shows where your camera points. Once the picture alone makes sense, try 4D: it asks the same of you, one dimension up.</p>
+      </details>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
