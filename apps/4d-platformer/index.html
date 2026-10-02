@@ -35,15 +35,31 @@
   <div class="shell fd-layout">
     <div class="app-stage fd-stage">
       <canvas data-stage aria-label="A 4D platformer drawn as a 3D wireframe photo of the 4D world. Play with the keyboard."></canvas>
+      <p class="fd-banner" data-banner></p>
+      <div class="fd-complete" data-complete hidden>
+        <p class="fd-complete-title" data-complete-title></p>
+        <div class="fd-actions">
+          <button type="button" class="fd-primary" data-next></button>
+          <button type="button" data-replay>Play again</button>
+        </div>
+        <p class="fd-note"><kbd>Enter</kbd> goes to the next level.</p>
+      </div>
     </div>
 
     <aside class="fd-panel">
-      <div class="fd-actions fd-modes">
-        <button type="button" data-mode="4" aria-pressed="true">4D</button>
-        <button type="button" data-mode="3" aria-pressed="false">3D practice</button>
-      </div>
-      <p class="fd-note" data-dimension="4">The box is a 3D photo of the 4D world, taken by your camera. Land on all 10 platforms.</p>
-      <p class="fd-note" data-dimension="3" hidden>The same level with one dimension fewer. The picture is what your camera sees, the same kind of picture 4D mode shows one dimension up. Turn on the outside view to see your camera inside the world.</p>
+      <fieldset>
+        <legend>Levels</legend>
+        <div class="fd-levels" data-levels></div>
+        <div class="fd-actions">
+          <button type="button" data-free="4" aria-pressed="false">Free play 4D</button>
+          <button type="button" data-free="3" aria-pressed="false">Free play 3D</button>
+        </div>
+      </fieldset>
+
+      <section class="fd-guide">
+        <h3 data-guide-title></h3>
+        <div data-guide-body></div>
+      </section>
 
       <pre class="fd-readout" data-status></pre>
 
@@ -61,7 +77,7 @@
           <li><kbd>&larr;</kbd><kbd>&rarr;</kbd> turn toward left, right</li>
           <li data-dimension="4"><kbd>&uarr;</kbd><kbd>&darr;</kbd> turn toward ana, kata</li>
           <li data-dimension="4"><kbd>Z</kbd><kbd>X</kbd> spin right and ana around you</li>
-          <li><kbd>M</kbd> switch 4D and 3D</li>
+          <li><kbd>M</kbd> switch 4D and 3D in free play</li>
         </ul>
         <p class="fd-note">Needs a keyboard.</p>
       </fieldset>
@@ -104,7 +120,7 @@
           <li>Brighter, thicker lines are nearer to you inside the box, not in the 4D world.</li>
           <li>If the box seems to flip inside out, turn on the wobble.</li>
         </ul>
-        <p>New to this? Start in 3D practice. The outside view shows where your camera points. Once the picture alone makes sense, try 4D: it asks the same of you, one dimension up.</p>
+        <p>The levels teach one move at a time, starting in 3D. In 3D, the outside view shows where your camera points.</p>
       </details>
     </aside>
   </div>

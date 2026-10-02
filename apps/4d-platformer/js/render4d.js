@@ -1,6 +1,6 @@
 import { hypercubeEdges, hypercubeVertices } from './shapes.js';
 import { LINE_SUBDIVISIONS, retinaPoint, retinaSegments, visiblePlatformCenters } from './projection.js';
-import { drawLabel, FRAME_COLOR, labelColor, lineColor, strokeSegment } from './paint.js';
+import { drawLabel, FRAME_COLOR, labelColor, lineColor, platformStyle, strokeSegment } from './paint.js';
 import { playerBox } from './world.js';
 
 const VIEWER_DISTANCE = 4.2;
@@ -86,7 +86,7 @@ export function createRenderer4D() {
     const playerCenter = retinaPoint(game, camera, min.map((v, axis) => (v + max[axis]) / 2));
     const drops = visiblePlatformCenters(game, camera).map(({ platform, r }) => ({
       r,
-      style: { kind: 'platform', hue: platform.hue },
+      style: platformStyle(platform),
     }));
     if (playerCenter) drops.push({ r: playerCenter, style: { kind: 'player' } });
     ctx.setLineDash(SHADOW_DROP_DASH);

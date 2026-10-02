@@ -16,39 +16,32 @@ const GRAVITY = 18;
 const JUMP_SPEED = 7.4;
 const MAX_FALL_SPEED = 15;
 
-const FLOOR_4D = { center: [0, -0.25, 2, 0], half: [7, 0.25, 7, 7] };
-const PLATFORMS_4D = [
-  { center: [-2, 0.6, 1, -2], half: [0.8, 0.15, 0.8, 0.8] },
-  { center: [2, 1.0, 2, 1], half: [0.7, 0.15, 0.9, 0.7] },
-  { center: [0, 1.6, 4, 0], half: [1.0, 0.15, 0.6, 1.0] },
-  { center: [-3, 2.2, 5, 3], half: [0.8, 0.15, 0.8, 0.6] },
-  { center: [3, 2.6, 6, -3], half: [0.6, 0.15, 0.6, 0.9] },
-  { center: [0, 3.0, 7, 4], half: [0.9, 0.15, 0.7, 0.7] },
-  { center: [-1, 0.9, 3, 4], half: [0.6, 0.15, 0.6, 0.6] },
-  { center: [1, 1.9, 1, -4], half: [0.7, 0.15, 0.7, 0.7] },
-  { center: [4, 0.5, 4, 2], half: [0.8, 0.15, 0.8, 0.8] },
-  { center: [-4, 1.3, 7, -1], half: [0.7, 0.15, 0.9, 0.7] },
-];
-const START_FEET_4D = [0, 0, -3.5, 0];
+export const GOAL_LABEL = 'goal';
+const PLATFORM_HUE_START = 85;
+const PLATFORM_HUE_SPAN = 290;
 
-function buildWorld(n) {
-  const dropExtraAxes = v => v.slice(0, n);
-  const floor = box(dropExtraAxes(FLOOR_4D.center), dropExtraAxes(FLOOR_4D.half), { isFloor: true });
-  const platforms = PLATFORMS_4D.map((p, i) => box(dropExtraAxes(p.center), dropExtraAxes(p.half), {
-    hue: Math.round(i * 360 / PLATFORMS_4D.length),
-    label: String(i + 1),
-  }));
+function buildWorld(layout) {
+  const { n } = layout;
+  const floor = box(layout.floor.center, layout.floor.half, { isFloor: true });
+  const ordinaryCount = layout.platforms.filter(p => !p.goal).length;
+  let platformNumber = 0;
+  const platforms = layout.platforms.map(p => {
+    if (p.goal) return box(p.center, p.half, { isGoal: true, label: GOAL_LABEL });
+    const hue = Math.round(PLATFORM_HUE_START + platformNumber * PLATFORM_HUE_SPAN / ordinaryCount) % 360;
+    return box(p.center, p.half, { hue, label: String(++platformNumber) });
+  });
   const axes = range(n);
   return {
     n,
     floor,
     platforms,
     solids: [floor, ...platforms],
-    start: dropExtraAxes(START_FEET_4D),
+    start: layout.start,
     axes,
     horizontalAxes: axes.filter(axis => axis !== Y),
     forward: n - 1,
     hasAna: n === 4,
+    hasGoal: platforms.some(p => p.isGoal),
   };
 }
 
@@ -58,8 +51,8 @@ function levelBasis(n) {
   return basis;
 }
 
-export function createGame(n) {
-  const game = { world: buildWorld(n), player: {}, falls: 0, landedOn: new Set() };
+export function createGame(layout) {
+  const game = { world: buildWorld(layout), player: {}, falls: 0, landedOn: new Set(), reachedGoal: false };
   respawn(game);
   return game;
 }
@@ -146,7 +139,8 @@ function walk(game, input, dt) {
     if (delta[Y] < 0) {
       player.feet[Y] = hit.max[Y];
       player.grounded = true;
-      if (hit.label) game.landedOn.add(hit.label);
+      if (hit.isGoal) game.reachedGoal = true;
+      else if (hit.label) game.landedOn.add(hit.label);
     } else {
       player.feet[Y] = hit.min[Y] - PLAYER_HEIGHT;
     }
