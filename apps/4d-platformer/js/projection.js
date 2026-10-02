@@ -100,10 +100,13 @@ export function retinaSegments(game, camera, settings) {
   return pieces;
 }
 
+export function retinaPoint(game, camera, point) {
+  const c = toCameraFrame(camera, point);
+  return frustumPlanes(game.world).every(plane => plane(c) >= 0) ? projectToRetina(c) : null;
+}
+
 export function visiblePlatformCenters(game, camera) {
-  const planes = frustumPlanes(game.world);
   return game.world.platforms
-    .map(platform => ({ platform, c: toCameraFrame(camera, platform.center) }))
-    .filter(({ c }) => planes.every(plane => plane(c) >= 0))
-    .map(({ platform, c }) => ({ platform, r: projectToRetina(c) }));
+    .map(platform => ({ platform, r: retinaPoint(game, camera, platform.center) }))
+    .filter(({ r }) => r);
 }
