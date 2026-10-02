@@ -1,22 +1,30 @@
-import { buildTree, pullOn, touchingPairs } from './tree.js';
+import { addGasPressure } from './gas.js';
+import { buildTree, forEachWithin, pullOn, touchingPairs } from './tree.js';
 
 export const REFERENCE_DISTANCE = 200;
 const PULL_AT_REFERENCE = 3125 / REFERENCE_DISTANCE ** 2;
-const INVERSE_SQUARE_STRENGTH = PULL_AT_REFERENCE * REFERENCE_DISTANCE ** 2;
+export const INVERSE_SQUARE_STRENGTH = PULL_AT_REFERENCE * REFERENCE_DISTANCE ** 2;
 const RADIUS_PER_CUBE_ROOT_MASS = 4;
 export const STEP_SECONDS = 1 / 240;
 const EXACT_PULLS_UP_TO_BODIES = 64;
 const MOND_ACCELERATION = 300;
+const STAR_BIRTH = { density: 0.1, radius: 6 };
+const CONDENSING = { seconds: 1.5, roundestOrbit: 0.3 };
+const CORE_MASS_THAT_HOLDS_GAS = 5;
 
 export const radiusOf = (mass) => RADIUS_PER_CUBE_ROOT_MASS * Math.cbrt(mass);
 
+export const sizeOf = (body) => body.radius ?? radiusOf(body.mass);
+
 let nextId = 1;
 
-export const KINDS = { solid: 'solid', star: 'star', darkMatter: 'darkMatter' };
+export const KINDS = { solid: 'solid', star: 'star', darkMatter: 'darkMatter', gas: 'gas' };
 
-export const isCollisionless = (body) => body.kind === KINDS.star || body.kind === KINDS.darkMatter;
+export const isGas = (body) => body.kind === KINDS.gas;
 
-const softeningOf = (body) => body.softening ?? radiusOf(body.mass);
+export const isCollisionless = (body) => body.kind === KINDS.star || body.kind === KINDS.darkMatter || isGas(body);
+
+const softeningOf = (body) => body.softening ?? sizeOf(body);
 
 export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false, test = false, kind = KINDS.solid, softening }) {
   return { id: nextId++, x, y, vx, vy, mass, pinned, test, kind, softening, trail: [] };
@@ -111,6 +119,10 @@ export function updatePulls(bodies, law) {
   if (bodies.length <= EXACT_PULLS_UP_TO_BODIES) exactPulls(bodies, law.exponent, touching);
   else treePulls(bodies, law.exponent, touching);
   if (law.mond) strengthenWeakPulls(bodies);
+  if (bodies.some(isGas)) {
+    if (bodies.length <= EXACT_PULLS_UP_TO_BODIES) buildTree(world);
+    addGasPressure(bodies, isGas);
+  }
   trustPulls(bodies, law);
   return touching;
 }
@@ -131,7 +143,7 @@ function drift(bodies, seconds) {
   }
 }
 
-const areTouching = (a, b) => Math.hypot(b.x - a.x, b.y - a.y) <= Math.max(radiusOf(a.mass), radiusOf(b.mass));
+const areTouching = (a, b) => Math.hypot(b.x - a.x, b.y - a.y) <= Math.max(sizeOf(a), sizeOf(b));
 
 function absorb(big, small) {
   const mass = big.mass + small.mass;
@@ -171,12 +183,68 @@ function mergeTouching(bodies, touching) {
     }
     if (!gone.size) break;
     mergedAny = true;
-    let kept = 0;
-    for (const body of bodies) if (!gone.has(body)) bodies[kept++] = body;
-    bodies.length = kept;
+    removeGone(bodies, gone);
     touching = touchingNow(bodies);
   }
   return mergedAny;
+}
+
+function removeGone(bodies, gone) {
+  let kept = 0;
+  for (const body of bodies) if (!gone.has(body)) bodies[kept++] = body;
+  bodies.length = kept;
+}
+
+function gatherIntoStars(bodies) {
+  if (!bodies.some(isGas)) return false;
+  snapshot(bodies);
+  buildTree(world);
+  let changed = false;
+  for (const body of bodies) {
+    if (!isGas(body) || body.density < STAR_BIRTH.density) continue;
+    let starNearby = false;
+    forEachWithin(body.x, body.y, STAR_BIRTH.radius * 2, (other) => (starNearby ||= bodies[other].kind === KINDS.solid));
+    if (starNearby) continue;
+    Object.assign(body, { kind: KINDS.solid, softening: undefined, radius: STAR_BIRTH.radius, protostar: true });
+    changed = true;
+  }
+  const gone = new Set();
+  bodies.forEach((swallower, index) => {
+    if (swallower.kind !== KINDS.solid || (!swallower.protostar && swallower.mass < CORE_MASS_THAT_HOLDS_GAS)) return;
+    forEachWithin(world.xs[index], world.ys[index], sizeOf(swallower), (other) => {
+      const gas = bodies[other];
+      if (!isGas(gas) || gone.has(gas)) return;
+      absorb(swallower, gas);
+      gone.add(gas);
+    });
+  });
+  if (gone.size) removeGone(bodies, gone);
+  return changed || gone.size > 0;
+}
+
+function heaviestStar(bodies) {
+  let heaviest = null;
+  for (const body of bodies) if (body.kind === KINDS.solid && (!heaviest || body.mass > heaviest.mass)) heaviest = body;
+  return heaviest;
+}
+
+function eccentricityAround(star, body) {
+  const [dx, dy, dvx, dvy] = [body.x - star.x, body.y - star.y, body.vx - star.vx, body.vy - star.vy];
+  const pull = INVERSE_SQUARE_STRENGTH * star.mass;
+  const energy = (dvx * dvx + dvy * dvy) / 2 - pull / Math.hypot(dx, dy);
+  if (energy >= 0) return Infinity;
+  const spin = dx * dvy - dy * dvx;
+  return Math.sqrt(Math.max(0, 1 + (2 * energy * spin * spin) / (pull * pull)));
+}
+
+function condenseSettledGas(bodies) {
+  const star = heaviestStar(bodies);
+  if (!star) return;
+  for (const gas of bodies) {
+    if (!isGas(gas)) continue;
+    gas.settledFor = eccentricityAround(star, gas) < CONDENSING.roundestOrbit ? (gas.settledFor ?? 0) + STEP_SECONDS : 0;
+    if (gas.settledFor >= CONDENSING.seconds) Object.assign(gas, { kind: KINDS.solid, softening: undefined });
+  }
 }
 
 export function leapfrogStep(bodies, { exponent, mond = false, merge }) {
@@ -187,7 +255,10 @@ export function leapfrogStep(bodies, { exponent, mond = false, merge }) {
   drift(bodies, STEP_SECONDS);
   const touching = updatePulls(bodies, law);
   kick(bodies, STEP_SECONDS / 2);
-  if (!merge || !mergeTouching(bodies, touching)) return false;
+  const merged = merge && mergeTouching(bodies, touching);
+  const gathered = gatherIntoStars(bodies);
+  condenseSettledGas(bodies);
+  if (!merged && !gathered) return false;
   trustPulls(bodies, law);
   return true;
 }

@@ -1,4 +1,4 @@
-import { circularVelocity, createBody, KINDS, updatePulls } from './physics.js';
+import { circularVelocity, createBody, INVERSE_SQUARE_STRENGTH, KINDS, updatePulls } from './physics.js';
 
 const FIGURE_EIGHT = {
   size: 160,
@@ -74,6 +74,19 @@ function protoplanetaryDisk(exponent) {
 
 export const GALAXY = { stars: 700, diskMass: 840, diskScale: 50, diskCutoff: 0.98, starStirring: 0.1, starSoftening: 24, darkParticles: 500, darkSoftening: 60, haloMass: 4000, haloRadius: 350 };
 const MERGER = { darkParticlesEach: 300, separation: 1100, offset: 350, closingSpeed: 160 };
+
+export const CLOUD = { particles: 2000, mass: 1000, radius: 400, spin: 0.5, warmth: 0.3, concentration: 1, smoothingPerSpacing: 1.3 };
+
+function gasCloud() {
+  const spin = CLOUD.spin * Math.sqrt((INVERSE_SQUARE_STRENGTH * CLOUD.mass) / CLOUD.radius ** 3);
+  const soundSpeed = Math.sqrt((CLOUD.warmth * INVERSE_SQUARE_STRENGTH * CLOUD.mass) / CLOUD.radius);
+  const smoothing = CLOUD.smoothingPerSpacing * Math.sqrt((Math.PI * CLOUD.radius ** 2) / CLOUD.particles);
+  return Array.from({ length: CLOUD.particles }, () => {
+    const { x, y } = pointAt(CLOUD.radius * Math.random() ** CLOUD.concentration, Math.random() * Math.PI * 2);
+    const parcel = createBody({ x, y, vx: -spin * y, vy: spin * x, mass: CLOUD.mass / CLOUD.particles, kind: KINDS.gas, softening: smoothing });
+    return Object.assign(parcel, { smoothing, soundSpeed });
+  });
+}
 
 const pointAt = (distance, bearing) => ({ x: Math.cos(bearing) * distance, y: Math.sin(bearing) * distance });
 
@@ -151,5 +164,6 @@ export const SCENES = {
   bareGalaxy: { name: 'Galaxy without dark matter', build: (settings) => centredAtRest(galaxy(settings, { darkMatter: false, stars: settings.galaxyStars })) },
   galaxyMerger: { name: 'Galaxy merger', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: true, stars: settings.galaxyStars })) },
   bareGalaxyMerger: { name: 'Galaxy merger without dark matter', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: false, stars: settings.galaxyStars })) },
+  gasCloud: { name: 'Collapsing gas cloud', build: () => gasCloud() },
   empty: { name: 'Empty space', build: () => [] },
 };
