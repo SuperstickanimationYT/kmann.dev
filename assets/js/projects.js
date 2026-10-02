@@ -1,5 +1,12 @@
 const PROJECTS = [
   {
+    title: '4D Platformer',
+    href: 'apps/4d-platformer/',
+    poster: 'assets/img/posters/4d-platformer.webp',
+    blurb: 'Jump between floating platforms in four dimensions, seen as a 3D wireframe photo of the 4D world.',
+    status: 'live',
+  },
+  {
     title: 'Conlang Studio',
     href: 'apps/conlang-studio/',
     poster: 'assets/img/posters/conlang-studio.webp',
