@@ -24,7 +24,7 @@ const SHORTCUTS = {
 };
 
 const settings = {
-  outside: true,
+  outside: false,
   wobble: false,
   color: true,
   brightness: true,
