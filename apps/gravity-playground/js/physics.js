@@ -6,13 +6,22 @@ const INVERSE_SQUARE_STRENGTH = PULL_AT_REFERENCE * REFERENCE_DISTANCE ** 2;
 const RADIUS_PER_CUBE_ROOT_MASS = 4;
 export const STEP_SECONDS = 1 / 240;
 const EXACT_PULLS_UP_TO_BODIES = 64;
+const MOND_ACCELERATION = 300;
 
 export const radiusOf = (mass) => RADIUS_PER_CUBE_ROOT_MASS * Math.cbrt(mass);
 
 let nextId = 1;
 
-export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false, test = false }) {
-  return { id: nextId++, x, y, vx, vy, mass, pinned, test, trail: [] };
+export const KINDS = { solid: 'solid', star: 'star', darkMatter: 'darkMatter' };
+
+const SOFTENING = { [KINDS.star]: 24, [KINDS.darkMatter]: 60 };
+
+export const isCollisionless = (body) => body.kind === KINDS.star || body.kind === KINDS.darkMatter;
+
+const softeningOf = (body) => SOFTENING[body.kind] ?? radiusOf(body.mass);
+
+export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false, test = false, kind = KINDS.solid }) {
+  return { id: nextId++, x, y, vx, vy, mass, pinned, test, kind, trail: [] };
 }
 
 export const cloneBodies = (bodies) => bodies.map((body) => ({ ...body, trail: [] }));
@@ -25,32 +34,33 @@ function pullPerDistance(distance, surface, exponent) {
   return pullAt(1, reach, exponent) / reach;
 }
 
-const world = { xs: new Float64Array(0), ys: new Float64Array(0), ms: new Float64Array(0), rs: new Float64Array(0), count: 0 };
+const world = { xs: new Float64Array(0), ys: new Float64Array(0), ms: new Float64Array(0), softenings: new Float64Array(0), solid: new Uint8Array(0), count: 0 };
 
 function snapshot(bodies) {
   if (world.xs.length < bodies.length) {
     const size = bodies.length * 2;
-    Object.assign(world, { xs: new Float64Array(size), ys: new Float64Array(size), ms: new Float64Array(size), rs: new Float64Array(size) });
+    Object.assign(world, { xs: new Float64Array(size), ys: new Float64Array(size), ms: new Float64Array(size), softenings: new Float64Array(size), solid: new Uint8Array(size) });
   }
   world.count = bodies.length;
   bodies.forEach((body, index) => {
     world.xs[index] = body.x;
     world.ys[index] = body.y;
     world.ms[index] = body.mass;
-    world.rs[index] = radiusOf(body.mass);
+    world.softenings[index] = softeningOf(body);
+    world.solid[index] = isCollisionless(body) ? 0 : 1;
   });
 }
 
 function exactPulls(bodies, exponent, touching) {
-  const { xs, ys, ms, rs, count } = world;
+  const { xs, ys, ms, softenings, solid, count } = world;
   for (const body of bodies) body.ax = body.ay = 0;
   for (let i = 0; i < count; i++) {
     for (let j = i + 1; j < count; j++) {
       const dx = xs[j] - xs[i];
       const dy = ys[j] - ys[i];
       const distance = Math.sqrt(dx * dx + dy * dy);
-      const surface = Math.max(rs[i], rs[j]);
-      if (distance <= surface) touching.push(i, j);
+      const surface = Math.max(softenings[i], softenings[j]);
+      if (distance <= surface && solid[i] && solid[j]) touching.push(i, j);
       const perMass = pullPerDistance(distance, surface, exponent);
       bodies[i].ax += dx * perMass * ms[j];
       bodies[i].ay += dy * perMass * ms[j];
@@ -70,29 +80,40 @@ function treePulls(bodies, exponent, touching) {
   });
 }
 
+function strengthenWeakPulls(bodies) {
+  for (const body of bodies) {
+    const pull = Math.hypot(body.ax, body.ay);
+    if (pull === 0) continue;
+    const boost = 0.5 + Math.sqrt(0.25 + MOND_ACCELERATION / pull);
+    body.ax *= boost;
+    body.ay *= boost;
+  }
+}
+
 const pullsAreFor = new WeakMap();
 
-function pullsStillHold(bodies, exponent) {
+function pullsStillHold(bodies, { exponent, mond }) {
   const stamp = pullsAreFor.get(bodies);
-  if (!stamp || stamp.exponent !== exponent || stamp.count !== bodies.length) return false;
+  if (!stamp || stamp.exponent !== exponent || stamp.mond !== mond || stamp.count !== bodies.length) return false;
   return bodies.every((body) => body.pulledX === body.x && body.pulledY === body.y && body.pulledMass === body.mass);
 }
 
-function trustPulls(bodies, exponent) {
+function trustPulls(bodies, { exponent, mond }) {
   for (const body of bodies) {
     body.pulledX = body.x;
     body.pulledY = body.y;
     body.pulledMass = body.mass;
   }
-  pullsAreFor.set(bodies, { exponent, count: bodies.length });
+  pullsAreFor.set(bodies, { exponent, mond, count: bodies.length });
 }
 
-function updatePulls(bodies, exponent) {
+export function updatePulls(bodies, law) {
   const touching = [];
   snapshot(bodies);
-  if (bodies.length <= EXACT_PULLS_UP_TO_BODIES) exactPulls(bodies, exponent, touching);
-  else treePulls(bodies, exponent, touching);
-  trustPulls(bodies, exponent);
+  if (bodies.length <= EXACT_PULLS_UP_TO_BODIES) exactPulls(bodies, law.exponent, touching);
+  else treePulls(bodies, law.exponent, touching);
+  if (law.mond) strengthenWeakPulls(bodies);
+  trustPulls(bodies, law);
   return touching;
 }
 
@@ -160,15 +181,16 @@ function mergeTouching(bodies, touching) {
   return mergedAny;
 }
 
-export function leapfrogStep(bodies, { exponent, merge }) {
+export function leapfrogStep(bodies, { exponent, mond = false, merge }) {
+  const law = { exponent, mond };
   if (!bodies.length) return false;
-  if (!pullsStillHold(bodies, exponent)) updatePulls(bodies, exponent);
+  if (!pullsStillHold(bodies, law)) updatePulls(bodies, law);
   kick(bodies, STEP_SECONDS / 2);
   drift(bodies, STEP_SECONDS);
-  const touching = updatePulls(bodies, exponent);
+  const touching = updatePulls(bodies, law);
   kick(bodies, STEP_SECONDS / 2);
   if (!merge || !mergeTouching(bodies, touching)) return false;
-  trustPulls(bodies, exponent);
+  trustPulls(bodies, law);
   return true;
 }
 

@@ -5,12 +5,12 @@ const NO_BODY = -1;
 const STACK_DEPTH = 1024;
 
 let capacity = 0;
-let centreX, centreY, halfWidth, mass, massCentreX, massCentreY, reach, firstChild, firstBody;
+let centreX, centreY, halfWidth, mass, massCentreX, massCentreY, softening, solidReach, firstChild, firstBody;
 let nodeCount = 0;
 let nextBody = new Int32Array(0);
 const stack = new Int32Array(STACK_DEPTH);
 
-let xs, ys, ms, rs, bodyCount;
+let xs, ys, ms, softenings, solid, bodyCount;
 
 function grow(needed) {
   if (needed <= capacity) return;
@@ -20,7 +20,7 @@ function grow(needed) {
     if (old) next.set(old.subarray(0, nodeCount));
     return next;
   };
-  [centreX, centreY, halfWidth, mass, massCentreX, massCentreY, reach] = [centreX, centreY, halfWidth, mass, massCentreX, massCentreY, reach].map((old) => widen(old, Float64Array));
+  [centreX, centreY, halfWidth, mass, massCentreX, massCentreY, softening, solidReach] = [centreX, centreY, halfWidth, mass, massCentreX, massCentreY, softening, solidReach].map((old) => widen(old, Float64Array));
   [firstChild, firstBody] = [firstChild, firstBody].map((old) => widen(old, Int32Array));
   capacity = size;
 }
@@ -31,7 +31,7 @@ function addNode(x, y, half) {
   centreX[node] = x;
   centreY[node] = y;
   halfWidth[node] = half;
-  mass[node] = massCentreX[node] = massCentreY[node] = reach[node] = 0;
+  mass[node] = massCentreX[node] = massCentreY[node] = softening[node] = solidReach[node] = 0;
   firstChild[node] = NO_CHILDREN;
   firstBody[node] = NO_BODY;
   return node;
@@ -41,7 +41,8 @@ function weigh(node, body) {
   mass[node] += ms[body];
   massCentreX[node] += ms[body] * xs[body];
   massCentreY[node] += ms[body] * ys[body];
-  reach[node] = Math.max(reach[node], rs[body]);
+  softening[node] += ms[body] * softenings[body];
+  if (solid[body]) solidReach[node] = Math.max(solidReach[node], softenings[body]);
 }
 
 function split(node) {
@@ -78,7 +79,7 @@ function insert(body) {
 }
 
 export function buildTree(world) {
-  ({ xs, ys, ms, rs, count: bodyCount } = world);
+  ({ xs, ys, ms, softenings, solid, count: bodyCount } = world);
   if (nextBody.length < bodyCount) nextBody = new Int32Array(bodyCount * 2);
   let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
   for (let i = 0; i < bodyCount; i++) {
@@ -94,6 +95,7 @@ export function buildTree(world) {
     if (mass[node] === 0) continue;
     massCentreX[node] /= mass[node];
     massCentreY[node] /= mass[node];
+    softening[node] /= mass[node];
   }
 }
 
@@ -115,7 +117,7 @@ function pushChildren(node, top) {
 export function pullOn(body, exponent, pullPerDistance, out) {
   const x = xs[body];
   const y = ys[body];
-  const radius = rs[body];
+  const radius = softenings[body];
   const openingSquared = OPENING_ANGLE * OPENING_ANGLE;
   let ax = 0;
   let ay = 0;
@@ -130,8 +132,8 @@ export function pullOn(body, exponent, pullPerDistance, out) {
         const dx = xs[other] - x;
         const dy = ys[other] - y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const surface = Math.max(radius, rs[other]);
-        if (other > body && distance <= surface) out.touching.push(body, other);
+        const surface = Math.max(radius, softenings[other]);
+        if (other > body && distance <= surface && solid[body] && solid[other]) out.touching.push(body, other);
         const perMass = pullPerDistance(distance, surface, exponent) * ms[other];
         ax += dx * perMass;
         ay += dy * perMass;
@@ -142,12 +144,13 @@ export function pullOn(body, exponent, pullPerDistance, out) {
     const dy = massCentreY[node] - y;
     const squared = dx * dx + dy * dy;
     const width = 2 * halfWidth[node];
-    const farEnough = width * width < openingSquared * squared && farFromBox(node, x, y, Math.max(radius, reach[node]));
+    const mightTouch = solid[body] && !farFromBox(node, x, y, Math.max(radius, solidReach[node]));
+    const farEnough = width * width < openingSquared * squared && !mightTouch;
     if (!farEnough) {
       top = pushChildren(node, top);
       continue;
     }
-    const perMass = pullPerDistance(Math.sqrt(squared), radius, exponent) * mass[node];
+    const perMass = pullPerDistance(Math.sqrt(squared), Math.max(radius, softening[node]), exponent) * mass[node];
     ax += dx * perMass;
     ay += dy * perMass;
   }
@@ -157,20 +160,21 @@ export function pullOn(body, exponent, pullPerDistance, out) {
 
 export function touchingPairs(touching) {
   for (let body = 0; body < bodyCount; body++) {
+    if (!solid[body]) continue;
     const x = xs[body];
     const y = ys[body];
-    const radius = rs[body];
+    const radius = softenings[body];
     let top = 0;
     stack[top++] = 0;
     while (top > 0) {
       const node = stack[--top];
-      if (mass[node] === 0 || farFromBox(node, x, y, Math.max(radius, reach[node]))) continue;
+      if (solidReach[node] === 0 || farFromBox(node, x, y, Math.max(radius, solidReach[node]))) continue;
       if (firstChild[node] !== NO_CHILDREN) {
         top = pushChildren(node, top);
         continue;
       }
       for (let other = firstBody[node]; other !== NO_BODY; other = nextBody[other]) {
-        if (other > body && Math.hypot(xs[other] - x, ys[other] - y) <= Math.max(radius, rs[other])) touching.push(body, other);
+        if (other > body && solid[other] && Math.hypot(xs[other] - x, ys[other] - y) <= Math.max(radius, softenings[other])) touching.push(body, other);
       }
     }
   }

@@ -31,7 +31,7 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, merge: true, trails: true, speed: 1, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, merge: true, trails: true, speed: 1, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, paused: false };
 let bodies = [];
 let selected = null;
 let launch = null;
@@ -116,7 +116,7 @@ function fireFlash() {
 }
 
 function loadScene(key) {
-  bodies = SCENES[key].build(settings.exponent);
+  bodies = SCENES[key].build(settings);
   if (inCones()) intoConesAndBalls();
   selected = null;
   view.resize();
@@ -349,6 +349,7 @@ function bindPanel() {
     bodies.forEach((body) => (body.trail = []));
   });
   form.merge.addEventListener('change', () => (settings.merge = form.merge.checked));
+  form.mond.addEventListener('change', () => (settings.mond = form.mond.checked));
   document.querySelectorAll('[data-spacetime]').forEach((button) => button.addEventListener('click', () => setSpacetime(button.dataset.spacetime)));
   form.cutAngle.addEventListener('input', () => {
     settings.cutAngle = Number(form.cutAngle.value) * DEGREES;
@@ -413,7 +414,7 @@ function showStatus() {
   const cones = bodies.filter(isCone).length;
   const description = inCones()
     ? `${counted(cones, 'mass', 'masses')} · ${counted(bodies.length - cones, 'ball', 'balls')} · 2+1 relativity`
-    : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}`;
+    : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}${settings.mond ? ' · MOND' : ''}`;
   const slowed = !settings.paused && achievedSpeed < settings.speed * SLOWED_BELOW ? ` · slowed to ${achievedSpeed.toFixed(2)}×` : '';
   find('[data-status]').textContent = description + paused + slowed;
 }
