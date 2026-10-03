@@ -1,7 +1,7 @@
 import { contextsLearned, createSampler, NEIGHBORS, trainModel } from './model.js';
 import { learnPalette, quantize } from './palette.js';
 import { findCutOff } from './paths.js';
-import { loadCredits, loadPyramids, loadTrainingSet, PLANET_SIZE, pyramidDownTo, SEED_SIZE, TRAINING_SETS } from './training-set.js';
+import { loadCredits, loadPyramids, loadTrainingSet, PLANET_SIZE, pyramidDownTo, SEED_SIZE, sourceOf, TRAINING_SETS } from './training-set.js';
 import { createUpscaleSampler, trainUpscaler } from './upscaler.js';
 
 const BASE_ROWS_PER_FRAME = 3;
@@ -119,7 +119,7 @@ function showCutOff(realShare, imitationShare) {
 
 function realPictureShown() {
   const { resolution } = settings();
-  if (resolution === PLANET_SIZE) return { picture: pictures[realIndex], indices: quantized[realIndex], credit: credits?.[realIndex] };
+  if (resolution === PLANET_SIZE) return { picture: pictures[realIndex], indices: quantized[realIndex], credit: credits?.[sourceOf(settings().set, realIndex)] };
   const pick = realIndex % pyramids.length;
   return {
     picture: pyramids[pick][stagesFor(resolution)],
@@ -145,7 +145,8 @@ function showReal() {
 function showCredits() {
   creditList.closest('details').hidden = !credits;
   if (!credits) return;
-  creditList.replaceChildren(...credits.map((entry) => {
+  const uniqueSources = [...new Map(credits.map((entry) => [entry.source, entry])).values()];
+  creditList.replaceChildren(...uniqueSources.map((entry) => {
     const item = document.createElement('li');
     item.append(...creditLink(entry));
     return item;
@@ -287,8 +288,23 @@ async function switchSet() {
   learnColors();
 }
 
+let resolutionBeforeLock = null;
+
+function lockResolutionWithoutUpscalers() {
+  const { resolution } = form.elements;
+  const locked = !currentSet().hiresCount;
+  if (locked && !resolution.disabled) {
+    resolutionBeforeLock = resolution.value;
+    resolution.value = PLANET_SIZE;
+  } else if (!locked && resolution.disabled) {
+    resolution.value = resolutionBeforeLock;
+  }
+  resolution.disabled = locked;
+}
+
 function applySuggestedSettings() {
   const { colors, suggested = {} } = currentSet();
+  lockResolutionWithoutUpscalers();
   form.elements.colors.value = colors;
   if (suggested.start) form.elements.start.value = suggested.start;
   if (suggested.ringsOn !== undefined) form.elements.ringsOn.checked = suggested.ringsOn;

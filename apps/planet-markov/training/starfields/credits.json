@@ -1,0 +1,122 @@
+[
+  {
+    "file": "0.png",
+    "name": "Westerlund 1",
+    "credit": "ESA/Webb, NASA & CSA, M. Zamani (ESA/Webb), M. G. Guarcello (INAF-OAPA) and the EWOCS team",
+    "source": "https://esawebb.org/images/potm2409b/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/potm2409b.jpg",
+    "crop": [
+      192,
+      448,
+      384
+    ]
+  },
+  {
+    "file": "1.png",
+    "name": "Westerlund 1",
+    "credit": "ESA/Webb, NASA & CSA, M. Zamani (ESA/Webb), M. G. Guarcello (INAF-OAPA) and the EWOCS team",
+    "source": "https://esawebb.org/images/potm2409b/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/potm2409b.jpg",
+    "crop": [
+      576,
+      448,
+      384
+    ]
+  },
+  {
+    "file": "2.png",
+    "name": "NGC 6440",
+    "credit": "ESA/Webb, NASA & CSA, P. Freire Acknowledgement: M. Cadelano and C. Pallanca",
+    "source": "https://esawebb.org/images/potm2404b/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/potm2404b.jpg",
+    "crop": [
+      0,
+      896,
+      384
+    ]
+  },
+  {
+    "file": "3.png",
+    "name": "NGC 6440",
+    "credit": "ESA/Webb, NASA & CSA, P. Freire Acknowledgement: M. Cadelano and C. Pallanca",
+    "source": "https://esawebb.org/images/potm2404b/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/potm2404b.jpg",
+    "crop": [
+      640,
+      768,
+      384
+    ]
+  },
+  {
+    "file": "4.png",
+    "name": "Dwarf galaxy WLM",
+    "credit": "NASA, ESA, CSA, STScI, and K. McQuinn (Rutgers University), A. Pagan (STScI).",
+    "source": "https://esawebb.org/images/WLMb/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/WLMb.jpg",
+    "crop": [
+      640,
+      0,
+      384
+    ]
+  },
+  {
+    "file": "5.png",
+    "name": "Dwarf galaxy WLM",
+    "credit": "NASA, ESA, CSA, STScI, and K. McQuinn (Rutgers University), A. Pagan (STScI).",
+    "source": "https://esawebb.org/images/WLMb/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/WLMb.jpg",
+    "crop": [
+      256,
+      512,
+      384
+    ]
+  },
+  {
+    "file": "6.png",
+    "name": "Messier 92",
+    "credit": "NASA, ESA, CSA, A. Pagan (STScI)",
+    "source": "https://esawebb.org/images/m92a/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/m92a.jpg",
+    "crop": [
+      40,
+      90,
+      384
+    ]
+  },
+  {
+    "file": "7.png",
+    "name": "Messier 92",
+    "credit": "NASA, ESA, CSA, A. Pagan (STScI)",
+    "source": "https://esawebb.org/images/m92a/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/m92a.jpg",
+    "crop": [
+      820,
+      90,
+      384
+    ]
+  },
+  {
+    "file": "8.png",
+    "name": "NGC 6822",
+    "credit": "ESA/Webb, NASA & CSA, M. Meixner",
+    "source": "https://esawebb.org/images/potm2309a/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/potm2309a.jpg",
+    "crop": [
+      880,
+      384,
+      384
+    ]
+  },
+  {
+    "file": "9.png",
+    "name": "NGC 6822",
+    "credit": "ESA/Webb, NASA & CSA, M. Meixner",
+    "source": "https://esawebb.org/images/potm2309a/",
+    "original": "https://cdn.esawebb.org/archives/images/screen/potm2309a.jpg",
+    "crop": [
+      256,
+      256,
+      384
+    ]
+  }
+]

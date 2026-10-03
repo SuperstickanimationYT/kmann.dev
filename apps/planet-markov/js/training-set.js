@@ -23,6 +23,19 @@ export const TRAINING_SETS = {
     credited: true,
     caption: 'Watch the spiral arms. A long curving arm is far bigger than what any step can see, so the arms break into blotches.',
   },
+  starfields: {
+    group: 'Star fields',
+    label: 'Webb star fields',
+    noun: 'star field',
+    count: 10,
+    tilesPerSide: 4,
+    hiresCount: 0,
+    round: false,
+    colors: 12,
+    suggested: { start: 'painter', ringsOn: false },
+    credited: true,
+    caption: 'Bright Webb stars have six long spikes. They are rare in the training tiles, so the model never paints one. It learned the spikes only as long lines, and draws them with no star attached.',
+  },
   mazes: {
     group: 'Mazes',
     label: 'Mazes',
@@ -84,10 +97,27 @@ function drawPictures(name, size, count, firstSeed) {
   return Array.from({ length: count }, (_, index) => ({ ...TRAINING_SETS[name].drawn(firstSeed + index, size), disk: maskOf(size, false) }));
 }
 
+function cutTiles({ size, rgb }, perSide) {
+  const tile = size / perSide;
+  return Array.from({ length: perSide * perSide }, (_, index) => {
+    const left = (index % perSide) * tile;
+    const top = Math.floor(index / perSide) * tile;
+    const tileRgb = new Uint8Array(tile * tile * 3);
+    for (let row = 0; row < tile; row++) tileRgb.set(rgb.subarray(((top + row) * size + left) * 3, ((top + row) * size + left + tile) * 3), row * tile * 3);
+    return { size: tile, rgb: tileRgb, disk: maskOf(tile, false) };
+  });
+}
+
 export async function loadTrainingSet(name) {
-  const { count, drawn } = TRAINING_SETS[name];
+  const { count, drawn, tilesPerSide } = TRAINING_SETS[name];
   if (drawn) return drawPictures(name, PLANET_SIZE, count, 1);
-  return loadPictures(name, Array.from({ length: count }, (_, index) => `${index}.png`));
+  const pictures = await loadPictures(name, Array.from({ length: count }, (_, index) => `${index}.png`));
+  return tilesPerSide ? pictures.flatMap((picture) => cutTiles(picture, tilesPerSide)) : pictures;
+}
+
+export function sourceOf(name, pictureIndex) {
+  const { tilesPerSide } = TRAINING_SETS[name];
+  return tilesPerSide ? Math.floor(pictureIndex / (tilesPerSide * tilesPerSide)) : pictureIndex;
 }
 
 function halve({ size, rgb, disk }) {
@@ -114,6 +144,7 @@ export function pyramidDownTo(picture, smallest) {
 
 export async function loadPyramids(name) {
   const { hiresCount, drawn, count } = TRAINING_SETS[name];
+  if (!hiresCount) return [];
   const pictures = drawn
     ? drawPictures(name, HIRES_SIZE, hiresCount, count + 1)
     : await loadPictures(name, Array.from({ length: hiresCount }, (_, index) => `hires-${index}.png`));
