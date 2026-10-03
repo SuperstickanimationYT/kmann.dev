@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GlaBo &mdash; kmann314</title>
+<meta name="description" content="A glass-box chatbot for a table of blocks: hand-written grammar and logic instead of machine learning, words learned by asking, and a simulated crowd that vets what it learns.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">GlaBo</h2>
+    </div>
+  </div>
+
+  <div class="shell gb-app">
+    <p class="gb-intro">GlaBo ("glass box") understands English through hand-written grammar rules and logic, with no machine learning. Ask it about the blocks, tell it to move them, and teach it new words. The Trace panel shows every step of its reasoning.</p>
+
+    <div class="gb-layout">
+      <section class="gb-main">
+        <div class="gb-stage"><canvas data-stage></canvas></div>
+        <div class="gb-chat">
+          <ol class="gb-log" data-log aria-live="polite"></ol>
+          <form class="gb-form" data-form>
+            <input type="text" data-input placeholder="Ask or tell GlaBo something" autocomplete="off" aria-label="Message to GlaBo">
+            <button type="submit">Send</button>
+          </form>
+          <div class="gb-examples" data-examples></div>
+        </div>
+      </section>
+
+      <section class="gb-side">
+        <div class="gb-tabs" role="tablist">
+          <button type="button" role="tab" data-tab="trace">Trace</button>
+          <button type="button" role="tab" data-tab="knowledge">Knowledge</button>
+          <button type="button" role="tab" data-tab="crowd">Crowd</button>
+        </div>
+        <div class="gb-panel" role="tabpanel" data-panel="trace"></div>
+        <div class="gb-panel" role="tabpanel" data-panel="knowledge" hidden></div>
+        <div class="gb-panel" role="tabpanel" data-panel="crowd" hidden></div>
+      </section>
+    </div>
+
+    <div class="gb-actions gb-resets">
+      <button type="button" data-reset-world>Reset blocks</button>
+      <button type="button" data-reset-knowledge>Forget everything learned</button>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
