@@ -37,7 +37,7 @@ function cubeToScreen(view, r, yaw) {
   const z2 = sp * r[1] + cp * z1;
   const depth = VIEWER_DISTANCE + z2;
   const k = RETINA_SIZE_OF_VIEW * Math.min(view.width, view.height) * VIEWER_DISTANCE / depth;
-  return { x: view.width / 2 + x1 * k, y: view.height / 2 - y2 * k, depth };
+  return { x: (view.left ?? 0) + view.width / 2 + x1 * k, y: (view.top ?? 0) + view.height / 2 - y2 * k, depth };
 }
 
 export function createRenderer4D() {

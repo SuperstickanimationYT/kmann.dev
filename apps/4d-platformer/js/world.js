@@ -56,26 +56,43 @@ function roomShell({ min, max }) {
   return { floor, walls, outline: box(center, half).segments, bounds: { min, max } };
 }
 
+const MAZE_WALL_HUE = 205;
+
+function platformsOf(layout) {
+  if (layout.objects) return furniture(layout.objects);
+  if (layout.walls) return layout.walls.map(wall => box(wall.center, wall.half, { hue: MAZE_WALL_HUE, marked: false }));
+  return numberedPlatforms(layout);
+}
+
+function floorOf(layout, shell) {
+  if (shell) return shell.floor;
+  return layout.floor ? box(layout.floor.center, layout.floor.half, { isFloor: true }) : null;
+}
+
 function buildWorld(layout) {
   const { n } = layout;
   const shell = layout.room ? roomShell(layout.room) : null;
-  const floor = shell ? shell.floor : box(layout.floor.center, layout.floor.half, { isFloor: true });
-  const platforms = layout.objects ? furniture(layout.objects) : numberedPlatforms(layout);
+  const floor = floorOf(layout, shell);
+  const platforms = platformsOf(layout);
   const axes = range(n);
   return {
     n,
     floor,
     platforms,
-    solids: [floor, ...platforms, ...(shell ? shell.walls : [])],
+    solids: [floor, ...platforms, ...(shell ? shell.walls : [])].filter(Boolean),
+    goalZone: layout.goal ? box(layout.goal.center, layout.goal.half, { isGoal: true }) : null,
+    solidInFlight: Boolean(layout.walls),
+    snapTurns: Boolean(layout.walls),
     outline: shell ? shell.outline : [],
     bounds: shell?.bounds,
-    eyeView: Boolean(layout.eyeView),
+    eyeView: Boolean(layout.eyeView || layout.walls),
+    flying: Boolean(layout.flying),
     start: layout.start,
     axes,
     horizontalAxes: axes.filter(axis => axis !== Y),
     forward: n - 1,
     hasAna: n === 4,
-    hasGoal: platforms.some(p => p.isGoal),
+    hasGoal: Boolean(layout.goal) || platforms.some(p => p.isGoal),
   };
 }
 
@@ -127,6 +144,18 @@ function reorthonormalize(basis) {
   }
 }
 
+const TURN_PLANES = { right: world => [world.forward, RIGHT], ana: world => [world.forward, ANA], spin: () => [RIGHT, ANA] };
+
+export function turnBy({ world, player }, plane, angle) {
+  const [i, j] = TURN_PLANES[plane](world);
+  rotateBasis(player.basis, i, j, angle);
+  reorthonormalize(player.basis);
+}
+
+export function squareUp({ player }) {
+  player.basis = player.basis.map(direction => direction.map(Math.round));
+}
+
 export function turn({ world, player }, input, dt) {
   const F = world.forward;
   if (input.turnRight) rotateBasis(player.basis, F, RIGHT, input.turnRight * TURN_SPEED * dt);
@@ -152,10 +181,20 @@ function keepInside(bounds, feet) {
   });
 }
 
+function moveAroundSolids(game, delta) {
+  const { world, player } = game;
+  for (const axis of world.axes) {
+    if (!delta[axis]) continue;
+    player.feet[axis] += delta[axis];
+    if (world.solids.some(solid => overlaps(world, playerBox(game), solid))) player.feet[axis] -= delta[axis];
+  }
+}
+
 function fly(game, input, dt) {
   const { world, player } = game;
   const move = add(wishDirection(game, input), scale(player.basis[UP], input.vertical));
-  player.feet = add(player.feet, scale(move, FLY_SPEED * dt));
+  if (world.solidInFlight) moveAroundSolids(game, scale(move, FLY_SPEED * dt));
+  else player.feet = add(player.feet, scale(move, FLY_SPEED * dt));
   if (world.bounds) player.feet = keepInside(world.bounds, player.feet);
   player.verticalSpeed = 0;
   player.grounded = false;
@@ -197,6 +236,8 @@ function walk(game, input, dt) {
 
 export function stepPhysics(game, input, dt, flying) {
   (flying ? fly : walk)(game, input, dt);
+  const { goalZone } = game.world;
+  if (goalZone && overlaps(game.world, playerBox(game), goalZone)) game.reachedGoal = true;
 }
 
 export function surfaceBelow(world, point) {

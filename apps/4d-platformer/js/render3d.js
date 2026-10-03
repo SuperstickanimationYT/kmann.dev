@@ -114,7 +114,7 @@ function drawOutsideView(ctx, panel, game, camera, settings) {
   ctx.rect(panel.cx - panel.half, panel.cy - panel.half, 2 * panel.half, 2 * panel.half);
   ctx.clip();
 
-  if (settings.floor) fillSolidBox(ctx, project, { ...game.world.floor, kind: 'floor' }, settings.color);
+  if (settings.floor && game.world.floor) fillSolidBox(ctx, project, { ...game.world.floor, kind: 'floor' }, settings.color);
   const bodies = [
     ...game.world.platforms.map(p => ({ min: p.min, max: p.max, ...platformStyle(p) })),
     { ...playerBox(game), kind: 'player' },
@@ -139,7 +139,7 @@ function drawOutsideView(ctx, panel, game, camera, settings) {
   drawCaption(ctx, 'the world, from outside', panel.cx, panel.cy - panel.half - 6);
 }
 
-function drawPicture(ctx, panel, game, camera, settings) {
+export function drawPicture(ctx, panel, game, camera, settings) {
   const toPanel = r => ({ x: panel.cx + r[0] * panel.half, y: panel.cy - r[1] * panel.half });
   if (settings.frame) {
     ctx.strokeStyle = FRAME_COLOR;
@@ -163,12 +163,11 @@ function drawPicture(ctx, panel, game, camera, settings) {
   return pieces.length / LINE_SUBDIVISIONS;
 }
 
-function layoutPanels(view, showOutside) {
+export function panelSlots(view, count) {
   const left = PANEL_MARGIN;
   const top = PANEL_MARGIN + BANNER_SPACE + CAPTION_SPACE;
   const width = view.width - 2 * PANEL_MARGIN;
   const height = view.height - top - PANEL_MARGIN;
-  const count = showOutside ? 2 : 1;
   const halfFor = (slotWidth, slotHeight) => Math.max(40, Math.min(slotWidth, slotHeight) / 2 - PANEL_MARGIN / 2);
   const stackedSlotHeight = (height - CAPTION_SPACE * (count - 1)) / count;
   const sideBySide = halfFor(width / count, height) >= halfFor(width, stackedSlotHeight);
@@ -178,7 +177,12 @@ function layoutPanels(view, showOutside) {
     cy: sideBySide ? top + height / 2 : top + (stackedSlotHeight + CAPTION_SPACE) * i + stackedSlotHeight / 2,
     half,
   });
-  return showOutside ? { outside: slot(0), picture: slot(1) } : { picture: slot(0) };
+  return Array.from({ length: count }, (_, i) => slot(i));
+}
+
+function layoutPanels(view, showOutside) {
+  const slots = panelSlots(view, showOutside ? 2 : 1);
+  return showOutside ? { outside: slots[0], picture: slots[1] } : { picture: slots[0] };
 }
 
 export function draw3D(ctx, view, game, camera, settings) {
