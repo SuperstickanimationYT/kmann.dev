@@ -15,7 +15,7 @@ export function distanceFromCenter(index, size = PLANET_SIZE) {
   return Math.hypot(x, y);
 }
 
-const DISK_REACH = 1 + 2 / PLANET_SIZE;
+export const DISK_REACH = 1 + 2 / PLANET_SIZE;
 const DISK = Array.from({ length: PLANET_SIZE * PLANET_SIZE }, (_, index) => index)
   .filter((index) => distanceFromCenter(index) <= DISK_REACH);
 
