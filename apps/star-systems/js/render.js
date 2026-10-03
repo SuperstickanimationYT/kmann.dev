@@ -1,24 +1,19 @@
 import { AU_KM } from './systems.js';
 import { toScreen } from './camera.js';
 import { eccentricAnomalyNearest, pointAtEccentricAnomaly } from './kepler.js';
+import { hostStar } from './surface-guess.js';
 
 const MARKER_PX = 2.5;
 const HUGE_PX = 1e6;
 const ORBIT_SAMPLES = 240;
 const LIGHT_SECOND_KM = 299792.458;
 const LABEL_SPACING_PX = 26;
+const TEXTURED_FROM_PX = 6;
+const GUESS_CAPTION_FROM_PX = 30;
+const STARLIGHT_TINT = 0.5;
 
 export function screenRadius(body, camera) {
   return body.radiusKm / AU_KM * camera.scale;
-}
-
-function hostStar(system, body) {
-  let current = body;
-  while (current.parent) {
-    current = system.bodies.find((other) => other.name === current.parent);
-    if (current.kind === 'star') return current;
-  }
-  return null;
 }
 
 function drawBackground(context, camera) {
@@ -169,7 +164,36 @@ function drawStar(context, body, center, radius) {
   context.fill();
 }
 
-function drawLitSphere(context, body, center, radius, lightFrom) {
+function towardWhite(hex, amount) {
+  const value = parseInt(hex.slice(1), 16);
+  const channel = (shift) => Math.round(((value >> shift) & 255) + (255 - ((value >> shift) & 255)) * amount);
+  return `rgb(${channel(16)}, ${channel(8)}, ${channel(0)})`;
+}
+
+function drawSurface(context, texture, starColor, center, radius) {
+  context.save();
+  context.beginPath();
+  context.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  context.clip();
+  context.drawImage(texture, center.x - radius, center.y - radius, radius * 2, radius * 2);
+  if (starColor) {
+    context.globalCompositeOperation = 'multiply';
+    context.fillStyle = towardWhite(starColor, STARLIGHT_TINT);
+    context.fillRect(center.x - radius, center.y - radius, radius * 2, radius * 2);
+  }
+  context.restore();
+}
+
+function drawGuessCaption(context, center, radius) {
+  context.font = '12px "Trebuchet MS", "Segoe UI", sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  context.fillStyle = 'rgba(255, 214, 140, 0.9)';
+  context.fillText('Surface: a guess', center.x, center.y + radius + 8);
+  context.textAlign = 'start';
+}
+
+function drawLitSphere(context, body, center, radius, lightFrom, texture) {
   let lx = 0;
   let ly = 0;
   if (lightFrom) {
@@ -183,9 +207,9 @@ function drawLitSphere(context, body, center, radius, lightFrom) {
     center.x + lx * radius * 0.45, center.y + ly * radius * 0.45, radius * 0.05,
     center.x, center.y, radius * 1.05,
   );
-  shade.addColorStop(0, body.color);
-  shade.addColorStop(0.55, body.color);
-  shade.addColorStop(1, '#05080d');
+  shade.addColorStop(0, texture ? 'rgba(5, 8, 13, 0)' : body.color);
+  shade.addColorStop(0.55, texture ? 'rgba(5, 8, 13, 0)' : body.color);
+  shade.addColorStop(1, texture ? 'rgba(5, 8, 13, 0.92)' : '#05080d');
   context.fillStyle = shade;
   context.beginPath();
   context.arc(center.x, center.y, radius, 0, Math.PI * 2);
@@ -201,7 +225,7 @@ function onScreen(point, margin, camera) {
   return point.x > -margin && point.y > -margin && point.x < camera.width + margin && point.y < camera.height + margin;
 }
 
-function drawBodies(context, system, placed, camera, selectedName) {
+function drawBodies(context, system, placed, camera, selectedName, surfaceFor) {
   const drawn = [];
   for (const body of system.bodies) {
     const center = toScreen(camera, placed.get(body.name));
@@ -213,7 +237,10 @@ function drawBodies(context, system, placed, camera, selectedName) {
       drawStar(context, body, center, shownRadius);
     } else {
       const star = hostStar(system, body);
-      drawLitSphere(context, body, center, shownRadius, star && toScreen(camera, placed.get(star.name)));
+      const texture = shownRadius >= TEXTURED_FROM_PX ? surfaceFor(body, shownRadius) : null;
+      if (texture) drawSurface(context, texture, star?.color, center, shownRadius);
+      drawLitSphere(context, body, center, shownRadius, star && toScreen(camera, placed.get(star.name)), texture);
+      if (texture && shownRadius >= GUESS_CAPTION_FROM_PX) drawGuessCaption(context, center, shownRadius);
     }
     if (body.name === selectedName) {
       context.strokeStyle = 'rgba(95, 227, 255, 0.9)';
@@ -297,7 +324,7 @@ function drawScaleBar(context, camera) {
 }
 
 export function render(context, scene) {
-  const { system, placed, camera, layers, selectedName } = scene;
+  const { system, placed, camera, layers, selectedName, surfaceFor } = scene;
   drawBackground(context, camera);
   drawZones(context, system, placed, camera, layers);
   if (layers.orbits) {
@@ -307,7 +334,7 @@ export function render(context, scene) {
       drawOrbit(context, body, parentPoint, camera, body.name === selectedName);
     }
   }
-  const drawn = drawBodies(context, system, placed, camera, selectedName);
+  const drawn = drawBodies(context, system, placed, camera, selectedName, surfaceFor);
   if (layers.labels) drawLabels(context, drawn, selectedName);
   drawScaleBar(context, camera);
   return drawn;

@@ -69,10 +69,10 @@ const trappist = {
   bodies: [
     { name: 'TRAPPIST-1', kind: 'star', radiusKm: 0.1192 * SUN_KM, massSun: 0.0898, temperatureK: 2566, spectral: 'M8V', color: '#ff7a3c',
       note: 'Barely larger than Jupiter and about 7.6 billion years old, older than the Sun.' },
-    { name: 'b', kind: 'planet', parent: 'TRAPPIST-1', radiusKm: 1.116 * EARTH_KM, massEarth: 1.374, color: '#a0726a',
+    { name: 'b', kind: 'planet', parent: 'TRAPPIST-1', radiusKm: 1.116 * EARTH_KM, massEarth: 1.374, color: '#a0726a', guess: { airAtMost: 0, dry: true },
       orbit: { a: 0.01154, e: 0, periodDays: 1.51088, periapsisDeg: 0, meanAnomalyDeg: 10 },
       note: 'JWST measured its dayside at about 500 K, consistent with bare rock and no thick atmosphere.' },
-    { name: 'c', kind: 'planet', parent: 'TRAPPIST-1', radiusKm: 1.097 * EARTH_KM, massEarth: 1.308, color: '#b08a6e',
+    { name: 'c', kind: 'planet', parent: 'TRAPPIST-1', radiusKm: 1.097 * EARTH_KM, massEarth: 1.308, color: '#b08a6e', guess: { airAtMost: 15 },
       orbit: { a: 0.0158, e: 0, periodDays: 2.42182, periapsisDeg: 0, meanAnomalyDeg: 120 },
       note: 'JWST rules out a thick Venus-like CO₂ atmosphere.' },
     { name: 'd', kind: 'planet', parent: 'TRAPPIST-1', radiusKm: 0.788 * EARTH_KM, massEarth: 0.388, color: '#8f8c9a',

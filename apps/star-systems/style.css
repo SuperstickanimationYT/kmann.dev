@@ -94,6 +94,27 @@
   color: var(--text);
 }
 
+.ss-guess {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(255, 214, 140, 0.6);
+  border-radius: 10px;
+}
+
+.ss-guess[hidden] {
+  display: none;
+}
+
+.ss-guess-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgb(255, 214, 140);
+}
+
 .ss-facts {
   display: grid;
   grid-template-columns: auto 1fr;
