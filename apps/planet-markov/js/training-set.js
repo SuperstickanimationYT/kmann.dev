@@ -4,7 +4,10 @@ export const PLANET_SIZE = 96;
 export const HIRES_SIZE = 768;
 export const SEED_SIZE = 3;
 
-const planetSet = (label) => ({ group: 'Planets', label, noun: 'planet', count: 24, hiresCount: 3, round: true, colors: 12 });
+const LAYOUT_FROM_SEED = { start: 'seed', ringsOn: true };
+const TEXTURE_FROM_PAINTER = { start: 'painter', ringsOn: false };
+
+const planetSet = (label) => ({ group: 'Planets', label, noun: 'planet', count: 24, hiresCount: 3, round: true, colors: 12, suggested: LAYOUT_FROM_SEED });
 
 export const TRAINING_SETS = {
   earthlike: planetSet('Earth-like'),
@@ -19,9 +22,9 @@ export const TRAINING_SETS = {
     hiresCount: 3,
     round: false,
     colors: 16,
-    suggested: { start: 'seed', ringsOn: true },
+    suggested: LAYOUT_FROM_SEED,
     credited: true,
-    caption: 'Watch the spiral arms. A long curving arm is far bigger than what any step can see, so the arms break into blotches.',
+    caption: 'From the 3 × 3 seed, the arms are decided while the galaxy is a few pixels wide, so they often come out whole. Try the 96 px painter: with no plan, it can never see a whole arm and breaks them into blotches.',
   },
   starfields: {
     group: 'Star fields',
@@ -32,7 +35,7 @@ export const TRAINING_SETS = {
     hiresCount: 0,
     round: false,
     colors: 12,
-    suggested: { start: 'painter', ringsOn: false },
+    suggested: TEXTURE_FROM_PAINTER,
     credited: true,
     caption: 'Bright Webb stars have six long spikes. They are rare in the training tiles, so the model never paints one. It learned the spikes only as long lines, and draws them with no star attached.',
   },
@@ -44,6 +47,7 @@ export const TRAINING_SETS = {
     hiresCount: 3,
     round: false,
     colors: 2,
+    suggested: TEXTURE_FROM_PAINTER,
     drawn: drawMaze,
     pathCheck: true,
     caption: 'Every corridor looks right, but a maze has to connect from end to end. Tick Check paths to see how much of it is cut off.',
