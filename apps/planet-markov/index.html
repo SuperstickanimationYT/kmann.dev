@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markov Planets &mdash; kmann314</title>
+<meta name="description" content="A tiny image model that paints planets by counting which colors follow which neighbors, trained on the Planet Texture Generator.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Markov Planets</h2>
+    </div>
+  </div>
+
+  <div class="shell pm-layout">
+    <form class="pm-panel" id="pm-controls" data-controls>
+      <p class="pm-intro">
+        This model paints one pixel at a time, left to right, top to bottom. For each pixel it looks up
+        what colors came next after the same surroundings in the training planets, and rolls a die
+        weighted by those counts. That is the whole model.
+      </p>
+
+      <label class="pm-field">
+        <span>Training planets</span>
+        <select name="set"></select>
+      </label>
+
+      <label class="pm-field">
+        <span>Colors <output></output></span>
+        <input type="range" name="colors" min="2" max="16" step="1" value="8">
+      </label>
+      <div class="pm-palette" data-palette></div>
+
+      <fieldset>
+        <legend>What the model sees</legend>
+        <label class="pm-field">
+          <span>Neighbors <output></output></span>
+          <input type="range" name="neighbors" min="0" max="6" step="1" value="3">
+        </label>
+        <p class="pm-note" data-neighbor-list></p>
+        <label class="pm-toggle"><input type="checkbox" name="ringsOn"> Distance from center</label>
+        <label class="pm-field pm-off">
+          <span>Rings <output></output></span>
+          <input type="range" name="rings" min="2" max="16" step="1" value="8">
+        </label>
+        <p class="pm-note">The generator shows each planet from above its pole, so distance from the center is latitude.</p>
+      </fieldset>
+
+      <dl class="pm-stats">
+        <dt>Contexts learned</dt>
+        <dd><output data-contexts>0</output></dd>
+        <dt>Pixels with an unseen context</dt>
+        <dd><output data-fallback>0%</output></dd>
+      </dl>
+      <p class="pm-note">When a context never appeared in training, the model drops its farthest neighbor and tries again.</p>
+      <p class="pm-note" data-status></p>
+    </form>
+
+    <section class="pm-stage">
+      <figure class="pm-figure">
+        <canvas data-real></canvas>
+        <figcaption>
+          <span>Real planet</span>
+          <label class="pm-toggle"><input type="checkbox" name="modelView" form="pm-controls"> As the model sees it</label>
+          <button type="button" data-next-real>Next</button>
+        </figcaption>
+      </figure>
+      <figure class="pm-figure">
+        <canvas data-imitation></canvas>
+        <figcaption>
+          <span>Imitation</span>
+          <button type="button" class="pm-primary" data-generate>Generate</button>
+        </figcaption>
+      </figure>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
