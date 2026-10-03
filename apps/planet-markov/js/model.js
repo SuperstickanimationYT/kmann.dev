@@ -10,6 +10,7 @@ export const NEIGHBORS = [
 ];
 
 const OUTSIDE_IMAGE = 0;
+const FIRST_PLANET_COLOR = 1;
 
 function neighborColor(indices, index, { dx, dy }) {
   const column = (index % PLANET_SIZE) + dx;
@@ -55,14 +56,18 @@ export function trainModel(quantizedPlanets, { colorCount, neighborCount, rings 
 
 export const contextsLearned = (model) => model.levels[0].counts.size;
 
-function drawFrom(counts, colorCount, random) {
-  let target = random() * counts[colorCount];
-  for (let color = 0; color < colorCount; color++) {
+function drawFrom(counts, colorCount, random, skipSpace) {
+  const firstColor = skipSpace ? 1 : 0;
+  const total = counts[colorCount] - (skipSpace ? counts[OUTSIDE_IMAGE] : 0);
+  if (!total) return -1;
+  let target = random() * total;
+  for (let color = firstColor; color < colorCount; color++) {
     target -= counts[color];
     if (target < 0) return color;
   }
   return colorCount - 1;
 }
+
 
 function blendedRing(index, rings, random) {
   const position = ringPosition(index, rings);
@@ -72,22 +77,24 @@ function blendedRing(index, rings, random) {
   return Math.min(rings - 1, random() < centered - lower ? lower + 1 : lower);
 }
 
-export function createSampler(model, random) {
+export function createSampler(model, random, forceDisk) {
   const indices = new Uint8Array(PLANET_SIZE * PLANET_SIZE);
   let next = 0;
   let fellBack = 0;
   const { levels, colorCount, rings } = model;
 
   const samplePixel = (index) => {
+    if (forceDisk && distanceFromCenter(index) > DISK_REACH) return OUTSIDE_IMAGE;
     const ring = rings ? blendedRing(index, rings, random) : 0;
     for (let depth = 0; depth < levels.length; depth++) {
       const level = levels[depth];
       const counts = level.counts.get(contextKey(indices, index, level, ring, colorCount));
-      if (!counts) continue;
+      const color = counts ? drawFrom(counts, colorCount, random, forceDisk) : -1;
+      if (color < 0) continue;
       if (depth > 0) fellBack++;
-      return drawFrom(counts, colorCount, random);
+      return color;
     }
-    return OUTSIDE_IMAGE;
+    return forceDisk ? FIRST_PLANET_COLOR : OUTSIDE_IMAGE;
   };
 
   return {

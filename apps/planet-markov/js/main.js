@@ -40,6 +40,7 @@ const settings = () => ({
   ringsOn: form.elements.ringsOn.checked,
   rings: Number(form.elements.rings.value),
   start: form.elements.start.value,
+  forceDisk: form.elements.forceDisk.checked,
   resolution: Number(form.elements.resolution.value),
   modelView: form.elements.modelView.checked,
 });
@@ -127,11 +128,11 @@ function seedSampler(random) {
 
 function generate() {
   const run = ++generation;
-  const { start, resolution } = settings();
+  const { start, resolution, forceDisk } = settings();
   const random = Math.random;
   const fromSeed = start === 'seed';
   const chain = [...(fromSeed ? seedUpscalers : []), ...upscalers.slice(0, stagesFor(resolution))];
-  let sampler = fromSeed ? seedSampler(random) : createSampler(model, random);
+  let sampler = fromSeed ? seedSampler(random) : createSampler(model, random, forceDisk);
   let image = startCanvas(sampler.size);
   let stage = 0;
   statusLine.textContent = describeStage(sampler, false);
@@ -144,7 +145,7 @@ function generate() {
     fallbackReadout.value = `${Math.round(sampler.fallbackShare() * 100)}%`;
     if (done && stage < chain.length) {
       const parent = sampler;
-      sampler = createUpscaleSampler(chain[stage++], parent.indices, parent.size, random);
+      sampler = createUpscaleSampler(chain[stage++], parent.indices, parent.size, random, forceDisk);
       image = startCanvas(sampler.size, parent);
       statusLine.textContent = describeStage(sampler, true);
     } else if (done) {
@@ -214,6 +215,7 @@ form.addEventListener('input', (event) => {
   showValues();
   const { name } = event.target;
   if (name === 'set') switchSet();
+  else if (name === 'forceDisk') generate();
   else if (name === 'resolution' || name === 'start') {
     if (!pyramids.length && settings().resolution > PLANET_SIZE) switchSet();
     else {
