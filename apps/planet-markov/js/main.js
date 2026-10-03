@@ -44,6 +44,11 @@ const settings = () => ({
   modelView: form.elements.modelView.checked,
 });
 
+function activeRings() {
+  const { ringsOn, rings } = settings();
+  return ringsOn ? rings : 0;
+}
+
 const stagesFor = (resolution) => Math.log2(resolution / PLANET_SIZE);
 
 function showValues() {
@@ -152,8 +157,7 @@ function generate() {
 }
 
 function train() {
-  const { neighbors, ringsOn, rings } = settings();
-  model = trainModel(quantized, { colorCount: palette.length, neighborCount: neighbors, rings: ringsOn ? rings : 0 });
+  model = trainModel(quantized, { colorCount: palette.length, neighborCount: settings().neighbors, rings: activeRings() });
   contextsReadout.value = contextsLearned(model).toLocaleString();
   generate();
 }
@@ -164,6 +168,7 @@ function trainStages(levelSets) {
   const stages = Array.from({ length: stageCount }, (_, stage) => trainUpscaler(
     quantizedLevels.map((levels, pick) => ({ low: levels[stage], high: levels[stage + 1], size: levelSets[pick][stage + 1].size })),
     palette.length,
+    activeRings(),
   ));
   return { quantizedLevels, stages };
 }
@@ -216,7 +221,10 @@ form.addEventListener('input', (event) => {
       generate();
     }
   } else if (name === 'colors') learnColors();
-  else train();
+  else if (name === 'ringsOn' || name === 'rings') {
+    trainUpscalers();
+    train();
+  } else train();
 });
 
 form.addEventListener('submit', (event) => event.preventDefault());

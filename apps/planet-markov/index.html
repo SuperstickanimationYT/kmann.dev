@@ -60,22 +60,27 @@
       </label>
       <p class="pm-note">
         The seed is a random training planet shrunk to 9 pixels. Upscaler stages grow it to 96 px,
-        so the big shapes get decided while the image is tiny. The painter settings below then do nothing.
+        so the big shapes get decided while the image is tiny. Neighbors then does nothing.
       </p>
 
-      <fieldset data-painter-controls>
+      <fieldset>
         <legend>What the model sees</legend>
-        <label class="pm-field">
-          <span>Neighbors <output></output></span>
-          <input type="range" name="neighbors" min="0" max="6" step="1" value="3">
-        </label>
-        <p class="pm-note" data-neighbor-list></p>
+        <div class="pm-group" data-painter-controls>
+          <label class="pm-field">
+            <span>Neighbors <output></output></span>
+            <input type="range" name="neighbors" min="0" max="6" step="1" value="3">
+          </label>
+          <p class="pm-note" data-neighbor-list></p>
+        </div>
         <label class="pm-toggle"><input type="checkbox" name="ringsOn"> Distance from center</label>
         <label class="pm-field pm-off">
           <span>Rings <output></output></span>
           <input type="range" name="rings" min="2" max="16" step="1" value="8">
         </label>
-        <p class="pm-note">The generator shows each planet from above its pole, so distance from the center is latitude.</p>
+        <p class="pm-note">
+          The generator shows each planet from above its pole, so distance from the center is latitude.
+          Upscaler stages get it too.
+        </p>
       </fieldset>
 
       <fieldset>
