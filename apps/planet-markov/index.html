@@ -107,7 +107,8 @@
         <p class="pm-note">
           The 96 px planet sets the big shapes. Each stage then doubles it with a second counting model:
           every new pixel looks at the low-res pixel it came from, which corner of it it is, and the
-          pixels to its left and above. Stages learn from 3 pictures at 768 px.
+          pixels to its left and above. Stages learn from 3 pictures at 768 px. Star fields have none:
+          shrinking them erases the spikes, so they stay at 96 px.
         </p>
       </fieldset>
 
@@ -125,7 +126,8 @@
       <details class="pm-credits" hidden>
         <summary>Image credits</summary>
         <p class="pm-note">
-          Training galaxies are cropped and shrunk from ESA/Hubble images, used under
+          Training galaxies are cropped and shrunk from ESA/Hubble images, and star fields are cut from
+          ESA/Webb images, used under
           <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
         </p>
         <ul data-credit-list></ul>
