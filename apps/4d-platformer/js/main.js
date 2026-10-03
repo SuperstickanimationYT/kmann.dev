@@ -3,6 +3,7 @@ import { chaseCamera } from './projection.js';
 import { createRenderer4D } from './render4d.js';
 import { draw3D } from './render3d.js';
 import { FREE_PLAY, LEVELS } from './levels.js';
+import { ROOM_4D } from './rooms.js';
 import { dot, sub } from './vec.js';
 
 const PHYSICS_STEP_S = 1 / 120;
@@ -25,6 +26,10 @@ const SHORTCUTS = {
   f: 'fly',
   r: 'reveal',
 };
+const ROOM_GUIDE = [
+  'A kitchen and a living room in four dimensions. You are flying (F to walk instead), and the dim outline is the walls of the room.',
+  'You start in the kitchen. The living room is toward ana: hold E to drift into it, Q to come back. A 4D table has 8 legs, and the couch has 4 armrests because its seat has sides in the ana direction too.',
+];
 const FREE_PLAY_GUIDES = {
   4: ['Free play in four dimensions. There is no goal: land on as many of the 10 platforms as you can.'],
   3: ['Free play in 3D: the same platforms with the fourth direction removed. Turn on the outside view to see your camera inside the world.'],
@@ -53,6 +58,7 @@ const revealOutput = document.querySelector('[data-reveal]');
 const respawnButton = document.querySelector('[data-respawn]');
 const levelList = document.querySelector('[data-levels]');
 const freePlayButtons = [...document.querySelectorAll('[data-free]')];
+const roomButton = document.querySelector('[data-room]');
 const guideTitle = document.querySelector('[data-guide-title]');
 const guideBody = document.querySelector('[data-guide-body]');
 const banner = document.querySelector('[data-banner]');
@@ -95,11 +101,14 @@ function resize() {
 }
 
 const isLevel = () => stage.kind === 'level';
+const isRoom = () => stage.kind === 'room';
 const currentLevel = () => LEVELS[stage.index];
-const layoutFor = s => (s.kind === 'level' ? LEVELS[s.index].layout : FREE_PLAY[s.n]);
+const LAYOUTS = { level: s => LEVELS[s.index].layout, free: s => FREE_PLAY[s.n], room: () => ROOM_4D };
+const layoutFor = s => LAYOUTS[s.kind](s);
 
 function stageName() {
   if (isLevel()) return `Level ${stage.index + 1} of ${LEVELS.length}: ${currentLevel().title}`;
+  if (isRoom()) return '4D room: kitchen and living room';
   return `Free play, ${stage.n}D`;
 }
 
@@ -119,13 +128,14 @@ function renderLevelButtons() {
     return button;
   }));
   freePlayButtons.forEach(button => {
-    button.setAttribute('aria-pressed', String(!isLevel() && stage.n === Number(button.dataset.free)));
+    button.setAttribute('aria-pressed', String(stage.kind === 'free' && stage.n === Number(button.dataset.free)));
   });
+  roomButton.setAttribute('aria-pressed', String(isRoom()));
 }
 
 function renderGuide() {
   guideTitle.textContent = stageName();
-  const paragraphs = isLevel() ? currentLevel().guide : FREE_PLAY_GUIDES[stage.n];
+  const paragraphs = isLevel() ? currentLevel().guide : isRoom() ? ROOM_GUIDE : FREE_PLAY_GUIDES[stage.n];
   guideBody.replaceChildren(...paragraphs.map(text => {
     const p = document.createElement('p');
     p.textContent = text;
@@ -134,10 +144,23 @@ function renderGuide() {
   banner.textContent = isLevel() ? `${stageName()}. Land on the gold platform.` : stageName();
 }
 
+let flyingBeforeRoom = null;
+
+function flyInRoomOnly(wasRoom) {
+  if (isRoom() && !wasRoom) {
+    flyingBeforeRoom = settings.fly;
+    setSetting('fly', true);
+  } else if (!isRoom() && wasRoom) {
+    setSetting('fly', flyingBeforeRoom);
+  }
+}
+
 function enterStage(next) {
+  const wasRoom = stage.kind === 'room' && game;
   stage = next;
   game = createGame(layoutFor(stage));
   renderer4D.reset();
+  flyInRoomOnly(wasRoom);
   completeCard.hidden = true;
   dimensionOnly.forEach(element => { element.hidden = Number(element.dataset.dimension) !== game.world.n; });
   renderLevelButtons();
@@ -192,10 +215,13 @@ function playerState() {
   return game.player.grounded ? 'on the ground' : 'in the air';
 }
 
+const landmarks = world => world.platforms.filter(platform => platform.marked);
+
 function progressLine() {
   if (game.world.hasGoal) return `goal      ${game.reachedGoal ? 'reached' : 'not yet'}`;
-  const landed = [...game.landedOn].sort((a, b) => a - b).join(' ') || 'none yet';
-  return `landed on ${landed} (${game.landedOn.size}/${game.world.platforms.length})`;
+  const landed = [...game.landedOn].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join(', ') || 'none yet';
+  const names = new Set(landmarks(game.world).map(platform => platform.label));
+  return `landed on ${landed} (${game.landedOn.size}/${names.size})`;
 }
 
 function renderStatus(lineCount) {
@@ -224,7 +250,7 @@ function renderReveal() {
   const columns = world.hasAna
     ? [[RIGHT, 'right'], [UP, 'up'], [ANA, 'ana'], [world.forward, 'fwd']]
     : [[RIGHT, 'right'], [UP, 'up'], [world.forward, 'fwd']];
-  const rows = world.platforms.map(platform => {
+  const rows = landmarks(world).map(platform => {
     const top = [...platform.center];
     top[Y] = platform.max[Y];
     const offset = sub(top, player.feet);
@@ -255,6 +281,11 @@ freePlayButtons.forEach(button => button.addEventListener('click', () => {
   button.blur();
 }));
 
+roomButton.addEventListener('click', () => {
+  enterStage({ kind: 'room' });
+  roomButton.blur();
+});
+
 respawnButton.addEventListener('click', () => {
   respawn(game);
   respawnButton.blur();
@@ -280,7 +311,7 @@ window.addEventListener('keydown', event => {
     goToNext();
     return;
   }
-  if (key === 'm' && !isLevel()) {
+  if (key === 'm' && stage.kind === 'free') {
     enterStage({ kind: 'free', n: stage.n === 4 ? 3 : 4 });
     return;
   }

@@ -77,7 +77,7 @@ export function createRenderer4D() {
     ctx.globalAlpha = SHADOW_ALPHA;
     ctx.lineWidth = 1;
     for (const { ra, rb, style } of retinaPieces) {
-      if (style.kind === 'floor') continue;
+      if (style.kind === 'floor' || style.kind === 'wall') continue;
       ctx.strokeStyle = lineColor(style, SHADOW_LIGHTNESS, settings.color);
       strokeSegment(ctx, toFloor(ra), toFloor(rb));
     }

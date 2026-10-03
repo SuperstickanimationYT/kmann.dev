@@ -4,6 +4,7 @@ export const CAPTION_COLOR = '#6f9dc9';
 
 export function lineColor(style, lightness, colorOn) {
   if (style.kind === 'floor') return `hsl(210 12% ${lightness * 0.6}%)`;
+  if (style.kind === 'wall') return `hsl(215 30% ${lightness * 0.45}%)`;
   if (style.kind === 'player') return `hsl(0 0% ${lightness}%)`;
   if (style.kind === 'goal') return `hsl(${GOAL_HUE} 100% ${lightness}%)`;
   if (style.kind === 'platform' && !colorOn) return `hsl(210 35% ${lightness}%)`;

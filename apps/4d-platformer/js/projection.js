@@ -11,18 +11,23 @@ const NEAR = 0.05;
 const CHASE_DISTANCE = 3.5;
 const CHASE_HEIGHT_ABOVE_FEET = 1.8;
 const CHASE_PITCH = 20 * Math.PI / 180;
+const EYE_HEIGHT_ABOVE_FEET = 1.3;
+const EYE_PITCH = 15 * Math.PI / 180;
 const DROP_MARKER_ARM = 0.35;
+
+function pitchedDown(basis, F, pitch) {
+  const pitched = [...basis];
+  pitched[F] = add(scale(basis[F], Math.cos(pitch)), scale(basis[UP], -Math.sin(pitch)));
+  pitched[UP] = add(scale(basis[F], Math.sin(pitch)), scale(basis[UP], Math.cos(pitch)));
+  return pitched;
+}
 
 export function chaseCamera({ world, player }) {
   const P = player.basis;
   const F = world.forward;
-  const c = Math.cos(CHASE_PITCH);
-  const s = Math.sin(CHASE_PITCH);
-  const basis = [...P];
-  basis[F] = add(scale(P[F], c), scale(P[UP], -s));
-  basis[UP] = add(scale(P[F], s), scale(P[UP], c));
+  if (world.eyeView) return { position: add(player.feet, scale(P[UP], EYE_HEIGHT_ABOVE_FEET)), basis: pitchedDown(P, F, EYE_PITCH) };
   const position = add(add(player.feet, scale(P[UP], CHASE_HEIGHT_ABOVE_FEET)), scale(P[F], -CHASE_DISTANCE));
-  return { position, basis };
+  return { position, basis: pitchedDown(P, F, CHASE_PITCH) };
 }
 
 export function dropLine({ world, player }) {
@@ -37,11 +42,14 @@ function sceneSegments(game, settings) {
   const segments = [];
   const addAll = (pairs, style) => pairs.forEach(([a, b]) => segments.push({ a, b, style }));
   if (settings.floor) addAll(world.floor.segments, { kind: 'floor' });
+  addAll(world.outline, { kind: 'wall' });
   world.platforms.forEach(p => addAll(p.segments, platformStyle(p)));
-  const { min, max } = playerBox(game);
-  const bodyCenter = min.map((v, axis) => (v + max[axis]) / 2);
-  const bodyHalf = min.map((v, axis) => (max[axis] - v) / 2);
-  addAll(boxSegments(bodyCenter, bodyHalf), { kind: 'player' });
+  if (!world.eyeView) {
+    const { min, max } = playerBox(game);
+    const bodyCenter = min.map((v, axis) => (v + max[axis]) / 2);
+    const bodyHalf = min.map((v, axis) => (max[axis] - v) / 2);
+    addAll(boxSegments(bodyCenter, bodyHalf), { kind: 'player' });
+  }
 
   if (settings.dropLine) {
     const { from, to, overSurface } = dropLine(game);
@@ -106,8 +114,15 @@ export function retinaPoint(game, camera, point) {
   return frustumPlanes(game.world).every(plane => plane(c) >= 0) ? projectToRetina(c) : null;
 }
 
+function topOf(platform) {
+  const top = [...platform.center];
+  top[Y] = platform.max[Y];
+  return top;
+}
+
 export function visiblePlatformCenters(game, camera) {
   return game.world.platforms
-    .map(platform => ({ platform, r: retinaPoint(game, camera, platform.center) }))
+    .filter(platform => platform.marked)
+    .map(platform => ({ platform, r: retinaPoint(game, camera, topOf(platform)) }))
     .filter(({ r }) => r);
 }
