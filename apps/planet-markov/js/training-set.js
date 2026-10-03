@@ -1,5 +1,6 @@
 export const PLANET_SIZE = 96;
 export const HIRES_SIZE = 768;
+export const SEED_SIZE = 3;
 const PLANETS_PER_SET = 24;
 const HIRES_PER_SET = 3;
 
@@ -72,11 +73,13 @@ function halve({ size, rgb }) {
   return { size: half, rgb: small, disk: diskOf(half) };
 }
 
+export function pyramidDownTo(planet, smallest) {
+  const levels = [planet];
+  while (levels[0].size > smallest) levels.unshift(halve(levels[0]));
+  return levels;
+}
+
 export async function loadPyramids(name) {
   const planets = await loadPlanets(Array.from({ length: HIRES_PER_SET }, (_, index) => `training/${name}/hires-${index}.png`));
-  return planets.map((planet) => {
-    const levels = [planet];
-    while (levels[0].size > PLANET_SIZE) levels.unshift(halve(levels[0]));
-    return levels;
-  });
+  return planets.map((planet) => pyramidDownTo(planet, PLANET_SIZE));
 }

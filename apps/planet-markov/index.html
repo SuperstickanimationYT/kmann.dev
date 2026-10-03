@@ -51,7 +51,19 @@
       </label>
       <div class="pm-palette" data-palette></div>
 
-      <fieldset>
+      <label class="pm-field">
+        <span>Start from</span>
+        <select name="start">
+          <option value="painter">96 px painter</option>
+          <option value="seed">3 &times; 3 seed</option>
+        </select>
+      </label>
+      <p class="pm-note">
+        The seed is a random training planet shrunk to 9 pixels. Upscaler stages grow it to 96 px,
+        so the big shapes get decided while the image is tiny. The painter settings below then do nothing.
+      </p>
+
+      <fieldset data-painter-controls>
         <legend>What the model sees</legend>
         <label class="pm-field">
           <span>Neighbors <output></output></span>
