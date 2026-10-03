@@ -85,13 +85,39 @@ function drawZones(context, system, placed, camera, layers) {
     } else if (zone.kind === 'belt') {
       fillAnnulus(context, center, innerPx, outerPx, 'rgba(170, 160, 140, 0.09)', camera);
     } else if (zone.kind === 'disk' && outerPx < HUGE_PX) {
-      const gradient = context.createRadialGradient(center.x, center.y, innerPx, center.x, center.y, outerPx);
-      gradient.addColorStop(0, 'rgba(235, 240, 255, 0.85)');
-      gradient.addColorStop(0.35, 'rgba(255, 190, 120, 0.45)');
-      gradient.addColorStop(1, 'rgba(255, 120, 60, 0)');
-      fillAnnulus(context, center, innerPx, outerPx, gradient, camera);
+      drawDisk(context, zone, center, innerPx, outerPx, camera, layers.labels);
     }
   }
+}
+
+const DISK_BANDS = 7;
+
+function drawDisk(context, zone, center, innerPx, outerPx, camera, labelled) {
+  const gradient = context.createRadialGradient(center.x, center.y, innerPx, center.x, center.y, outerPx);
+  gradient.addColorStop(0, 'rgba(235, 240, 255, 0.9)');
+  for (let band = 1; band <= DISK_BANDS; band += 1) {
+    const at = band / (DISK_BANDS + 1);
+    const heat = 1 - at;
+    const red = 255;
+    const green = Math.round(120 + 110 * heat);
+    const blue = Math.round(60 + 160 * heat * heat);
+    const alpha = (band % 2 ? 0.55 : 0.3) * (0.5 + 0.5 * heat);
+    gradient.addColorStop(at, `rgba(${red}, ${green}, ${blue}, ${alpha.toFixed(3)})`);
+  }
+  gradient.addColorStop(1, 'rgba(255, 120, 60, 0.25)');
+  fillAnnulus(context, center, innerPx, outerPx, gradient, camera);
+  context.strokeStyle = 'rgba(255, 170, 110, 0.7)';
+  context.lineWidth = 1.2;
+  context.beginPath();
+  context.arc(center.x, center.y, outerPx, 0, Math.PI * 2);
+  context.stroke();
+  if (!labelled || outerPx < 20) return;
+  context.font = '12px "Trebuchet MS", "Segoe UI", sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  context.fillStyle = 'rgba(255, 200, 160, 0.85)';
+  context.fillText(zone.label, center.x, center.y + outerPx + 6);
+  context.textAlign = 'start';
 }
 
 function drawOrbit(context, body, parentPoint, camera, highlighted) {
@@ -124,7 +150,7 @@ function drawRings(context, body, center, camera) {
   fillAnnulus(context, center, inner, outer, 'rgba(226, 207, 152, 0.4)', camera);
 }
 
-function drawStar(context, body, center, radius) {
+function drawHalo(context, body, center, radius) {
   const glow = radius * 2.2 + 10;
   const halo = context.createRadialGradient(center.x, center.y, radius * 0.9, center.x, center.y, glow);
   halo.addColorStop(0, hexWithAlpha(body.color, 0.55));
@@ -133,6 +159,10 @@ function drawStar(context, body, center, radius) {
   context.beginPath();
   context.arc(center.x, center.y, glow, 0, Math.PI * 2);
   context.fill();
+}
+
+function drawStar(context, body, center, radius) {
+  if (body.kind === 'star') drawHalo(context, body, center, radius);
   context.fillStyle = body.color;
   context.beginPath();
   context.arc(center.x, center.y, radius, 0, Math.PI * 2);
