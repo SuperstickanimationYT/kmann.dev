@@ -88,7 +88,7 @@ function gasCloud() {
   });
 }
 
-const COSMOS = { particles: 4000, radius: 1500, collapseSeconds: 4, hubblePerCollapse: 1, darkEnergyTakesOverAtSize: 2, seedWaves: 300, seedContrast: 0.5, shortestWaveSpacings: 6, softeningPerSpacing: 0.5 };
+const COSMOS = { particles: 2500, gasShare: 0.16, gasSoundSpeed: 4, starBirthDensity: 0.02, radius: 1500, collapseSeconds: 1.5, hubblePerCollapse: 1, darkEnergyTakesOverAtSize: 2, seedWaves: 300, gridJitter: 0.4, seedContrast: 0.5, shortestWaveSpacings: 6, softeningPerSpacing: 0.5 };
 const TRUE_2D_GRAVITY = 1;
 const collapseRate = 1 / COSMOS.collapseSeconds ** 2;
 export const COSMIC_DARK_ENERGY = collapseRate / COSMOS.darkEnergyTakesOverAtSize ** 2;
@@ -119,17 +119,28 @@ function cosmicWeb() {
   const hubble = COSMOS.hubblePerCollapse * Math.sqrt(collapseRate);
   const growthRate = Math.sqrt(1 + 2 / COSMOS.hubblePerCollapse ** 2) - 1;
   const softening = COSMOS.softeningPerSpacing * spacing;
+  const smoothing = CLOUD.smoothingPerSpacing * spacing;
   const waves = seedWaves(spacing);
-  const grid = [];
-  for (let x = -COSMOS.radius; x <= COSMOS.radius; x += spacing) {
-    for (let y = -COSMOS.radius; y <= COSMOS.radius; y += spacing) if (Math.hypot(x, y) <= COSMOS.radius) grid.push([x, y]);
-  }
-  return grid.map(([x, y]) => {
+  const jitter = () => (Math.random() - 0.5) * COSMOS.gridJitter * spacing;
+  const grid = (offset) => {
+    const points = [];
+    for (let x = offset - COSMOS.radius; x <= COSMOS.radius; x += spacing) {
+      for (let y = offset - COSMOS.radius; y <= COSMOS.radius; y += spacing) if (Math.hypot(x, y) <= COSMOS.radius) points.push([x + jitter(), y + jitter()]);
+    }
+    return points;
+  };
+  const flowing = ([x, y], fields) => {
     const [shiftX, shiftY] = seedShift(waves, x, y);
     const [px, py] = [x + shiftX, y + shiftY];
-    const [vx, vy] = [hubble * (px + growthRate * shiftX), hubble * (py + growthRate * shiftY)];
-    return createBody({ x: px, y: py, vx, vy, mass: mass / grid.length, kind: KINDS.darkMatter, softening });
+    return createBody({ x: px, y: py, vx: hubble * (px + growthRate * shiftX), vy: hubble * (py + growthRate * shiftY), ...fields });
+  };
+  const [darkPoints, gasPoints] = [grid(0), grid(spacing / 2)];
+  const darkMatter = darkPoints.map((point) => flowing(point, { mass: ((1 - COSMOS.gasShare) * mass) / darkPoints.length, kind: KINDS.darkMatter, softening }));
+  const gas = gasPoints.map((point) => {
+    const parcel = flowing(point, { mass: (COSMOS.gasShare * mass) / gasPoints.length, kind: KINDS.gas, softening: smoothing });
+    return Object.assign(parcel, { smoothing, soundSpeed: COSMOS.gasSoundSpeed, starBirthDensity: COSMOS.starBirthDensity, formsGalacticStars: true });
   });
+  return [...darkMatter, ...gas];
 }
 
 const pointAt = (distance, bearing) => ({ x: Math.cos(bearing) * distance, y: Math.sin(bearing) * distance });
@@ -209,6 +220,6 @@ export const SCENES = {
   galaxyMerger: { name: 'Galaxy merger', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: true, stars: settings.galaxyStars })) },
   bareGalaxyMerger: { name: 'Galaxy merger without dark matter', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: false, stars: settings.galaxyStars })) },
   gasCloud: { name: 'Collapsing gas cloud', build: () => gasCloud() },
-  cosmicWeb: { name: 'Cosmic web', law: { exponent: TRUE_2D_GRAVITY, darkEnergy: COSMIC_DARK_ENERGY }, expands: true, build: () => centredAtRest(cosmicWeb()) },
+  cosmicWeb: { name: 'Cosmic web', law: { exponent: TRUE_2D_GRAVITY, darkEnergy: COSMIC_DARK_ENERGY }, expands: true, glowsAsCosmos: true, build: () => centredAtRest(cosmicWeb()) },
   empty: { name: 'Empty space', build: () => [] },
 };

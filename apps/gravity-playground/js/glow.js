@@ -8,9 +8,9 @@ const FULL_DENSITY = 0.3;
 const WARM_DENSITY = { from: 0.01, to: 0.15 };
 const CROWDING_FOR_FULL_YOUNG_LIGHT = 0.6;
 const YOUNG_LIGHT_BOOST = 0.5;
-const CORE = [255, 220, 170];
-const DISK = [170, 190, 255];
-const YOUNG = [205, 225, 255];
+export const GALAXY_LIGHT = { core: [255, 220, 170], disk: [170, 190, 255], young: [205, 225, 255], brightest: 1 };
+export const GAS_HAZE = { core: [255, 190, 130], disk: [200, 100, 60], young: [255, 160, 110], brightest: 1 };
+export const DARK_MATTER_HAZE = { core: [190, 150, 255], disk: [110, 80, 200], young: [150, 120, 240], brightest: 0.45 };
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 const mix = (a, b, along) => a + (b - a) * along;
@@ -37,7 +37,7 @@ function blur(grid, scratch, columns, rows, sigmaCells) {
   }
 }
 
-export function createGlow() {
+export function createGlow({ core, disk, young, brightest }) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
   let columns = 0;
@@ -81,10 +81,10 @@ export function createGlow() {
       const crowding = surroundings[cell] > 0 ? clamp01((medium[cell] / surroundings[cell] - 1) / CROWDING_FOR_FULL_YOUNG_LIGHT) : 0;
       const warmth = density > 0 ? clamp01(Math.log(density / WARM_DENSITY.from) / warmSpan) : 0;
       const youngLight = crowding * (1 - warmth);
-      const brightness = Math.min(1, (Math.asinh(density / FAINT_DENSITY) / fullBrightness) * (1 + YOUNG_LIGHT_BOOST * youngLight));
+      const brightness = brightest * Math.min(1, (Math.asinh(density / FAINT_DENSITY) / fullBrightness) * (1 + YOUNG_LIGHT_BOOST * youngLight));
       const pixel = cell * 4;
       for (let channel = 0; channel < 3; channel++) {
-        const colour = mix(mix(DISK[channel], CORE[channel], warmth), YOUNG[channel], youngLight);
+        const colour = mix(mix(disk[channel], core[channel], warmth), young[channel], youngLight);
         pixels[pixel + channel] = colour * brightness;
       }
       pixels[pixel + 3] = 255;

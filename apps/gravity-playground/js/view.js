@@ -1,5 +1,5 @@
 import { wedgeOf } from './cones.js';
-import { createGlow } from './glow.js';
+import { createGlow, DARK_MATTER_HAZE, GALAXY_LIGHT, GAS_HAZE } from './glow.js';
 import { isCollisionless, KINDS, radiusOf, sizeOf } from './physics.js';
 
 const GRID_SPACING = 100;
@@ -60,7 +60,9 @@ export function noteTrails(bodies) {
 
 export function createView(canvas) {
   const context = canvas.getContext('2d');
-  const glowLayer = createGlow();
+  const glowLayer = createGlow(GALAXY_LIGHT);
+  const darkMatterHaze = createGlow(DARK_MATTER_HAZE);
+  const gasHaze = createGlow(GAS_HAZE);
   const camera = { x: 0, y: 0, zoom: 1 };
   let width = 0;
   let height = 0;
@@ -268,16 +270,19 @@ export function createView(canvas) {
   const isDarkMatter = (body) => !body.test && body.kind === KINDS.darkMatter;
   const isGasParcel = (body) => !body.test && body.kind === KINDS.gas;
 
-  function draw({ bodies, selected, launch, trails, glow, cutAngle }) {
+  function draw({ bodies, selected, launch, trails, glow, cosmicGlow, cutAngle }) {
     context.fillStyle = '#060f1c';
     context.fillRect(0, 0, width, height);
     drawGrid();
     if (cutAngle !== null) for (const cone of bodies.filter((body) => !body.test)) drawWedge(cone, cutAngle);
     if (trails) bodies.forEach(drawTrail);
-    const stars = bodies.filter(isGalacticStar);
-    if (glow) glowLayer.draw(context, stars.length ? stars : bodies.filter(isDarkMatter), { toScreen, zoom: camera.zoom, width, height });
+    const screen = { toScreen, zoom: camera.zoom, width, height };
+    const hazy = glow && cosmicGlow;
+    if (hazy) darkMatterHaze.draw(context, bodies.filter(isDarkMatter), screen);
+    if (hazy) gasHaze.draw(context, bodies.filter(isGasParcel), screen);
+    if (glow) glowLayer.draw(context, bodies.filter(isGalacticStar), screen);
     else drawSpecks(bodies, isDarkMatter, DARK_MATTER, () => DARK_MATTER_RADIUS_PX);
-    drawSpecks(bodies, isGasParcel, GAS, () => GAS_RADIUS_PX);
+    if (!hazy) drawSpecks(bodies, isGasParcel, GAS, () => GAS_RADIUS_PX);
     drawSpecks(bodies, isDust, DUST, (body) => Math.max(DUST_RADIUS_PX, radiusOf(body.mass) * camera.zoom));
     if (!glow) drawSpecks(bodies, isGalacticStar, STARLIGHT, () => STAR_RADIUS_PX);
     for (const body of bodies) if (!isSpeck(body)) drawBody(body, { selected: body === selected });

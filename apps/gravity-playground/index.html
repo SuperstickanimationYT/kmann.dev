@@ -121,6 +121,7 @@
         <label class="gp-toggle"><input type="checkbox" name="trails" checked> Trails</label>
         <label class="gp-toggle"><input type="checkbox" name="glow" checked> Galaxies glow instead of showing dots</label>
         <label class="gp-toggle" data-newton-only><input type="checkbox" name="merge" checked> Merge on collision</label>
+        <label class="gp-toggle" data-follow-expansion hidden><input type="checkbox" name="followExpansion" checked> Zoom out with the expansion</label>
         <label class="gp-field">
           <span>Scene</span>
           <select name="scene" data-scene></select>
@@ -157,7 +158,8 @@
         </ul>
         <p><strong>Cosmic web</strong></p>
         <ul>
-          <li>A patch of young universe: dark matter flying apart with the expansion, seeded with faint ripples. Gravity slows the expansion, the ripples grow into filaments, and halos form where filaments meet. "space ×" in the status line is how much the patch has grown.</li>
+          <li>A patch of young universe: dark matter (violet) and gas (orange) flying apart with the expansion, seeded with faint ripples. Gravity slows the expansion, the ripples grow into filaments, and halos form where filaments meet. Gas that piles up dense enough in a halo turns into stars, which glow white as galaxies. "space ×" in the status line is how much the patch has grown.</li>
+          <li>The view zooms out with the expansion, so clusters stay put on screen. Untick "Zoom out with the expansion" to watch the bubble grow instead.</li>
           <li>Loading it switches gravity to 1/r and turns dark energy on. With 1/r a uniform disc pulls inward in proportion to distance, just as dark energy pushes out, so the whole patch expands evenly.</li>
           <li>In 2D, 1/r gravity binds everything: without dark energy the expansion always stops and the patch falls back together. Set dark energy to off right after loading to watch it.</li>
         </ul>
