@@ -24,7 +24,7 @@ export const TRAINING_SETS = {
     colors: 16,
     suggested: LAYOUT_FROM_SEED,
     credited: true,
-    caption: 'Watch the spiral arms. A long curving arm is far bigger than what any step can see, so the arms break into blotches.',
+    caption: 'From the 3 × 3 seed, the arms are decided while the galaxy is a few pixels wide, so they often come out whole. Try the 96 px painter: with no plan, it can never see a whole arm and breaks them into blotches.',
   },
   starfields: {
     group: 'Star fields',
