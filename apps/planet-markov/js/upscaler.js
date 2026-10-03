@@ -1,6 +1,7 @@
 import { diskReach, distanceFromCenter } from './training-set.js';
 
 const SPACE = 0;
+const FIRST_PLANET_COLOR = 1;
 const CONTEXT_FIELDS = ['parent', 'besideParent', 'pastParent', 'left', 'above'];
 const CONTEXT_SIZES = [5, 4, 3];
 const SHAPE_MATCHES = [
@@ -15,6 +16,17 @@ const SHAPE_MATCHES = [
 function lowColor(low, lowSize, column, row) {
   if (column < 0 || column >= lowSize || row < 0 || row >= lowSize) return SPACE;
   return low[row * lowSize + column];
+}
+
+function nearestPlanetColorInward(low, lowSize, index, size) {
+  let column = (index % size) >> 1;
+  let row = Math.floor(index / size) >> 1;
+  const center = (lowSize - 1) / 2;
+  for (let step = 0; step < lowSize && low[row * lowSize + column] === SPACE; step++) {
+    column += Math.sign(Math.round(center - column));
+    row += Math.sign(Math.round(center - row));
+  }
+  return low[row * lowSize + column] || FIRST_PLANET_COLOR;
 }
 
 function ringOf(index, size, rings) {
@@ -93,7 +105,7 @@ function drawFrom(counts, outcomeCount, allowed, random) {
 
 const spaceAllowed = ({ outside, parent, besideParent, pastParent }) => outside || parent === SPACE || besideParent === SPACE || pastParent === SPACE;
 
-export function createUpscaleSampler(upscaler, low, lowSize, random) {
+export function createUpscaleSampler(upscaler, low, lowSize, random, forceDisk) {
   const size = lowSize * 2;
   const indices = new Uint8Array(size * size);
   const { levels, shapes, colorCount, rings } = upscaler;
@@ -101,8 +113,9 @@ export function createUpscaleSampler(upscaler, low, lowSize, random) {
   let fellBack = 0;
 
   const samplePixel = (index) => {
+    if (forceDisk && distanceFromCenter(index, size) > diskReach(size)) return SPACE;
     const context = contextOf(indices, low, index, size, rings);
-    const mayPaintSpace = spaceAllowed(context);
+    const mayPaintSpace = forceDisk ? false : spaceAllowed(context);
     const allowedColor = (color) => mayPaintSpace || color !== SPACE;
     for (let depth = 0; depth < levels.length; depth++) {
       const counts = levels[depth].counts.get(colorKey(context, levels[depth].length, colorCount));
@@ -115,7 +128,8 @@ export function createUpscaleSampler(upscaler, low, lowSize, random) {
     const counts = shapes.get(shapeKey(context));
     const allowedField = (field) => allowedColor(context[CONTEXT_FIELDS[field]]);
     const field = counts ? drawFrom(counts, CONTEXT_FIELDS.length, allowedField, random) : -1;
-    return field < 0 ? context.parent : context[CONTEXT_FIELDS[field]];
+    if (field >= 0) return context[CONTEXT_FIELDS[field]];
+    return CONTEXT_FIELDS.map((name) => context[name]).find(allowedColor) ?? nearestPlanetColorInward(low, lowSize, index, size);
   };
 
   return {
