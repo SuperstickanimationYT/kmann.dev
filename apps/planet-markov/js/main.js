@@ -212,7 +212,7 @@ function generate() {
   const step = () => {
     if (run !== generation) return;
     const from = sampler.cursor;
-    const done = sampler.sampleRows(BASE_ROWS_PER_FRAME * (sampler.size / PLANET_SIZE));
+    const done = sampler.sampleRows(Math.max(1, BASE_ROWS_PER_FRAME * (sampler.size / PLANET_SIZE)));
     paintRows(image, sampler, from);
     fallbackReadout.value = `${Math.round(sampler.fallbackShare() * 100)}%`;
     if (done && stage < chain.length) {
@@ -303,11 +303,11 @@ function lockResolutionWithoutUpscalers() {
 }
 
 function applySuggestedSettings() {
-  const { colors, suggested = {} } = currentSet();
+  const { colors, suggested } = currentSet();
   lockResolutionWithoutUpscalers();
   form.elements.colors.value = colors;
-  if (suggested.start) form.elements.start.value = suggested.start;
-  if (suggested.ringsOn !== undefined) form.elements.ringsOn.checked = suggested.ringsOn;
+  form.elements.start.value = suggested.start;
+  form.elements.ringsOn.checked = suggested.ringsOn;
 }
 
 form.addEventListener('input', (event) => {
@@ -342,5 +342,6 @@ document.querySelector('[data-next-real]').addEventListener('click', () => {
   showReal();
 });
 
+applySuggestedSettings();
 showValues();
 switchSet();
