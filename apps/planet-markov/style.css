@@ -70,6 +70,12 @@
   color: var(--link);
 }
 
+.pm-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .pm-off {
   opacity: 0.4;
 }

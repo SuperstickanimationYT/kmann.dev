@@ -1,3 +1,5 @@
+import { diskReach, distanceFromCenter } from './training-set.js';
+
 const SPACE = 0;
 const CONTEXT_FIELDS = ['parent', 'besideParent', 'pastParent', 'left', 'above'];
 const CONTEXT_SIZES = [5, 4, 3];
@@ -15,7 +17,13 @@ function lowColor(low, lowSize, column, row) {
   return low[row * lowSize + column];
 }
 
-function contextOf(high, low, index, size) {
+function ringOf(index, size, rings) {
+  if (!rings) return 0;
+  const distance = distanceFromCenter(index, size);
+  return distance > diskReach(size) ? rings : Math.min(rings - 1, Math.floor(distance * rings));
+}
+
+function contextOf(high, low, index, size, rings) {
   const lowSize = size >> 1;
   const column = index % size;
   const row = Math.floor(index / size);
@@ -23,8 +31,10 @@ function contextOf(high, low, index, size) {
   const parentRow = row >> 1;
   const sideStep = column & 1 ? 1 : -1;
   const verticalStep = row & 1 ? 1 : -1;
+  const ring = ringOf(index, size, rings);
   return {
-    quadrant: (column & 1) + 2 * (row & 1),
+    place: ((column & 1) + 2 * (row & 1)) * (rings + 1) + ring,
+    outside: rings > 0 && ring === rings,
     parent: lowColor(low, lowSize, parentColumn, parentRow),
     besideParent: lowColor(low, lowSize, parentColumn + sideStep, parentRow),
     pastParent: lowColor(low, lowSize, parentColumn, parentRow + verticalStep),
@@ -34,13 +44,13 @@ function contextOf(high, low, index, size) {
 }
 
 function colorKey(context, length, colorCount) {
-  let key = context.quadrant;
+  let key = context.place;
   for (let field = 0; field < length; field++) key = key * colorCount + context[CONTEXT_FIELDS[field]];
   return key;
 }
 
 function shapeKey(context) {
-  let key = context.quadrant;
+  let key = context.place;
   for (const [a, b] of SHAPE_MATCHES) key = key * 2 + (context[a] === context[b] ? 1 : 0);
   return key;
 }
@@ -54,18 +64,18 @@ function tally(table, key, outcome, outcomeCount) {
   counts[outcomeCount]++;
 }
 
-export function trainUpscaler(pairs, colorCount) {
+export function trainUpscaler(pairs, colorCount, rings) {
   const levels = CONTEXT_SIZES.map((length) => ({ length, counts: new Map() }));
   const shapes = new Map();
   for (const { low, high, size } of pairs) {
     for (let index = 0; index < high.length; index++) {
-      const context = contextOf(high, low, index, size);
+      const context = contextOf(high, low, index, size, rings);
       for (const level of levels) tally(level.counts, colorKey(context, level.length, colorCount), high[index], colorCount);
       const copied = copiedField(context, high[index]);
       if (copied >= 0) tally(shapes, shapeKey(context), copied, CONTEXT_FIELDS.length);
     }
   }
-  return { levels, shapes, colorCount };
+  return { levels, shapes, colorCount, rings };
 }
 
 function drawFrom(counts, outcomeCount, allowed, random) {
@@ -81,19 +91,19 @@ function drawFrom(counts, outcomeCount, allowed, random) {
   return -1;
 }
 
-const touchesSpace = ({ parent, besideParent, pastParent }) => parent === SPACE || besideParent === SPACE || pastParent === SPACE;
+const spaceAllowed = ({ outside, parent, besideParent, pastParent }) => outside || parent === SPACE || besideParent === SPACE || pastParent === SPACE;
 
 export function createUpscaleSampler(upscaler, low, lowSize, random) {
   const size = lowSize * 2;
   const indices = new Uint8Array(size * size);
-  const { levels, shapes, colorCount } = upscaler;
+  const { levels, shapes, colorCount, rings } = upscaler;
   let next = 0;
   let fellBack = 0;
 
   const samplePixel = (index) => {
-    const context = contextOf(indices, low, index, size);
-    const spaceAllowed = touchesSpace(context);
-    const allowedColor = (color) => spaceAllowed || color !== SPACE;
+    const context = contextOf(indices, low, index, size, rings);
+    const mayPaintSpace = spaceAllowed(context);
+    const allowedColor = (color) => mayPaintSpace || color !== SPACE;
     for (let depth = 0; depth < levels.length; depth++) {
       const counts = levels[depth].counts.get(colorKey(context, levels[depth].length, colorCount));
       const color = counts ? drawFrom(counts, colorCount, allowedColor, random) : -1;
