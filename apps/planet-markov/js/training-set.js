@@ -1,14 +1,40 @@
+import { drawMaze } from './mazes.js';
+
 export const PLANET_SIZE = 96;
 export const HIRES_SIZE = 768;
 export const SEED_SIZE = 3;
-const PLANETS_PER_SET = 24;
-const HIRES_PER_SET = 3;
+
+const planetSet = (label) => ({ group: 'Planets', label, noun: 'planet', count: 24, hiresCount: 3, round: true, colors: 12 });
 
 export const TRAINING_SETS = {
-  earthlike: 'Earth-like',
-  desert: 'Desert',
-  lava: 'Lava',
-  giants: 'Gas giants',
+  earthlike: planetSet('Earth-like'),
+  desert: planetSet('Desert'),
+  lava: planetSet('Lava'),
+  giants: planetSet('Gas giants'),
+  galaxies: {
+    group: 'Galaxies',
+    label: 'Hubble spirals',
+    noun: 'galaxy',
+    count: 14,
+    hiresCount: 3,
+    round: false,
+    colors: 16,
+    suggested: { start: 'seed', ringsOn: true },
+    credited: true,
+    caption: 'Watch the spiral arms. A long curving arm is far bigger than what any step can see, so the arms break into blotches.',
+  },
+  mazes: {
+    group: 'Mazes',
+    label: 'Mazes',
+    noun: 'maze',
+    count: 24,
+    hiresCount: 3,
+    round: false,
+    colors: 2,
+    drawn: drawMaze,
+    pathCheck: true,
+    caption: 'Every corridor looks right, but a maze has to connect from end to end. Tick Check paths to see how much of it is cut off.',
+  },
 };
 
 export function distanceFromCenter(index, size = PLANET_SIZE) {
@@ -21,15 +47,15 @@ export function distanceFromCenter(index, size = PLANET_SIZE) {
 export const diskReach = (size) => 1 + 2 / size;
 export const DISK_REACH = diskReach(PLANET_SIZE);
 
-const disks = new Map();
+const masks = new Map();
 
-function diskOf(size) {
-  if (!disks.has(size)) {
-    const disk = [];
-    for (let index = 0; index < size * size; index++) if (distanceFromCenter(index, size) <= diskReach(size)) disk.push(index);
-    disks.set(size, disk);
+function maskOf(size, round) {
+  const key = `${size}/${round}`;
+  if (!masks.has(key)) {
+    const pixels = Array.from({ length: size * size }, (_, index) => index);
+    masks.set(key, round ? pixels.filter((index) => distanceFromCenter(index, size) <= diskReach(size)) : pixels);
   }
-  return disks.get(size);
+  return masks.get(key);
 }
 
 async function loadBitmap(src) {
@@ -38,26 +64,33 @@ async function loadBitmap(src) {
   return createImageBitmap(await response.blob());
 }
 
-function readPlanet(bitmap) {
+function readPicture(bitmap, round) {
   const size = bitmap.width;
   const reader = new OffscreenCanvas(size, size).getContext('2d', { willReadFrequently: true });
   reader.drawImage(bitmap, 0, 0);
   const rgba = reader.getImageData(0, 0, size, size).data;
   const rgb = new Uint8Array(size * size * 3);
   for (let i = 0; i < size * size; i++) rgb.set(rgba.subarray(i * 4, i * 4 + 3), i * 3);
-  return { size, rgb, disk: diskOf(size) };
+  return { size, rgb, disk: maskOf(size, round) };
 }
 
-async function loadPlanets(sources) {
-  const bitmaps = await Promise.all(sources.map(loadBitmap));
-  return bitmaps.map(readPlanet);
+async function loadPictures(name, files) {
+  const { round } = TRAINING_SETS[name];
+  const bitmaps = await Promise.all(files.map((file) => loadBitmap(`training/${name}/${file}`)));
+  return bitmaps.map((bitmap) => readPicture(bitmap, round));
 }
 
-export function loadTrainingSet(name) {
-  return loadPlanets(Array.from({ length: PLANETS_PER_SET }, (_, index) => `training/${name}/${index}.png`));
+function drawPictures(name, size, count, firstSeed) {
+  return Array.from({ length: count }, (_, index) => ({ ...TRAINING_SETS[name].drawn(firstSeed + index, size), disk: maskOf(size, false) }));
 }
 
-function halve({ size, rgb }) {
+export async function loadTrainingSet(name) {
+  const { count, drawn } = TRAINING_SETS[name];
+  if (drawn) return drawPictures(name, PLANET_SIZE, count, 1);
+  return loadPictures(name, Array.from({ length: count }, (_, index) => `${index}.png`));
+}
+
+function halve({ size, rgb, disk }) {
   const half = size / 2;
   const small = new Uint8Array(half * half * 3);
   for (let row = 0; row < half; row++) {
@@ -70,16 +103,25 @@ function halve({ size, rgb }) {
       }
     }
   }
-  return { size: half, rgb: small, disk: diskOf(half) };
+  return { size: half, rgb: small, disk: maskOf(half, disk.length < size * size) };
 }
 
-export function pyramidDownTo(planet, smallest) {
-  const levels = [planet];
+export function pyramidDownTo(picture, smallest) {
+  const levels = [picture];
   while (levels[0].size > smallest) levels.unshift(halve(levels[0]));
   return levels;
 }
 
 export async function loadPyramids(name) {
-  const planets = await loadPlanets(Array.from({ length: HIRES_PER_SET }, (_, index) => `training/${name}/hires-${index}.png`));
-  return planets.map((planet) => pyramidDownTo(planet, PLANET_SIZE));
+  const { hiresCount, drawn, count } = TRAINING_SETS[name];
+  const pictures = drawn
+    ? drawPictures(name, HIRES_SIZE, hiresCount, count + 1)
+    : await loadPictures(name, Array.from({ length: hiresCount }, (_, index) => `hires-${index}.png`));
+  return pictures.map((picture) => pyramidDownTo(picture, PLANET_SIZE));
+}
+
+export async function loadCredits(name) {
+  if (!TRAINING_SETS[name].credited) return null;
+  const response = await fetch(`training/${name}/credits.json`);
+  return response.json();
 }

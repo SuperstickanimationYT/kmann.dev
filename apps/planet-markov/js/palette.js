@@ -42,6 +42,7 @@ function seedCenters(pixels, count, random) {
       closest[i] = Math.min(closest[i], distance(pixels, i * 3, centers.at(-1)));
       sum += closest[i];
     }
+    if (!sum) break;
     let target = random() * sum;
     let pick = 0;
     while (pick < total - 1 && (target -= closest[pick]) > 0) pick++;

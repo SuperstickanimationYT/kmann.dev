@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Markov Planets &mdash; kmann314</title>
-<meta name="description" content="A tiny image model that paints planets by counting which colors follow which neighbors, trained on the Planet Texture Generator.">
+<title>Markov Pictures &mdash; kmann314</title>
+<meta name="description" content="A tiny image model that paints pictures by counting which colors follow which neighbors. Planets, Hubble galaxies and mazes show what it can and cannot do.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/css/site.css">
 <link rel="stylesheet" href="../../assets/css/app.css">
@@ -28,7 +28,7 @@
   <div class="shell">
     <div class="app-bar">
       <a class="back-link" href="../../">&larr; All projects</a>
-      <h2 class="app-title">Markov Planets</h2>
+      <h2 class="app-title">Markov Pictures</h2>
     </div>
   </div>
 
@@ -36,14 +36,15 @@
     <form class="pm-panel" id="pm-controls" data-controls>
       <p class="pm-intro">
         This model paints one pixel at a time, left to right, top to bottom. For each pixel it looks up
-        what colors came next after the same surroundings in the training planets, and rolls a die
+        what colors came next after the same surroundings in the training pictures, and rolls a die
         weighted by those counts. That is the whole model.
       </p>
 
       <label class="pm-field">
-        <span>Training planets</span>
+        <span>Training pictures</span>
         <select name="set"></select>
       </label>
+      <p class="pm-note pm-caption" data-set-caption></p>
 
       <label class="pm-field">
         <span>Colors <output></output></span>
@@ -59,7 +60,7 @@
         </select>
       </label>
       <p class="pm-note">
-        The seed is a random training planet shrunk to 9 pixels. Upscaler stages grow it to 96 px,
+        The seed is a random training picture shrunk to 9 pixels. Upscaler stages grow it to 96 px,
         so the big shapes get decided while the image is tiny. Neighbors then does nothing.
       </p>
 
@@ -78,11 +79,18 @@
           <input type="range" name="rings" min="2" max="16" step="1" value="8">
         </label>
         <p class="pm-note">
-          The generator shows each planet from above its pole, so distance from the center is latitude.
+          Planets are drawn from above the pole, so for them distance from the center is latitude.
           Upscaler stages get it too.
         </p>
-        <label class="pm-toggle"><input type="checkbox" name="forceDisk" checked> Force round outline</label>
-        <p class="pm-note">Pixels outside the disk are always space, and space never appears inside. Untick to see the outline the model makes on its own.</p>
+        <div class="pm-group" data-round-controls>
+          <label class="pm-toggle"><input type="checkbox" name="forceDisk" checked> Force round outline</label>
+          <p class="pm-note">Pixels outside the disk are always space, and space never appears inside. Untick to see the outline the model makes on its own.</p>
+        </div>
+        <div class="pm-group" data-path-controls hidden>
+          <label class="pm-toggle"><input type="checkbox" name="checkPaths"> Check paths</label>
+          <p class="pm-note">Colors red every corridor you can't reach from the biggest connected network.</p>
+          <p class="pm-note" data-cut-off></p>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -99,7 +107,7 @@
         <p class="pm-note">
           The 96 px planet sets the big shapes. Each stage then doubles it with a second counting model:
           every new pixel looks at the low-res pixel it came from, which corner of it it is, and the
-          pixels to its left and above. Stages learn from 3 planets rendered at 768 px.
+          pixels to its left and above. Stages learn from 3 pictures at 768 px.
         </p>
       </fieldset>
 
@@ -113,15 +121,25 @@
       </dl>
       <p class="pm-note">When a context never appeared in training, the model drops its farthest neighbor and tries again.</p>
       <p class="pm-note" data-status></p>
+
+      <details class="pm-credits" hidden>
+        <summary>Image credits</summary>
+        <p class="pm-note">
+          Training galaxies are cropped and shrunk from ESA/Hubble images, used under
+          <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
+        </p>
+        <ul data-credit-list></ul>
+      </details>
     </form>
 
     <section class="pm-stage">
       <figure class="pm-figure">
         <canvas data-real></canvas>
         <figcaption>
-          <span>Real planet</span>
+          <span data-real-label>Real planet</span>
           <label class="pm-toggle"><input type="checkbox" name="modelView" form="pm-controls"> As the model sees it</label>
           <button type="button" data-next-real>Next</button>
+          <p class="pm-credit" data-real-credit hidden></p>
         </figcaption>
       </figure>
       <figure class="pm-figure">

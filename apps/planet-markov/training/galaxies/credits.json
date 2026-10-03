@@ -1,0 +1,173 @@
+[
+  {
+    "file": "0.png",
+    "name": "Messier 101",
+    "credit": "Image: European Space Agency & NASA Acknowledgements: Project Investigators for the original Hubble data: K.D. Kuntz (GSFC), F. Bresolin (University of Hawaii), J. Trauger (JPL), J. Mould (NOAO), and Y.-H. Chu (University of Illinois, Urbana) Image processing: Davide De Martin (ESA/Hubble) CFHT image: Canada-France-Hawaii Telescope/J.-C. Cuillandre/Coelum NOAO image: George Jacoby, Bruce Bohannan, Mark Hanna/NOAO/AURA/NSF",
+    "source": "https://esahubble.org/images/heic0602a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/heic0602a.jpg",
+    "crop": [
+      135,
+      3,
+      998
+    ],
+    "hires": "hires-0.png"
+  },
+  {
+    "file": "1.png",
+    "name": "NGC 2441",
+    "credit": "ESA/Hubble & NASA Acknowledgement: Nick Rose",
+    "source": "https://esahubble.org/images/potw1425a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw1425a.jpg",
+    "crop": [
+      362,
+      272,
+      546
+    ]
+  },
+  {
+    "file": "2.png",
+    "name": "UGC 12158",
+    "credit": "ESA/Hubble & NASA",
+    "source": "https://esahubble.org/images/potw1035a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw1035a.jpg",
+    "crop": [
+      444,
+      183,
+      766
+    ]
+  },
+  {
+    "file": "3.png",
+    "name": "NGC 4900",
+    "credit": "ESA/Hubble & NASA, S. J. Smartt, C. Kilpatrick",
+    "source": "https://esahubble.org/images/potw2510a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw2510a.jpg",
+    "crop": [
+      118,
+      57,
+      1162
+    ]
+  },
+  {
+    "file": "4.png",
+    "name": "UGC 678",
+    "credit": "ESA/Hubble & NASA, C. Kilpatrick, R. J. Foley",
+    "source": "https://esahubble.org/images/potw2316a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw2316a.jpg",
+    "crop": [
+      350,
+      107,
+      534
+    ]
+  },
+  {
+    "file": "5.png",
+    "name": "NGC 3783",
+    "credit": "ESA/Hubble & NASA, M. C. Bentz, D. J. V. Rosario",
+    "source": "https://esahubble.org/images/potw2416a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw2416a.jpg",
+    "crop": [
+      0,
+      63,
+      1124
+    ]
+  },
+  {
+    "file": "6.png",
+    "name": "NGC 1309",
+    "credit": "ESA/Hubble & NASA, L. Galbany, S. Jha, K. Noll, A. Riess",
+    "source": "https://esahubble.org/images/potw2530a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw2530a.jpg",
+    "crop": [
+      36,
+      79,
+      1188
+    ],
+    "hires": "hires-1.png"
+  },
+  {
+    "file": "7.png",
+    "name": "NGC 5495",
+    "credit": "ESA/Hubble & NASA, J. Greene Acknowledgement: R. Colombari",
+    "source": "https://esahubble.org/images/potw2239a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw2239a.jpg",
+    "crop": [
+      87,
+      0,
+      830
+    ]
+  },
+  {
+    "file": "8.png",
+    "name": "NGC 3596",
+    "credit": "ESA/Hubble & NASA, D. Thilker",
+    "source": "https://esahubble.org/images/potw2518a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw2518a.jpg",
+    "crop": [
+      88,
+      45,
+      1148
+    ],
+    "hires": "hires-2.png"
+  },
+  {
+    "file": "9.png",
+    "name": "NGC 5584",
+    "credit": "NASA, ESA, A. Riess (STScI/JHU), L. Macri (Texas A & M University), and the Hubble Heritage Team (STScI/AURA)",
+    "source": "https://esahubble.org/images/potw1112a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw1112a.jpg",
+    "crop": [
+      10,
+      59,
+      1270
+    ]
+  },
+  {
+    "file": "10.png",
+    "name": "NGC 6984",
+    "credit": "ESA/Hubble & NASA",
+    "source": "https://esahubble.org/images/potw1344a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw1344a.jpg",
+    "crop": [
+      144,
+      52,
+      910
+    ]
+  },
+  {
+    "file": "11.png",
+    "name": "ESO 498-G5",
+    "credit": "ESA/Hubble & NASA",
+    "source": "https://esahubble.org/images/potw1221a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw1221a.jpg",
+    "crop": [
+      295,
+      2,
+      628
+    ]
+  },
+  {
+    "file": "12.png",
+    "name": "NGC 3810",
+    "credit": "ESA/Hubble and NASA",
+    "source": "https://esahubble.org/images/potw1006a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw1006a.jpg",
+    "crop": [
+      218,
+      0,
+      610
+    ]
+  },
+  {
+    "file": "13.png",
+    "name": "NGC 2082",
+    "credit": "ESA/Hubble and NASA",
+    "source": "https://esahubble.org/images/potw1002a/",
+    "original": "https://cdn.esahubble.org/archives/images/screen/potw1002a.jpg",
+    "crop": [
+      194,
+      0,
+      900
+    ]
+  }
+]

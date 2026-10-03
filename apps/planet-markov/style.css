@@ -187,3 +187,38 @@
     grid-template-columns: 1fr;
   }
 }
+
+.pm-group[hidden],
+.pm-credits[hidden],
+.pm-credit[hidden] {
+  display: none;
+}
+
+.pm-caption {
+  color: var(--text);
+}
+
+.pm-credit {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.pm-credits summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.pm-credits ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
