@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Star Systems &mdash; kmann314</title>
+<meta name="description" content="Real star systems drawn to scale in 2D: the Solar System, TRAPPIST-1, Tau Ceti, Alpha Centauri and T Coronae Borealis.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Star Systems</h2>
+    </div>
+  </div>
+
+  <div class="shell ss-layout">
+    <div class="app-stage ss-stage">
+      <canvas data-stage aria-label="Top-down map of the chosen star system, drawn to scale. Drag to pan, scroll or pinch to zoom, click a body to select it."></canvas>
+      <p class="ss-date" data-date></p>
+    </div>
+
+    <form class="ss-panel" data-controls>
+      <fieldset>
+        <legend>System</legend>
+        <div class="ss-actions ss-systems" data-systems></div>
+        <div class="ss-system">
+          <h3 data-system-name></h3>
+          <p class="ss-distance" data-system-distance></p>
+          <p class="ss-note" data-system-blurb></p>
+        </div>
+        <div class="ss-actions ss-bodies" data-bodies></div>
+        <div class="ss-actions">
+          <button type="button" data-overview>Whole system</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="ss-selected" data-selected hidden>
+        <legend>Selected</legend>
+        <h3 data-selected-name></h3>
+        <p class="ss-distance" data-selected-kind></p>
+        <dl class="ss-facts" data-selected-facts></dl>
+        <p class="ss-note" data-selected-note></p>
+        <div class="ss-actions">
+          <button type="button" class="ss-primary" data-focus>Fly here</button>
+          <button type="button" data-deselect>Done</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Time</legend>
+        <div class="ss-actions">
+          <button type="button" class="ss-primary" data-pause>Pause</button>
+          <button type="button" data-now>Back to today</button>
+        </div>
+        <label class="ss-field">
+          <span>Speed <output data-speed-label></output></span>
+          <input type="range" name="speed" min="-5" max="4.5" step="0.05" value="1">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Show</legend>
+        <label class="ss-toggle"><input type="checkbox" name="orbits" checked> Orbits</label>
+        <label class="ss-toggle"><input type="checkbox" name="habitable" checked> Habitable zones</label>
+        <label class="ss-toggle"><input type="checkbox" name="labels" checked> Labels</label>
+      </fieldset>
+
+      <details class="ss-help">
+        <summary>How to read it</summary>
+        <ul>
+          <li>Everything is to scale: sizes and distances use the same ruler, shown bottom left.</li>
+          <li>A body smaller than a few pixels still gets a small dot so you can find it. Zoom in until it grows past the dot to see its true size.</li>
+          <li>Orbits are flattened onto one plane, seen from above.</li>
+          <li>A name ending in <strong>?</strong> is an unconfirmed candidate. Sizes marked &asymp; are estimates.</li>
+          <li>Green rings are conservative habitable zones, where liquid water could exist on a rocky surface.</li>
+        </ul>
+        <p><strong>Controls</strong></p>
+        <ul>
+          <li>Drag: pan. Wheel or pinch: zoom. Click: select. Double-click: fly to and follow.</li>
+          <li>Keys: <kbd>Space</kbd> pause, <kbd>F</kbd> whole system, <kbd>+</kbd>/<kbd>-</kbd> zoom, <kbd>Esc</kbd> deselect.</li>
+        </ul>
+      </details>
+    </form>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

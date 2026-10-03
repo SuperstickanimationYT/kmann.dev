@@ -55,4 +55,11 @@ const PROJECTS = [
     blurb: 'Click notes onto a grid, stack melody, chords, bass and drums, and every note stays in key.',
     status: 'live',
   },
+  {
+    title: 'Star Systems',
+    href: 'apps/star-systems/',
+    poster: 'assets/img/posters/star-systems.webp',
+    blurb: 'Fly through five real star systems drawn to scale, from home to TRAPPIST-1 to a nova about to go off.',
+    status: 'live',
+  },
 ];
