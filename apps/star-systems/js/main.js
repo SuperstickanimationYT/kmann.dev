@@ -2,6 +2,8 @@ import { SYSTEMS, AU_KM, SUN_KM, EARTH_KM } from './systems.js';
 import { positions, daysSinceJ2000, J2000_MS, DAY_MS } from './kepler.js';
 import { createCamera, updateCamera, zoomAt, panBy, flyTo, scaleToFit, clampScale } from './camera.js';
 import { render, formatNumber } from './render.js';
+import { guessSurface, hasGuessedSurface } from './surface-guess.js';
+import { textureFor } from './textures.js';
 
 const canvas = document.querySelector('[data-stage]');
 const context = canvas.getContext('2d');
@@ -16,6 +18,8 @@ const selectedName = document.querySelector('[data-selected-name]');
 const selectedKind = document.querySelector('[data-selected-kind]');
 const selectedFacts = document.querySelector('[data-selected-facts]');
 const selectedNote = document.querySelector('[data-selected-note]');
+const guessPanel = document.querySelector('[data-guess]');
+const guessSummary = document.querySelector('[data-guess-summary]');
 const pauseButton = document.querySelector('[data-pause]');
 const speedLabel = document.querySelector('[data-speed-label]');
 const dateLabel = document.querySelector('[data-date]');
@@ -30,6 +34,7 @@ const state = {
   daysPerSecond: 10,
   paused: false,
   selected: null,
+  rolls: new Map(),
   placed: new Map(),
   drawn: [],
   layers: { orbits: true, habitable: true, labels: true },
@@ -124,6 +129,38 @@ function describeKind(body) {
   return parts.join(' · ');
 }
 
+const rollOf = (body) => state.rolls.get(`${state.system.id}/${body.name}`) ?? 0;
+
+function surfaceFor(body, radiusPx) {
+  if (!hasGuessedSurface(state.system, body)) return null;
+  const roll = rollOf(body);
+  return textureFor(`${state.system.id}/${body.name}/${roll}`, radiusPx, () => guessSurface(state.system, body, roll).look);
+}
+
+function describeAir(atmosphere) {
+  if (atmosphere === 0) return 'no air';
+  if (atmosphere < 15) return 'thin air';
+  if (atmosphere < 50) return 'moderate air';
+  return 'thick air';
+}
+
+function describeWater(water) {
+  if (water === 0) return 'dry';
+  if (water === 100) return 'all ocean';
+  return `${water}% water`;
+}
+
+function describeGuess(guess) {
+  if (guess.giant) return `Gas giant at about ${guess.temperature} K`;
+  return `About ${guess.temperature} K, ${describeWater(guess.water)}, ${describeAir(guess.atmosphere)}`;
+}
+
+function showGuess(body) {
+  guessPanel.hidden = !hasGuessedSurface(state.system, body);
+  if (guessPanel.hidden) return;
+  guessSummary.textContent = describeGuess(guessSurface(state.system, body, rollOf(body)));
+}
+
 function addFact(term, value) {
   const dt = document.createElement('dt');
   dt.textContent = term;
@@ -147,6 +184,7 @@ function showSelected() {
   if (body.temperatureK) addFact('Surface', `${formatNumber(body.temperatureK)} K`);
   if (body.orbit) addFact('Orbit', formatOrbit(body));
   selectedNote.textContent = body.note;
+  showGuess(body);
 }
 
 function select(name, fly) {
@@ -286,6 +324,11 @@ document.querySelector('[data-now]').addEventListener('click', () => {
 document.querySelector('[data-overview]').addEventListener('click', showSystemView);
 document.querySelector('[data-focus]').addEventListener('click', () => select(state.selected, true));
 document.querySelector('[data-deselect]').addEventListener('click', () => select(null, false));
+document.querySelector('[data-reroll]').addEventListener('click', () => {
+  const body = findBody(state.selected);
+  state.rolls.set(`${state.system.id}/${body.name}`, rollOf(body) + 1);
+  showGuess(body);
+});
 
 controls.addEventListener('input', (event) => {
   const field = event.target.name;
@@ -328,6 +371,7 @@ function frame(now) {
     camera,
     layers: state.layers,
     selectedName: state.selected,
+    surfaceFor,
   });
   dateLabel.textContent = formatDate(state.days);
   window.requestAnimationFrame(frame);
