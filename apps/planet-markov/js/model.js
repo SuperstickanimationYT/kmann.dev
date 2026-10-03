@@ -91,7 +91,11 @@ export function createSampler(model, random) {
   };
 
   return {
+    size: PLANET_SIZE,
     indices,
+    get cursor() {
+      return next;
+    },
     sampleRows(rowCount) {
       const end = Math.min(indices.length, next + rowCount * PLANET_SIZE);
       for (; next < end; next++) indices[next] = samplePixel(next);

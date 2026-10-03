@@ -137,6 +137,9 @@
 .pm-figure canvas {
   width: 100%;
   aspect-ratio: 1;
+}
+
+.pm-figure canvas.pm-blocky {
   image-rendering: pixelated;
 }
 

@@ -47,7 +47,7 @@
 
       <label class="pm-field">
         <span>Colors <output></output></span>
-        <input type="range" name="colors" min="2" max="16" step="1" value="8">
+        <input type="range" name="colors" min="2" max="32" step="1" value="12">
       </label>
       <div class="pm-palette" data-palette></div>
 
@@ -66,9 +66,29 @@
         <p class="pm-note">The generator shows each planet from above its pole, so distance from the center is latitude.</p>
       </fieldset>
 
+      <fieldset>
+        <legend>Upscaling</legend>
+        <label class="pm-field">
+          <span>Resolution</span>
+          <select name="resolution">
+            <option value="96">96 px, no upscaling</option>
+            <option value="192">192 px, 1 stage</option>
+            <option value="384">384 px, 2 stages</option>
+            <option value="768" selected>768 px, 3 stages</option>
+          </select>
+        </label>
+        <p class="pm-note">
+          The 96 px planet sets the big shapes. Each stage then doubles it with a second counting model:
+          every new pixel looks at the low-res pixel it came from, which corner of it it is, and the
+          pixels to its left and above. Stages learn from 3 planets rendered at 768 px.
+        </p>
+      </fieldset>
+
       <dl class="pm-stats">
         <dt>Contexts learned</dt>
         <dd><output data-contexts>0</output></dd>
+        <dt>Upscaler contexts learned</dt>
+        <dd><output data-upscaler-contexts>0</output></dd>
         <dt>Pixels with an unseen context</dt>
         <dd><output data-fallback>0%</output></dd>
       </dl>
