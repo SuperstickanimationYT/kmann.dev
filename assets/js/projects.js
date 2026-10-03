@@ -35,9 +35,9 @@ const PROJECTS = [
     status: 'live',
   },
   {
-    title: 'Markov Planets',
+    title: 'Markov Pictures',
     href: 'apps/planet-markov/',
-    blurb: 'A tiny image model that paints planets by counting which colors follow which neighbors.',
+    blurb: 'A tiny image model that paints planets, galaxies and mazes by counting which colors follow which neighbors.',
     status: 'live',
   },
   {
