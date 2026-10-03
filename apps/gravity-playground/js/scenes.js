@@ -1,4 +1,4 @@
-import { circularVelocity, createBody, INVERSE_SQUARE_STRENGTH, KINDS, updatePulls } from './physics.js';
+import { circularVelocity, createBody, INVERSE_SQUARE_STRENGTH, KINDS, pullAt, updatePulls } from './physics.js';
 
 const FIGURE_EIGHT = {
   size: 160,
@@ -88,6 +88,50 @@ function gasCloud() {
   });
 }
 
+const COSMOS = { particles: 4000, radius: 1500, collapseSeconds: 4, hubblePerCollapse: 1, darkEnergyTakesOverAtSize: 2, seedWaves: 300, seedContrast: 0.5, shortestWaveSpacings: 6, softeningPerSpacing: 0.5 };
+const TRUE_2D_GRAVITY = 1;
+const collapseRate = 1 / COSMOS.collapseSeconds ** 2;
+export const COSMIC_DARK_ENERGY = collapseRate / COSMOS.darkEnergyTakesOverAtSize ** 2;
+
+function seedWaves(spacing) {
+  const [longest, shortest] = [2 * COSMOS.radius, COSMOS.shortestWaveSpacings * spacing];
+  const contrast = COSMOS.seedContrast * Math.sqrt(2 / COSMOS.seedWaves);
+  return Array.from({ length: COSMOS.seedWaves }, () => {
+    const wavenumber = (2 * Math.PI) / (longest * (shortest / longest) ** Math.random());
+    const heading = Math.random() * Math.PI * 2;
+    return { kx: Math.cos(heading) * wavenumber, ky: Math.sin(heading) * wavenumber, phase: Math.random() * Math.PI * 2, reach: contrast / wavenumber };
+  });
+}
+
+function seedShift(waves, x, y) {
+  let [shiftX, shiftY] = [0, 0];
+  for (const { kx, ky, phase, reach } of waves) {
+    const along = reach * Math.sin(kx * x + ky * y + phase) / Math.hypot(kx, ky);
+    shiftX += kx * along;
+    shiftY += ky * along;
+  }
+  return [shiftX, shiftY];
+}
+
+function cosmicWeb() {
+  const spacing = Math.sqrt((Math.PI * COSMOS.radius ** 2) / COSMOS.particles);
+  const mass = (collapseRate * COSMOS.radius) / pullAt(1, COSMOS.radius, TRUE_2D_GRAVITY);
+  const hubble = COSMOS.hubblePerCollapse * Math.sqrt(collapseRate);
+  const growthRate = Math.sqrt(1 + 2 / COSMOS.hubblePerCollapse ** 2) - 1;
+  const softening = COSMOS.softeningPerSpacing * spacing;
+  const waves = seedWaves(spacing);
+  const grid = [];
+  for (let x = -COSMOS.radius; x <= COSMOS.radius; x += spacing) {
+    for (let y = -COSMOS.radius; y <= COSMOS.radius; y += spacing) if (Math.hypot(x, y) <= COSMOS.radius) grid.push([x, y]);
+  }
+  return grid.map(([x, y]) => {
+    const [shiftX, shiftY] = seedShift(waves, x, y);
+    const [px, py] = [x + shiftX, y + shiftY];
+    const [vx, vy] = [hubble * (px + growthRate * shiftX), hubble * (py + growthRate * shiftY)];
+    return createBody({ x: px, y: py, vx, vy, mass: mass / grid.length, kind: KINDS.darkMatter, softening });
+  });
+}
+
 const pointAt = (distance, bearing) => ({ x: Math.cos(bearing) * distance, y: Math.sin(bearing) * distance });
 
 const starSofteningFor = (stars) => GALAXY.starSoftening * Math.sqrt(GALAXY.stars / stars);
@@ -165,5 +209,6 @@ export const SCENES = {
   galaxyMerger: { name: 'Galaxy merger', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: true, stars: settings.galaxyStars })) },
   bareGalaxyMerger: { name: 'Galaxy merger without dark matter', build: (settings) => centredAtRest(galaxyMerger(settings, { darkMatter: false, stars: settings.galaxyStars })) },
   gasCloud: { name: 'Collapsing gas cloud', build: () => gasCloud() },
+  cosmicWeb: { name: 'Cosmic web', law: { exponent: TRUE_2D_GRAVITY, darkEnergy: COSMIC_DARK_ENERGY }, expands: true, build: () => centredAtRest(cosmicWeb()) },
   empty: { name: 'Empty space', build: () => [] },
 };

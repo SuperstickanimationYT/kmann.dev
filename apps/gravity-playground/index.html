@@ -81,6 +81,11 @@
         <p class="gp-note">In a truly 2D universe gravity would fall off as 1/r. Real 3D gravity is 1/r². Only 1/r² (and r) give closed elliptical orbits; others make orbits precess into rosettes, and 1/r³ or steeper can't hold a stable orbit at all.</p>
         <label class="gp-toggle"><input type="checkbox" name="mond"> MOND: strengthen weak pulls</label>
         <p class="gp-note">MOND (Modified Newtonian Dynamics) makes gravity stronger wherever it is weak, which speeds up outer orbits in galaxies without dark matter. Here it boosts each body's total pull, an approximation that doesn't conserve momentum exactly. Reload a galaxy after switching so its orbits match.</p>
+        <label class="gp-field">
+          <span>Dark energy <output data-dark-energy-label></output></span>
+          <input type="range" name="darkEnergy" min="0" max="0.05" step="0.0005" value="0">
+        </label>
+        <p class="gp-note">Every pair of bodies also repels, harder the farther apart they are. Summed over all pairs, that is one outward push from the centre of mass that grows with distance: the Newtonian form of a cosmological constant.</p>
       </fieldset>
 
       <fieldset>
@@ -149,6 +154,12 @@
         <ul>
           <li>"Collapsing gas cloud" is gas (orange) with pressure and friction. Dense gas becomes a star, which swallows gas it touches; leftover gas that spins around the star forms a disk.</li>
           <li>Gas on a near-circular orbit for 1.5 s condenses into a solid planetesimal. Planetesimals merge, and once one passes mass 5 it pulls in gas and grows into a giant. Every cloud is random: expect single stars, binaries, migrating or ejected giants.</li>
+        </ul>
+        <p><strong>Cosmic web</strong></p>
+        <ul>
+          <li>A patch of young universe: dark matter flying apart with the expansion, seeded with faint ripples. Gravity slows the expansion, the ripples grow into filaments, and halos form where filaments meet. "space ×" in the status line is how much the patch has grown.</li>
+          <li>Loading it switches gravity to 1/r and turns dark energy on. With 1/r a uniform disc pulls inward in proportion to distance, just as dark energy pushes out, so the whole patch expands evenly.</li>
+          <li>In 2D, 1/r gravity binds everything: without dark energy the expansion always stops and the patch falls back together. Set dark energy to off right after loading to watch it.</li>
         </ul>
         <p><strong>2+1 relativity</strong></p>
         <ul>
