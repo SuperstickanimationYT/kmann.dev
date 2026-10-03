@@ -1,4 +1,4 @@
-import { distanceFromCenter, PLANET_SIZE } from './training-set.js';
+import { DISK_REACH, distanceFromCenter, PLANET_SIZE } from './training-set.js';
 
 export const NEIGHBORS = [
   { name: 'left', dx: -1, dy: 0 },
@@ -20,7 +20,7 @@ function neighborColor(indices, index, { dx, dy }) {
 
 function ringPosition(index, rings) {
   const distance = distanceFromCenter(index);
-  return distance > 1 ? rings : Math.min(rings - 1, distance * rings);
+  return distance > DISK_REACH ? rings : Math.min(rings - 1, distance * rings);
 }
 
 function contextLevels(neighborCount, rings) {
