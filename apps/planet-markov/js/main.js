@@ -1,6 +1,6 @@
 import { contextsLearned, createSampler, NEIGHBORS, trainModel } from './model.js';
 import { learnPalette, quantize } from './palette.js';
-import { loadPyramids, loadTrainingSet, PLANET_SIZE, TRAINING_SETS } from './training-set.js';
+import { loadPyramids, loadTrainingSet, PLANET_SIZE, pyramidDownTo, SEED_SIZE, TRAINING_SETS } from './training-set.js';
 import { createUpscaleSampler, trainUpscaler } from './upscaler.js';
 
 const BASE_ROWS_PER_FRAME = 3;
@@ -14,17 +14,21 @@ const contextsReadout = document.querySelector('[data-contexts]');
 const upscalerReadout = document.querySelector('[data-upscaler-contexts]');
 const fallbackReadout = document.querySelector('[data-fallback]');
 const statusLine = document.querySelector('[data-status]');
+const painterControls = document.querySelector('[data-painter-controls]');
 
 for (const [value, label] of Object.entries(TRAINING_SETS)) form.elements.set.add(new Option(label, value));
 
 const loadedSets = new Map();
 const loadedPyramids = new Map();
 let planets = [];
+let seedPyramids = [];
 let pyramids = [];
 let palette = [];
 let quantized = [];
+let quantizedSeedPyramids = [];
 let quantizedPyramids = [];
 let model = null;
+let seedUpscalers = [];
 let upscalers = [];
 let realIndex = 0;
 let generation = 0;
@@ -35,6 +39,7 @@ const settings = () => ({
   neighbors: Number(form.elements.neighbors.value),
   ringsOn: form.elements.ringsOn.checked,
   rings: Number(form.elements.rings.value),
+  start: form.elements.start.value,
   resolution: Number(form.elements.resolution.value),
   modelView: form.elements.modelView.checked,
 });
@@ -45,7 +50,8 @@ function showValues() {
   for (const range of form.querySelectorAll('input[type="range"]')) {
     range.closest('label').querySelector('output').value = range.value;
   }
-  const { neighbors, ringsOn } = settings();
+  const { neighbors, ringsOn, start } = settings();
+  painterControls.classList.toggle('pm-off', start === 'seed');
   neighborList.textContent = neighbors ? NEIGHBORS.slice(0, neighbors).map(({ name }) => name).join(', ') : 'none: colors drawn by overall frequency';
   form.elements.rings.closest('label').classList.toggle('pm-off', !ringsOn);
 }
@@ -105,18 +111,25 @@ function paintRows(image, sampler, from) {
   imitationCanvas.getContext('2d').putImageData(image, 0, 0);
 }
 
-function describeStage(sampler) {
-  return sampler.size === PLANET_SIZE ? `Painting ${PLANET_SIZE} px…` : `Upscaling to ${sampler.size} px…`;
+function describeStage(sampler, upscaled) {
+  return upscaled ? `Upscaling to ${sampler.size} px…` : `Painting ${sampler.size} px…`;
+}
+
+function seedSampler(random) {
+  const indices = quantizedSeedPyramids[Math.floor(random() * quantizedSeedPyramids.length)][0];
+  return { size: SEED_SIZE, indices, cursor: indices.length, sampleRows: () => true, fallbackShare: () => 0 };
 }
 
 function generate() {
   const run = ++generation;
-  const stages = stagesFor(settings().resolution);
+  const { start, resolution } = settings();
   const random = Math.random;
-  let sampler = createSampler(model, random);
+  const fromSeed = start === 'seed';
+  const chain = [...(fromSeed ? seedUpscalers : []), ...upscalers.slice(0, stagesFor(resolution))];
+  let sampler = fromSeed ? seedSampler(random) : createSampler(model, random);
   let image = startCanvas(sampler.size);
   let stage = 0;
-  statusLine.textContent = describeStage(sampler);
+  statusLine.textContent = describeStage(sampler, false);
 
   const step = () => {
     if (run !== generation) return;
@@ -124,11 +137,11 @@ function generate() {
     const done = sampler.sampleRows(BASE_ROWS_PER_FRAME * (sampler.size / PLANET_SIZE));
     paintRows(image, sampler, from);
     fallbackReadout.value = `${Math.round(sampler.fallbackShare() * 100)}%`;
-    if (done && stage < stages) {
+    if (done && stage < chain.length) {
       const parent = sampler;
-      sampler = createUpscaleSampler(upscalers[stage++], parent.indices, parent.size, random);
+      sampler = createUpscaleSampler(chain[stage++], parent.indices, parent.size, random);
       image = startCanvas(sampler.size, parent);
-      statusLine.textContent = describeStage(sampler);
+      statusLine.textContent = describeStage(sampler, true);
     } else if (done) {
       statusLine.textContent = `Done: ${sampler.size} × ${sampler.size} px.`;
       return;
@@ -145,14 +158,21 @@ function train() {
   generate();
 }
 
-function trainUpscalers() {
-  quantizedPyramids = pyramids.map((levels) => levels.map((planet) => quantize(planet, palette)));
-  const stageCount = pyramids.length ? pyramids[0].length - 1 : 0;
-  upscalers = Array.from({ length: stageCount }, (_, stage) => trainUpscaler(
-    quantizedPyramids.map((levels, pick) => ({ low: levels[stage], high: levels[stage + 1], size: pyramids[pick][stage + 1].size })),
+function trainStages(levelSets) {
+  const quantizedLevels = levelSets.map((levels) => levels.map((planet) => quantize(planet, palette)));
+  const stageCount = levelSets.length ? levelSets[0].length - 1 : 0;
+  const stages = Array.from({ length: stageCount }, (_, stage) => trainUpscaler(
+    quantizedLevels.map((levels, pick) => ({ low: levels[stage], high: levels[stage + 1], size: levelSets[pick][stage + 1].size })),
     palette.length,
   ));
-  upscalerReadout.value = upscalers.reduce((sum, upscaler) => sum + upscaler.levels[0].counts.size, 0).toLocaleString();
+  return { quantizedLevels, stages };
+}
+
+function trainUpscalers() {
+  ({ quantizedLevels: quantizedPyramids, stages: upscalers } = trainStages(pyramids));
+  ({ quantizedLevels: quantizedSeedPyramids, stages: seedUpscalers } = trainStages(seedPyramids));
+  const contexts = [...seedUpscalers, ...upscalers].reduce((sum, upscaler) => sum + upscaler.levels[0].counts.size, 0);
+  upscalerReadout.value = contexts.toLocaleString();
 }
 
 function learnColors() {
@@ -179,6 +199,7 @@ async function switchSet() {
   ]);
   if (set !== settings().set || resolution !== settings().resolution) return;
   planets = base;
+  seedPyramids = base.map((planet) => pyramidDownTo(planet, SEED_SIZE));
   pyramids = hires;
   realIndex = Math.floor(Math.random() * planets.length);
   learnColors();
@@ -188,7 +209,7 @@ form.addEventListener('input', (event) => {
   showValues();
   const { name } = event.target;
   if (name === 'set') switchSet();
-  else if (name === 'resolution') {
+  else if (name === 'resolution' || name === 'start') {
     if (!pyramids.length && settings().resolution > PLANET_SIZE) switchSet();
     else {
       showReal();
