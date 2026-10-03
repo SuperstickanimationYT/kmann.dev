@@ -32,10 +32,11 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, darkEnergy: 0, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, darkEnergy: 0, followExpansion: true, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
 let bodies = [];
 let selected = null;
-let startingSpread = null;
+let expansion = null;
+let cosmicGlow = false;
 let launch = null;
 let grab = null;
 let pan = null;
@@ -119,12 +120,23 @@ function fireFlash() {
   }
 }
 
-function spreadOf(world) {
+function massSpread(world) {
   const free = world.filter((body) => !body.test);
   const mass = free.reduce((sum, body) => sum + body.mass, 0);
-  if (!mass) return 0;
+  if (!mass) return { centreX: 0, centreY: 0, spread: 0 };
   const [centreX, centreY] = ['x', 'y'].map((key) => free.reduce((sum, body) => sum + body[key] * body.mass, 0) / mass);
-  return Math.sqrt(free.reduce((sum, body) => sum + body.mass * ((body.x - centreX) ** 2 + (body.y - centreY) ** 2), 0) / mass);
+  const spread = Math.sqrt(free.reduce((sum, body) => sum + body.mass * ((body.x - centreX) ** 2 + (body.y - centreY) ** 2), 0) / mass);
+  return { centreX, centreY, spread };
+}
+
+function trackExpansion() {
+  const { centreX, centreY, spread } = massSpread(bodies);
+  if (!spread) return;
+  const growth = spread / expansion.spread;
+  expansion.spread = spread;
+  if (!settings.followExpansion) return;
+  const { camera } = view;
+  Object.assign(camera, { x: centreX + (camera.x - centreX) * growth, y: centreY + (camera.y - centreY) * growth, zoom: camera.zoom / growth });
 }
 
 function setDarkEnergy(darkEnergy) {
@@ -134,13 +146,16 @@ function setDarkEnergy(darkEnergy) {
 }
 
 function loadScene(key) {
-  const { law, expands, build } = SCENES[key];
+  const { law, expands, glowsAsCosmos, build } = SCENES[key];
   if (law) {
     setExponent(law.exponent);
     setDarkEnergy(law.darkEnergy);
   }
   bodies = build(settings);
-  startingSpread = expands ? spreadOf(bodies) : null;
+  const { spread } = massSpread(bodies);
+  expansion = expands ? { startingSpread: spread, spread } : null;
+  cosmicGlow = Boolean(glowsAsCosmos);
+  find('[data-follow-expansion]').hidden = !expands;
   if (inCones()) intoConesAndBalls();
   selected = null;
   view.resize();
@@ -382,6 +397,7 @@ function bindPanel() {
   });
   form.merge.addEventListener('change', () => (settings.merge = form.merge.checked));
   form.mond.addEventListener('change', () => (settings.mond = form.mond.checked));
+  form.followExpansion.addEventListener('change', () => (settings.followExpansion = form.followExpansion.checked));
   form.darkEnergy.addEventListener('input', () => setDarkEnergy(Number(form.darkEnergy.value)));
   document.querySelectorAll('[data-spacetime]').forEach((button) => button.addEventListener('click', () => setSpacetime(button.dataset.spacetime)));
   form.cutAngle.addEventListener('input', () => {
@@ -412,7 +428,8 @@ function bindPanel() {
   find('[data-frame]').addEventListener('click', () => view.frame(bodies));
   find('[data-clear]').addEventListener('click', () => {
     bodies = [];
-    startingSpread = null;
+    expansion = null;
+    find('[data-follow-expansion]').hidden = true;
     select(null);
   });
   find('[data-load-scene]').addEventListener('click', () => loadScene(form.scene.value));
@@ -452,7 +469,7 @@ function showStatus() {
   const cones = bodies.filter(isCone).length;
   const description = inCones()
     ? `${counted(cones, 'mass', 'masses')} · ${counted(bodies.length - cones, 'ball', 'balls')} · 2+1 relativity`
-    : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}${settings.mond ? ' · MOND' : ''}${settings.darkEnergy ? ' · dark energy' : ''}${startingSpread ? ` · space ×${(spreadOf(bodies) / startingSpread).toFixed(2)}` : ''}`;
+    : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}${settings.mond ? ' · MOND' : ''}${settings.darkEnergy ? ' · dark energy' : ''}${expansion ? ` · space ×${(expansion.spread / expansion.startingSpread).toFixed(2)}` : ''}`;
   const slowed = !settings.paused && achievedSpeed < settings.speed * SLOWED_BELOW ? ` · slowed to ${achievedSpeed.toFixed(2)}×` : '';
   find('[data-status]').textContent = description + paused + slowed;
 }
@@ -477,12 +494,13 @@ function frame(time) {
     if (backlog >= STEP_SECONDS) backlog = 0;
     if (seconds > 0) achievedSpeed = achievedSpeed * SPEED_SMOOTHING + ((steps * STEP_SECONDS) / seconds) * (1 - SPEED_SMOOTHING);
     if (inCones()) dropFarTestBalls();
+    if (expansion) trackExpansion();
     if (selected && !bodies.includes(selected)) select(null);
     if (grab && !bodies.includes(grab.body)) grab = null;
     if (settings.trails) noteTrails(bodies);
     if (launch) predictPath();
   }
-  view.draw({ bodies, selected, launch, trails: settings.trails, glow: settings.glow, cutAngle: inCones() ? settings.cutAngle : null });
+  view.draw({ bodies, selected, launch, trails: settings.trails, glow: settings.glow, cosmicGlow, cutAngle: inCones() ? settings.cutAngle : null });
   showStatus();
   window.requestAnimationFrame(frame);
 }

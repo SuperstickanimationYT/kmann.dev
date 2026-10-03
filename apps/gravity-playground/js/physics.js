@@ -212,7 +212,12 @@ function gatherIntoStars(bodies) {
   buildTree(world);
   let changed = false;
   for (const body of bodies) {
-    if (!isGas(body) || body.density < STAR_BIRTH.density) continue;
+    if (!isGas(body) || body.density < (body.starBirthDensity ?? STAR_BIRTH.density)) continue;
+    if (body.formsGalacticStars) {
+      Object.assign(body, { kind: KINDS.star });
+      changed = true;
+      continue;
+    }
     let starNearby = false;
     forEachWithin(body.x, body.y, STAR_BIRTH.radius * 2, (other) => (starNearby ||= bodies[other].kind === KINDS.solid));
     if (starNearby) continue;
