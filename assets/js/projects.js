@@ -21,6 +21,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'GlaBo',
+    href: 'apps/glabo/',
+    poster: 'assets/img/posters/glabo.webp',
+    blurb: 'Talk to a glass-box chatbot about a table of blocks, teach it words, and watch a crowd vet what it learns.',
+    status: 'live',
+  },
+  {
     title: 'Gravity Playground',
     href: 'apps/gravity-playground/',
     poster: 'assets/img/posters/gravity-playground.webp',
