@@ -55,13 +55,14 @@
       <label class="pm-field">
         <span>Start from</span>
         <select name="start">
-          <option value="painter">96 px painter</option>
           <option value="seed">3 &times; 3 seed</option>
+          <option value="painter">96 px painter</option>
         </select>
       </label>
       <p class="pm-note">
         The seed is a random training picture shrunk to 9 pixels. Upscaler stages grow it to 96 px,
-        so the big shapes get decided while the image is tiny. Neighbors then does nothing.
+        so the big shapes get decided while the image is tiny. The painter instead builds the 96 px
+        picture row by row from Neighbors, which suits pictures that are all texture, like mazes and star fields.
       </p>
 
       <fieldset>
