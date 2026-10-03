@@ -157,6 +157,9 @@ const alphaCentauri = {
     { name: 'Proxima b', kind: 'planet', parent: 'Proxima', radiusKm: 1.03 * EARTH_KM, radiusEstimated: true, massEarth: 1.07, minimumMass: true, color: '#b07f5e',
       orbit: { a: 0.04857, e: 0.02, periodDays: 11.1868, periapsisDeg: 0, meanAnomalyDeg: 250 },
       note: 'The nearest known exoplanet, in Proxima\'s habitable zone. Proxima\'s flares may have stripped its atmosphere.' },
+    { name: 'Proxima c', kind: 'planet', parent: 'Proxima', candidate: true, radiusKm: 1.8 * EARTH_KM, radiusEstimated: true, massEarth: 7, minimumMass: true, color: '#9fb4c8',
+      orbit: { a: 1.489, e: 0.04, periodDays: 1928, periapsisDeg: 0, meanAnomalyDeg: 140 },
+      note: 'A super-Earth or mini-Neptune candidate far out at 1.5 AU, around 40 K. Reported in 2020 from the star\'s wobble; a 2025 search with the NIRPS spectrograph could not confirm it.' },
   ],
   zones: [
     conservativeHabitableZone('α Cen A', 1.519),
