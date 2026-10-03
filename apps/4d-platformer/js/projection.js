@@ -41,7 +41,8 @@ function sceneSegments(game, settings) {
   const { world } = game;
   const segments = [];
   const addAll = (pairs, style) => pairs.forEach(([a, b]) => segments.push({ a, b, style }));
-  if (settings.floor) addAll(world.floor.segments, { kind: 'floor' });
+  if (settings.floor && world.floor) addAll(world.floor.segments, { kind: 'floor' });
+  if (world.goalZone) addAll(world.goalZone.segments, { kind: 'goal' });
   addAll(world.outline, { kind: 'wall' });
   world.platforms.forEach(p => addAll(p.segments, platformStyle(p)));
   if (!world.eyeView) {

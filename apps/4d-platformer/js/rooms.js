@@ -63,6 +63,7 @@ export const ROOM_4D = {
   start: [0, 0, -1.5, KITCHEN_ANA],
   room: ROOM,
   eyeView: true,
+  flying: true,
   objects: [
     couch([-3.2, 2.4, LIVING_ANA]),
     table('coffee table', HUES.wood, [-1.2, 2.4, LIVING_ANA], [0.45, 0.05, 0.8, 0.8], 0.45),
