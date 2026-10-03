@@ -32,9 +32,10 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, darkEnergy: 0, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
 let bodies = [];
 let selected = null;
+let startingSpread = null;
 let launch = null;
 let grab = null;
 let pan = null;
@@ -118,8 +119,28 @@ function fireFlash() {
   }
 }
 
+function spreadOf(world) {
+  const free = world.filter((body) => !body.test);
+  const mass = free.reduce((sum, body) => sum + body.mass, 0);
+  if (!mass) return 0;
+  const [centreX, centreY] = ['x', 'y'].map((key) => free.reduce((sum, body) => sum + body[key] * body.mass, 0) / mass);
+  return Math.sqrt(free.reduce((sum, body) => sum + body.mass * ((body.x - centreX) ** 2 + (body.y - centreY) ** 2), 0) / mass);
+}
+
+function setDarkEnergy(darkEnergy) {
+  settings.darkEnergy = darkEnergy;
+  form.darkEnergy.value = darkEnergy;
+  showSettings();
+}
+
 function loadScene(key) {
-  bodies = SCENES[key].build(settings);
+  const { law, expands, build } = SCENES[key];
+  if (law) {
+    setExponent(law.exponent);
+    setDarkEnergy(law.darkEnergy);
+  }
+  bodies = build(settings);
+  startingSpread = expands ? spreadOf(bodies) : null;
   if (inCones()) intoConesAndBalls();
   selected = null;
   view.resize();
@@ -148,6 +169,7 @@ function removeBody(body) {
 
 function showSettings() {
   find('[data-law-label]').textContent = lawLabel(settings.exponent);
+  find('[data-dark-energy-label]').textContent = settings.darkEnergy ? settings.darkEnergy.toFixed(4) : 'off';
   document.querySelectorAll('[data-law]').forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.law) === settings.exponent)));
   find('[data-new-mass-label]').textContent = settings.newMass.toLocaleString();
   find('[data-galaxy-stars-label]').textContent = settings.galaxyStars.toLocaleString();
@@ -360,6 +382,7 @@ function bindPanel() {
   });
   form.merge.addEventListener('change', () => (settings.merge = form.merge.checked));
   form.mond.addEventListener('change', () => (settings.mond = form.mond.checked));
+  form.darkEnergy.addEventListener('input', () => setDarkEnergy(Number(form.darkEnergy.value)));
   document.querySelectorAll('[data-spacetime]').forEach((button) => button.addEventListener('click', () => setSpacetime(button.dataset.spacetime)));
   form.cutAngle.addEventListener('input', () => {
     settings.cutAngle = Number(form.cutAngle.value) * DEGREES;
@@ -389,6 +412,7 @@ function bindPanel() {
   find('[data-frame]').addEventListener('click', () => view.frame(bodies));
   find('[data-clear]').addEventListener('click', () => {
     bodies = [];
+    startingSpread = null;
     select(null);
   });
   find('[data-load-scene]').addEventListener('click', () => loadScene(form.scene.value));
@@ -428,7 +452,7 @@ function showStatus() {
   const cones = bodies.filter(isCone).length;
   const description = inCones()
     ? `${counted(cones, 'mass', 'masses')} · ${counted(bodies.length - cones, 'ball', 'balls')} · 2+1 relativity`
-    : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}${settings.mond ? ' · MOND' : ''}`;
+    : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}${settings.mond ? ' · MOND' : ''}${settings.darkEnergy ? ' · dark energy' : ''}${startingSpread ? ` · space ×${(spreadOf(bodies) / startingSpread).toFixed(2)}` : ''}`;
   const slowed = !settings.paused && achievedSpeed < settings.speed * SLOWED_BELOW ? ` · slowed to ${achievedSpeed.toFixed(2)}×` : '';
   find('[data-status]').textContent = description + paused + slowed;
 }

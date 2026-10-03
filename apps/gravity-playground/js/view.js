@@ -274,7 +274,8 @@ export function createView(canvas) {
     drawGrid();
     if (cutAngle !== null) for (const cone of bodies.filter((body) => !body.test)) drawWedge(cone, cutAngle);
     if (trails) bodies.forEach(drawTrail);
-    if (glow) glowLayer.draw(context, bodies.filter(isGalacticStar), { toScreen, zoom: camera.zoom, width, height });
+    const stars = bodies.filter(isGalacticStar);
+    if (glow) glowLayer.draw(context, stars.length ? stars : bodies.filter(isDarkMatter), { toScreen, zoom: camera.zoom, width, height });
     else drawSpecks(bodies, isDarkMatter, DARK_MATTER, () => DARK_MATTER_RADIUS_PX);
     drawSpecks(bodies, isGasParcel, GAS, () => GAS_RADIUS_PX);
     drawSpecks(bodies, isDust, DUST, (body) => Math.max(DUST_RADIUS_PX, radiusOf(body.mass) * camera.zoom));

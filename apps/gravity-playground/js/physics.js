@@ -32,7 +32,7 @@ export function createBody({ x, y, vx = 0, vy = 0, mass, pinned = false, test = 
 
 export const cloneBodies = (bodies) => bodies.map((body) => ({ ...body, trail: [] }));
 
-const pullAt = (mass, distance, exponent) => PULL_AT_REFERENCE * mass * (REFERENCE_DISTANCE / distance) ** exponent;
+export const pullAt = (mass, distance, exponent) => PULL_AT_REFERENCE * mass * (REFERENCE_DISTANCE / distance) ** exponent;
 
 function pullPerDistance(distance, surface, exponent) {
   const reach = Math.max(distance, surface);
@@ -96,21 +96,31 @@ function strengthenWeakPulls(bodies) {
   }
 }
 
+function pushApart(bodies, darkEnergy) {
+  const mass = bodies.reduce((sum, body) => sum + body.mass, 0);
+  const centreX = bodies.reduce((sum, body) => sum + body.x * body.mass, 0) / mass;
+  const centreY = bodies.reduce((sum, body) => sum + body.y * body.mass, 0) / mass;
+  for (const body of bodies) {
+    body.ax += darkEnergy * (body.x - centreX);
+    body.ay += darkEnergy * (body.y - centreY);
+  }
+}
+
 const pullsAreFor = new WeakMap();
 
-function pullsStillHold(bodies, { exponent, mond }) {
+function pullsStillHold(bodies, { exponent, mond, darkEnergy }) {
   const stamp = pullsAreFor.get(bodies);
-  if (!stamp || stamp.exponent !== exponent || stamp.mond !== mond || stamp.count !== bodies.length) return false;
+  if (!stamp || stamp.exponent !== exponent || stamp.mond !== mond || stamp.darkEnergy !== darkEnergy || stamp.count !== bodies.length) return false;
   return bodies.every((body) => body.pulledX === body.x && body.pulledY === body.y && body.pulledMass === body.mass);
 }
 
-function trustPulls(bodies, { exponent, mond }) {
+function trustPulls(bodies, { exponent, mond, darkEnergy }) {
   for (const body of bodies) {
     body.pulledX = body.x;
     body.pulledY = body.y;
     body.pulledMass = body.mass;
   }
-  pullsAreFor.set(bodies, { exponent, mond, count: bodies.length });
+  pullsAreFor.set(bodies, { exponent, mond, darkEnergy, count: bodies.length });
 }
 
 export function updatePulls(bodies, law) {
@@ -119,6 +129,7 @@ export function updatePulls(bodies, law) {
   if (bodies.length <= EXACT_PULLS_UP_TO_BODIES) exactPulls(bodies, law.exponent, touching);
   else treePulls(bodies, law.exponent, touching);
   if (law.mond) strengthenWeakPulls(bodies);
+  if (law.darkEnergy) pushApart(bodies, law.darkEnergy);
   if (bodies.some(isGas)) {
     if (bodies.length <= EXACT_PULLS_UP_TO_BODIES) buildTree(world);
     addGasPressure(bodies, isGas);
@@ -247,8 +258,8 @@ function condenseSettledGas(bodies) {
   }
 }
 
-export function leapfrogStep(bodies, { exponent, mond = false, merge }) {
-  const law = { exponent, mond };
+export function leapfrogStep(bodies, { exponent, mond = false, darkEnergy = 0, merge }) {
+  const law = { exponent, mond, darkEnergy };
   if (!bodies.length) return false;
   if (!pullsStillHold(bodies, law)) updatePulls(bodies, law);
   kick(bodies, STEP_SECONDS / 2);
