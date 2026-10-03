@@ -72,7 +72,15 @@ export function learnPalette(planets, count, random) {
 
 export function quantize(planet, palette) {
   const planetColors = palette.slice(1);
-  const indices = new Uint8Array(planet.rgb.length / 3);
-  for (const index of planet.disk) indices[index] = 1 + nearest(planet.rgb, index * 3, planetColors);
+  const { rgb, disk } = planet;
+  const indices = new Uint8Array(rgb.length / 3);
+  const remembered = new Map();
+  for (const index of disk) {
+    const offset = index * 3;
+    const packed = (rgb[offset] << 16) | (rgb[offset + 1] << 8) | rgb[offset + 2];
+    let color = remembered.get(packed);
+    if (color === undefined) remembered.set(packed, (color = 1 + nearest(rgb, offset, planetColors)));
+    indices[index] = color;
+  }
   return indices;
 }
