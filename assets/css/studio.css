@@ -149,6 +149,10 @@
   display: none;
 }
 
+.studio-panel input[type="range"] {
+  touch-action: pan-y;
+}
+
 .studio-footer {
   margin: 18px 0 0;
   font-size: 12px;
@@ -189,6 +193,12 @@
 
   .studio-collapsed .studio-panel-body {
     display: block;
+  }
+
+  .studio-panel-body {
+    --scroll-lane: 44px;
+    padding-right: calc(var(--scroll-lane) + 8px);
+    background: linear-gradient(to left, rgba(61, 143, 221, 0.09) var(--scroll-lane), transparent var(--scroll-lane));
   }
 
   .studio-handle {
