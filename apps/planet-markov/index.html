@@ -20,23 +20,26 @@
 </header>
 
 <main class="studio-stage pm-stage">
-  <figure class="pm-figure">
-    <div class="pm-view"><canvas data-real></canvas></div>
-    <figcaption>
-      <span data-real-label>Real planet</span>
-      <label class="pm-toggle"><input type="checkbox" name="modelView" form="pm-controls"> As the model sees it</label>
-      <button type="button" data-next-real>Next</button>
-      <p class="pm-credit" data-real-credit hidden></p>
-    </figcaption>
-  </figure>
-  <span class="pm-arrow" aria-hidden="true">&rarr;</span>
-  <figure class="pm-figure">
-    <div class="pm-view"><canvas data-imitation></canvas></div>
-    <figcaption>
-      <span>Imitation</span>
-      <button type="button" class="pm-primary" data-generate>Generate</button>
-    </figcaption>
-  </figure>
+  <div class="pm-row">
+    <figure class="pm-figure">
+      <div class="pm-view"><canvas data-real></canvas></div>
+      <figcaption>
+        <span data-real-label>Real planet</span>
+        <label class="pm-toggle"><input type="checkbox" name="modelView" form="pm-controls"> As the model sees it</label>
+        <button type="button" data-next-real>Next</button>
+        <p class="pm-credit" data-real-credit hidden></p>
+      </figcaption>
+    </figure>
+    <span class="pm-arrow" aria-hidden="true">&rarr;</span>
+    <figure class="pm-figure">
+      <div class="pm-view"><canvas data-imitation></canvas></div>
+      <figcaption>
+        <span>Imitation</span>
+        <button type="button" class="pm-primary" data-generate>Generate</button>
+      </figcaption>
+    </figure>
+  </div>
+  <p class="pm-match"><span data-match></span> <button type="button" data-show-closest hidden>Show it</button></p>
 </main>
 
 <aside class="studio-panel" data-studio-panel aria-label="Settings">
@@ -54,6 +57,13 @@
         <input type="range" name="colors" min="2" max="32" step="1" value="12">
       </label>
       <div class="pm-palette" data-palette></div>
+
+      <label class="pm-toggle"><input type="checkbox" name="symmetric" checked> Also learn from flipped and turned copies</label>
+      <p class="pm-note">
+        With few training pictures, most of what the model sees appears in only one of them, so it copies that
+        picture. Learning from every flip and turn gives it up to 8 versions of each, so fewer patterns are
+        unique to one picture. The closest-match line under the imitation shows how much it still copies.
+      </p>
 
       <label class="pm-field">
         <span>Start from</span>

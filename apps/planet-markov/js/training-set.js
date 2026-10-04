@@ -32,6 +32,7 @@ export const TRAINING_SETS = {
     noun: 'star field',
     count: 10,
     tilesPerSide: 4,
+    keepsUpright: true,
     hiresCount: 0,
     round: false,
     colors: 12,
