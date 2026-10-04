@@ -44,6 +44,7 @@ const PROJECTS = [
   {
     title: 'Markov Pictures',
     href: 'apps/planet-markov/',
+    poster: 'assets/img/posters/planet-markov.webp',
     blurb: 'Generative AI in its simplest form: a tiny model learns from example pictures, then paints planets, galaxies and mazes.',
     status: 'live',
   },
