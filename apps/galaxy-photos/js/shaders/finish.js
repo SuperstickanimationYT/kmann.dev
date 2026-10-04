@@ -66,7 +66,7 @@ void main() {
 
   float intensity = max(dot(linear, vec3(0.3333)), 1e-6);
   vec3 stretched = linear * asinh(uSoftening * intensity) / (asinh(uSoftening) * intensity);
-  stretched = max(stretched - 0.02, 0.0) * 1.02;
+  stretched = max(stretched - 0.008, 0.0);
 
   float grey = dot(stretched, vec3(0.2126, 0.7152, 0.0722));
   stretched = max(mix(vec3(grey), stretched, uSaturation), 0.0);

@@ -1,3 +1,5 @@
+import { FINE_TILE_KPC } from './fine.js';
+
 export const MARCH_FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
@@ -30,11 +32,17 @@ uniform float uBulgeIndex;
 uniform float uBarLight;
 uniform float uBarLength;
 uniform float uNucleusLight;
+uniform sampler2D uFine;
+uniform float uFineLod;
+uniform vec2 uFineShift;
 
-const vec3 OLD_DISK_COLOUR = vec3(1.0, 0.9, 0.8);
-const vec3 BULGE_COLOUR = vec3(1.0, 0.88, 0.74);
+const float FINE_TILE = ${FINE_TILE_KPC.toFixed(3)};
+const mat2 FINE_TURN = mat2(0.6, -0.8, 0.8, 0.6) * 2.37;
+
+const vec3 OLD_DISK_COLOUR = vec3(1.0, 0.97, 0.94);
+const vec3 BULGE_COLOUR = vec3(1.0, 0.9, 0.8);
 const vec3 YOUNG_COLOUR = vec3(0.55, 0.72, 1.0);
-const vec3 GAS_COLOUR = vec3(1.0, 0.3, 0.52);
+const vec3 GAS_COLOUR = vec3(1.0, 0.42, 0.6);
 const vec3 CLUSTER_COLOUR = vec3(0.72, 0.84, 1.0);
 const vec3 REDDENING = vec3(0.84, 1.0, 1.2);
 
@@ -132,15 +140,24 @@ void main() {
     float filaments = texture(uDetail, driftedPlace / (2.0 * uRmax) + 0.5).g;
     float dustShape = (exp(-abs(lift)) * (0.6 + 0.8 * filaments) + 0.7 * filaments * exp(-abs(lift) / 1.8)) / (2.0 * dustHeight);
 
-    vec3 emission = OLD_DISK_COLOUR * (uDiskLight * disk.r * oldShape)
-      + YOUNG_COLOUR * (uYoungLight * disk.g * youngShape)
-      + GAS_COLOUR * (uGasLight * disk.b * youngShape)
+    vec2 fineUv = p.xy / FINE_TILE + uFineShift;
+    vec2 fineDustUv = driftedPlace / FINE_TILE + uFineShift;
+    vec4 fineNear = textureLod(uFine, fineUv, uFineLod);
+    vec4 fineFar = textureLod(uFine, FINE_TURN * fineUv, uFineLod + 1.25);
+    float dustFine = 0.4 + 1.2 * (0.65 * textureLod(uFine, fineDustUv, uFineLod).r + 0.35 * textureLod(uFine, FINE_TURN * fineDustUv, uFineLod + 1.25).r);
+    float youngFine = 0.25 + 1.5 * (0.6 * fineNear.g + 0.4 * fineFar.g);
+    float knotFine = 0.35 + 6.0 * (fineNear.b + 0.6 * fineFar.b);
+    float oldFine = 0.9 + 0.2 * fineNear.g;
+
+    vec3 emission = OLD_DISK_COLOUR * (uDiskLight * disk.r * oldShape * oldFine)
+      + YOUNG_COLOUR * (uYoungLight * disk.g * youngShape * youngFine)
+      + GAS_COLOUR * (uGasLight * disk.b * youngShape * knotFine)
       + CLUSTER_COLOUR * (uClusterLight * detail.r * youngShape)
       + BULGE_COLOUR * (uBulgeLight * sersicDensity(p) + uBarLight * barDensity(p))
       + BULGE_COLOUR * uNucleusLight * exp(-dot(p, p) / 0.0016);
 
-    float youngEmission = uYoungLight * disk.g * youngShape + uClusterLight * detail.r * youngShape;
-    float tau = uDustOpacity * disk.a * dustShape * ds;
+    float youngEmission = uYoungLight * disk.g * youngShape * youngFine + uClusterLight * detail.r * youngShape;
+    float tau = uDustOpacity * disk.a * dustShape * dustFine * ds;
     vec3 stepThrough = exp(-tau * REDDENING);
     vec3 stepFraction = tau > 1e-5 ? (1.0 - stepThrough) / (tau * REDDENING) : vec3(1.0);
 

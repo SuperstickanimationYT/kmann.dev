@@ -1,11 +1,7 @@
 import { createRenderer } from '../js/renderer.js';
-import { randomSeed } from '../js/random.js';
-import { fakeSettingsFor } from './match.js';
+import { renderTwin } from './twin.js';
 import { REAL_PHOTOS, photoUrl, sourceUrl } from './photos.js';
 
-const SHOWN_WIDTH = 800;
-const SHOWN_HEIGHT = 600;
-const RENDER_SCALE = 2;
 const JPEG_QUALITY = 0.88;
 const HISTORY_KEY = 'galaxy-real-or-fake-history';
 
@@ -19,7 +15,6 @@ const breakdown = document.querySelector('[data-breakdown]');
 const creditList = document.querySelector('[data-credits]');
 const resetButton = document.querySelector('[data-reset]');
 
-const nextFrame = () => new Promise((resolve) => window.requestAnimationFrame(resolve));
 const renderer = createRenderer(document.createElement('canvas'));
 
 function readHistory() {
@@ -58,15 +53,8 @@ function asJpegUrl(canvas) {
 }
 
 async function generatedPicture(photo) {
-  const settings = fakeSettingsFor(photo, randomSeed());
-  const full = await renderer.renderToCanvas(settings, SHOWN_WIDTH * RENDER_SCALE, SHOWN_HEIGHT * RENDER_SCALE, nextFrame);
-  const shown = document.createElement('canvas');
-  shown.width = SHOWN_WIDTH;
-  shown.height = SHOWN_HEIGHT;
-  const context = shown.getContext('2d');
-  context.imageSmoothingQuality = 'high';
-  context.drawImage(full, 0, 0, SHOWN_WIDTH, SHOWN_HEIGHT);
-  return { url: await asJpegUrl(shown), settings };
+  const { canvas, settings } = await renderTwin(renderer, photo);
+  return { url: await asJpegUrl(canvas), settings };
 }
 
 function loaded(url) {

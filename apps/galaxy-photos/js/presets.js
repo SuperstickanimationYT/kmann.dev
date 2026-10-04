@@ -2,13 +2,13 @@ import { createRandom } from './random.js';
 
 const CAMERA = {
   telescope: 'hubble',
-  exposure: 50,
-  stretch: 50,
-  noise: 50,
-  saturation: 100,
-  stars: 25,
-  background: 40,
-  resolved: 50,
+  exposure: 51,
+  stretch: 27,
+  noise: 30,
+  saturation: 125,
+  stars: 15,
+  background: 15,
+  resolved: 70,
 };
 
 const VIEW = { inclination: 35, angle: 20, size: 65 };
@@ -24,7 +24,7 @@ export const PRESETS = {
   },
   barred: {
     label: 'Barred spiral (like NGC 1300)',
-    shape: { arms: 2, pitch: 16, armContrast: 75, flocculence: 12, bar: 70, bulge: 35, flattening: 30, disk: 70, young: 70, gas: 60, dust: 65, thickness: 30 },
+    shape: { arms: 2, pitch: 22, armContrast: 75, flocculence: 12, bar: 70, bulge: 35, flattening: 30, disk: 70, young: 70, gas: 60, dust: 65, thickness: 30 },
   },
   flocculent: {
     label: 'Flocculent spiral (like NGC 4414)',

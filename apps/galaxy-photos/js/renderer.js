@@ -5,12 +5,13 @@ import { FULLSCREEN_VERTEX, MAP_FRAGMENT } from './shaders/map.js';
 import { MARCH_FRAGMENT } from './shaders/march.js';
 import { BLOB_FRAGMENT, BLOB_VERTEX, SPECKLE_FRAGMENT, SPECKLE_VERTEX, STAR_FRAGMENT, STAR_VERTEX } from './shaders/points.js';
 import { FINISH_FRAGMENT } from './shaders/finish.js';
+import { FINE_FRAGMENT, FINE_SIZE, FINE_TILE_KPC } from './shaders/fine.js';
 
 const MAP_SIZE = 2048;
 const MAP_STRIPS = 4;
 const MARCH_STEPS = 176;
 const MARCH_PIXELS_PER_STRIP = 200000;
-const SPECKLES_PER_PIXEL = 0.14;
+const SPECKLES_PER_PIXEL = 0.45;
 const STAR_FLOATS = 6;
 const BLOB_FLOATS = 14;
 
@@ -53,6 +54,20 @@ export function createRenderer(canvas) {
   gl.bindVertexArray(null);
 
   const maps = createTarget(gl, MAP_SIZE, MAP_SIZE, 2);
+  const fine = createByteTarget(gl, FINE_SIZE, FINE_SIZE);
+  const fineProgram = createProgram(gl, FULLSCREEN_VERTEX, FINE_FRAGMENT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fine.framebuffer);
+  gl.viewport(0, 0, FINE_SIZE, FINE_SIZE);
+  gl.useProgram(fineProgram.program);
+  gl.bindVertexArray(emptyVao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, fine.texture);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
   let mapsKey = '';
   const frames = new Map();
 
@@ -102,14 +117,17 @@ export function createRenderer(canvas) {
   }
 
   function* march(settings, frame, width, height) {
+    const lighting = lightingOf(settings);
     const stripHeight = Math.max(8, Math.floor(MARCH_PIXELS_PER_STRIP / width));
     for (let top = 0; top < height; top += stripHeight) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, frame.galaxy.framebuffer);
       gl.viewport(0, 0, width, height);
       gl.useProgram(marchProgram.program);
-      bindTextures(gl, marchProgram, { uDisk: maps.textures[0], uDetail: maps.textures[1] });
+      bindTextures(gl, marchProgram, { uDisk: maps.textures[0], uDetail: maps.textures[1], uFine: fine.texture });
       setUniforms(gl, marchProgram, {
-        ...lightingOf(settings),
+        ...lighting,
+        uFineLod: Math.max(0, Math.log2(((lighting.uFieldHeight / height) * FINE_SIZE) / FINE_TILE_KPC)),
+        uFineShift: [(settings.seed % 97) / 97, (settings.seed % 89) / 89],
         uResolution: [width, height],
         uSteps: MARCH_STEPS,
       });
@@ -176,7 +194,7 @@ export function createRenderer(canvas) {
       ...shared,
       uSeed: { uint: settings.seed },
       uSpeckleCount: speckleCount,
-      uYoungShare: 0.35 * (settings.resolved / 100),
+      uYoungShare: lightingOf(settings).uResolvedShare,
       uOldShare: 0.06 * (settings.resolved / 100),
     });
     gl.bindVertexArray(emptyVao);
