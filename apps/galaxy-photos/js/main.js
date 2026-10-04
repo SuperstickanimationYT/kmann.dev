@@ -112,6 +112,7 @@ presetPicker.addEventListener('change', () => {
 });
 
 form.addEventListener('input', (event) => {
+  if (event.target === presetPicker) return;
   if (!CAMERA_FIELDS.includes(event.target.name) && event.target.name !== 'seed') presetPicker.value = '';
   redraw();
 });
