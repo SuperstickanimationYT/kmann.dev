@@ -3,6 +3,7 @@ import { learnPalette, quantize } from './palette.js';
 import { findCutOff } from './paths.js';
 import { loadCredits, loadPyramids, loadTrainingSet, PLANET_SIZE, pyramidDownTo, SEED_SIZE, sourceOf, TRAINING_SETS } from './training-set.js';
 import { createUpscaleSampler, trainUpscaler } from './upscaler.js';
+import { sharedPixels, symmetriesFor, transformIndices, transformPicture } from './symmetry.js';
 
 const BASE_ROWS_PER_FRAME = 3;
 const CUT_OFF_COLOR = [224, 72, 58];
@@ -24,6 +25,9 @@ const cutOffReadout = document.querySelector('[data-cut-off]');
 const realLabel = document.querySelector('[data-real-label]');
 const realCredit = document.querySelector('[data-real-credit]');
 const creditList = document.querySelector('[data-credit-list]');
+const matchLine = document.querySelector('[data-match]');
+const showClosestButton = document.querySelector('[data-show-closest]');
+const stage = document.querySelector('.pm-stage');
 
 const groups = new Map();
 for (const [value, { group, label }] of Object.entries(TRAINING_SETS)) {
@@ -40,12 +44,18 @@ let pyramids = [];
 let credits = null;
 let palette = [];
 let quantized = [];
+let trainingQuantized = [];
+let trainingSeedLevels = [];
 let quantizedSeedPyramids = [];
 let quantizedPyramids = [];
 let model = null;
 let seedUpscalers = [];
 let upscalers = [];
 let realIndex = 0;
+let realSymmetry = null;
+let closest = null;
+let layoutAtPlanetSize = null;
+const typicalMatches = new Map();
 let generation = 0;
 let finished = null;
 
@@ -60,6 +70,7 @@ const settings = () => ({
   checkPaths: form.elements.checkPaths.checked,
   resolution: Number(form.elements.resolution.value),
   modelView: form.elements.modelView.checked,
+  symmetric: form.elements.symmetric.checked,
 });
 
 const currentSet = () => TRAINING_SETS[settings().set];
@@ -119,6 +130,7 @@ function showCutOff(realShare, imitationShare) {
 
 function realPictureShown() {
   const { resolution } = settings();
+  if (closest?.shown) return { picture: pictures[closest.pick], indices: quantized[closest.pick], credit: credits?.[sourceOf(settings().set, closest.pick)] };
   if (resolution === PLANET_SIZE) return { picture: pictures[realIndex], indices: quantized[realIndex], credit: credits?.[sourceOf(settings().set, realIndex)] };
   const pick = realIndex % pyramids.length;
   return {
@@ -134,7 +146,11 @@ function creditLink({ name, credit, source }) {
 }
 
 function showReal() {
-  const { picture, indices, credit } = realPictureShown();
+  const shown = realPictureShown();
+  const { credit } = shown;
+  const picture = realSymmetry ? transformPicture(shown.picture, realSymmetry) : shown.picture;
+  const indices = realSymmetry ? transformIndices(shown.indices, shown.picture.size, realSymmetry) : shown.indices;
+  realLabel.textContent = closest?.shown ? `Closest training ${currentSet().noun}` : `Real ${currentSet().noun}`;
   if (showingPaths()) showCutOff(paintWithPaths(realCanvas, indices, picture.size), finished?.share ?? null);
   else if (settings().modelView) paint(realCanvas, picture.size, (i) => palette[indices[i]]);
   else paint(realCanvas, picture.size, (i) => picture.rgb.subarray(i * 3, i * 3 + 3));
@@ -182,7 +198,7 @@ function describeStage(sampler, upscaled) {
 }
 
 function seedSampler(random) {
-  const indices = quantizedSeedPyramids[Math.floor(random() * quantizedSeedPyramids.length)][0];
+  const indices = trainingSeedLevels[Math.floor(random() * trainingSeedLevels.length)][0];
   return { size: SEED_SIZE, indices, cursor: indices.length, sampleRows: () => true, fallbackShare: () => 0 };
 }
 
@@ -206,6 +222,7 @@ function generate() {
   let image = startCanvas(sampler.size);
   let stage = 0;
   finished = null;
+  forgetClosest();
   if (showingPaths()) showReal();
   statusLine.textContent = describeStage(sampler, false);
 
@@ -215,6 +232,7 @@ function generate() {
     const done = sampler.sampleRows(Math.max(1, BASE_ROWS_PER_FRAME * (sampler.size / PLANET_SIZE)));
     paintRows(image, sampler, from);
     fallbackReadout.value = `${Math.round(sampler.fallbackShare() * 100)}%`;
+    if (done && sampler.size === PLANET_SIZE) layoutAtPlanetSize = sampler.indices.slice();
     if (done && stage < chain.length) {
       const parent = sampler;
       sampler = createUpscaleSampler(chain[stage++], parent.indices, parent.size, random, roundOutline);
@@ -223,6 +241,7 @@ function generate() {
     } else if (done) {
       finished = { indices: sampler.indices, size: sampler.size };
       showFinished();
+      showClosest();
       statusLine.textContent = `Done: ${sampler.size} × ${sampler.size} px.`;
       return;
     }
@@ -232,25 +251,35 @@ function generate() {
 }
 
 function train() {
-  model = trainModel(quantized, { colorCount: palette.length, neighborCount: settings().neighbors, rings: activeRings() });
+  model = trainModel(trainingQuantized, { colorCount: palette.length, neighborCount: settings().neighbors, rings: activeRings() });
   contextsReadout.value = contextsLearned(model).toLocaleString();
   generate();
 }
 
-function trainStages(levelSets) {
-  const quantizedLevels = levelSets.map((levels) => levels.map((picture) => quantize(picture, palette)));
-  const stageCount = levelSets.length ? levelSets[0].length - 1 : 0;
+const symmetries = () => (settings().symmetric ? symmetriesFor(currentSet().keepsUpright) : symmetriesFor(true).slice(0, 1));
+
+function withTrainingSymmetries(levels) {
+  return symmetries().map((symmetry) => levels.map((indices) => transformIndices(indices, Math.sqrt(indices.length), symmetry)));
+}
+
+function trainStages(quantizedLevelSets) {
+  const trainingLevels = quantizedLevelSets.flatMap(withTrainingSymmetries);
+  const stageCount = trainingLevels.length ? trainingLevels[0].length - 1 : 0;
   const stages = Array.from({ length: stageCount }, (_, stage) => trainUpscaler(
-    quantizedLevels.map((levels, pick) => ({ low: levels[stage], high: levels[stage + 1], size: levelSets[pick][stage + 1].size })),
+    trainingLevels.map((levels) => ({ low: levels[stage], high: levels[stage + 1], size: Math.sqrt(levels[stage + 1].length) })),
     palette.length,
     activeRings(),
   ));
-  return { quantizedLevels, stages };
+  return { trainingLevels, stages };
 }
 
+const quantizeLevels = (levelSets) => levelSets.map((levels) => levels.map((picture) => quantize(picture, palette)));
+
 function trainUpscalers() {
-  ({ quantizedLevels: quantizedPyramids, stages: upscalers } = trainStages(pyramids));
-  ({ quantizedLevels: quantizedSeedPyramids, stages: seedUpscalers } = trainStages(seedPyramids));
+  quantizedPyramids = quantizeLevels(pyramids);
+  quantizedSeedPyramids = quantizeLevels(seedPyramids);
+  ({ stages: upscalers } = trainStages(quantizedPyramids));
+  ({ trainingLevels: trainingSeedLevels, stages: seedUpscalers } = trainStages(quantizedSeedPyramids));
   const contexts = [...seedUpscalers, ...upscalers].reduce((sum, upscaler) => sum + upscaler.levels[0].counts.size, 0);
   upscalerReadout.value = contexts.toLocaleString();
 }
@@ -258,10 +287,49 @@ function trainUpscalers() {
 function learnColors() {
   palette = learnPalette(pictures, settings().colors, Math.random);
   quantized = pictures.map((picture) => quantize(picture, palette));
+  trainingQuantized = withTrainingSymmetries(quantized).flat();
+  typicalMatches.clear();
   trainUpscalers();
   showPalette();
   showReal();
   train();
+}
+
+function bestMatch(indices, size, candidates, skip = -1) {
+  let best = { share: -1, pick: 0, symmetry: null };
+  candidates.forEach((candidate, pick) => {
+    if (pick === skip) return;
+    for (const symmetry of symmetriesFor(currentSet().keepsUpright)) {
+      const share = sharedPixels(indices, candidate, size, symmetry);
+      if (share > best.share) best = { share, pick, symmetry };
+    }
+  });
+  return best;
+}
+
+function typicalMatch() {
+  const key = settings().set;
+  if (!typicalMatches.has(key)) {
+    const shares = quantized.map((indices, pick) => bestMatch(indices, PLANET_SIZE, quantized, pick).share);
+    typicalMatches.set(key, shares.reduce((sum, share) => sum + share, 0) / Math.max(1, shares.length));
+  }
+  return typicalMatches.get(key);
+}
+
+function forgetClosest() {
+  closest = null;
+  layoutAtPlanetSize = null;
+  matchLine.textContent = '';
+  showClosestButton.hidden = true;
+}
+
+function showClosest() {
+  if (quantized.length < 2 || !layoutAtPlanetSize) return;
+  closest = { ...bestMatch(layoutAtPlanetSize, PLANET_SIZE, quantized), shown: false };
+  const { noun } = currentSet();
+  const how = closest.symmetry.name ? `, ${closest.symmetry.name}` : '';
+  matchLine.textContent = `Closest training ${noun}: ${percent(closest.share)} of pixels identical${how}. Two different training ${noun === 'galaxy' ? 'galaxies' : `${noun}s`} share ${percent(typicalMatch())} on average, compared at ${PLANET_SIZE} px.`;
+  showClosestButton.hidden = false;
 }
 
 async function loadCached(cache, key, load) {
@@ -284,6 +352,8 @@ async function switchSet() {
   pyramids = hires;
   credits = setCredits;
   realIndex = Math.floor(Math.random() * pictures.length);
+  realSymmetry = null;
+  forgetClosest();
   showCredits();
   learnColors();
 }
@@ -325,7 +395,7 @@ form.addEventListener('input', (event) => {
       showReal();
       generate();
     }
-  } else if (name === 'colors') learnColors();
+  } else if (name === 'colors' || name === 'symmetric') learnColors();
   else if (name === 'ringsOn' || name === 'rings') {
     trainUpscalers();
     train();
@@ -339,8 +409,25 @@ document.querySelector('[data-generate]').addEventListener('click', generate);
 document.querySelector('[data-next-real]').addEventListener('click', () => {
   const shownCount = settings().resolution > PLANET_SIZE ? pyramids.length : pictures.length;
   realIndex = (realIndex + 1) % shownCount;
+  realSymmetry = null;
+  if (closest) closest.shown = false;
   showReal();
 });
+
+showClosestButton.addEventListener('click', () => {
+  realIndex = closest.pick;
+  realSymmetry = closest.symmetry;
+  closest.shown = true;
+  showReal();
+});
+
+const captions = [...stage.querySelectorAll('figcaption')];
+const matchBar = stage.querySelector('.pm-match');
+const captionWatcher = new ResizeObserver(() => {
+  const tallest = Math.max(...captions.map((caption) => caption.getBoundingClientRect().height));
+  stage.style.setProperty('--caption-height', `${Math.ceil(tallest + matchBar.getBoundingClientRect().height)}px`);
+});
+[...captions, matchBar].forEach((element) => captionWatcher.observe(element));
 
 applySuggestedSettings();
 showValues();
