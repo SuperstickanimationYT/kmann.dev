@@ -204,3 +204,27 @@
 .gx-pair figcaption a {
   color: var(--link);
 }
+
+.gx-summary {
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.gx-summary table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.gx-summary th,
+.gx-summary td {
+  padding: 3px 12px 3px 0;
+  text-align: left;
+  color: var(--text);
+}
+
+.gx-numbers {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

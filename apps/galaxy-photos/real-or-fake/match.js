@@ -26,12 +26,12 @@ export function fakeSettingsFor(photo, seed) {
     offsetY: photo.offsetY,
     mirror: random.next() < 0.5,
     telescope: 'hubble',
-    exposure: Math.round(58 + random.normal() * 6),
-    stretch: Math.round(50 + random.normal() * 10),
-    saturation: Math.round(115 + random.normal() * 10),
-    noise: Math.round(20 + random.normal() * 6),
+    exposure: Math.round(51 + random.normal() * 6),
+    stretch: Math.round(27 + random.normal() * 6),
+    saturation: Math.round(125 + random.normal() * 8),
+    noise: Math.round(30 + random.normal() * 6),
     stars: Math.round(random.between(5, 20)),
     background: photo.overrides.background ?? Math.round(random.between(6, 22)),
-    resolved: 50,
+    resolved: 70,
   };
 }

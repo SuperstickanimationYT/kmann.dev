@@ -64,13 +64,13 @@ void main() {
   float sharpness = mix(1.5, 9.0, uArmContrast);
 
   float branchPhase = uArms * (theta - winding * 1.3 + armWobble) + 1.7;
-  float branchStrength = smoothstep(0.05, 0.45, fbm(unwound * 0.2, uSeed + 23u, 3)) * 0.8;
+  float branchStrength = smoothstep(0.25, 0.55, fbm(unwound * 0.2, uSeed + 23u, 3)) * 0.4;
 
   float grandYoung = armProfile(phase, -0.35, sharpness * 0.8) * armStrength + armProfile(branchPhase, -0.35, sharpness) * branchStrength;
   float grandGas = armProfile(phase, -0.15, sharpness * 1.6) * armStrength + armProfile(branchPhase, -0.15, sharpness * 1.8) * branchStrength;
   float grandDust = armProfile(phase, 0.28, sharpness * 2.2) * armStrength + armProfile(branchPhase, 0.32, sharpness * 2.4) * branchStrength;
 
-  float fragments = fbm(unwoundWarped * 0.42 + 0.8 * vec2(alongArm), uSeed + 31u, 3) + 0.25 * fbm(warpedP * 1.3, uSeed + 33u, 3);
+  float fragments = 0.7 * fbm(unwoundWarped * 0.42 + 0.8 * vec2(alongArm), uSeed + 31u, 3) + 0.5 * fbm(warpedP * 1.3, uSeed + 33u, 3);
   float floccYoung = smoothstep(-0.15, 0.45, fragments);
   float floccGas = smoothstep(0.05, 0.5, fragments);
   float floccDust = smoothstep(-0.05, 0.3, fbm(unwoundWarped * 0.42 + vec2(0.35, 0.0) + 0.8 * vec2(alongArm), uSeed + 31u, 3) + 0.25 * fbm(warpedP * 1.3, uSeed + 35u, 3));
@@ -84,15 +84,15 @@ void main() {
   float innerDust = smoothstep(armStart * 0.85, armStart * 1.2, r);
 
   float innerYoung = smoothstep(armStart * 0.8, armStart * 1.3, r);
-  float oldModulation = 1.0 + 0.55 * uArmContrast * (armProfile(phase, -0.1, 2.0) - 0.4) * (1.0 - uFlocculence * 0.6) * innerYoung;
+  float oldModulation = 1.0 + 0.7 * uArmContrast * (armProfile(phase, -0.1, 2.0) - 0.4) * (1.0 - uFlocculence * 0.6) * innerYoung;
   float oldGrain = 0.93 + 0.14 * smoothstep(-0.5, 0.5, fbm(warpedP * 2.0, uSeed + 43u, 4));
   float oldDisk = exp(-r / uDiskScale) * oldModulation * oldGrain * outerEdge;
 
-  float mottle = 0.35 + 1.3 * smoothstep(-0.4, 0.5, fbm(warpedP * 1.6, uSeed + 41u, 4));
+  float mottle = 0.5 + 1.0 * smoothstep(-0.4, 0.5, fbm(warpedP * 1.6, uSeed + 41u, 4));
   float young = uYoung * exp(-r / (uDiskScale * 1.25)) * innerYoung * youngOuterEdge * (0.08 + youngArms) * mottle;
 
-  float complexes = clumps(p, 0.55, 0.35, 2.0, uSeed + 51u);
-  float knots = clumps(p, 0.13, 0.32, 3.5, uSeed + 53u);
+  float complexes = clumps(p, 0.55, 0.4, 2.0, uSeed + 51u);
+  float knots = clumps(p, 0.16, 0.4, 3.0, uSeed + 53u);
   float gasMask = smoothstep(0.08, 0.6, gasArms + 0.25 * fbm(warpedP * 0.5, uSeed + 55u, 3));
   float gas = uGas * exp(-r / (uDiskScale * 1.3)) * innerYoung * youngOuterEdge * gasMask * complexes * knots * 16.0;
 
@@ -110,8 +110,8 @@ void main() {
   float nuclearDust = exp(-r / (armStart * 0.35)) * smoothstep(0.05, 0.45, fbm(warpedP * 1.8, uSeed + 77u, 4));
 
   float dustArmsTotal = 0.12 + dustArms + 0.6 * feathers;
-  float dust = uDust * exp(-r / (uDiskScale * 1.5)) * innerDust * outerEdge * dustArmsTotal * mix(0.2, 1.8, filaments) * mix(0.55, 1.0, holes);
-  dust += uDust * (2.5 * barLanes + 0.25 * nuclearDust * (1.0 - innerDust)) * mix(0.4, 1.4, filaments);
+  float dust = uDust * exp(-r / (uDiskScale * 1.5)) * innerDust * outerEdge * dustArmsTotal * mix(0.35, 1.6, filaments) * mix(0.55, 1.0, holes);
+  dust += uDust * (1.4 * barLanes + 0.25 * nuclearDust * (1.0 - innerDust)) * mix(0.4, 1.4, filaments);
 
   float extraplanarDust = pow(ridged(warpedP * 0.9, uSeed + 81u, 4), 3.0) * smoothstep(-0.2, 0.3, fbm(p * 0.6, uSeed + 83u, 3));
 
