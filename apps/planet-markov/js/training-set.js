@@ -1,3 +1,4 @@
+import { drawMandelbrot } from './mandelbrot.js';
 import { drawMaze } from './mazes.js';
 
 export const PLANET_SIZE = 96;
@@ -6,6 +7,7 @@ export const SEED_SIZE = 3;
 
 const LAYOUT_FROM_SEED = { start: 'seed', ringsOn: true };
 const TEXTURE_FROM_PAINTER = { start: 'painter', ringsOn: false };
+const LAYOUT_WITHOUT_RINGS = { start: 'seed', ringsOn: false };
 
 const planetSet = (label) => ({ group: 'Planets', label, noun: 'planet', count: 24, hiresCount: 3, round: true, colors: 12, suggested: LAYOUT_FROM_SEED });
 
@@ -39,6 +41,18 @@ export const TRAINING_SETS = {
     suggested: TEXTURE_FROM_PAINTER,
     credited: true,
     caption: 'Bright Webb stars have six long spikes. They are rare in the training tiles, so the model never paints one. It learned the spikes only as long lines, and draws them with no star attached.',
+  },
+  fractals: {
+    group: 'Fractals',
+    label: 'Mandelbrot set',
+    noun: 'fractal',
+    count: 24,
+    hiresCount: 3,
+    round: false,
+    colors: 16,
+    suggested: LAYOUT_WITHOUT_RINGS,
+    drawn: drawMandelbrot,
+    caption: 'Views of the Mandelbrot set, drawn when the set loads: a few whole-set shots, the rest zoomed in near its edge. Colour bands only need neighbors, so they come out well. Self-similarity needs the whole picture, so zooming into an imitation shows noise, not smaller copies.',
   },
   mazes: {
     group: 'Mazes',
