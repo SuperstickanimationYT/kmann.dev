@@ -1,18 +1,7 @@
-.pm-layout {
-  display: grid;
-  grid-template-columns: minmax(260px, 340px) 1fr;
-  gap: 20px;
-  align-items: start;
-}
-
 .pm-panel {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px;
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  background: var(--surface);
 }
 
 .pm-panel fieldset {
@@ -35,9 +24,10 @@
 }
 
 .pm-intro {
-  margin: 0;
-  font-size: 14px;
+  margin: 14px 0 0;
+  font-size: 13px;
   line-height: 1.5;
+  color: var(--text-dim);
 }
 
 .pm-intro a {
@@ -97,7 +87,8 @@
   accent-color: var(--edge-bright);
 }
 
-.pm-layout input[type="checkbox"] {
+.studio-stage input[type="checkbox"],
+.pm-panel input[type="checkbox"] {
   accent-color: var(--edge-bright);
 }
 
@@ -128,25 +119,36 @@
 }
 
 .pm-stage {
-  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-rows: minmax(0, 1fr);
+  place-items: stretch;
+  gap: 10px;
+  padding: 10px;
+}
+
+@media (max-width: 820px) {
+  .pm-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .pm-figure {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
   margin: 0;
-  padding: 12px;
-  border: 2px solid var(--edge-bright);
-  border-radius: var(--radius);
+  padding: 8px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
   background: #060f1c;
 }
 
-.pm-figure canvas {
-  width: 100%;
-  aspect-ratio: 1;
+.pm-view {
+  position: relative;
+  min-height: 0;
 }
 
 .pm-figure canvas.pm-blocky {
@@ -167,7 +169,8 @@
   color: var(--text-strong);
 }
 
-.pm-layout button {
+.studio-stage button,
+.pm-panel button {
   padding: 6px 14px;
   border: 1px solid var(--edge-bright);
   border-radius: 8px;
@@ -177,19 +180,12 @@
   cursor: pointer;
 }
 
-.pm-layout button.pm-primary {
+.studio-stage button.pm-primary {
   background: var(--edge-bright);
 }
 
-.pm-layout select {
+.pm-panel select {
   font: inherit;
-}
-
-@media (max-width: 760px) {
-  .pm-layout,
-  .pm-stage {
-    grid-template-columns: 1fr;
-  }
 }
 
 .pm-group[hidden],

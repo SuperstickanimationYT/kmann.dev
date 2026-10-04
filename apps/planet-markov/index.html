@@ -7,44 +7,41 @@
 <meta name="description" content="A tiny image model that paints pictures by counting which colors follow which neighbors. Planets, Hubble galaxies and mazes show what it can and cannot do.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/css/site.css">
-<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body class="app-page">
+<body class="app-page studio">
 
-<header class="site-header">
-  <div class="shell">
-    <a class="mark" href="../../" aria-label="Home">
-      <img src="../../assets/img/mark.svg" alt="">
-    </a>
-    <div class="banner">
-      <h1 class="banner-title">kmann314's projects</h1>
-    </div>
-  </div>
-  <div class="header-rule"></div>
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Markov Pictures</h1>
 </header>
 
-<main>
-  <div class="shell">
-    <div class="app-bar">
-      <a class="back-link" href="../../">&larr; All projects</a>
-      <h2 class="app-title">Markov Pictures</h2>
-    </div>
-  </div>
+<main class="studio-stage pm-stage">
+  <figure class="pm-figure">
+    <div class="pm-view"><canvas data-real></canvas></div>
+    <figcaption>
+      <span data-real-label>Real planet</span>
+      <label class="pm-toggle"><input type="checkbox" name="modelView" form="pm-controls"> As the model sees it</label>
+      <button type="button" data-next-real>Next</button>
+      <p class="pm-credit" data-real-credit hidden></p>
+    </figcaption>
+  </figure>
+  <figure class="pm-figure">
+    <div class="pm-view"><canvas data-imitation></canvas></div>
+    <figcaption>
+      <span>Imitation</span>
+      <button type="button" class="pm-primary" data-generate>Generate</button>
+    </figcaption>
+  </figure>
+</main>
 
-  <div class="shell pm-layout">
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
     <form class="pm-panel" id="pm-controls" data-controls>
-      <p class="pm-intro">
-        This model paints one pixel at a time, left to right, top to bottom. For each pixel it looks up
-        what colors came next after the same surroundings in the training pictures, and rolls a die
-        weighted by those counts. That is the whole model.
-      </p>
-      <p class="pm-intro">
-        That makes it generative AI in its simplest form: everything it paints comes from statistics learned
-        from example pictures. The <a href="../galaxy-photos/">Galaxy Photo Generator</a> is the opposite,
-        a procedural algorithm with hand-written rules and no training data.
-      </p>
-
       <label class="pm-field">
         <span>Training pictures</span>
         <select name="set"></select>
@@ -140,36 +137,22 @@
       </details>
     </form>
 
-    <section class="pm-stage">
-      <figure class="pm-figure">
-        <canvas data-real></canvas>
-        <figcaption>
-          <span data-real-label>Real planet</span>
-          <label class="pm-toggle"><input type="checkbox" name="modelView" form="pm-controls"> As the model sees it</label>
-          <button type="button" data-next-real>Next</button>
-          <p class="pm-credit" data-real-credit hidden></p>
-        </figcaption>
-      </figure>
-      <figure class="pm-figure">
-        <canvas data-imitation></canvas>
-        <figcaption>
-          <span>Imitation</span>
-          <button type="button" class="pm-primary" data-generate>Generate</button>
-        </figcaption>
-      </figure>
-    </section>
-  </div>
-</main>
+    <p class="pm-intro">
+      This model paints one pixel at a time, left to right, top to bottom. For each pixel it looks up
+      what colors came next after the same surroundings in the training pictures, and rolls a die
+      weighted by those counts. That is the whole model.
+    </p>
+    <p class="pm-intro">
+      That makes it generative AI in its simplest form: everything it paints comes from statistics learned
+      from example pictures. The <a href="../galaxy-photos/">Galaxy Photo Generator</a> is the opposite,
+      a procedural algorithm with hand-written rules and no training data.
+    </p>
 
-<footer class="site-footer">
-  <div class="shell">
-    <nav class="footer-links">
-      <a href="../../about.html">About me</a>
-    </nav>
-    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
   </div>
-</footer>
+</aside>
 
 <script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
 </body>
 </html>
