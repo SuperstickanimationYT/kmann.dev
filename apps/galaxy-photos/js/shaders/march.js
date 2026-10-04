@@ -9,6 +9,7 @@ uniform sampler2D uDisk;
 uniform sampler2D uDetail;
 uniform vec2 uResolution;
 uniform float uFieldHeight;
+uniform vec2 uCentre;
 uniform float uInclination;
 uniform float uPositionAngle;
 uniform float uRmax;
@@ -30,9 +31,9 @@ uniform float uBarLight;
 uniform float uBarLength;
 uniform float uNucleusLight;
 
-const vec3 OLD_DISK_COLOUR = vec3(1.0, 0.88, 0.76);
-const vec3 BULGE_COLOUR = vec3(1.0, 0.82, 0.64);
-const vec3 YOUNG_COLOUR = vec3(0.6, 0.75, 1.0);
+const vec3 OLD_DISK_COLOUR = vec3(1.0, 0.9, 0.8);
+const vec3 BULGE_COLOUR = vec3(1.0, 0.88, 0.74);
+const vec3 YOUNG_COLOUR = vec3(0.55, 0.72, 1.0);
 const vec3 GAS_COLOUR = vec3(1.0, 0.3, 0.52);
 const vec3 CLUSTER_COLOUR = vec3(0.72, 0.84, 1.0);
 const vec3 REDDENING = vec3(0.84, 1.0, 1.2);
@@ -63,7 +64,7 @@ float interleavedGradient(vec2 pixel) {
 }
 
 void main() {
-  vec2 screen = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y * uFieldHeight;
+  vec2 screen = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y * uFieldHeight - uCentre;
   float ca = cos(uPositionAngle);
   float sa = sin(uPositionAngle);
   vec2 sky = vec2(ca * screen.x - sa * screen.y, sa * screen.x + ca * screen.y);

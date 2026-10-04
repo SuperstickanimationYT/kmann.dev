@@ -51,10 +51,12 @@ export function lightingOf(settings) {
   const thickness = 0.12 + 0.55 * share(settings.thickness);
   const bulgeRadius = 0.35 + 2.4 * bulge;
   const bulgeFlattening = 1 - 0.68 * share(settings.flattening);
+  const fieldHeight = (2 * VISIBLE_RADIUS) / (0.15 + 0.95 * share(settings.size));
   return {
     uRmax: RMAX,
     uZmax: Math.min(RMAX, Math.max(14 * thickness, 5 * bulgeRadius * bulgeFlattening)),
-    uFieldHeight: (2 * VISIBLE_RADIUS) / (0.15 + 0.95 * share(settings.size)),
+    uFieldHeight: fieldHeight,
+    uCentre: [(settings.offsetX ?? 0) * fieldHeight, (settings.offsetY ?? 0) * fieldHeight],
     uInclination: settings.inclination * DEGREES,
     uPositionAngle: settings.angle * DEGREES,
     uDiskLight: 1.6 * share(settings.disk),
@@ -81,7 +83,7 @@ export function projectToFrame(point, settings) {
   const sinAngle = Math.sin(uPositionAngle);
   const screenX = cosAngle * x + sinAngle * viewY;
   const screenY = -sinAngle * x + cosAngle * viewY;
-  return [screenX / uFieldHeight, screenY / uFieldHeight];
+  return [screenX / uFieldHeight + (settings.offsetX ?? 0), screenY / uFieldHeight + (settings.offsetY ?? 0)];
 }
 
 export const galaxyExtent = () => ({ diskScale: DISK_SCALE, visibleRadius: VISIBLE_RADIUS });

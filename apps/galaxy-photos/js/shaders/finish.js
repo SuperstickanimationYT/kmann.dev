@@ -18,6 +18,7 @@ uniform float uSoftening;
 uniform float uNoise;
 uniform float uSky;
 uniform float uSaturation;
+uniform float uMirror;
 uniform uint uSeed;
 
 ${NOISE}
@@ -54,7 +55,8 @@ float gaussian(ivec2 pixel, uint channel) {
 
 void main() {
   ivec2 pixel = ivec2(gl_FragCoord.xy);
-  vec3 linear = seen(vUv) + texture(uInFront, vUv).rgb;
+  vec2 uv = uMirror > 0.5 ? vec2(1.0 - vUv.x, vUv.y) : vUv;
+  vec3 linear = seen(uv) + texture(uInFront, uv).rgb;
   linear = linear * uExposure + uSky * vec3(0.92, 0.96, 1.0);
 
   float shared = gaussian(pixel, 0u);
