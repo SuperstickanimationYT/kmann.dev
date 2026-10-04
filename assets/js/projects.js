@@ -21,6 +21,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Galaxy Photo Generator',
+    href: 'apps/galaxy-photos/',
+    poster: 'assets/img/posters/galaxy-photos.webp',
+    blurb: 'Generate galaxies that pass for real telescope photos, from dust lanes to diffraction spikes.',
+    status: 'live',
+  },
+  {
     title: 'GlaBo',
     href: 'apps/glabo/',
     poster: 'assets/img/posters/glabo.webp',

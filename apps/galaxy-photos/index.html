@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galaxy Photo Generator &mdash; kmann314</title>
+<meta name="description" content="Generate galaxies that look like real telescope photos: dust lanes, star-forming knots, diffraction spikes and all.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Galaxy Photo Generator</h2>
+    </div>
+  </div>
+
+  <div class="shell gx-layout">
+    <form class="gx-panel" data-controls>
+      <div class="gx-actions">
+        <button type="button" class="gx-primary" data-randomize>Random galaxy</button>
+        <button type="button" data-reroll>New seed</button>
+      </div>
+
+      <label class="gx-field">
+        <span>Type</span>
+        <select data-preset>
+          <option value="">Custom</option>
+        </select>
+      </label>
+
+      <label class="gx-field">
+        <span>Seed</span>
+        <input type="number" name="seed" min="1" max="999999" step="1">
+      </label>
+
+      <fieldset>
+        <legend>Shape</legend>
+        <label class="gx-field">
+          <span>Arms <output></output></span>
+          <input type="range" name="arms" min="1" max="4" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Arm pitch (&deg;) <output></output></span>
+          <input type="range" name="pitch" min="6" max="35" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Arm contrast <output></output></span>
+          <input type="range" name="armContrast" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Patchy arms <output></output></span>
+          <input type="range" name="flocculence" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Bar <output></output></span>
+          <input type="range" name="bar" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Bulge <output></output></span>
+          <input type="range" name="bulge" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Bulge flattening <output></output></span>
+          <input type="range" name="flattening" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Disk <output></output></span>
+          <input type="range" name="disk" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Disk thickness <output></output></span>
+          <input type="range" name="thickness" min="0" max="100" step="1">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Stars, gas and dust</legend>
+        <label class="gx-field">
+          <span>Young blue stars <output></output></span>
+          <input type="range" name="young" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Glowing pink gas <output></output></span>
+          <input type="range" name="gas" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Dust <output></output></span>
+          <input type="range" name="dust" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Resolved stars <output></output></span>
+          <input type="range" name="resolved" min="0" max="100" step="1">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>View</legend>
+        <label class="gx-field">
+          <span>Tilt (&deg;) <output></output></span>
+          <input type="range" name="inclination" min="0" max="90" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Rotation (&deg;) <output></output></span>
+          <input type="range" name="angle" min="0" max="359" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Size in frame <output></output></span>
+          <input type="range" name="size" min="0" max="100" step="1">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Camera</legend>
+        <label class="gx-field">
+          <span>Telescope</span>
+          <select name="telescope">
+            <option value="hubble">Hubble (4 spikes)</option>
+            <option value="jwst">JWST (6 + 2 spikes)</option>
+            <option value="roman">Roman (6 spikes)</option>
+            <option value="ground">Ground refractor (no spikes)</option>
+          </select>
+        </label>
+        <label class="gx-field">
+          <span>Exposure <output></output></span>
+          <input type="range" name="exposure" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Faint-light stretch <output></output></span>
+          <input type="range" name="stretch" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Noise <output></output></span>
+          <input type="range" name="noise" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Colour saturation <output></output></span>
+          <input type="range" name="saturation" min="0" max="200" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Foreground stars <output></output></span>
+          <input type="range" name="stars" min="0" max="100" step="1">
+        </label>
+        <label class="gx-field">
+          <span>Background galaxies <output></output></span>
+          <input type="range" name="background" min="0" max="100" step="1">
+        </label>
+      </fieldset>
+    </form>
+
+    <section class="gx-preview">
+      <div class="app-stage gx-stage">
+        <canvas data-preview></canvas>
+        <p class="gx-status" data-status hidden></p>
+      </div>
+
+      <div class="gx-export">
+        <label class="gx-field">
+          <span>Download size</span>
+          <select data-size>
+            <option value="1024">1024 &times; 768</option>
+            <option value="2048" selected>2048 &times; 1536</option>
+            <option value="4096">4096 &times; 3072</option>
+          </select>
+        </label>
+        <div class="gx-actions">
+          <button type="button" data-download>Download PNG</button>
+          <button type="button" data-copy-link>Copy link</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
