@@ -12,6 +12,8 @@ vercel.json                trailing slashes, and the proxy for apps hosted elsew
 assets/css/site.css        shared shell (colour tokens, header, footer)
 assets/css/home.css        project card grid
 assets/css/app.css         app page chrome
+assets/css/studio.css      full-screen canvas with an overlay settings panel
+assets/js/studio.js        collapsible side panel on desktop, draggable bottom sheet on phones
 assets/js/projects.js      the project list
 assets/js/render-projects.js
 apps/<slug>/               one folder per app that lives in this repo
@@ -38,6 +40,12 @@ can be lifted out later without untangling the rest.
    ```
 
 `status: 'planned'` renders a dashed placeholder card and ignores `href`.
+
+Apps built around a canvas and a settings panel use the studio layout instead of
+`app.css`: link `studio.css`, give `<body>` the `studio` class, put the canvas in
+`<main class="studio-stage">` and the controls in an `<aside class="studio-panel"
+data-studio-panel>` holding a `data-studio-handle` button and a `.studio-panel-body`,
+then load `studio.js` as a module. The Galaxy Photo Generator is the reference.
 
 ## Adding an app that lives in another repo
 
