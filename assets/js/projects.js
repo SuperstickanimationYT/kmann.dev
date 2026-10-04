@@ -24,7 +24,7 @@ const PROJECTS = [
     title: 'Galaxy Photo Generator',
     href: 'apps/galaxy-photos/',
     poster: 'assets/img/posters/galaxy-photos.webp',
-    blurb: 'Generate galaxies that pass for real telescope photos, from dust lanes to diffraction spikes.',
+    blurb: 'Procedural generation, no AI: hand-written rules for arms, dust and starlight build galaxies that look like telescope photos.',
     status: 'live',
   },
   {
@@ -44,7 +44,7 @@ const PROJECTS = [
   {
     title: 'Markov Pictures',
     href: 'apps/planet-markov/',
-    blurb: 'A tiny image model that paints planets, galaxies and mazes by counting which colors follow which neighbors.',
+    blurb: 'Generative AI in its simplest form: a tiny model learns from example pictures, then paints planets, galaxies and mazes.',
     status: 'live',
   },
   {

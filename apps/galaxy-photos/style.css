@@ -15,6 +15,17 @@
   background: var(--surface);
 }
 
+.gx-about {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.gx-about a {
+  color: var(--link);
+}
+
 .gx-panel fieldset {
   display: flex;
   flex-direction: column;

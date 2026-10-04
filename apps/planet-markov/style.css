@@ -40,6 +40,10 @@
   line-height: 1.5;
 }
 
+.pm-intro a {
+  color: var(--link);
+}
+
 .pm-note {
   margin: 0;
   font-size: 13px;
