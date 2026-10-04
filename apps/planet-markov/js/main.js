@@ -6,6 +6,7 @@ import { createUpscaleSampler, trainUpscaler } from './upscaler.js';
 import { sharedPixels, symmetriesFor, transformIndices, transformPicture } from './symmetry.js';
 
 const BASE_ROWS_PER_FRAME = 3;
+const LAYOUT_SIZE = 24;
 const CUT_OFF_COLOR = [224, 72, 58];
 
 const form = document.querySelector('[data-controls]');
@@ -262,14 +263,18 @@ function withTrainingSymmetries(levels) {
   return symmetries().map((symmetry) => levels.map((indices) => transformIndices(indices, Math.sqrt(indices.length), symmetry)));
 }
 
-function trainStages(quantizedLevelSets) {
-  const trainingLevels = quantizedLevelSets.flatMap(withTrainingSymmetries);
+function trainStages(quantizedLevelSets, symmetric) {
+  const trainingLevels = symmetric ? quantizedLevelSets.flatMap(withTrainingSymmetries) : quantizedLevelSets;
   const stageCount = trainingLevels.length ? trainingLevels[0].length - 1 : 0;
-  const stages = Array.from({ length: stageCount }, (_, stage) => trainUpscaler(
-    trainingLevels.map((levels) => ({ low: levels[stage], high: levels[stage + 1], size: Math.sqrt(levels[stage + 1].length) })),
-    palette.length,
-    activeRings(),
-  ));
+  const stages = Array.from({ length: stageCount }, (_, stage) => {
+    const sizeAfter = Math.sqrt(quantizedLevelSets[0][stage + 1].length);
+    const levelSets = sizeAfter <= LAYOUT_SIZE ? trainingLevels : quantizedLevelSets;
+    return trainUpscaler(
+      levelSets.map((levels) => ({ low: levels[stage], high: levels[stage + 1], size: sizeAfter })),
+      palette.length,
+      activeRings(),
+    );
+  });
   return { trainingLevels, stages };
 }
 
@@ -278,8 +283,8 @@ const quantizeLevels = (levelSets) => levelSets.map((levels) => levels.map((pict
 function trainUpscalers() {
   quantizedPyramids = quantizeLevels(pyramids);
   quantizedSeedPyramids = quantizeLevels(seedPyramids);
-  ({ stages: upscalers } = trainStages(quantizedPyramids));
-  ({ trainingLevels: trainingSeedLevels, stages: seedUpscalers } = trainStages(quantizedSeedPyramids));
+  ({ stages: upscalers } = trainStages(quantizedPyramids, false));
+  ({ trainingLevels: trainingSeedLevels, stages: seedUpscalers } = trainStages(quantizedSeedPyramids, true));
   const contexts = [...seedUpscalers, ...upscalers].reduce((sum, upscaler) => sum + upscaler.levels[0].counts.size, 0);
   upscalerReadout.value = contexts.toLocaleString();
 }
@@ -355,6 +360,8 @@ async function switchSet() {
   realSymmetry = null;
   forgetClosest();
   showCredits();
+  statusLine.textContent = 'Training…';
+  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
   learnColors();
 }
 
