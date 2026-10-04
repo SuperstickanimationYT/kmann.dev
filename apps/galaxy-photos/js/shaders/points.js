@@ -165,6 +165,7 @@ layout(location = 0) in vec2 aPlace;
 layout(location = 1) in float aFlux;
 layout(location = 2) in vec3 aColour;
 layout(location = 3) in vec4 aShape;
+layout(location = 4) in vec4 aDetail;
 
 uniform vec2 uResolution;
 uniform float uFluxScale;
@@ -174,6 +175,7 @@ out vec2 vOffset;
 out float vFlux;
 out vec3 vColour;
 out vec4 vShape;
+out vec4 vDetail;
 
 ${QUAD_CORNER}
 
@@ -192,6 +194,7 @@ void main() {
   vFlux = aFlux * uFluxScale;
   vColour = aColour;
   vShape = vec4(scale, seenAxisRatio, aShape.z, index);
+  vDetail = vec4(aDetail.x * smoothstep(3.0, 8.0, seenHalfLight), aDetail.yzw);
   gl_Position = toClip(centre + vOffset);
 }
 `;
@@ -203,18 +206,35 @@ in vec2 vOffset;
 in float vFlux;
 in vec3 vColour;
 in vec4 vShape;
+in vec4 vDetail;
 out vec4 outColour;
+
+uniform float uPsfSigma;
+
+const vec3 BULGE_COLOUR = vec3(1.0, 0.8, 0.58);
 
 void main() {
   float scale = vShape.x;
   float axisRatio = vShape.y;
   float angle = vShape.z;
   float index = vShape.w;
+  float armAmount = vDetail.x;
+  float bulgeShare = vDetail.y;
+  float twist = vDetail.z;
+  float armAngle = vDetail.w;
+
   vec2 along = vec2(cos(angle), sin(angle));
   vec2 local = vec2(dot(vOffset, along), dot(vOffset, vec2(-along.y, along.x)) / axisRatio);
-  float profile = exp(-pow(length(local) / scale, 1.0 / index));
+  float radius = length(local) / scale;
   float gammaTwoN = index < 1.5 ? 1.0 : index < 3.0 ? 6.0 : 5040.0;
-  float total = 6.2831853 * axisRatio * scale * scale * index * gammaTwoN;
-  outColour = vec4(vColour * vFlux * profile / total, 1.0);
+  float diskTotal = 6.2831853 * axisRatio * scale * scale * index * gammaTwoN;
+  float disk = exp(-pow(radius, 1.0 / index)) / diskTotal;
+
+  float arms = 1.0 + armAmount * cos(2.0 * atan(local.y, local.x) - twist * log(radius + 0.3) + armAngle) * smoothstep(0.3, 1.2, radius);
+  float bulgeSigma = max(0.45 * scale, uPsfSigma);
+  float bulge = exp(-dot(local, local) / (2.0 * bulgeSigma * bulgeSigma)) / (6.2831853 * axisRatio * bulgeSigma * bulgeSigma);
+
+  vec3 light = vColour * (1.0 - bulgeShare) * disk * max(arms, 0.0) + BULGE_COLOUR * bulgeShare * bulge;
+  outColour = vec4(vFlux * light, 1.0);
 }
 `;

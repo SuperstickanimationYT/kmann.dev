@@ -47,14 +47,16 @@ void main() {
   float theta = atan(p.y, p.x);
   float armStart = max(uBarLength, 0.6 * uDiskScale * 0.5);
 
-  float winding = log(max(r, 0.15) / armStart) / tan(uPitch);
+  float logRadius = log(max(r, 0.15) / armStart);
+  float pitchDrift = 0.9 * fbm(vec2(logRadius * 1.8, 3.1), uSeed + 17u, 3);
+  float winding = logRadius / tan(uPitch) + pitchDrift;
   vec2 unwound = turn(-winding) * p;
   vec2 unwoundWarped = unwound + 1.1 * vec2(fbm(p * 0.45, uSeed + 15u, 3), fbm(p * 0.45, uSeed + 16u, 3));
   float featherWinding = log(max(r, 0.15) / armStart) / tan(min(uPitch * 2.6, 1.25));
   vec2 featherUnwound = turn(-featherWinding) * p;
 
   vec2 warpedP = p + 1.2 * vec2(fbm(p * 0.09, uSeed + 11u, 3), fbm(p * 0.09, uSeed + 12u, 3));
-  float armWobble = (0.55 * fbm(warpedP * 0.07, uSeed + 13u, 3) + 0.22 * fbm(warpedP * 0.35, uSeed + 14u, 3)) * (0.4 + uFlocculence);
+  float armWobble = 0.55 * fbm(warpedP * 0.07, uSeed + 13u, 3) * (0.4 + uFlocculence) + 0.4 * fbm(warpedP * 0.17, uSeed + 18u, 3) + 0.2 * fbm(warpedP * 0.35, uSeed + 14u, 3) * (0.5 + uFlocculence);
   float phase = uArms * (theta - winding + armWobble);
 
   float alongArm = fbm(unwound * 0.16, uSeed + 21u, 4);
@@ -78,6 +80,7 @@ void main() {
   float dustArms = mix(grandDust, floccDust, uFlocculence);
 
   float outerEdge = 1.0 - smoothstep(uRmax * 0.62, uRmax * 0.95, r);
+  float youngOuterEdge = 1.0 - smoothstep(uRmax * 0.4, uRmax * 0.8, r);
   float innerDust = smoothstep(armStart * 0.85, armStart * 1.2, r);
 
   float innerYoung = smoothstep(armStart * 0.8, armStart * 1.3, r);
@@ -86,14 +89,14 @@ void main() {
   float oldDisk = exp(-r / uDiskScale) * oldModulation * oldGrain * outerEdge;
 
   float mottle = 0.35 + 1.3 * smoothstep(-0.4, 0.5, fbm(warpedP * 1.6, uSeed + 41u, 4));
-  float young = uYoung * exp(-r / (uDiskScale * 1.25)) * innerYoung * outerEdge * (0.08 + youngArms) * mottle;
+  float young = uYoung * exp(-r / (uDiskScale * 1.25)) * innerYoung * youngOuterEdge * (0.08 + youngArms) * mottle;
 
   float complexes = clumps(p, 0.55, 0.35, 2.0, uSeed + 51u);
   float knots = clumps(p, 0.13, 0.32, 3.5, uSeed + 53u);
   float gasMask = smoothstep(0.08, 0.6, gasArms + 0.25 * fbm(warpedP * 0.5, uSeed + 55u, 3));
-  float gas = uGas * exp(-r / (uDiskScale * 1.3)) * innerYoung * outerEdge * gasMask * complexes * knots * 16.0;
+  float gas = uGas * exp(-r / (uDiskScale * 1.3)) * innerYoung * youngOuterEdge * gasMask * complexes * knots * 16.0;
 
-  float clusters = uYoung * clumps(p, 0.09, 0.22, 7.0, uSeed + 61u) * smoothstep(0.04, 0.5, youngArms) * innerYoung * outerEdge * exp(-r / (uDiskScale * 1.4));
+  float clusters = uYoung * clumps(p, 0.09, 0.22, 7.0, uSeed + 61u) * smoothstep(0.04, 0.5, youngArms) * innerYoung * youngOuterEdge * exp(-r / (uDiskScale * 1.4));
 
   float filaments = ridged(warpedP * 0.75, uSeed + 71u, 5);
   float holes = smoothstep(-0.25, 0.25, fbm(warpedP * 0.5, uSeed + 73u, 4));
@@ -110,9 +113,9 @@ void main() {
   float dust = uDust * exp(-r / (uDiskScale * 1.5)) * innerDust * outerEdge * dustArmsTotal * mix(0.2, 1.8, filaments) * mix(0.55, 1.0, holes);
   dust += uDust * (2.5 * barLanes + 0.25 * nuclearDust * (1.0 - innerDust)) * mix(0.4, 1.4, filaments);
 
-  float chimneys = smoothstep(0.1, 0.6, fbm(p * 1.1, uSeed + 81u, 3));
+  float extraplanarDust = pow(ridged(warpedP * 0.9, uSeed + 81u, 4), 3.0) * smoothstep(-0.2, 0.3, fbm(p * 0.6, uSeed + 83u, 3));
 
   outDisk = vec4(oldDisk, young, gas, dust);
-  outDetail = vec4(clusters, chimneys, 0.0, 0.0);
+  outDetail = vec4(clusters, extraplanarDust, 0.0, 0.0);
 }
 `;

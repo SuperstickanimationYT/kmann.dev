@@ -107,7 +107,7 @@ void main() {
 
   float oldHeight = uThickness;
   float youngHeight = uThickness * 0.3;
-  float dustHeight = uThickness * 0.5;
+  float dustHeight = uThickness * 0.45;
 
   vec3 light = vec3(0.0);
   vec3 through = vec3(1.0);
@@ -126,8 +126,10 @@ void main() {
 
     float oldShape = 0.82 * sech2(p.z / oldHeight) / (2.0 * oldHeight) + 0.18 * sech2(p.z / (3.2 * oldHeight)) / (6.4 * oldHeight);
     float youngShape = sech2(p.z / youngHeight) / (2.0 * youngHeight);
-    float chimneyHeight = dustHeight * (0.7 + 2.2 * detail.g);
-    float dustShape = exp(-abs(p.z) / chimneyHeight) / (2.0 * dustHeight);
+    float lift = p.z / dustHeight;
+    vec2 driftedPlace = p.xy + dustHeight * (lift * vec2(0.8, -0.5) + lift * abs(lift) * vec2(-0.3, 0.45));
+    float filaments = texture(uDetail, driftedPlace / (2.0 * uRmax) + 0.5).g;
+    float dustShape = (exp(-abs(lift)) * (0.6 + 0.8 * filaments) + 0.7 * filaments * exp(-abs(lift) / 1.8)) / (2.0 * dustHeight);
 
     vec3 emission = OLD_DISK_COLOUR * (uDiskLight * disk.r * oldShape)
       + YOUNG_COLOUR * (uYoungLight * disk.g * youngShape)

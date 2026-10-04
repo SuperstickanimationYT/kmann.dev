@@ -12,7 +12,7 @@ const MARCH_STEPS = 176;
 const MARCH_PIXELS_PER_STRIP = 200000;
 const SPECKLES_PER_PIXEL = 0.14;
 const STAR_FLOATS = 6;
-const BLOB_FLOATS = 10;
+const BLOB_FLOATS = 14;
 
 function exposureOf(settings) {
   return 0.55 * 10 ** ((settings.exposure - 50) / 28);
@@ -49,7 +49,7 @@ export function createRenderer(canvas) {
   const blobVao = gl.createVertexArray();
   gl.bindVertexArray(blobVao);
   gl.bindBuffer(gl.ARRAY_BUFFER, blobBuffer);
-  describeAttributes(gl, [2, 1, 3, 4], BLOB_FLOATS);
+  describeAttributes(gl, [2, 1, 3, 4, 4], BLOB_FLOATS);
   gl.bindVertexArray(null);
 
   const maps = createTarget(gl, MAP_SIZE, MAP_SIZE, 2);

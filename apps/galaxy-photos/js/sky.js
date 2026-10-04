@@ -32,24 +32,46 @@ function fieldStars(random, amount) {
   return stars;
 }
 
+function backgroundGalaxy(random, place, kind) {
+  const nearness = random.next() ** 3.2;
+  const halfLight = 0.0011 + 0.024 * nearness * random.between(0.6, 1.2);
+  const index = kind === 'elliptical' ? 4 : random.pick([[1, 4], [2, 1]]);
+  const axisRatio = kind === 'elliptical' ? random.between(0.55, 1) : Math.max(0.12, Math.abs(Math.cos(random.between(0, Math.PI / 2))));
+  const scale = halfLight / (2 * index - 0.327) ** index;
+  const surfaceBrightness = random.between(0.04, 0.28) * (0.5 + nearness);
+  const reddening = 1 - nearness;
+  const colour = {
+    elliptical: [1, random.between(0.72, 0.82) - 0.15 * reddening, random.between(0.5, 0.6) - 0.2 * reddening],
+    spiral: [random.between(0.85, 1), random.between(0.82, 0.92) - 0.12 * reddening, random.between(0.75, 0.95) - 0.25 * reddening],
+    starburst: [random.between(0.7, 0.85), random.between(0.8, 0.92), 1],
+  }[kind];
+  const spiralDetail = kind === 'spiral' && halfLight > 0.004;
+  return {
+    place,
+    flux: surfaceBrightness * 2 * Math.PI * axisRatio * (halfLight / 1.68) ** 2,
+    colour: colour.map((channel) => Math.max(0.15, channel)),
+    shape: [scale, axisRatio, random.between(0, Math.PI), index],
+    detail: [
+      spiralDetail ? random.between(0.35, 0.8) : 0,
+      kind === 'elliptical' ? 0 : random.between(0.05, kind === 'starburst' ? 0.1 : 0.35),
+      random.between(2, 4.5) * (random.next() < 0.5 ? -1 : 1),
+      random.between(0, 2 * Math.PI),
+    ],
+  };
+}
+
 function backgroundGalaxies(random, amount) {
   const count = Math.round(MOST_BACKGROUND_GALAXIES * amount ** 1.4);
+  const groups = Array.from({ length: random.integer(0, 3) }, () => [random.between(-0.5, 0.5) * ASPECT, random.between(-0.5, 0.5)]);
   const galaxies = [];
   for (let i = 0; i < count; i++) {
-    const distance = random.next() ** 0.6;
-    const halfLight = 0.0009 + 0.006 * (1 - distance) ** 2.5 * random.between(0.4, 1.2);
-    const index = random.pick([[1, 6], [2, 2], [4, 2]]);
-    const scale = halfLight / (2 * index - 0.327) ** index;
-    const starbursting = random.next() < 0.22;
-    const colour = starbursting
-      ? [random.between(0.7, 0.9), random.between(0.8, 0.95), 1]
-      : [1, random.between(0.6, 0.85) - 0.2 * distance, random.between(0.35, 0.6) - 0.25 * distance];
-    galaxies.push({
-      place: [random.between(-0.5, 0.5) * ASPECT, random.between(-0.5, 0.5)],
-      flux: 0.000005 * (1 - distance + 0.08) ** 3 * random.between(0.4, 2.5) * (index === 4 ? 1.6 : 1),
-      colour: colour.map((channel) => Math.max(0.15, channel)),
-      shape: [scale, index === 4 ? random.between(0.6, 1) : random.between(0.2, 1), random.between(0, Math.PI), index],
-    });
+    const grouped = groups.length && random.next() < 0.25;
+    const centre = grouped ? groups[random.integer(0, groups.length - 1)] : null;
+    const place = centre
+      ? [centre[0] + random.normal() * 0.035, centre[1] + random.normal() * 0.035]
+      : [random.between(-0.5, 0.5) * ASPECT, random.between(-0.5, 0.5)];
+    const kind = grouped ? random.pick([['elliptical', 3], ['spiral', 1]]) : random.pick([['spiral', 5], ['elliptical', 2], ['starburst', 2]]);
+    galaxies.push(backgroundGalaxy(random, place, kind));
   }
   return galaxies;
 }
@@ -73,13 +95,14 @@ function globularClusters(random, settings) {
       flux: 0.0000015 * 10 ** (-0.4 * magnitudeSpread) * (settings.size / 60) ** 2,
       colour: blackbodyColour(random.between(4600, 5600)),
       shape: [0.00008, 1, 0, 1],
+      detail: [0, 0, 0, 0],
     });
   }
   return clusters;
 }
 
 const packStars = (stars) => new Float32Array(stars.flatMap(({ place, flux, colour }) => [...place, flux, ...colour]));
-const packBlobs = (blobs) => new Float32Array(blobs.flatMap(({ place, flux, colour, shape }) => [...place, flux, ...colour, ...shape]));
+const packBlobs = (blobs) => new Float32Array(blobs.flatMap(({ place, flux, colour, shape, detail }) => [...place, flux, ...colour, ...shape, ...detail]));
 
 export function buildSky(settings) {
   const random = createRandom(settings.seed * 7 + 3);
