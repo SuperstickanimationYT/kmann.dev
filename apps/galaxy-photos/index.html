@@ -7,40 +7,28 @@
 <meta name="description" content="Generate galaxies that look like real telescope photos: dust lanes, star-forming knots, diffraction spikes and all.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/css/site.css">
-<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body class="app-page">
+<body class="app-page studio">
 
-<header class="site-header">
-  <div class="shell">
-    <a class="mark" href="../../" aria-label="Home">
-      <img src="../../assets/img/mark.svg" alt="">
-    </a>
-    <div class="banner">
-      <h1 class="banner-title">kmann314's projects</h1>
-    </div>
-  </div>
-  <div class="header-rule"></div>
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Galaxy Photo Generator</h1>
+  <a class="back-link" href="real-or-fake/">Real or generated? &rarr;</a>
 </header>
 
-<main>
-  <div class="shell">
-    <div class="app-bar">
-      <a class="back-link" href="../../">&larr; All projects</a>
-      <h2 class="app-title">Galaxy Photo Generator</h2>
-      <a class="back-link" href="real-or-fake/">Play: real or generated? &rarr;</a>
-    </div>
-  </div>
+<main class="studio-stage">
+  <canvas data-preview></canvas>
+  <p class="gx-status" data-status hidden></p>
+</main>
 
-  <div class="shell gx-layout">
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
     <form class="gx-panel" data-controls>
-      <p class="gx-about">
-        No AI here. Every galaxy is built by a procedural algorithm: spiral-arm math, noise and a simulated
-        telescope, written by hand. Nothing is learned from photos; real Hubble images appear only in the
-        guessing game, for comparison. For a model that learns from example pictures, see
-        <a href="../planet-markov/">Markov Pictures</a>.
-      </p>
       <div class="gx-actions">
         <button type="button" class="gx-primary" data-randomize>Random galaxy</button>
         <button type="button" data-reroll>New seed</button>
@@ -172,39 +160,32 @@
       </fieldset>
     </form>
 
-    <section class="gx-preview">
-      <div class="app-stage gx-stage">
-        <canvas data-preview></canvas>
-        <p class="gx-status" data-status hidden></p>
+    <div class="gx-export">
+      <label class="gx-field">
+        <span>Download size</span>
+        <select data-size>
+          <option value="1024">1024 &times; 768</option>
+          <option value="2048" selected>2048 &times; 1536</option>
+          <option value="4096">4096 &times; 3072</option>
+        </select>
+      </label>
+      <div class="gx-actions">
+        <button type="button" data-download>Download PNG</button>
+        <button type="button" data-copy-link>Copy link</button>
       </div>
+    </div>
 
-      <div class="gx-export">
-        <label class="gx-field">
-          <span>Download size</span>
-          <select data-size>
-            <option value="1024">1024 &times; 768</option>
-            <option value="2048" selected>2048 &times; 1536</option>
-            <option value="4096">4096 &times; 3072</option>
-          </select>
-        </label>
-        <div class="gx-actions">
-          <button type="button" data-download>Download PNG</button>
-          <button type="button" data-copy-link>Copy link</button>
-        </div>
-      </div>
-    </section>
+    <p class="gx-about">
+      No AI here. Every galaxy is built by a procedural algorithm: spiral-arm math, noise and a simulated
+      telescope, written by hand. Nothing is learned from photos; real Hubble images appear only in the
+      guessing game, for comparison. For a model that learns from example pictures, see
+      <a href="../planet-markov/">Markov Pictures</a>.
+    </p>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
   </div>
-</main>
-
-<footer class="site-footer">
-  <div class="shell">
-    <nav class="footer-links">
-      <a href="../../about.html">About me</a>
-    </nav>
-    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
-  </div>
-</footer>
+</aside>
 
 <script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
 </body>
 </html>
