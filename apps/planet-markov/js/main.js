@@ -3,7 +3,7 @@ import { learnPalette, quantize } from './palette.js';
 import { findCutOff } from './paths.js';
 import { loadCredits, loadPyramids, loadTrainingSet, PLANET_SIZE, pyramidDownTo, SEED_SIZE, sourceOf, TRAINING_SETS } from './training-set.js';
 import { createUpscaleSampler, trainUpscaler } from './upscaler.js';
-import { sharedPixels, symmetriesFor, transformIndices, transformPicture } from './symmetry.js';
+import { IDENTITY, sharedPixels, symmetriesFor, transformIndices, transformPicture } from './symmetry.js';
 
 const BASE_ROWS_PER_FRAME = 3;
 const LAYOUT_SIZE = 24;
@@ -257,7 +257,7 @@ function train() {
   generate();
 }
 
-const symmetries = () => (settings().symmetric ? symmetriesFor(currentSet().keepsUpright) : symmetriesFor(true).slice(0, 1));
+const symmetries = () => (settings().symmetric ? symmetriesFor(currentSet().symmetries) : [IDENTITY]);
 
 function withTrainingSymmetries(levels) {
   return symmetries().map((symmetry) => levels.map((indices) => transformIndices(indices, Math.sqrt(indices.length), symmetry)));
@@ -304,7 +304,7 @@ function bestMatch(indices, size, candidates, skip = -1) {
   let best = { share: -1, pick: 0, symmetry: null };
   candidates.forEach((candidate, pick) => {
     if (pick === skip) return;
-    for (const symmetry of symmetriesFor(currentSet().keepsUpright)) {
+    for (const symmetry of symmetriesFor(currentSet().symmetries)) {
       const share = sharedPixels(indices, candidate, size, symmetry);
       if (share > best.share) best = { share, pick, symmetry };
     }

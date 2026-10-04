@@ -9,9 +9,14 @@ const ALL_EIGHT = [
   { swap: true, flipX: true, flipY: true, name: 'mirrored along the other diagonal' },
 ];
 
-const UPRIGHT_ONLY = ALL_EIGHT.filter(({ swap }) => !swap);
+const SYMMETRIES = {
+  any: ALL_EIGHT,
+  noTurns: ALL_EIGHT.filter(({ swap }) => !swap),
+  mirrorOnly: ALL_EIGHT.filter(({ swap, flipY }) => !swap && !flipY),
+};
 
-export const symmetriesFor = (keepsUpright) => (keepsUpright ? UPRIGHT_ONLY : ALL_EIGHT);
+export const symmetriesFor = (allowed = 'any') => SYMMETRIES[allowed];
+export const IDENTITY = ALL_EIGHT[0];
 
 export function sourceIndex(index, size, { swap, flipX, flipY }) {
   let column = index % size;
