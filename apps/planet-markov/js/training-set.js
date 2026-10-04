@@ -1,5 +1,6 @@
 import { drawMandelbrot } from './mandelbrot.js';
 import { drawMaze } from './mazes.js';
+import { drawHouse, drawTree } from './objects.js';
 
 export const PLANET_SIZE = 96;
 export const HIRES_SIZE = 768;
@@ -34,7 +35,7 @@ export const TRAINING_SETS = {
     noun: 'star field',
     count: 10,
     tilesPerSide: 4,
-    keepsUpright: true,
+    symmetries: 'noTurns',
     hiresCount: 0,
     round: false,
     colors: 12,
@@ -53,6 +54,32 @@ export const TRAINING_SETS = {
     suggested: LAYOUT_WITHOUT_RINGS,
     drawn: drawMandelbrot,
     caption: 'Views of the Mandelbrot set, drawn when the set loads: a few whole-set shots, the rest zoomed in near its edge. Colour bands only need neighbors, so they come out well. Self-similarity needs the whole picture, so zooming into an imitation shows noise, not smaller copies.',
+  },
+  houses: {
+    group: 'Everyday objects',
+    label: 'Houses',
+    noun: 'house',
+    count: 24,
+    hiresCount: 3,
+    round: false,
+    colors: 14,
+    symmetries: 'mirrorOnly',
+    suggested: LAYOUT_WITHOUT_RINGS,
+    drawn: drawHouse,
+    caption: 'Every house has straight walls, windows in neat rows and one roof. Each pixel only sees a few neighbors, so windows drift out of line, walls do not end cleanly and roofs can split or float.',
+  },
+  trees: {
+    group: 'Everyday objects',
+    label: 'Trees',
+    noun: 'tree',
+    count: 24,
+    hiresCount: 3,
+    round: false,
+    colors: 14,
+    symmetries: 'mirrorOnly',
+    suggested: LAYOUT_WITHOUT_RINGS,
+    drawn: drawTree,
+    caption: 'A tree is one connected trunk that forks into branches. The model gets bark and leaf texture right, but nothing tells it that a branch has to join the trunk, so branches float and trunks break.',
   },
   mazes: {
     group: 'Mazes',
