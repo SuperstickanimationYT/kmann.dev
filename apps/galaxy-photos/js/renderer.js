@@ -205,6 +205,7 @@ export function createRenderer(canvas) {
       uSky: telescope.sky,
       uSaturation: settings.saturation / 100,
       uSeed: { uint: settings.seed * 31 + 7 },
+      uMirror: settings.mirror ? 1 : 0,
     });
     drawFullscreen();
   }
@@ -217,7 +218,7 @@ export function createRenderer(canvas) {
     finish(settings, frame, width, height, destination);
   }
 
-  async function renderToBlob(settings, width, height, nextFrame) {
+  async function renderToCanvas(settings, width, height, nextFrame) {
     const destination = createByteTarget(gl, width, height);
     for (const _ of render(settings, width, height, destination)) await nextFrame();
     const pixels = new Uint8Array(width * height * 4);
@@ -237,8 +238,13 @@ export function createRenderer(canvas) {
       image.data.set(pixels.subarray((height - 1 - row) * rowBytes, (height - row) * rowBytes), row * rowBytes);
     }
     context.putImageData(image, 0, 0);
+    return flat;
+  }
+
+  async function renderToBlob(settings, width, height, nextFrame) {
+    const flat = await renderToCanvas(settings, width, height, nextFrame);
     return new Promise((resolve) => flat.toBlob(resolve, 'image/png'));
   }
 
-  return { render, renderToBlob };
+  return { render, renderToCanvas, renderToBlob };
 }

@@ -48,7 +48,7 @@ void main() {
   float armStart = max(uBarLength, 0.6 * uDiskScale * 0.5);
 
   float logRadius = log(max(r, 0.15) / armStart);
-  float pitchDrift = 0.9 * fbm(vec2(logRadius * 1.8, 3.1), uSeed + 17u, 3);
+  float pitchDrift = 0.4 * fbm(vec2(logRadius * 1.2, 3.1), uSeed + 17u, 3);
   float winding = logRadius / tan(uPitch) + pitchDrift;
   vec2 unwound = turn(-winding) * p;
   vec2 unwoundWarped = unwound + 1.1 * vec2(fbm(p * 0.45, uSeed + 15u, 3), fbm(p * 0.45, uSeed + 16u, 3));
