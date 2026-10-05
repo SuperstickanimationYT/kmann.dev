@@ -1,4 +1,4 @@
-import { armTraces, BAR_ANGLE, DISK, LY_PER_PC, SUN_POSITION } from './milky-way.js';
+import { armTraces, BAR_ANGLE, DEGREES, DISK, LY_PER_PC, SUN_POSITION } from './milky-way.js';
 
 const SIZE = 900;
 const HALF_SPAN = 19000;
@@ -15,6 +15,7 @@ const COLOURS = {
   dim: '#6f9dc9',
   sun: '#ffe08a',
   star: '#e2effd',
+  galaxy: '#c9b8ff',
   edge: '#1f4f80',
 };
 
@@ -166,7 +167,41 @@ function drawInset(context, nebulae, nearbyNamed) {
   context.fillText(`Within ${INSET_REACH_LY.toLocaleString('en')} light-years, same orientation`, left + 8, top + 18);
 }
 
-export function drawAtlas(canvas, nebulae, nearby) {
+function describeDistance(lightYears) {
+  return lightYears >= 1e6 ? `${(lightYears / 1e6).toFixed(1)} million ly` : `${Math.round(lightYears / 1000).toLocaleString('en')},000 ly`;
+}
+
+function drawGalaxyPointers(context, galaxies) {
+  const reach = SIZE / 2 - 34;
+  context.font = '13px "Trebuchet MS", sans-serif';
+  galaxies.forEach((galaxy) => {
+    const offset = galaxy.centre.map((value, axis) => value - SUN_POSITION[axis]);
+    const inPlane = Math.hypot(offset[0], offset[1]);
+    const [dx, dy] = [offset[0] / inPlane, -offset[1] / inPlane];
+    const tip = [SIZE / 2 + dx * reach, SIZE / 2 + dy * reach];
+    const tail = [tip[0] - dx * 26, tip[1] - dy * 26];
+    context.strokeStyle = COLOURS.galaxy;
+    context.fillStyle = COLOURS.galaxy;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(...tail);
+    context.lineTo(...tip);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(...tip);
+    context.lineTo(tip[0] - dx * 9 - dy * 5, tip[1] - dy * 9 + dx * 5);
+    context.lineTo(tip[0] - dx * 9 + dy * 5, tip[1] - dy * 9 - dx * 5);
+    context.fill();
+    const latitude = Math.round(Math.atan2(offset[2], inPlane) / DEGREES);
+    const lines = [galaxy.shortName, describeDistance(Math.hypot(...offset) * LY_PER_PC), `${Math.abs(latitude)}° ${latitude < 0 ? 'below' : 'above'} the disk`];
+    const width = Math.max(...lines.map((line) => context.measureText(line).width));
+    const x = Math.min(SIZE - width - 8, Math.max(8, dx > 0 ? tail[0] - width - 6 : tail[0] + 6));
+    const y = Math.min(SIZE - 40, Math.max(20, dy > 0 ? tail[1] - 40 : tail[1] + 12));
+    lines.forEach((line, i) => context.fillText(line, x, y + i * 15));
+  });
+}
+
+export function drawAtlas(canvas, nebulae, nearby, galaxies) {
   canvas.width = SIZE;
   canvas.height = SIZE;
   const context = canvas.getContext('2d');
@@ -190,8 +225,9 @@ export function drawAtlas(canvas, nebulae, nearby) {
 
   context.fillStyle = COLOURS.dim;
   context.fillText('Rotation: clockwise', 16, 24);
-  context.fillText('Solid arms: measured. Dashed: extrapolated.', 16, 42);
+  context.fillText('Solid arms: measured. Dashed: extrapolated. Arrows: direction from the Sun.', 16, 42);
   drawScale(context, scale, 16, SIZE - 24, 10000);
+  drawGalaxyPointers(context, galaxies);
 
   const local = nebulae.filter((nebula) => Math.hypot(nebula.present[0] - SUN_POSITION[0], nebula.present[1] - SUN_POSITION[1]) < INSET_REACH);
   drawInset(context, local, nearby.filter((star) => star.name));

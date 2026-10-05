@@ -6,7 +6,7 @@ import {
 import { luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.js';
 import { createRandom } from './random.js';
 import {
-  DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX, MAX_NEBULAE, NOISE_SIZE,
+  DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   SCOPE_STAR_FRAGMENT, SCOPE_STAR_VERTEX, SKY_FRAGMENT, UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
@@ -79,6 +79,22 @@ function nebulaUniforms(nebulae, camera) {
   return { uNebulaPlace: place, uNebulaGlow: glow, count: Math.min(nebulae.length, MAX_NEBULAE) };
 }
 
+function galaxyUniforms(galaxies, camera) {
+  const centre = new Float32Array(MAX_GALAXIES * 3);
+  const normal = new Float32Array(MAX_GALAXIES * 3);
+  const shape = new Float32Array(MAX_GALAXIES * 4);
+  const tint = new Float32Array(MAX_GALAXIES * 3);
+  galaxies.slice(0, MAX_GALAXIES).forEach((galaxy, i) => {
+    const offset = galaxy.centre.map((value, axis) => value - camera[axis]);
+    const distance = Math.hypot(...offset);
+    centre.set(offset, i * 3);
+    normal.set(galaxy.normal, i * 3);
+    shape.set([galaxy.diskLight, galaxy.scaleLength, (galaxy.coreLight * NANOMAGGIES_PER_LIGHT_AT_PC) / distance ** 2, galaxy.coreSigma / distance], i * 4);
+    tint.set(galaxy.tint, i * 3);
+  });
+  return { centre, normal, shape, tint, count: Math.min(galaxies.length, MAX_GALAXIES) };
+}
+
 function setArray(gl, program, name, values, size) {
   const location = program.uniforms[name];
   if (!location) return;
@@ -97,7 +113,7 @@ function viewUniforms({ camera, basis, tanHalf, pixelAngle }) {
   };
 }
 
-export function createRenderer(canvas, armMap) {
+export function createRenderer(canvas, armMap, galaxies) {
   const gl = createContext(canvas);
   if (!gl) return null;
 
@@ -178,6 +194,12 @@ export function createRenderer(canvas, armMap) {
     setArray(gl, skyProgram, 'uNebulaPlace', nebulaValues.uNebulaPlace, 4);
     setArray(gl, skyProgram, 'uNebulaGlow', nebulaValues.uNebulaGlow, 4);
     gl.uniform1i(skyProgram.uniforms.uNebulaCount, nebulaValues.count);
+    const galaxyValues = galaxyUniforms(galaxies, view.camera);
+    setArray(gl, skyProgram, 'uGalaxyCentre', galaxyValues.centre, 3);
+    setArray(gl, skyProgram, 'uGalaxyNormal', galaxyValues.normal, 3);
+    setArray(gl, skyProgram, 'uGalaxyShape', galaxyValues.shape, 4);
+    setArray(gl, skyProgram, 'uGalaxyTint', galaxyValues.tint, 3);
+    gl.uniform1i(skyProgram.uniforms.uGalaxyCount, galaxyValues.count);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

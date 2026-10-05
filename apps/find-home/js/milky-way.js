@@ -40,6 +40,17 @@ export const fromGalactic = (l, b, distance) => {
   return [along * Math.sin(l * DEGREES), SUN_RADIUS - along * Math.cos(l * DEGREES), SUN_HEIGHT + distance * Math.sin(b * DEGREES)];
 };
 
+const EQUATORIAL_TO_GALACTIC = [
+  [-0.0548755604, -0.873437090, -0.4838350155],
+  [0.4941094279, -0.44482963, 0.7469822445],
+  [-0.867666149, -0.1980763734, 0.4559837762],
+];
+
+export function directionFromEquatorial(ra, dec) {
+  const along = [Math.cos(dec * DEGREES) * Math.cos(ra * DEGREES), Math.cos(dec * DEGREES) * Math.sin(ra * DEGREES), Math.sin(dec * DEGREES)];
+  return EQUATORIAL_TO_GALACTIC.map((row) => row[0] * along[0] + row[1] * along[1] + row[2] * along[2]);
+}
+
 export const fromHeliocentric = ([towardCentre, towardRotation, north]) => [towardRotation, SUN_RADIUS - towardCentre, SUN_HEIGHT + north];
 
 export const velocityFromHeliocentric = ([towardCentre, towardRotation, north]) => [towardRotation, -towardCentre, north];

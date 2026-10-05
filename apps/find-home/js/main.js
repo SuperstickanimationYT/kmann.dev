@@ -1,4 +1,5 @@
 import { drawAtlas } from './atlas.js';
+import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { NEBULAE } from './nebulae.js';
 import { WHITE_BALANCE } from './population.js';
@@ -19,6 +20,7 @@ const ROLL_RATE = 0.9;
 const SPEED_RANGE = [0.001, 2e6];
 const START_DISTANCE_KLY = [130, 220];
 const START_LATITUDE = [15, 70];
+const START_CLEARANCE = 15000;
 
 const SENSOR = { width: 1024, height: 768, electronsPerNanomaggy: 3.9, readNoise: 4, dark: 0.002, fullWell: 90000, psfArcsec: 0.058 };
 const SCOPE_BUDGET = (SENSOR.width * SENSOR.height) / 40;
@@ -44,7 +46,8 @@ const stretchInput = $('[data-stretch]');
 const stackButton = $('[data-stack]');
 
 const armMap = buildArmMap();
-const renderer = createRenderer(view, armMap);
+const galaxies = placeGalaxies(GALAXIES);
+const renderer = createRenderer(view, armMap, galaxies);
 const nebulae = placeNebulae(NEBULAE);
 let nearby = [];
 
@@ -83,12 +86,17 @@ let scope = null;
 let statusTimer = 0;
 let frameSeed = 1;
 
-function newGame(seed = randomSeed()) {
-  const random = createRandom(seed);
+function startingPoint(random) {
   const distance = (random.between(...START_DISTANCE_KLY) * 1000) / LY_PER_PC;
   const latitude = random.between(...START_LATITUDE) * DEGREES * (random.next() < 0.5 ? -1 : 1);
   const azimuth = random.between(0, 2 * Math.PI);
-  const camera = [distance * Math.cos(latitude) * Math.sin(azimuth), distance * Math.cos(latitude) * Math.cos(azimuth), distance * Math.sin(latitude)];
+  return [distance * Math.cos(latitude) * Math.sin(azimuth), distance * Math.cos(latitude) * Math.cos(azimuth), distance * Math.sin(latitude)];
+}
+
+function newGame(seed = randomSeed()) {
+  const random = createRandom(seed);
+  let camera = startingPoint(random);
+  while (galaxies.some((galaxy) => Math.hypot(...subtract(galaxy.centre, camera)) < START_CLEARANCE)) camera = startingPoint(random);
   game = {
     seed,
     camera,
@@ -504,7 +512,7 @@ document.querySelectorAll('[data-thrust]').forEach((button) => {
 let atlasDrawn = false;
 function toggleAtlas() {
   if (!atlasDrawn && nearby.length) {
-    drawAtlas($('[data-atlas]'), nebulae, nearby);
+    drawAtlas($('[data-atlas]'), nebulae, nearby, galaxies);
     atlasDrawn = true;
   }
   atlasFrame.hidden = !atlasFrame.hidden;
