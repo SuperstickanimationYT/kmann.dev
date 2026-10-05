@@ -48,15 +48,6 @@ function splat(grid, size, x, y, weight) {
   grid[at + size + 1] += weight * right * down;
 }
 
-function sampleBilinear(grid, size, u, v) {
-  const [cx, cy] = [u * size - 0.5, v * size - 0.5];
-  const left = Math.max(0, Math.min(size - 2, Math.floor(cx)));
-  const top = Math.max(0, Math.min(size - 2, Math.floor(cy)));
-  const [right, down] = [Math.min(1, Math.max(0, cx - left)), Math.min(1, Math.max(0, cy - top))];
-  const at = top * size + left;
-  return (grid[at] * (1 - right) + grid[at + 1] * right) * (1 - down) + (grid[at + size] * (1 - right) + grid[at + size + 1] * right) * down;
-}
-
 const starAt = (stars, i, centre = { x: 0, y: 0 }) => ({
   x: stars[i * FLOATS_PER_STAR] - centre.x,
   y: stars[i * FLOATS_PER_STAR + 1] - centre.y,
@@ -135,53 +126,61 @@ export function heightCalibration(stars, galaxies) {
   return COLD_DISK_HEIGHT_KPC / weightedMedian(heights, mass);
 }
 
-const quantile = (sorted, share) => sorted[Math.floor(sorted.length * share)] ?? 0;
+function weightedQuantile(values, weights, share) {
+  const order = [...values.keys()].filter((i) => weights[i] >= 1).sort((a, b) => values[a] - values[b]);
+  const total = order.reduce((sum, i) => sum + weights[i], 0);
+  let running = 0;
+  for (const i of order) if ((running += weights[i]) >= total * share) return values[i];
+  return COLD_DISK_HEIGHT_KPC;
+}
 
-export function buildStarField(stars, galaxies, kpcPerRoughHeight) {
-  const count = galaxies.length;
-  const centre = midpointOfCores(stars, galaxies);
+export function densityScale(count) {
   const cellKpc = (2 * MERGER_RMAX) / FIELD_GRID;
   const centralDensity = count / 2 / (2 * Math.PI * DISK_SCALE_KPC ** 2);
-  const sharpDensity = STARS_FOR_SHARP_DETAIL / (2 * Math.PI * BLUR_KPC.small ** 2) / centralDensity;
+  return {
+    perStarPerCell: 1 / (cellKpc * cellKpc * centralDensity),
+    sharpDensity: STARS_FOR_SHARP_DETAIL / (2 * Math.PI * BLUR_KPC.small ** 2) / centralDensity,
+    blurCells: Object.fromEntries(Object.entries(BLUR_KPC).map(([name, kpc]) => [name, kpc / cellKpc])),
+    coldHeight: COLD_DISK_HEIGHT_KPC,
+    trustedHeightShare: TRUSTED_HEIGHT_SHARE,
+  };
+}
 
-  const raw = new Float32Array(FIELD_GRID * FIELD_GRID);
-  const memberRaw = [new Float32Array(raw.length), new Float32Array(raw.length)];
+export function describeSnapshot(stars, galaxies, kpcPerRoughHeight) {
+  const count = galaxies.length;
+  const centre = midpointOfCores(stars, galaxies);
+  const positions = new Float32Array(count * 2);
   for (let i = 0; i < count; i++) {
     const star = starAt(stars, i, centre);
-    const [x, y] = [star.x * KPC_PER_SIM_UNIT, star.y * KPC_PER_SIM_UNIT];
-    splat(raw, FIELD_GRID, x, y, 1 / (cellKpc * cellKpc * centralDensity));
-    splat(memberRaw[galaxies[i]], FIELD_GRID, x, y, 1);
+    positions[i * 2] = star.x * KPC_PER_SIM_UNIT;
+    positions[i * 2 + 1] = star.y * KPC_PER_SIM_UNIT;
   }
-  const [small, medium, large] = [BLUR_KPC.small, BLUR_KPC.medium, BLUR_KPC.large].map((kpc) => blur(raw.slice(), FIELD_GRID, kpc / cellKpc));
-  memberRaw.forEach((grid) => blur(grid, FIELD_GRID, BLUR_KPC.large / cellKpc));
-  const { heights: rough } = roughHeights(stars, count, centre);
-
-  const light = new Float32Array(FIELD_GRID * FIELD_GRID * 4);
-  const members = new Float32Array(FIELD_GRID * FIELD_GRID * 4);
-  const litHeights = [];
-  for (let row = 0; row < FIELD_GRID; row++) {
-    for (let column = 0; column < FIELD_GRID; column++) {
-      const cell = row * FIELD_GRID + column;
-      const estimated = kpcPerRoughHeight * sampleBilinear(rough, HEAT_GRID, (column + 0.5) / FIELD_GRID, (row + 0.5) / FIELD_GRID);
-      const clamped = Math.min(HEIGHT_RANGE_KPC[1], Math.max(HEIGHT_RANGE_KPC[0], estimated));
-      const trusted = Math.min(1, large[cell] / (TRUSTED_HEIGHT_SHARE * sharpDensity));
-      const height = COLD_DISK_HEIGHT_KPC + (clamped - COLD_DISK_HEIGHT_KPC) * trusted;
-      light.set([small[cell], medium[cell], large[cell], height], cell * 4);
-      members.set([memberRaw[0][cell], memberRaw[1][cell], 0, 0], cell * 4);
-      if (medium[cell] > 0.05) litHeights.push(height);
-    }
-  }
-  litHeights.sort((a, b) => a - b);
+  const { heights: rough, mass } = roughHeights(stars, count, centre);
+  const kpcHeights = rough.map((height) => Math.min(HEIGHT_RANGE_KPC[1], Math.max(HEIGHT_RANGE_KPC[0], kpcPerRoughHeight * height)));
+  const heights = new Float32Array(HEAT_GRID * HEAT_GRID * 4);
+  kpcHeights.forEach((height, cell) => (heights[cell * 4] = height));
 
   const galaxyStars = [0, 1].map((which) => membersOf(stars, galaxies, which, centre));
   const cores = galaxyStars.map(coreOf);
   return {
-    light,
-    members,
-    sharpDensity,
+    positions,
+    galaxies,
+    heights,
+    heightGrid: HEAT_GRID,
+    sharpDensity: densityScale(count).sharpDensity,
     cores: cores.map(({ x, y }) => [x * KPC_PER_SIM_UNIT, y * KPC_PER_SIM_UNIT]),
     order: galaxyStars.map((members, which) => rotationalOrder(members, cores[which])),
-    typicalHeight: quantile(litHeights, 0.5),
-    tallHeight: quantile(litHeights, 0.9),
+    typicalHeight: weightedQuantile(kpcHeights, mass, 0.5),
+    tallHeight: weightedQuantile(kpcHeights, mass, 0.9),
   };
+}
+
+export function centredOnCores(stars, galaxies) {
+  const centre = midpointOfCores(stars, galaxies);
+  const centred = stars.slice();
+  for (let i = 0; i < galaxies.length; i++) {
+    centred[i * FLOATS_PER_STAR] -= centre.x;
+    centred[i * FLOATS_PER_STAR + 1] -= centre.y;
+  }
+  return centred;
 }

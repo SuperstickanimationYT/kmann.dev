@@ -28,6 +28,12 @@ preview.height = PREVIEW_HEIGHT;
 
 const settingFields = () => [...form.elements].filter((field) => field.name);
 const nextFrame = () => new Promise((resolve) => window.requestAnimationFrame(resolve));
+const tickChannel = new MessageChannel();
+const quickTick = () =>
+  new Promise((resolve) => {
+    tickChannel.port1.onmessage = resolve;
+    tickChannel.port2.postMessage(null);
+  });
 
 function readSettings() {
   const settings = {};
@@ -100,8 +106,8 @@ function showMergerProgress() {
   const behind = drawnMergerIndex >= 0 && drawnMergerIndex < wanted;
   mergerProgress.hidden = ready >= MERGER_SIMULATION.snapshots;
   mergerProgress.textContent = behind
-    ? `Simulating the collision: ${done}% done. Showing ${myrAt(drawnMergerIndex).toLocaleString()} million years until it reaches ${myrAt(wanted).toLocaleString()}.`
-    : `Simulating the collision: ${done}% done. Later times unlock as it runs.`;
+    ? `Loading the collision: ${done}%. Showing ${myrAt(drawnMergerIndex).toLocaleString()} million years until it reaches ${myrAt(wanted).toLocaleString()}.`
+    : `Loading the collision: ${done}%. Later times unlock as it loads.`;
 }
 
 function onMergerProgress(ready) {
@@ -110,8 +116,13 @@ function onMergerProgress(ready) {
   if (settings.scene === 'merger' && drawnMergerIndex < Math.min(settings.mergerTime, ready - 1)) redraw();
 }
 
+function onMergerFailure() {
+  mergerProgress.hidden = false;
+  mergerProgress.textContent = "Couldn't load the collision. Check your connection and reload the page.";
+}
+
 function mergerTimeline() {
-  timeline ??= createMergerTimeline(onMergerProgress);
+  timeline ??= createMergerTimeline(onMergerProgress, onMergerFailure);
   return timeline;
 }
 
@@ -312,7 +323,7 @@ async function recordVideo() {
   const pictureAt = async (index) => {
     const field = await upcoming;
     if (index + 1 < frames) upcoming = fieldFor(index + 1);
-    return renderer.renderToCanvas(settings, PREVIEW_WIDTH, PREVIEW_HEIGHT, nextFrame, field);
+    return renderer.renderToCanvas(settings, PREVIEW_WIDTH, PREVIEW_HEIGHT, quickTick, field);
   };
   showStatus('Making the video. Keep this tab in view.');
   try {

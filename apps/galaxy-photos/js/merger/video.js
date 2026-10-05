@@ -2,6 +2,7 @@ const FRAMES_PER_SECOND = 24;
 const BITS_PER_SECOND = 12_000_000;
 const STILL_QUALITY = 0.92;
 const DECODE_AHEAD = 8;
+const ENCODES_IN_FLIGHT = 4;
 const FORMATS = [
   { type: 'video/mp4;codecs=avc1', extension: 'mp4' },
   { type: 'video/webm;codecs=vp9', extension: 'webm' },
@@ -12,15 +13,23 @@ export const videoFormat = () => FORMATS.find(({ type }) => window.MediaRecorder
 
 const untilTime = (time) => new Promise((resolve) => setTimeout(resolve, Math.max(0, time - performance.now())));
 
-const stillOf = (picture) => new Promise((resolve) => picture.toBlob(resolve, 'image/jpeg', STILL_QUALITY));
+function fastestStillType() {
+  const probe = document.createElement('canvas');
+  [probe.width, probe.height] = [1, 1];
+  return probe.toDataURL('image/webp').startsWith('data:image/webp') ? 'image/webp' : 'image/jpeg';
+}
+
+const stillOf = (picture, type) => new Promise((resolve) => picture.toBlob(resolve, type, STILL_QUALITY));
 
 async function captureStills({ frames, pictureAt, onFrame, cancelled }) {
+  const type = fastestStillType();
   const stills = [];
   for (let frame = 0; frame < frames && !cancelled(); frame++) {
-    stills.push(await stillOf(await pictureAt(frame)));
+    if (frame >= ENCODES_IN_FLIGHT) await stills[frame - ENCODES_IN_FLIGHT];
+    stills.push(stillOf(await pictureAt(frame), type));
     onFrame(frame + 1);
   }
-  return stills;
+  return Promise.all(stills);
 }
 
 async function playIntoRecorder(stills, { width, height, cancelled }) {

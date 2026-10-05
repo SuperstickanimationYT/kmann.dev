@@ -2,18 +2,24 @@ const MYR_PER_SIM_SECOND = 59;
 
 export const MERGER_SIMULATION = { seed: 314, starsEach: 3000, secondsPerSnapshot: 0.125, snapshots: 241 };
 
+export const SNAPSHOT_FILE_URL = '../../data/merger-snapshots.bin';
+
 export const myrAt = (index) => Math.round(index * MERGER_SIMULATION.secondsPerSnapshot * MYR_PER_SIM_SECOND);
 
 export const simSecondsAt = (index) => index * MERGER_SIMULATION.secondsPerSnapshot;
 
-export function createMergerTimeline(onProgress) {
-  const worker = new Worker(new URL('./simulation.worker.js', import.meta.url), { type: 'module' });
+export function createMergerTimeline(onProgress, onFailure) {
+  const worker = new Worker(new URL('./snapshots.worker.js', import.meta.url), { type: 'module' });
   const waiting = new Map();
   let nextRequest = 1;
   let ready = 0;
   const readyWaiters = [];
 
   worker.addEventListener('message', ({ data }) => {
+    if (data.type === 'failed') {
+      onFailure(data.message);
+      return;
+    }
     if (data.type === 'progress') {
       ready = data.ready;
       onProgress(ready);
