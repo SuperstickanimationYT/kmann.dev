@@ -1,4 +1,4 @@
-import { drawMandelbrot } from './mandelbrot.js';
+import { drawBurningShip, drawMandelbrot } from './fractals.js';
 import { drawMaze } from './mazes.js';
 import { drawHouse, drawTree } from './objects.js';
 
@@ -54,6 +54,19 @@ export const TRAINING_SETS = {
     suggested: LAYOUT_WITHOUT_RINGS,
     drawn: drawMandelbrot,
     caption: 'Views of the Mandelbrot set, drawn when the set loads: a few whole-set shots, the rest zoomed in near its edge. Colour bands only need neighbors, so they come out well. Self-similarity needs the whole picture, so zooming into an imitation shows noise, not smaller copies.',
+  },
+  burningShip: {
+    group: 'Fractals',
+    label: 'Burning Ship',
+    noun: 'fractal',
+    count: 24,
+    hiresCount: 3,
+    round: false,
+    colors: 16,
+    symmetries: 'mirrorOnly',
+    suggested: LAYOUT_WITHOUT_RINGS,
+    drawn: drawBurningShip,
+    caption: 'The Burning Ship is the Mandelbrot formula with the sign thrown away at every step, which turns the smooth bulbs into hulls, masts and rows of spires. Views are drawn when the set loads, many near the famous little ship. The model gets the glowing bands and the rough edge, but each spire needs its whole height planned at once, so they melt into one ragged mass.',
   },
   houses: {
     group: 'Everyday objects',
