@@ -1,4 +1,5 @@
 export const MAX_NEBULAE = 64;
+export const MAX_GALAXIES = 4;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const UNRESOLVED_NEAREST = 0.1;
@@ -175,6 +176,11 @@ uniform float uUnresolvedLogStep;
 uniform vec4 uNebulaPlace[${MAX_NEBULAE}];
 uniform vec4 uNebulaGlow[${MAX_NEBULAE}];
 uniform int uNebulaCount;
+uniform vec3 uGalaxyCentre[${MAX_GALAXIES}];
+uniform vec3 uGalaxyNormal[${MAX_GALAXIES}];
+uniform vec4 uGalaxyShape[${MAX_GALAXIES}];
+uniform vec3 uGalaxyTint[${MAX_GALAXIES}];
+uniform int uGalaxyCount;
 uniform float uOutputScale;
 uniform uint uFrameSeed;
 uniform vec3 uGasColour;
@@ -272,6 +278,32 @@ void main() {
       if (checkpointDistance[c] <= glow.y) behind = checkpointDepth[c];
     }
     light += surface * exp(-behind * EXTINCTION_BANDS) * vec3(2.6, 1.0, 0.75);
+  }
+
+  vec3 throughMilkyWay = exp(-depth);
+  for (int g = 0; g < ${MAX_GALAXIES}; g++) {
+    if (g >= uGalaxyCount) break;
+    vec3 centre = uGalaxyCentre[g];
+    vec3 normal = uGalaxyNormal[g];
+    vec4 shape = uGalaxyShape[g];
+    float facing = dot(direction, normal);
+    float hit = abs(facing) > 1e-5 ? dot(centre, normal) / facing : -1.0;
+    if (hit > 0.0) {
+      vec3 inPlane = direction * hit - centre;
+      float radius = length(inPlane);
+      float footprint = hit * uPixelAngle;
+      float octaves = clamp(log2(0.5 * shape.y / max(footprint, 1.0)), 0.0, 5.0);
+      float clumps = octaves > 0.0 ? fbm(inPlane / (0.5 * shape.y) + vec3(float(g) * 37.0), uint(g) * 71u + 19u, octaves) : 0.5;
+      float column = shape.x / (6.2831853 * shape.y * shape.y) * exp(-radius / shape.y) / max(abs(facing), 0.12);
+      light += column * (0.3 + 1.4 * clumps) * LIGHT_TO_SURFACE_BRIGHTNESS * uGalaxyTint[g] * throughMilkyWay;
+    }
+    float distance = length(centre);
+    float angle = acos(clamp(dot(direction, centre / distance), -1.0, 1.0));
+    float sigma = sqrt(shape.w * shape.w + 0.25 * uPixelAngle * uPixelAngle);
+    if (angle < 6.0 * sigma) {
+      float core = shape.z * exp(-0.5 * angle * angle / (sigma * sigma)) / (6.2831853 * sigma * sigma) / 4.2545e10;
+      light += core * uGalaxyTint[g] * throughMilkyWay;
+    }
   }
 
   outColour = vec4(light * uOutputScale, 1.0);
