@@ -194,7 +194,7 @@ function addClusterStars(collector, nebulae, binIndex, bin) {
       const present = nebula.present.map((value) => value + sigma * 0.6 * random.normal());
       const absolute = bin.absolute + random.next() - 0.5;
       const velocity = [random.normal() * 3, random.normal() * 3, random.normal() * 2];
-      collector.add(present, velocity, absolute, colourIndex(absolute, random.next()), KIND.cluster);
+      collector.add(present, velocity, absolute, colourIndex(absolute, random.next()), KIND.cluster, nebula.name);
     }
   });
 }

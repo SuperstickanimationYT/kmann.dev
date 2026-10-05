@@ -17,6 +17,10 @@
   cursor: grabbing;
 }
 
+.fh-guides {
+  pointer-events: none;
+}
+
 .fh-view:focus {
   outline: none;
 }
