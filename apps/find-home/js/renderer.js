@@ -7,7 +7,7 @@ import { luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.
 import { createRandom } from './random.js';
 import {
   DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
-  SCOPE_STAR_FRAGMENT, SCOPE_STAR_VERTEX, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH, UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
+  SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SCOPE_STAR_FRAGMENT, SCOPE_STAR_VERTEX, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH, UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
@@ -16,6 +16,8 @@ const NANOMAGGIES_PER_LIGHT_AT_PC = 1.169e9;
 const GAS_COLOUR = [2.6, 1, 0.75];
 const GAS_SHARE = 0.15;
 const NOISE_SEED = 1;
+const SAMPLE_WIDTH = 256;
+const SAMPLE_HEIGHT = 192;
 const YOUNG_LOCAL_LIGHT = YOUNG_BINS.reduce((sum, bin) => sum + bin.density * luminosityOf(bin.absolute), 0);
 
 function modelUniforms() {
@@ -122,6 +124,8 @@ export function createRenderer(canvas, armMap, galaxies) {
   const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
   const scopeStarProgram = createProgram(gl, SCOPE_STAR_VERTEX, SCOPE_STAR_FRAGMENT);
   const developProgram = createProgram(gl, FULLSCREEN_VERTEX, DEVELOP_FRAGMENT);
+  const sampleProgram = createProgram(gl, FULLSCREEN_VERTEX, SAMPLE_FRAGMENT);
+  const sampleTarget = createByteTarget(gl, SAMPLE_WIDTH, SAMPLE_HEIGHT);
   const emptyVao = gl.createVertexArray();
 
   const armTexture = gl.createTexture();
@@ -258,7 +262,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
   }
 
-  function exposeScope({ view, nebulae, stars, width, height, electronsPerNanomaggy, psfPixels }) {
+  function exposeScope({ view, nebulae, stars, width, height, electronsPerNanomaggy, electronsPerUnit, psfPixels }) {
     if (!scopeSignal || scopeSignal.width !== width || scopeSignal.height !== height) {
       scopeSignal?.destroy();
       scopePicture?.destroy();
@@ -269,15 +273,37 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, scopeSignal.framebuffer);
     gl.viewport(0, 0, width, height);
     const pixelArcsec2 = (view.pixelAngle * 206264.8) ** 2;
-    drawSky(view, nebulae, stars.reaches, (pixelArcsec2 * electronsPerNanomaggy) / 1000, 1);
-    drawStars(scopeStarProgram, scopeStars, view, { uElectronsPerNanomaggy: electronsPerNanomaggy, uPsfPixels: psfPixels, uAnchorShift: [0, 0, 0] });
-    const raw = new Float32Array(width * height * 4);
-    gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, raw);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return raw;
+    drawSky(view, nebulae, stars.reaches, (pixelArcsec2 * electronsPerNanomaggy) / electronsPerUnit, 1);
+    drawStars(scopeStarProgram, scopeStars, view, { uElectronsPerNanomaggy: electronsPerNanomaggy, uElectronsPerUnit: electronsPerUnit, uPsfPixels: psfPixels, uAnchorShift: [0, 0, 0] });
+    return sampleSignal(width, height);
   }
 
-  function developScope({ seconds, frames, seed, black, white, stretch, readNoise, dark, fullWell }) {
+  function sampleSignal(width, height) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sampleTarget.framebuffer);
+    gl.viewport(0, 0, SAMPLE_WIDTH, SAMPLE_HEIGHT);
+    gl.useProgram(sampleProgram.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, scopeSignal.textures[0]);
+    gl.uniform1i(sampleProgram.uniforms.uSignal, 0);
+    gl.uniform2f(sampleProgram.uniforms.uStride, width / SAMPLE_WIDTH, height / SAMPLE_HEIGHT);
+    gl.bindVertexArray(emptyVao);
+    const bytes = new Uint8Array(SAMPLE_WIDTH * SAMPLE_HEIGHT * 4);
+    const bands = [0, 1, 2].map((band) => {
+      gl.uniform1i(sampleProgram.uniforms.uBand, band);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.readPixels(0, 0, SAMPLE_WIDTH, SAMPLE_HEIGHT, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
+      const values = new Float32Array(SAMPLE_WIDTH * SAMPLE_HEIGHT);
+      for (let i = 0; i < values.length; i++) {
+        const level = (bytes[i * 4] * 256 + bytes[i * 4 + 1]) / 65535;
+        values[i] = level <= 0 ? 0 : 2 ** (SAMPLE_LOG_FLOOR + level * SAMPLE_LOG_SPAN);
+      }
+      return values;
+    });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return bands;
+  }
+
+  function developScope({ electronsPerUnit, seconds, frames, seed, black, white, stretch, readNoise, dark, fullWell }) {
     const { width, height } = scopeSignal;
     gl.bindFramebuffer(gl.FRAMEBUFFER, scopePicture.framebuffer);
     gl.viewport(0, 0, width, height);
@@ -287,6 +313,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform1i(developProgram.uniforms.uSignal, 0);
     setUniforms(gl, developProgram, {
       uSize: [width, height],
+      uElectronsPerUnit: electronsPerUnit,
       uSeconds: seconds,
       uFrames: frames,
       uSeed: { uint: seed },
