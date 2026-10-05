@@ -14,6 +14,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Find Home',
+    href: 'apps/find-home/',
+    poster: 'assets/img/posters/find-home.webp',
+    blurb: 'Lost outside the Milky Way with your eyes and a noisy telescope. Find the Sun, using real nebulae and stars, while light delay shifts everything.',
+    status: 'live',
+  },
+  {
     title: 'FractalExplorer',
     href: 'apps/fractal-explorer/',
     poster: 'assets/img/posters/fractal-explorer.webp',

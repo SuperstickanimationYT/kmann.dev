@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find Home &mdash; kmann314</title>
+<meta name="description" content="Lost outside the Milky Way with only your eyes and a noisy telescope. Find the Sun.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Find Home</h1>
+</header>
+
+<main class="studio-stage fh-stage" data-stage>
+  <canvas class="fh-view" data-view tabindex="0" aria-label="Naked-eye view. Drag to look, WASD to fly."></canvas>
+  <div class="fh-reticle" data-reticle hidden></div>
+  <div class="fh-hud" aria-live="polite">
+    <span>Mission clock <strong data-clock>0:00:00</strong></span>
+    <span>Speed <strong data-speed></strong></span>
+  </div>
+  <p class="fh-status" data-status hidden></p>
+  <div class="fh-touch" data-touch>
+    <button type="button" data-thrust="1" aria-label="Fly forward">&#9650;</button>
+    <button type="button" data-thrust="-1" aria-label="Fly backward">&#9660;</button>
+  </div>
+  <figure class="fh-scope" data-scope-frame hidden>
+    <canvas data-scope aria-label="Telescope image. Click a star to claim it is the Sun."></canvas>
+    <figcaption data-scope-caption></figcaption>
+    <button type="button" class="fh-close" data-scope-close aria-label="Close telescope image">&times;</button>
+  </figure>
+  <figure class="fh-atlas" data-atlas-frame hidden>
+    <canvas data-atlas aria-label="Atlas of the Milky Way seen from above"></canvas>
+    <figcaption>Atlas as known from Earth today, seen from above the north galactic pole. Light you see left long ago.</figcaption>
+    <button type="button" class="fh-close" data-atlas-close aria-label="Close atlas">&times;</button>
+  </figure>
+  <div class="fh-ending" data-ending hidden>
+    <h2 data-ending-title></h2>
+    <p data-ending-text></p>
+    <button type="button" class="fh-primary" data-new-game>New mission</button>
+  </div>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Instruments">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Instruments</button>
+  <div class="studio-panel-body">
+    <div class="fh-panel">
+      <p class="fh-brief">
+        You are somewhere outside the Milky Way. Find the Sun and click it. The mission clock never stops;
+        exposures add their length and every wrong claim costs an hour.
+      </p>
+
+      <fieldset>
+        <legend>Telescope</legend>
+        <label class="fh-field">
+          <span>Field of view</span>
+          <select data-field>
+            <option value="3600">1&deg;</option>
+            <option value="900" selected>15&prime;</option>
+            <option value="240">4&prime;</option>
+            <option value="60">1&prime;</option>
+          </select>
+        </label>
+        <label class="fh-field">
+          <span>Exposure</span>
+          <select data-exposure>
+            <option value="1">1 s</option>
+            <option value="10">10 s</option>
+            <option value="60" selected>1 min</option>
+            <option value="300">5 min</option>
+            <option value="1200">20 min</option>
+            <option value="3600">1 h</option>
+          </select>
+        </label>
+        <div class="fh-actions">
+          <button type="button" class="fh-primary" data-expose>Expose here</button>
+          <button type="button" data-stack disabled>Stack another</button>
+        </div>
+        <label class="fh-field">
+          <span>Stretch <output data-stretch-value></output></span>
+          <input type="range" data-stretch min="1" max="100" step="1" value="5">
+        </label>
+        <p class="fh-note">1 m aperture, 1024 &times; 768 colour sensor, 4 e&minus; read noise. Points where the view's centre points.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Flight</legend>
+        <ul class="fh-keys">
+          <li><kbd>Drag</kbd> or <kbd>&larr;&uarr;&rarr;&darr;</kbd> look</li>
+          <li><kbd>W</kbd><kbd>S</kbd> forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
+          <li><kbd>Q</kbd><kbd>E</kbd> roll &middot; <kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> speed</li>
+          <li><kbd>T</kbd> expose &middot; <kbd>M</kbd> atlas &middot; click a star to claim it</li>
+        </ul>
+      </fieldset>
+
+      <div class="fh-actions">
+        <button type="button" data-atlas-open>Atlas</button>
+        <button type="button" data-give-up>Give up</button>
+        <button type="button" data-restart>New mission</button>
+      </div>
+
+      <p class="fh-about">
+        Stars are procedural, except about 7,800 naked-eye stars within 3,000 light-years from Hipparcos.
+        Nebulae: the 50 most ionizing star-forming complexes in Russeil (2003) plus Orion, Eagle, Lagoon,
+        Rosette, North America and California, with rough distances and brightness. Spiral arms follow
+        Reid et al. (2019). Everything you see is where it was when its light left, and the galaxy turns
+        while that light travels.
+      </p>
+      <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    </div>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+</body>
+</html>

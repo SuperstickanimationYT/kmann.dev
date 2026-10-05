@@ -1,0 +1,291 @@
+.fh-stage {
+  overflow: hidden;
+  touch-action: none;
+}
+
+.fh-stage [hidden] {
+  display: none;
+}
+
+.fh-view {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.fh-view:active {
+  cursor: grabbing;
+}
+
+.fh-view:focus {
+  outline: none;
+}
+
+.fh-hud {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.fh-hud strong {
+  color: var(--text-strong);
+}
+
+.fh-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgba(95, 227, 255, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.fh-status {
+  position: absolute;
+  z-index: 2;
+  inset: auto 16px 18px;
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-strong);
+  text-shadow: 0 1px 4px #000;
+  pointer-events: none;
+}
+
+.fh-touch {
+  position: absolute;
+  right: 16px;
+  bottom: 56px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fh-touch button {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--edge);
+  border-radius: 50%;
+  background: rgba(7, 22, 39, 0.7);
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+@media (pointer: coarse) {
+  .fh-touch {
+    display: flex;
+  }
+}
+
+.fh-scope,
+.fh-atlas {
+  position: absolute;
+  inset: 44px 16px 16px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
+  gap: 8px;
+  margin: 0;
+  background: rgba(3, 8, 15, 0.82);
+}
+
+.fh-scope canvas,
+.fh-atlas canvas {
+  position: static;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  cursor: crosshair;
+}
+
+.fh-atlas canvas {
+  cursor: default;
+}
+
+.fh-scope figcaption,
+.fh-atlas figcaption {
+  max-width: 60ch;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.fh-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.fh-ending {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100% - 32px));
+  padding: 22px;
+  border: 1px solid var(--edge-bright);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.fh-ending h2 {
+  margin: 0 0 8px;
+  color: var(--text-strong);
+}
+
+.fh-ending p {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.fh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fh-panel fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+}
+
+.fh-panel legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.fh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.fh-field > span {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-strong);
+}
+
+.fh-field output {
+  font-variant-numeric: tabular-nums;
+  color: var(--link);
+}
+
+.fh-panel input[type="range"] {
+  width: 100%;
+  accent-color: var(--edge-bright);
+}
+
+.studio-panel select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+}
+
+.fh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fh-actions button,
+.fh-ending button {
+  flex: 1 1 auto;
+  padding: 9px 14px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fh-actions button:hover:not(:disabled),
+.fh-ending button:hover {
+  background: #133659;
+}
+
+.fh-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fh-actions .fh-primary,
+.fh-ending .fh-primary {
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.studio-panel :focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.fh-brief,
+.fh-note,
+.fh-about {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.fh-brief {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.fh-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.fh-keys kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-right: 2px;
+  padding: 1px 5px;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-strong);
+}
