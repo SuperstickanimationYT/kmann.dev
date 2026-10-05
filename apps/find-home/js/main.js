@@ -2,6 +2,7 @@ import { drawAtlas } from './atlas.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { NEBULAE } from './nebulae.js';
+import { describeStar, drawGuides } from './practice.js';
 import { WHITE_BALANCE } from './population.js';
 import { createRandom, randomSeed } from './random.js';
 import { createRenderer } from './renderer.js';
@@ -32,6 +33,7 @@ const WRONG_CLAIM_SECONDS = 3600;
 const PICK_RADIUS_PX = 10;
 const TAP_DISTANCE = 6;
 const AU_PER_LY = 63241;
+const SCOPE_GUIDE_FONT = 22;
 
 const $ = (selector) => document.querySelector(selector);
 const view = $('[data-view]');
@@ -47,6 +49,10 @@ const fieldSelect = $('[data-field]');
 const exposureSelect = $('[data-exposure]');
 const stretchInput = $('[data-stretch]');
 const stackButton = $('[data-stack]');
+const guides = $('[data-guides]');
+const modeSelect = $('[data-mode]');
+const clockLabel = $('[data-clock-label]');
+const giveUpButton = $('[data-give-up]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -102,7 +108,7 @@ function startingPoint(random) {
   return [distance * Math.cos(latitude) * Math.sin(azimuth), distance * Math.cos(latitude) * Math.cos(azimuth), distance * Math.sin(latitude)];
 }
 
-function newGame(seed = randomSeed()) {
+function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice') {
   const random = createRandom(seed);
   let camera = startingPoint(random);
   while (galaxies.some((galaxy) => Math.hypot(...subtract(galaxy.centre, camera)) < START_CLEARANCE)) camera = startingPoint(random);
@@ -115,7 +121,12 @@ function newGame(seed = randomSeed()) {
     wrongClaims: 0,
     exposures: 0,
     over: false,
+    practice,
   };
+  modeSelect.value = practice ? 'practice' : 'mission';
+  clockLabel.textContent = practice ? 'Practice' : 'Mission clock';
+  giveUpButton.textContent = practice ? 'Face the Sun' : 'Give up';
+  if (!practice) clearGuides();
   eyeStars = null;
   scope = null;
   skyStale = true;
@@ -124,8 +135,10 @@ function newGame(seed = randomSeed()) {
   stackButton.disabled = true;
   const url = new URL(window.location.href);
   url.searchParams.set('seed', seed);
+  if (practice) url.searchParams.set('mode', 'practice');
+  else url.searchParams.delete('mode');
   window.history.replaceState(null, '', url);
-  showStatus('Somewhere out there is home.');
+  showStatus(practice ? 'Practice: nebulae and galaxies are labelled, the Sun is ringed. Click any star to identify it.' : 'Somewhere out there is home.', practice ? 8 : 4);
 }
 
 function hideStatus() {
@@ -255,7 +268,7 @@ let lastFrame = performance.now();
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
-  if (!game.over && document.visibilityState === 'visible') game.clock += seconds;
+  if (!game.over && !game.practice && document.visibilityState === 'visible') game.clock += seconds;
   flightStep(seconds);
   refreshEyeStars(now);
   if (eyeStars) {
@@ -270,9 +283,29 @@ function frame(now) {
     });
     eyeStarsChanged = false;
   }
-  $('[data-clock]').textContent = formatClock(game.clock);
+  if (game.practice) refreshGuides();
+  $('[data-clock]').textContent = game.practice ? '' : formatClock(game.clock);
   $('[data-speed]').textContent = formatSpeed(game.speed);
   requestAnimationFrame(frame);
+}
+
+function clearGuides() {
+  guides.getContext('2d').clearRect(0, 0, guides.width, guides.height);
+}
+
+function refreshGuides() {
+  const ratio = window.devicePixelRatio || 1;
+  const width = stage.clientWidth;
+  const height = stage.clientHeight;
+  if (guides.width !== Math.round(width * ratio) || guides.height !== Math.round(height * ratio)) {
+    guides.width = Math.round(width * ratio);
+    guides.height = Math.round(height * ratio);
+  }
+  const context = guides.getContext('2d');
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  if (!scopeFrame.hidden || !atlasFrame.hidden) return;
+  drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
 }
 
 function percentile(sorted, share) {
@@ -318,6 +351,7 @@ function exposeNow() {
   const limit = detectionLimit(Math.max(seconds * 4, SCOPE_DEPTH_SECONDS));
   const basis = { ...game.basis };
   const camera = [...game.camera];
+  const pointing = { camera, basis, tanHalf };
   const stars = gatherStars({ camera, axis: basis.forward, tanHalf: Math.hypot(...tanHalf), limit, budget: SCOPE_BUDGET, armMap, nebulae, nearby });
   const samples = renderer.exposeScope({
     view: { camera, basis, tanHalf, pixelAngle: (pixelArcsec / 206264.8) },
@@ -334,6 +368,7 @@ function exposeNow() {
     positions: projectScopeStars(stars, basis, tanHalf),
     psfPixels: Math.max(0.55, SENSOR.psfArcsec / pixelArcsec),
     signal: measureSignal(samples),
+    pointing,
     electronsPerUnit,
     seconds: 0,
     frames: 0,
@@ -390,9 +425,13 @@ function develop() {
   }
   scopeCanvas.width = SENSOR.width;
   scopeCanvas.height = SENSOR.height;
-  scopeCanvas.getContext('2d').putImageData(image, 0, 0);
+  const scopeContext = scopeCanvas.getContext('2d');
+  scopeContext.putImageData(image, 0, 0);
+  if (game.practice) {
+    drawGuides(scopeContext, { ...scope.pointing, width: SENSOR.width, height: SENSOR.height, nebulae, galaxies, fontSize: SCOPE_GUIDE_FONT });
+  }
   const field = scope.fieldArcsec >= 3600 ? `${scope.fieldArcsec / 3600}°` : `${scope.fieldArcsec / 60}′`;
-  scopeCaption.textContent = `${field} field, ${frames} × ${formatClock(scope.exposure)} = ${formatClock(seconds)} total. Click a star to claim it is the Sun.`;
+  scopeCaption.textContent = `${field} field, ${frames} × ${formatClock(scope.exposure)} = ${formatClock(seconds)} total. ${game.practice ? 'Click a star to identify it.' : 'Click a star to claim it is the Sun.'}`;
   $('[data-stretch-value]').textContent = stretchInput.value;
 }
 
@@ -400,6 +439,10 @@ function claim(star) {
   if (game.over) return;
   if (!star) {
     showStatus('No star there.');
+    return;
+  }
+  if (game.practice) {
+    showStatus(describeStar(star), 8);
     return;
   }
   if (star.kind === KIND.sun) {
@@ -427,7 +470,7 @@ function claimInScope(event) {
     if (offset2 > radius * radius || (nearest && offset2 >= nearest.offset2)) continue;
     const values = scope.stars.precise;
     if (values[i * 6 + 3] + 5 * Math.log10(values[i * 6 + 5] / 10) > faintest) continue;
-    nearest = { kind: scope.stars.kinds[i], offset2 };
+    nearest = { kind: scope.stars.kinds[i], name: scope.stars.names[i], absolute: values[i * 6 + 3], distance: values[i * 6 + 5], offset2 };
   }
   claim(nearest);
 }
@@ -447,7 +490,9 @@ function claimInView(clientX, clientY) {
     const x = box.left + ((dot(offset, game.basis.right) / depth / tanX) * 0.5 + 0.5) * box.width;
     const y = box.top + (0.5 - (dot(offset, game.basis.up) / depth / tanY) * 0.5) * box.height;
     const miss = Math.hypot(x - clientX, y - clientY);
-    if (miss <= PICK_RADIUS_PX && (!nearest || miss < nearest.miss)) nearest = { kind: eyeStars.kinds[i], miss };
+    if (miss <= PICK_RADIUS_PX && (!nearest || miss < nearest.miss)) {
+      nearest = { kind: eyeStars.kinds[i], name: eyeStars.names[i], absolute: eyeStars.precise[i * 6 + 3], distance, miss };
+    }
   }
   claim(nearest);
 }
@@ -549,7 +594,16 @@ $('[data-expose]').addEventListener('click', expose);
 stackButton.addEventListener('click', stack);
 stretchInput.addEventListener('input', () => scope && develop());
 fieldSelect.addEventListener('change', placeReticle);
-$('[data-give-up]').addEventListener('click', () => !game.over && finish(false));
+giveUpButton.addEventListener('click', () => {
+  if (game.over) return;
+  if (!game.practice) {
+    finish(false);
+    return;
+  }
+  game.basis = orthonormal(subtract(SUN_POSITION, game.camera), game.basis.up);
+  viewChanged();
+});
+modeSelect.addEventListener('change', () => newGame(game.seed));
 $('[data-restart]').addEventListener('click', () => newGame());
 $('[data-new-game]').addEventListener('click', () => newGame());
 new ResizeObserver(resize).observe(stage);
@@ -558,7 +612,8 @@ if (!renderer) {
   showStatus(rendererProblem, 3600);
 } else {
   const requested = Number(new URL(window.location.href).searchParams.get('seed'));
-  newGame(Number.isInteger(requested) && requested > 0 ? requested : randomSeed());
+  const practice = new URL(window.location.href).searchParams.get('mode') === 'practice';
+  newGame(Number.isInteger(requested) && requested > 0 ? requested : randomSeed(), practice);
   resize();
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     nearby = stars;

@@ -21,9 +21,10 @@
 
 <main class="studio-stage fh-stage" data-stage>
   <canvas class="fh-view" data-view tabindex="0" aria-label="Naked-eye view. Drag to look, WASD to fly."></canvas>
+  <canvas class="fh-guides" data-guides aria-hidden="true"></canvas>
   <div class="fh-reticle" data-reticle hidden></div>
   <div class="fh-hud" aria-live="polite">
-    <span>Mission clock <strong data-clock>0:00:00</strong></span>
+    <span><span data-clock-label>Mission clock</span> <strong data-clock>0:00:00</strong></span>
     <span>Speed <strong data-speed></strong></span>
   </div>
   <p class="fh-status" data-status hidden></p>
@@ -58,6 +59,14 @@
         You are somewhere outside the Milky Way. Find the Sun and click it. The mission clock never stops;
         exposures add their length and every wrong claim costs an hour.
       </p>
+
+      <label class="fh-field">
+        <span>Mode</span>
+        <select data-mode>
+          <option value="mission" selected>Mission: unlabelled, scored</option>
+          <option value="practice">Practice: labels, star names, Sun marked</option>
+        </select>
+      </label>
 
       <fieldset>
         <legend>Telescope</legend>
