@@ -7,9 +7,11 @@ const FIELD_SCALE = 2.3;
 const ZMAX_PER_TALL_HEIGHT = 6;
 const ARM_PATTERN_TURN_PER_SIM_SECOND = 0.6;
 const DISK_ORDER = { gone: 0.2, intact: 0.8 };
+const TAIL_ORDER = { gone: 0.1, intact: 0.4 };
 
 const share = (value) => value / 100;
-const coldFromOrder = (order) => Math.min(1, Math.max(0, (order - DISK_ORDER.gone) / (DISK_ORDER.intact - DISK_ORDER.gone)));
+const ramp = (value, { gone, intact }) => Math.min(1, Math.max(0, (value - gone) / (intact - gone)));
+const coldFromOrder = (order) => ramp(order, DISK_ORDER);
 
 const patternTurnAt = (field) => ARM_PATTERN_TURN_PER_SIM_SECOND * simSecondsAt(field.index);
 
@@ -29,6 +31,9 @@ export function mergerMorphologyOf(settings, field) {
     uCoreB: field.cores[1],
     uColdA: coldFromOrder(field.order[0]),
     uColdB: coldFromOrder(field.order[1]),
+    uTailYouth: ramp(Math.max(...field.order), TAIL_ORDER),
+    uSpinA: field.spins[0],
+    uSpinB: field.spins[1],
   };
 }
 
@@ -48,7 +53,7 @@ export function mergerLightingOf(settings, field) {
     uBarLength: 0,
     uCoreA: field.cores[0],
     uCoreB: field.cores[1],
-    uFrameTurnA: patternTurnAt(field),
-    uFrameTurnB: -patternTurnAt(field),
+    uFrameTurnA: field.spins[0] * patternTurnAt(field),
+    uFrameTurnB: field.spins[1] * patternTurnAt(field),
   };
 }
