@@ -53,6 +53,8 @@ const guides = $('[data-guides]');
 const modeSelect = $('[data-mode]');
 const clockLabel = $('[data-clock-label]');
 const giveUpButton = $('[data-give-up]');
+const labelsToggle = $('[data-labels]');
+const labelsField = $('[data-labels-field]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -121,24 +123,45 @@ function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice'
     wrongClaims: 0,
     exposures: 0,
     over: false,
-    practice,
+    practice: false,
+    practiceUsed: false,
   };
-  modeSelect.value = practice ? 'practice' : 'mission';
-  clockLabel.textContent = practice ? 'Practice' : 'Mission clock';
-  giveUpButton.textContent = practice ? 'Face the Sun' : 'Give up';
-  if (!practice) clearGuides();
   eyeStars = null;
   scope = null;
   skyStale = true;
   scopeFrame.hidden = true;
   ending.hidden = true;
   stackButton.disabled = true;
+  setMode(practice);
+  if (!practice) showStatus('Somewhere out there is home.');
+}
+
+const labelsShown = () => game.practice && labelsToggle.checked;
+
+function setMode(practice) {
+  game.practice = practice;
+  if (practice) {
+    game.practiceUsed = true;
+    ending.hidden = true;
+  }
+  modeSelect.value = practice ? 'practice' : 'mission';
+  labelsField.hidden = !practice;
+  clockLabel.textContent = practice ? 'Practice' : 'Mission clock';
+  giveUpButton.textContent = practice ? 'Face the Sun' : 'Give up';
   const url = new URL(window.location.href);
-  url.searchParams.set('seed', seed);
+  url.searchParams.set('seed', game.seed);
   if (practice) url.searchParams.set('mode', 'practice');
   else url.searchParams.delete('mode');
   window.history.replaceState(null, '', url);
-  showStatus(practice ? 'Practice: nebulae and galaxies are labelled, the Sun is ringed. Click any star to identify it.' : 'Somewhere out there is home.', practice ? 8 : 4);
+  clearGuides();
+  if (scope) develop();
+  if (practice) showStatus(labelsShown() ? 'Practice: labels on. Click any star to identify it.' : 'Practice: labels hidden. Click a star to check whether it is the Sun.', 6);
+}
+
+function setLabels(shown) {
+  labelsToggle.checked = shown;
+  clearGuides();
+  if (scope) develop();
 }
 
 function hideStatus() {
@@ -283,7 +306,7 @@ function frame(now) {
     });
     eyeStarsChanged = false;
   }
-  if (game.practice) refreshGuides();
+  if (labelsShown()) refreshGuides();
   $('[data-clock]').textContent = game.practice ? '' : formatClock(game.clock);
   $('[data-speed]').textContent = formatSpeed(game.speed);
   requestAnimationFrame(frame);
@@ -427,22 +450,26 @@ function develop() {
   scopeCanvas.height = SENSOR.height;
   const scopeContext = scopeCanvas.getContext('2d');
   scopeContext.putImageData(image, 0, 0);
-  if (game.practice) {
+  if (labelsShown()) {
     drawGuides(scopeContext, { ...scope.pointing, width: SENSOR.width, height: SENSOR.height, nebulae, galaxies, fontSize: SCOPE_GUIDE_FONT });
   }
   const field = scope.fieldArcsec >= 3600 ? `${scope.fieldArcsec / 3600}°` : `${scope.fieldArcsec / 60}′`;
-  scopeCaption.textContent = `${field} field, ${frames} × ${formatClock(scope.exposure)} = ${formatClock(seconds)} total. ${game.practice ? 'Click a star to identify it.' : 'Click a star to claim it is the Sun.'}`;
+  scopeCaption.textContent = `${field} field, ${frames} × ${formatClock(scope.exposure)} = ${formatClock(seconds)} total. ${labelsShown() ? 'Click a star to identify it.' : game.practice ? 'Click a star to check whether it is the Sun.' : 'Click a star to claim it is the Sun.'}`;
   $('[data-stretch-value]').textContent = stretchInput.value;
 }
 
 function claim(star) {
-  if (game.over) return;
+  if (game.over && !game.practice) return;
   if (!star) {
     showStatus('No star there.');
     return;
   }
-  if (game.practice) {
+  if (labelsShown()) {
     showStatus(describeStar(star), 8);
+    return;
+  }
+  if (game.practice) {
+    showStatus(star.kind === KIND.sun ? 'Yes, that is the Sun.' : 'Not the Sun. Show labels to see what it is.', 6);
     return;
   }
   if (star.kind === KIND.sun) {
@@ -508,6 +535,7 @@ function finish(found) {
   $('[data-ending-text]').textContent = found
     ? `You found the Sun from ${formatLightYears(distance)} away in ${formatClock(game.clock)}, with ${count(game.exposures, 'exposure')} and ${count(game.wrongClaims, 'wrong claim')}.`
     : `The Sun was ${formatLightYears(distance)} away, at the centre of your view now.`;
+  if (game.practiceUsed) $('[data-ending-text]').textContent += ' Practice mode was used during this mission.';
   ending.hidden = false;
 }
 
@@ -554,6 +582,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyX') changeSpeed(2);
   else if (event.code === 'KeyT') expose();
   else if (event.code === 'KeyM') toggleAtlas();
+  else if (event.code === 'KeyL' && game.practice) setLabels(!labelsToggle.checked);
   else if (event.code === 'Escape') {
     scopeFrame.hidden = true;
     atlasFrame.hidden = true;
@@ -603,7 +632,8 @@ giveUpButton.addEventListener('click', () => {
   game.basis = orthonormal(subtract(SUN_POSITION, game.camera), game.basis.up);
   viewChanged();
 });
-modeSelect.addEventListener('change', () => newGame(game.seed));
+modeSelect.addEventListener('change', () => setMode(modeSelect.value === 'practice'));
+labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-restart]').addEventListener('click', () => newGame());
 $('[data-new-game]').addEventListener('click', () => newGame());
 new ResizeObserver(resize).observe(stage);
