@@ -25,6 +25,9 @@ const START_CLEARANCE = 15000;
 const SENSOR = { width: 1024, height: 768, electronsPerNanomaggy: 3.9, readNoise: 4, dark: 0.002, fullWell: 90000, psfArcsec: 0.058 };
 const SCOPE_BUDGET = (SENSOR.width * SENSOR.height) / 40;
 const SCOPE_DEPTH_SECONDS = 600;
+const SATURATED_BLACK_SHARE = 0.5;
+const SIGNAL_REFERENCE_PIXEL_ARCSEC = 3.5;
+const ELECTRONS_PER_UNIT_AT_REFERENCE = 1000;
 const WRONG_CLAIM_SECONDS = 3600;
 const PICK_RADIUS_PX = 10;
 const TAP_DISTANCE = 6;
@@ -276,11 +279,9 @@ function percentile(sorted, share) {
   return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))];
 }
 
-function measureSignal(raw) {
-  const bands = [[], [], []];
-  for (let i = 0; i < raw.length; i += 4 * 23) for (let band = 0; band < 3; band++) bands[band].push(raw[i + band]);
+function measureSignal(bands) {
   return bands.map((values) => {
-    values.sort((a, b) => a - b);
+    values.sort();
     return { median: percentile(values, 0.5), bright: percentile(values, 0.9995) };
   });
 }
@@ -313,24 +314,27 @@ function exposeNow() {
   const tanX = Math.tan((fieldArcsec / 3600) * DEGREES * 0.5);
   const tanHalf = [tanX, tanX * (SENSOR.height / SENSOR.width)];
   const pixelArcsec = fieldArcsec / SENSOR.width;
+  const electronsPerUnit = ELECTRONS_PER_UNIT_AT_REFERENCE * (pixelArcsec / SIGNAL_REFERENCE_PIXEL_ARCSEC) ** 2;
   const limit = detectionLimit(Math.max(seconds * 4, SCOPE_DEPTH_SECONDS));
   const basis = { ...game.basis };
   const camera = [...game.camera];
   const stars = gatherStars({ camera, axis: basis.forward, tanHalf: Math.hypot(...tanHalf), limit, budget: SCOPE_BUDGET, armMap, nebulae, nearby });
-  const raw = renderer.exposeScope({
+  const samples = renderer.exposeScope({
     view: { camera, basis, tanHalf, pixelAngle: (pixelArcsec / 206264.8) },
     nebulae,
     stars,
     width: SENSOR.width,
     height: SENSOR.height,
     electronsPerNanomaggy: SENSOR.electronsPerNanomaggy,
+    electronsPerUnit,
     psfPixels: Math.max(0.55, SENSOR.psfArcsec / pixelArcsec),
   });
   scope = {
     stars,
     positions: projectScopeStars(stars, basis, tanHalf),
     psfPixels: Math.max(0.55, SENSOR.psfArcsec / pixelArcsec),
-    signal: measureSignal(raw),
+    signal: measureSignal(samples),
+    electronsPerUnit,
     seconds: 0,
     frames: 0,
     exposure: seconds,
@@ -350,21 +354,25 @@ function stack() {
   scopeFrame.hidden = false;
   atlasFrame.hidden = true;
   stackButton.disabled = false;
-  hideStatus();
+  const skyPerFrame = scope.signal[1].median * scope.electronsPerUnit * scope.exposure;
+  if (skyPerFrame > SATURATED_BLACK_SHARE * SENSOR.fullWell) showStatus('The sky alone filled the pixels. Take shorter exposures and stack them.', 6);
+  else hideStatus();
 }
 
 function develop() {
-  const { seconds, frames, signal } = scope;
+  const { seconds, frames, signal, electronsPerUnit } = scope;
   const noiseOf = (electrons) => Math.sqrt(electrons + SENSOR.dark * seconds + frames * SENSOR.readNoise ** 2);
   const visual = signal[1];
-  const skyV = visual.median * 1000 * seconds;
-  const span = Math.max(200 * noiseOf(skyV), (visual.bright - visual.median) * 1000 * seconds);
+  const skyV = visual.median * electronsPerUnit * seconds;
+  const span = Math.max(200 * noiseOf(skyV), (visual.bright - visual.median) * electronsPerUnit * seconds);
+  const saturation = SENSOR.fullWell * frames;
   const black = signal.map(({ median }) => {
-    const sky = median * 1000 * seconds;
-    return sky - 1.5 * noiseOf(sky);
+    const sky = median * electronsPerUnit * seconds;
+    return Math.min(sky - 1.5 * noiseOf(sky), SATURATED_BLACK_SHARE * saturation);
   });
-  const white = black.map((low, band) => Math.min(low + span * (WHITE_BALANCE[band] / WHITE_BALANCE[1]), SENSOR.fullWell * frames));
+  const white = black.map((low, band) => Math.min(low + span * (WHITE_BALANCE[band] / WHITE_BALANCE[1]), saturation));
   const pixels = renderer.developScope({
+    electronsPerUnit,
     seconds,
     frames,
     seed: (game.seed * 7919 + scope.frames * 104729 + game.exposures) >>> 0,

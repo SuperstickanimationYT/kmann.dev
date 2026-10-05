@@ -407,6 +407,7 @@ layout(location = 0) in vec3 aOffset;
 layout(location = 1) in vec3 aLook;
 uniform vec3 uAnchorShift;
 uniform float uElectronsPerNanomaggy;
+uniform float uElectronsPerUnit;
 uniform float uPsfPixels;
 out vec3 vRate;
 out float vSigma;
@@ -430,7 +431,7 @@ void main() {
   float apparent = aLook.x + 5.0 * log(distance / 10.0) / log(10.0);
   float tau = distance > 30.0 ? dustColumn(uCamera + offset, 20) : 0.0;
   vec3 nanomaggies = pow(10.0, -0.4 * (apparent - 22.5)) * bandFluxes(aLook.y) * exp(-tau * EXTINCTION_BANDS);
-  vRate = min(nanomaggies * uElectronsPerNanomaggy / 1000.0, vec3(60000.0));
+  vRate = min(nanomaggies * uElectronsPerNanomaggy / uElectronsPerUnit, vec3(60000.0));
   vSigma = uPsfPixels;
   float brightness = max(vRate.g, max(vRate.r, vRate.b));
   float halo = brightness > 0.05 ? min(56.0, 6.0 * log(1.0 + brightness * 20.0)) : 0.0;
@@ -454,9 +455,26 @@ void main() {
   outColour = vec4(vRate * (0.94 * core + 0.06 * halo), 1.0);
 }`;
 
+export const SAMPLE_LOG_FLOOR = -40;
+export const SAMPLE_LOG_SPAN = 64;
+
+export const SAMPLE_FRAGMENT = `#version 300 es
+precision highp float;
+uniform sampler2D uSignal;
+uniform int uBand;
+uniform vec2 uStride;
+out vec4 outColour;
+void main() {
+  float value = texelFetch(uSignal, ivec2(floor(gl_FragCoord.xy) * uStride), 0)[uBand];
+  float level = clamp((log2(max(value, 1e-12)) - (${SAMPLE_LOG_FLOOR}.0)) / ${SAMPLE_LOG_SPAN}.0, 0.0, 1.0);
+  float steps = floor(level * 65535.0 + 0.5);
+  outColour = vec4(floor(steps / 256.0) / 255.0, mod(steps, 256.0) / 255.0, 0.0, 1.0);
+}`;
+
 export const DEVELOP_FRAGMENT = `#version 300 es
 precision highp float;
 uniform sampler2D uSignal;
+uniform float uElectronsPerUnit;
 uniform vec2 uSize;
 uniform float uSeconds;
 uniform float uFrames;
@@ -492,7 +510,7 @@ float gaussian(uint h) {
 void main() {
   uvec2 pixel = uvec2(gl_FragCoord.xy);
   uint site = hashUint(pixel.x * 73856093u ^ pixel.y * 19349663u);
-  vec3 rate = max(texture(uSignal, vUv).rgb, vec3(0.0)) * 1000.0;
+  vec3 rate = max(texture(uSignal, vUv).rgb, vec3(0.0)) * uElectronsPerUnit;
   vec3 electrons;
   for (int band = 0; band < 3; band++) {
     uint key = hashUint(site ^ hashUint(uSeed + uint(band) * 7777u));
