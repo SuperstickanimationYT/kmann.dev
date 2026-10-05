@@ -32,6 +32,8 @@ uniform float uBulgeIndex;
 uniform float uBarLight;
 uniform float uBarLength;
 uniform float uNucleusLight;
+uniform vec2 uCoreA;
+uniform vec2 uCoreB;
 uniform sampler2D uFine;
 uniform float uFineLod;
 uniform vec2 uFineShift;
@@ -58,6 +60,16 @@ float sersicDensity(vec3 p) {
   float b = 2.0 * n - 0.327;
   float cusp = 1.0 - 0.6097 / n + 0.05463 / (n * n);
   return pow(s, -cusp) * exp(-b * (pow(s, 1.0 / n) - 1.0));
+}
+
+float bulgesDensity(vec3 p) {
+  return 0.5 * (sersicDensity(p - vec3(uCoreA, 0.0)) + sersicDensity(p - vec3(uCoreB, 0.0)));
+}
+
+float nucleiDensity(vec3 p) {
+  vec3 fromA = p - vec3(uCoreA, 0.0);
+  vec3 fromB = p - vec3(uCoreB, 0.0);
+  return 0.5 * (exp(-dot(fromA, fromA) / 0.0016) + exp(-dot(fromB, fromB) / 0.0016));
 }
 
 float barDensity(vec3 p) {
@@ -114,9 +126,6 @@ void main() {
   float dx = (xFar - xNear) / uSteps;
   float jitter = interleavedGradient(gl_FragCoord.xy);
 
-  float oldHeight = uThickness;
-  float youngHeight = uThickness * 0.3;
-  float dustHeight = uThickness * 0.45;
 
   vec3 light = vec3(0.0);
   vec3 through = vec3(1.0);
@@ -132,6 +141,9 @@ void main() {
     vec2 uv = p.xy / (2.0 * uRmax) + 0.5;
     vec4 disk = texture(uDisk, uv);
     vec4 detail = texture(uDetail, uv);
+    float oldHeight = detail.b > 0.0 ? detail.b : uThickness;
+    float youngHeight = oldHeight * 0.3;
+    float dustHeight = oldHeight * 0.45;
 
     float oldShape = 0.82 * sech2(p.z / oldHeight) / (2.0 * oldHeight) + 0.18 * sech2(p.z / (3.2 * oldHeight)) / (6.4 * oldHeight);
     float youngShape = sech2(p.z / youngHeight) / (2.0 * youngHeight);
@@ -153,8 +165,8 @@ void main() {
       + YOUNG_COLOUR * (uYoungLight * disk.g * youngShape * youngFine)
       + GAS_COLOUR * (uGasLight * disk.b * youngShape * knotFine)
       + CLUSTER_COLOUR * (uClusterLight * detail.r * youngShape)
-      + BULGE_COLOUR * (uBulgeLight * sersicDensity(p) + uBarLight * barDensity(p))
-      + BULGE_COLOUR * uNucleusLight * exp(-dot(p, p) / 0.0016);
+      + BULGE_COLOUR * (uBulgeLight * bulgesDensity(p) + uBarLight * barDensity(p))
+      + BULGE_COLOUR * uNucleusLight * nucleiDensity(p);
 
     float youngEmission = uYoungLight * disk.g * youngShape * youngFine + uClusterLight * detail.r * youngShape;
     float tau = uDustOpacity * disk.a * dustShape * dustFine * ds;
