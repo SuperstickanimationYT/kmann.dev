@@ -1,0 +1,477 @@
+export const MAX_NEBULAE = 64;
+export const UNRESOLVED_STEPS = 48;
+export const NOISE_SIZE = 64;
+export const UNRESOLVED_NEAREST = 0.1;
+export const UNRESOLVED_FARTHEST = 1e6;
+
+export const FULLSCREEN_VERTEX = `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 corner = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUv = corner;
+  gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+const COMMON = `
+precision highp float;
+precision highp int;
+
+uniform vec3 uCamera;
+uniform vec3 uRight;
+uniform vec3 uUp;
+uniform vec3 uForward;
+uniform vec2 uTanHalf;
+uniform float uPixelAngle;
+uniform sampler2D uArmMap;
+uniform highp sampler3D uNoise;
+uniform float uMapHalfWidth;
+uniform float uSunRadius;
+uniform float uBarAngle;
+uniform float uBarSpin;
+uniform float uFlatSpeed;
+uniform float uRiseScale;
+uniform float uSpeedToPcPerYear;
+uniform float uYearsPerPc;
+uniform vec3 uBulgeScales;
+uniform vec3 uLongBarScales;
+uniform float uThin;
+uniform float uThinLength;
+uniform float uThinHeight;
+uniform float uThick;
+uniform float uThickLength;
+uniform float uThickHeight;
+uniform float uBulge;
+uniform float uLongBar;
+uniform float uYoungPerArm;
+uniform float uYoungHeight;
+uniform float uDustPerPc;
+uniform float uDustLength;
+uniform float uDustHeight;
+
+const vec3 EXTINCTION_BANDS = vec3(0.75, 1.0, 1.32);
+const float MAG_TO_TAU = 0.921;
+
+uint hashUint(uint x) {
+  x ^= x >> 16;
+  x *= 0x7feb352du;
+  x ^= x >> 15;
+  x *= 0x846ca68bu;
+  x ^= x >> 16;
+  return x;
+}
+
+float valueNoise(vec3 p, uint seed) {
+  vec3 shift = vec3(float(hashUint(seed) & 1023u), float(hashUint(seed + 1u) & 1023u), float(hashUint(seed + 2u) & 1023u));
+  return texture(uNoise, (p + shift) / ${NOISE_SIZE}.0).r;
+}
+
+float fbm(vec3 p, uint seed, float octaves) {
+  float total = 0.0;
+  float amplitude = 0.5;
+  float weight = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float fade = clamp(octaves - float(i), 0.0, 1.0);
+    if (fade <= 0.0) break;
+    total += fade * amplitude * valueNoise(p, seed + uint(i) * 977u);
+    weight += fade * amplitude;
+    p = p * 2.07 + vec3(17.1, 3.3, 9.7);
+    amplitude *= 0.5;
+  }
+  return weight > 0.0 ? total / weight : 0.5;
+}
+
+float angularSpeed(float radius) {
+  return uFlatSpeed * (1.0 - exp(-radius / uRiseScale)) * uSpeedToPcPerYear / max(radius, 50.0);
+}
+
+vec3 turnAzimuth(vec3 p, float angle) {
+  float c = cos(angle);
+  float s = sin(angle);
+  return vec3(p.x * c + p.y * s, -p.x * s + p.y * c, p.z);
+}
+
+float armAt(vec2 xy) {
+  vec2 uv = (xy + uMapHalfWidth) / (2.0 * uMapHalfWidth);
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
+  return texture(uArmMap, uv).r;
+}
+
+float sech2(float x) {
+  float c = cosh(min(abs(x), 40.0));
+  return 1.0 / (c * c);
+}
+
+float barDistance(vec3 p, vec3 scales) {
+  float c = cos(uBarAngle);
+  float s = sin(uBarAngle);
+  float along = p.x * s + p.y * c;
+  float across = p.x * c - p.y * s;
+  return length(vec3(along / scales.x, across / scales.y, p.z / scales.z));
+}
+
+float youngTaper(float radius) {
+  return 1.0 / (1.0 + exp(-(radius - 3000.0) / 400.0)) / (1.0 + exp((radius - 15000.0) / 1200.0));
+}
+
+struct Matter {
+  float disk;
+  float bar;
+  float young;
+  float dust;
+};
+
+Matter matterAt(vec3 seen, float delayYears, float footprint) {
+  float seenRadius = length(seen.xy);
+  vec3 p = turnAzimuth(seen, angularSpeed(seenRadius) * delayYears);
+  vec3 barFrame = turnAzimuth(seen, uBarSpin * delayYears);
+  float radius = length(p.xy);
+  float arm = armAt(p.xy);
+
+  Matter m;
+  float outerEdge = 1.0 / (1.0 + exp((radius - 16000.0) / 1500.0));
+  float thin = uThin * exp(-(radius - uSunRadius) / uThinLength) * sech2(p.z / uThinHeight) * (0.85 + 0.3 * arm);
+  float thick = uThick * exp(-(radius - uSunRadius) / uThickLength) * exp(-abs(p.z) / uThickHeight);
+  m.disk = (thin + thick) * outerEdge;
+  m.bar = uBulge * exp(-barDistance(barFrame, uBulgeScales)) + uLongBar * exp(-pow(barDistance(barFrame, uLongBarScales), 4.0));
+
+  float octaves = clamp(log2(900.0 / max(footprint, 1.0)), 0.0, 5.0);
+  float knots = octaves > 0.0 ? fbm(p / 450.0, 11u, octaves) : 0.5;
+  m.young = uYoungPerArm * arm * youngTaper(radius) * exp(-abs(p.z) / uYoungHeight) * (0.2 + 5.5 * knots * knots * knots);
+
+  float clouds = octaves > 0.0 ? fbm(p / 380.0 + vec3(5.2, 1.3, 7.7), 29u, octaves) : 0.5;
+  float innerHole = 0.3 + 0.7 * smoothstep(2500.0, 4200.0, radius);
+  float centralZone = 6.0 * exp(-radius / 250.0);
+  m.dust = uDustPerPc * exp(-(radius - uSunRadius) / uDustLength) * sech2(p.z / uDustHeight) * (0.3 + 1.7 * arm) * innerHole
+    * max(0.0, 2.6 * clouds - 0.55) * outerEdge + uDustPerPc * centralZone * sech2(p.z / 60.0);
+  return m;
+}
+
+vec3 rayDirection(vec2 uv) {
+  vec2 ndc = uv * 2.0 - 1.0;
+  return normalize(uForward + uRight * ndc.x * uTanHalf.x + uUp * ndc.y * uTanHalf.y);
+}
+
+float dustColumn(vec3 target, int steps) {
+  vec3 offset = target - uCamera;
+  float span = length(offset);
+  float total = 0.0;
+  for (int i = 0; i < 24; i++) {
+    if (i >= steps) break;
+    float t = (float(i) + 0.5) / float(steps);
+    vec3 p = uCamera + offset * t;
+    if (abs(p.z) > 3000.0) continue;
+    total += matterAt(p, span * t * uYearsPerPc, span / float(steps)).dust;
+  }
+  return total * span / float(steps) * MAG_TO_TAU;
+}
+`;
+
+export const SKY_FRAGMENT = `#version 300 es
+${COMMON}
+uniform vec3 uOldUnresolved[${UNRESOLVED_STEPS}];
+uniform vec3 uYoungUnresolved[${UNRESOLVED_STEPS}];
+uniform float uUnresolvedLogNear;
+uniform float uUnresolvedLogStep;
+uniform vec4 uNebulaPlace[${MAX_NEBULAE}];
+uniform vec4 uNebulaGlow[${MAX_NEBULAE}];
+uniform int uNebulaCount;
+uniform float uOutputScale;
+uniform uint uFrameSeed;
+uniform vec3 uGasColour;
+uniform float uGasPerYoung;
+
+in vec2 vUv;
+out vec4 outColour;
+
+const int MAX_STEPS = 240;
+const int CHECKPOINTS = 32;
+const float LIGHT_TO_SURFACE_BRIGHTNESS = 0.02748;
+
+vec3 lookupUnresolved(vec3 table[${UNRESOLVED_STEPS}], float distance) {
+  float x = (log(max(distance, 1e-3)) - uUnresolvedLogNear) / uUnresolvedLogStep;
+  x = clamp(x, 0.0, float(${UNRESOLVED_STEPS - 1}));
+  int i = int(floor(x));
+  int j = min(i + 1, ${UNRESOLVED_STEPS - 1});
+  return mix(table[i], table[j], x - float(i));
+}
+
+vec2 slabSpan(vec3 origin, vec3 direction, vec3 halfSize) {
+  vec3 inverse = 1.0 / direction;
+  vec3 t0 = (-halfSize - origin) * inverse;
+  vec3 t1 = (halfSize - origin) * inverse;
+  vec3 low = min(t0, t1);
+  vec3 high = max(t0, t1);
+  return vec2(max(max(low.x, low.y), max(low.z, 0.0)), min(min(high.x, high.y), high.z));
+}
+
+void main() {
+  vec3 direction = rayDirection(vUv);
+  vec3 safeDirection = direction + vec3(equal(direction, vec3(0.0))) * 1e-7;
+  vec2 span = slabSpan(uCamera, safeDirection, vec3(28000.0, 28000.0, 6000.0));
+
+  vec3 light = vec3(0.0);
+  vec3 depth = vec3(0.0);
+  float checkpointDistance[CHECKPOINTS];
+  float checkpointDepth[CHECKPOINTS];
+  int checkpoints = 0;
+
+  if (span.x < span.y) {
+    float jitter = float(hashUint(uint(gl_FragCoord.x) * 7919u + uint(gl_FragCoord.y) * 104729u + uFrameSeed)) / 4294967295.0;
+    float s = span.x;
+    float nextCheckpoint = s;
+    for (int i = 0; i < MAX_STEPS; i++) {
+      vec3 probe = uCamera + direction * s;
+      float zStep = (abs(probe.z) * 0.35 + 25.0) / max(abs(direction.z), 0.02);
+      float reachStep = max(4.0, 0.03 * s);
+      float ds = clamp(min(zStep, max(reachStep, 0.012 * (span.y - span.x))), 4.0, 1600.0);
+      float t = s + ds * (i == 0 ? jitter : 0.5);
+      vec3 p = uCamera + direction * t;
+      float footprint = max(t * uPixelAngle, ds * 0.25);
+      Matter m = matterAt(p, t * uYearsPerPc, footprint);
+      vec3 emission = (m.disk + m.bar) * lookupUnresolved(uOldUnresolved, t)
+        + m.young * (lookupUnresolved(uYoungUnresolved, t) + uGasPerYoung * uGasColour);
+      vec3 tau = m.dust * MAG_TO_TAU * EXTINCTION_BANDS * ds;
+      vec3 transmit = exp(-depth);
+      vec3 absorbed = (1.0 - exp(-tau)) / max(tau, vec3(1e-6));
+      light += transmit * emission * ds * absorbed;
+      depth += tau;
+      if (t >= nextCheckpoint && checkpoints < CHECKPOINTS) {
+        checkpointDistance[checkpoints] = t;
+        checkpointDepth[checkpoints] = depth.g;
+        checkpoints++;
+        nextCheckpoint = t + (span.y - span.x) / float(CHECKPOINTS) * 0.5 + 0.25 * t;
+      }
+      s += ds;
+      if (s > span.y || depth.b > 18.0) break;
+    }
+  }
+  light *= LIGHT_TO_SURFACE_BRIGHTNESS;
+
+  for (int n = 0; n < ${MAX_NEBULAE}; n++) {
+    if (n >= uNebulaCount) break;
+    vec4 place = uNebulaPlace[n];
+    vec4 glow = uNebulaGlow[n];
+    float cosAngle = dot(direction, place.xyz);
+    if (cosAngle <= 0.0) continue;
+    float angle = acos(min(cosAngle, 1.0));
+    float sigma = sqrt(place.w * place.w + 0.25 * uPixelAngle * uPixelAngle);
+    if (angle > 5.0 * sigma) continue;
+    vec3 offset = (direction - place.xyz * cosAngle) / max(place.w, 1e-9);
+    float structure = fbm(offset * 2.2 + vec3(glow.w * 13.1), uint(n) * 31u + 5u, 5.0);
+    float filaments = pow(1.0 - abs(2.0 * fbm(offset * 3.1 - vec3(glow.w * 5.7), uint(n) * 13u + 9u, 5.0) - 1.0), 4.0);
+    float lanes = smoothstep(0.38, 0.62, fbm(offset * 2.6 - vec3(glow.w * 7.3), uint(n) * 17u + 3u, 5.0));
+    float sigmaCore = sqrt(0.0625 * place.w * place.w + 0.25 * uPixelAngle * uPixelAngle);
+    float outer = 0.6 * exp(-0.5 * angle * angle / (sigma * sigma)) / (6.2831853 * sigma * sigma);
+    float core = 0.4 * exp(-0.5 * angle * angle / (sigmaCore * sigmaCore)) / (6.2831853 * sigmaCore * sigmaCore);
+    float resolvedShare = clamp(place.w / max(uPixelAngle, 1e-12), 0.0, 1.0);
+    float pattern = mix(1.0, (0.1 + 1.5 * structure * structure + 1.3 * filaments) * (0.2 + 0.8 * lanes), resolvedShare);
+    float surface = glow.x * (outer + core) * pattern / 4.2545e10;
+    float behind = 0.0;
+    for (int c = 0; c < CHECKPOINTS; c++) {
+      if (c >= checkpoints) break;
+      if (checkpointDistance[c] <= glow.y) behind = checkpointDepth[c];
+    }
+    light += surface * exp(-behind * EXTINCTION_BANDS) * vec3(2.6, 1.0, 0.75);
+  }
+
+  outColour = vec4(light * uOutputScale, 1.0);
+}`;
+
+export const EYE_FRAGMENT = `#version 300 es
+precision highp float;
+uniform sampler2D uSky;
+uniform vec3 uWhiteBalance;
+uniform uint uFrameSeed;
+in vec2 vUv;
+out vec4 outColour;
+
+uint hashUint(uint x) {
+  x ^= x >> 16;
+  x *= 0x7feb352du;
+  x ^= x >> 15;
+  x *= 0x846ca68bu;
+  x ^= x >> 16;
+  return x;
+}
+
+float grain() {
+  uint h = hashUint(uint(gl_FragCoord.x) + hashUint(uint(gl_FragCoord.y) + hashUint(uFrameSeed)));
+  return float(h) / 4294967295.0 - 0.5;
+}
+
+void main() {
+  vec3 sky = max(texture(uSky, vUv).rgb, vec3(0.0));
+  float photopic = 1.08e-4 * sky.g;
+  float scotopic = 1.08e-4 * (0.3 * sky.g + 0.7 * sky.b);
+  float logPhotopic = log(max(photopic, 1e-12)) / log(10.0);
+  float colourShare = smoothstep(-3.0, -0.5, logPhotopic);
+  float seen = mix(scotopic, photopic, colourShare);
+  float logSeen = log(max(seen, 1e-12)) / log(10.0);
+  float lightness = clamp((logSeen + 5.6) / 5.1, 0.0, 1.0);
+  lightness = lightness * lightness * smoothstep(-6.2, -5.4, logSeen);
+  lightness += grain() * 0.06 * (1.0 - colourShare) * smoothstep(-6.6, -5.0, logSeen);
+  vec3 tint = sky / uWhiteBalance;
+  tint /= max(max(tint.r, tint.g), max(tint.b, 1e-9));
+  vec3 colour = mix(vec3(0.86, 0.9, 1.0), tint, colourShare);
+  outColour = vec4(colour * max(lightness, 0.0), 1.0);
+}`;
+
+export const EYE_STAR_VERTEX = `#version 300 es
+${COMMON}
+layout(location = 0) in vec3 aOffset;
+layout(location = 1) in vec3 aLook;
+uniform vec3 uAnchorShift;
+uniform vec3 uWhiteBalance;
+out vec3 vColour;
+out float vSpread;
+out float vSize;
+
+vec3 bandFluxes(float colour) {
+  float redIndex = min(1.4, 0.62 * colour + 0.04);
+  return vec3(pow(10.0, 0.4 * redIndex), 1.0, pow(10.0, -0.4 * colour));
+}
+
+void main() {
+  vec3 offset = aOffset - uAnchorShift;
+  float distance = length(offset);
+  vec3 local = vec3(dot(offset, uRight), dot(offset, uUp), dot(offset, uForward));
+  if (local.z <= 0.0) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
+  vec2 ndc = local.xy / local.z / uTanHalf;
+  float apparent = aLook.x + 5.0 * log(distance / 10.0) / log(10.0);
+  float tau = distance > 30.0 ? dustColumn(uCamera + offset, 10) : 0.0;
+  vec3 extinction = exp(-tau * EXTINCTION_BANDS);
+  float seenMagnitude = apparent - 2.5 * log(extinction.g) / log(10.0);
+  float brightness = min(2.5, 0.2 * pow(10.0, 0.16 * (6.5 - seenMagnitude)));
+  float colourShare = smoothstep(2.0, -1.0, seenMagnitude) * 0.75;
+  vec3 tint = bandFluxes(aLook.y) * extinction / uWhiteBalance;
+  tint /= max(max(tint.r, tint.g), tint.b);
+  vColour = mix(vec3(0.9, 0.93, 1.0), tint, colourShare) * brightness;
+  vSpread = 1.0 + max(0.0, 4.0 - seenMagnitude) * 0.5;
+  vSize = seenMagnitude < 6.8 ? min(48.0, ceil(vSpread * 4.0)) : 0.0;
+  gl_PointSize = vSize;
+  gl_Position = vec4(ndc, 0.0, 1.0);
+}`;
+
+export const EYE_STAR_FRAGMENT = `#version 300 es
+precision highp float;
+in vec3 vColour;
+in float vSpread;
+in float vSize;
+out vec4 outColour;
+void main() {
+  vec2 offset = (gl_PointCoord - 0.5) * vSize;
+  float r2 = dot(offset, offset);
+  float core = exp(-r2 / (2.0 * 0.6 * 0.6 * vSpread * vSpread / 1.21));
+  float halo = 0.05 * exp(-sqrt(r2) / (0.9 * vSpread));
+  outColour = vec4(vColour * (core + halo), 1.0);
+}`;
+
+export const SCOPE_STAR_VERTEX = `#version 300 es
+${COMMON}
+layout(location = 0) in vec3 aOffset;
+layout(location = 1) in vec3 aLook;
+uniform vec3 uAnchorShift;
+uniform float uElectronsPerNanomaggy;
+uniform float uPsfPixels;
+out vec3 vRate;
+out float vSigma;
+out float vSize;
+
+vec3 bandFluxes(float colour) {
+  float redIndex = min(1.4, 0.62 * colour + 0.04);
+  return vec3(pow(10.0, 0.4 * redIndex), 1.0, pow(10.0, -0.4 * colour));
+}
+
+void main() {
+  vec3 offset = aOffset - uAnchorShift;
+  float distance = length(offset);
+  vec3 local = vec3(dot(offset, uRight), dot(offset, uUp), dot(offset, uForward));
+  if (local.z <= 0.0) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
+  vec2 ndc = local.xy / local.z / uTanHalf;
+  float apparent = aLook.x + 5.0 * log(distance / 10.0) / log(10.0);
+  float tau = distance > 30.0 ? dustColumn(uCamera + offset, 20) : 0.0;
+  vec3 nanomaggies = pow(10.0, -0.4 * (apparent - 22.5)) * bandFluxes(aLook.y) * exp(-tau * EXTINCTION_BANDS);
+  vRate = min(nanomaggies * uElectronsPerNanomaggy / 1000.0, vec3(60000.0));
+  vSigma = uPsfPixels;
+  float brightness = max(vRate.g, max(vRate.r, vRate.b));
+  float halo = brightness > 0.05 ? min(56.0, 6.0 * log(1.0 + brightness * 20.0)) : 0.0;
+  vSize = min(64.0, ceil(2.0 * (4.0 * vSigma + halo) + 2.0));
+  gl_PointSize = vSize;
+  gl_Position = vec4(ndc, 0.0, 1.0);
+}`;
+
+export const SCOPE_STAR_FRAGMENT = `#version 300 es
+precision highp float;
+in vec3 vRate;
+in float vSigma;
+in float vSize;
+out vec4 outColour;
+void main() {
+  vec2 offset = (gl_PointCoord - 0.5) * vSize;
+  float r2 = dot(offset, offset);
+  float core = exp(-r2 / (2.0 * vSigma * vSigma)) / (6.2831853 * vSigma * vSigma);
+  float wing = 3.0 * vSigma;
+  float halo = 1.0 / (3.14159265 * wing * wing) / pow(1.0 + r2 / (wing * wing), 2.0);
+  outColour = vec4(vRate * (0.94 * core + 0.06 * halo), 1.0);
+}`;
+
+export const DEVELOP_FRAGMENT = `#version 300 es
+precision highp float;
+uniform sampler2D uSignal;
+uniform vec2 uSize;
+uniform float uSeconds;
+uniform float uFrames;
+uniform uint uSeed;
+uniform float uReadNoise;
+uniform float uDark;
+uniform float uFullWell;
+uniform vec3 uBlack;
+uniform vec3 uWhite;
+uniform float uStretch;
+in vec2 vUv;
+out vec4 outColour;
+
+uint hashUint(uint x) {
+  x ^= x >> 16;
+  x *= 0x7feb352du;
+  x ^= x >> 15;
+  x *= 0x846ca68bu;
+  x ^= x >> 16;
+  return x;
+}
+
+float unit(uint h) {
+  return (float(h) + 0.5) / 4294967296.0;
+}
+
+float gaussian(uint h) {
+  float a = unit(h);
+  float b = unit(hashUint(h ^ 0x68bc21ebu));
+  return sqrt(-2.0 * log(a)) * cos(6.2831853 * b);
+}
+
+void main() {
+  uvec2 pixel = uvec2(gl_FragCoord.xy);
+  uint site = hashUint(pixel.x * 73856093u ^ pixel.y * 19349663u);
+  vec3 rate = max(texture(uSignal, vUv).rgb, vec3(0.0)) * 1000.0;
+  vec3 electrons;
+  for (int band = 0; band < 3; band++) {
+    uint key = hashUint(site ^ hashUint(uSeed + uint(band) * 7777u));
+    float mean = rate[band] * uSeconds + uDark * uSeconds;
+    if (unit(hashUint(site + uint(band) * 31u)) < 3e-4) mean += 40.0 * uSeconds;
+    float value = mean + sqrt(mean) * gaussian(key) + sqrt(uFrames) * uReadNoise * gaussian(hashUint(key + 1u));
+    if (unit(hashUint(key + 2u)) < 4e-7 * uSeconds) value += 1500.0 + 4000.0 * unit(hashUint(key + 3u));
+    electrons[band] = min(value, uFullWell * uFrames);
+  }
+  vec3 scaled = (electrons - uBlack) / max(uWhite - uBlack, vec3(1e-6));
+  vec3 stretched = asinh(max(scaled, vec3(-0.05)) * uStretch) / asinh(uStretch);
+  outColour = vec4(pow(clamp(stretched, 0.0, 1.0), vec3(1.0 / 2.2)), 1.0);
+}`;
