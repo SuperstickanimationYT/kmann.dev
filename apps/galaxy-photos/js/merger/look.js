@@ -11,6 +11,8 @@ const DISK_ORDER = { gone: 0.2, intact: 0.8 };
 const share = (value) => value / 100;
 const coldFromOrder = (order) => Math.min(1, Math.max(0, (order - DISK_ORDER.gone) / (DISK_ORDER.intact - DISK_ORDER.gone)));
 
+const patternTurnAt = (field) => ARM_PATTERN_TURN_PER_SIM_SECOND * simSecondsAt(field.index);
+
 export function mergerMorphologyOf(settings, field) {
   return {
     uRmax: MERGER_RMAX,
@@ -18,7 +20,7 @@ export function mergerMorphologyOf(settings, field) {
     uArms: settings.arms,
     uPitch: settings.pitch * DEGREES,
     uArmContrast: share(settings.armContrast),
-    uArmTurn: ARM_PATTERN_TURN_PER_SIM_SECOND * simSecondsAt(field.index),
+    uArmTurn: patternTurnAt(field),
     uYoung: share(settings.young),
     uGas: share(settings.gas),
     uDust: share(settings.dust),
@@ -46,5 +48,7 @@ export function mergerLightingOf(settings, field) {
     uBarLength: 0,
     uCoreA: field.cores[0],
     uCoreB: field.cores[1],
+    uFrameTurnA: patternTurnAt(field),
+    uFrameTurnB: -patternTurnAt(field),
   };
 }

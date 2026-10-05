@@ -34,6 +34,8 @@ uniform float uBarLength;
 uniform float uNucleusLight;
 uniform vec2 uCoreA;
 uniform vec2 uCoreB;
+uniform float uFrameTurnA;
+uniform float uFrameTurnB;
 uniform sampler2D uFine;
 uniform float uFineLod;
 uniform vec2 uFineShift;
@@ -60,6 +62,39 @@ float sersicDensity(vec3 p) {
   float b = 2.0 * n - 0.327;
   float cusp = 1.0 - 0.6097 / n + 0.05463 / (n * n);
   return pow(s, -cusp) * exp(-b * (pow(s, 1.0 / n) - 1.0));
+}
+
+struct FineDetail {
+  float dust;
+  float young;
+  float knot;
+  float old;
+};
+
+vec2 galaxyFrame(vec2 place, vec2 core, float turnAngle) {
+  float c = cos(turnAngle);
+  float s = sin(turnAngle);
+  return mat2(c, s, -s, c) * (place - core);
+}
+
+FineDetail fineDetailAt(vec2 place, vec2 dustPlace) {
+  vec2 fineUv = place / FINE_TILE + uFineShift;
+  vec2 fineDustUv = dustPlace / FINE_TILE + uFineShift;
+  vec4 fineNear = textureLod(uFine, fineUv, uFineLod);
+  vec4 fineFar = textureLod(uFine, FINE_TURN * fineUv, uFineLod + 1.25);
+  return FineDetail(
+    0.4 + 1.2 * (0.65 * textureLod(uFine, fineDustUv, uFineLod).r + 0.35 * textureLod(uFine, FINE_TURN * fineDustUv, uFineLod + 1.25).r),
+    0.25 + 1.5 * (0.6 * fineNear.g + 0.4 * fineFar.g),
+    0.35 + 6.0 * (fineNear.b + 0.6 * fineFar.b),
+    0.9 + 0.2 * fineNear.g
+  );
+}
+
+FineDetail fineDetailFollowing(vec2 place, vec2 dustPlace, float shareA) {
+  FineDetail fromB = fineDetailAt(galaxyFrame(place, uCoreB, uFrameTurnB), galaxyFrame(dustPlace, uCoreB, uFrameTurnB));
+  if (shareA <= 0.0) return fromB;
+  FineDetail fromA = fineDetailAt(galaxyFrame(place, uCoreA, uFrameTurnA), galaxyFrame(dustPlace, uCoreA, uFrameTurnA));
+  return FineDetail(mix(fromB.dust, fromA.dust, shareA), mix(fromB.young, fromA.young, shareA), mix(fromB.knot, fromA.knot, shareA), mix(fromB.old, fromA.old, shareA));
 }
 
 float bulgesDensity(vec3 p) {
@@ -152,14 +187,11 @@ void main() {
     float filaments = texture(uDetail, driftedPlace / (2.0 * uRmax) + 0.5).g;
     float dustShape = (exp(-abs(lift)) * (0.6 + 0.8 * filaments) + 0.7 * filaments * exp(-abs(lift) / 1.8)) / (2.0 * dustHeight);
 
-    vec2 fineUv = p.xy / FINE_TILE + uFineShift;
-    vec2 fineDustUv = driftedPlace / FINE_TILE + uFineShift;
-    vec4 fineNear = textureLod(uFine, fineUv, uFineLod);
-    vec4 fineFar = textureLod(uFine, FINE_TURN * fineUv, uFineLod + 1.25);
-    float dustFine = 0.4 + 1.2 * (0.65 * textureLod(uFine, fineDustUv, uFineLod).r + 0.35 * textureLod(uFine, FINE_TURN * fineDustUv, uFineLod + 1.25).r);
-    float youngFine = 0.25 + 1.5 * (0.6 * fineNear.g + 0.4 * fineFar.g);
-    float knotFine = 0.35 + 6.0 * (fineNear.b + 0.6 * fineFar.b);
-    float oldFine = 0.9 + 0.2 * fineNear.g;
+    FineDetail fine = fineDetailFollowing(p.xy, driftedPlace, detail.a);
+    float dustFine = fine.dust;
+    float youngFine = fine.young;
+    float knotFine = fine.knot;
+    float oldFine = fine.old;
 
     vec3 emission = OLD_DISK_COLOUR * (uDiskLight * disk.r * oldShape * oldFine)
       + YOUNG_COLOUR * (uYoungLight * disk.g * youngShape * youngFine)
