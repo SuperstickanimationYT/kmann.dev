@@ -221,6 +221,30 @@
   font: inherit;
 }
 
+.fh-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.fh-check[hidden] {
+  display: none;
+}
+
+.fh-check input {
+  accent-color: var(--edge-bright);
+}
+
+.fh-check kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
 .fh-actions {
   display: flex;
   flex-wrap: wrap;
