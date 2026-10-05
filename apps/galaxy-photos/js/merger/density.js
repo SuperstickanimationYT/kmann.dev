@@ -78,7 +78,7 @@ function coreOf(members) {
   return { x, y };
 }
 
-function rotationalOrder(members, core) {
+function signedRotation(members, core) {
   const near = members.filter((star) => Math.hypot(star.x - core.x, star.y - core.y) <= ROTATION_REACH);
   const driftX = near.reduce((sum, star) => sum + star.vx, 0) / near.length;
   const driftY = near.reduce((sum, star) => sum + star.vy, 0) / near.length;
@@ -88,7 +88,7 @@ function rotationalOrder(members, core) {
     spin += dx * dvy - dy * dvx;
     mostSpin += Math.hypot(dx, dy) * Math.hypot(dvx, dvy);
   }
-  return mostSpin ? Math.abs(spin / mostSpin) : 0;
+  return mostSpin ? spin / mostSpin : 0;
 }
 
 function roughHeights(stars, count, centre) {
@@ -119,6 +119,14 @@ function weightedMedian(values, weights) {
   let running = 0;
   for (const i of order) if ((running += weights[i]) >= total / 2) return values[i];
   return 1;
+}
+
+export function spinsOf(stars, galaxies) {
+  const centre = midpointOfCores(stars, galaxies);
+  return [0, 1].map((which) => {
+    const members = membersOf(stars, galaxies, which, centre);
+    return Math.sign(signedRotation(members, coreOf(members))) || 1;
+  });
 }
 
 export function heightCalibration(stars, galaxies) {
@@ -169,7 +177,7 @@ export function describeSnapshot(stars, galaxies, kpcPerRoughHeight) {
     heightGrid: HEAT_GRID,
     sharpDensity: densityScale(count).sharpDensity,
     cores: cores.map(({ x, y }) => [x * KPC_PER_SIM_UNIT, y * KPC_PER_SIM_UNIT]),
-    order: galaxyStars.map((members, which) => rotationalOrder(members, cores[which])),
+    order: galaxyStars.map((members, which) => Math.abs(signedRotation(members, cores[which]))),
     typicalHeight: weightedQuantile(kpcHeights, mass, 0.5),
     tallHeight: weightedQuantile(kpcHeights, mass, 0.9),
   };

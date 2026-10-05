@@ -8,9 +8,17 @@ import { MERGER_SIMULATION, SNAPSHOT_FILE_URL } from './timeline.js';
 
 Math.random = createRandom(MERGER_SIMULATION.seed).next;
 
+function spinTheOtherWay(galaxy) {
+  const mass = galaxy.reduce((sum, body) => sum + body.mass, 0);
+  const driftX = galaxy.reduce((sum, body) => sum + body.vx * body.mass, 0) / mass;
+  const driftY = galaxy.reduce((sum, body) => sum + body.vy * body.mass, 0) / mass;
+  for (const body of galaxy) Object.assign(body, { vx: 2 * driftX - body.vx, vy: 2 * driftY - body.vy });
+}
+
 const law = { exponent: 2, mond: false, darkEnergy: 0, merge: false, galaxyStars: MERGER_SIMULATION.starsEach };
 const bodies = SCENES.galaxyMerger.build(law);
 const half = bodies.length / 2;
+spinTheOtherWay(bodies.slice(half));
 const tracked = bodies.map((body, index) => ({ body, galaxy: index < half ? 0 : 1 })).filter(({ body }) => body.kind === KINDS.star);
 const galaxies = Uint8Array.from(tracked, ({ galaxy }) => galaxy);
 const stepsPerSnapshot = Math.round(MERGER_SIMULATION.secondsPerSnapshot / STEP_SECONDS);

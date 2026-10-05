@@ -1,4 +1,4 @@
-import { describeSnapshot, heightCalibration } from './density.js';
+import { describeSnapshot, heightCalibration, spinsOf } from './density.js';
 import { decodeSnapshot, galaxiesIn, headerBytes, readLayout, snapshotsReceived } from './snapshot-file.js';
 import { SNAPSHOT_FILE_URL } from './timeline.js';
 
@@ -6,12 +6,17 @@ let bytes = null;
 let layout = null;
 let galaxies = null;
 let kpcPerRoughHeight = 0;
+let spins = [1, 1];
 let ready = 0;
 
 function noteArrival(byteCount) {
   const now = snapshotsReceived(byteCount, layout);
   if (now === ready) return;
-  if (!ready) kpcPerRoughHeight = heightCalibration(decodeSnapshot(bytes, layout, 0), galaxies);
+  if (!ready) {
+    const start = decodeSnapshot(bytes, layout, 0);
+    kpcPerRoughHeight = heightCalibration(start, galaxies);
+    spins = spinsOf(start, galaxies);
+  }
   ready = now;
   self.postMessage({ type: 'progress', ready });
 }
@@ -47,7 +52,7 @@ async function load() {
 self.addEventListener('message', ({ data }) => {
   if (data.type !== 'field') return;
   const index = Math.min(data.index, ready - 1);
-  const field = describeSnapshot(decodeSnapshot(bytes, layout, index), galaxies, kpcPerRoughHeight);
+  const field = { ...describeSnapshot(decodeSnapshot(bytes, layout, index), galaxies, kpcPerRoughHeight), spins };
   self.postMessage({ type: 'field', request: data.request, index, field }, [field.positions.buffer, field.heights.buffer]);
 });
 

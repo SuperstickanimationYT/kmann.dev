@@ -24,6 +24,9 @@ uniform vec2 uCoreA;
 uniform vec2 uCoreB;
 uniform float uColdA;
 uniform float uColdB;
+uniform float uSpinA;
+uniform float uSpinB;
+uniform float uTailYouth;
 
 ${NOISE}
 
@@ -86,8 +89,8 @@ Texture textureIn(vec2 q, uint seed) {
 }
 
 Texture textureFollowing(vec2 p, float shareA) {
-  Texture b = textureIn(turn(-uArmTurn) * (p - uCoreB), uSeed + 500u);
-  Texture a = textureIn(turn(uArmTurn) * (p - uCoreA), uSeed);
+  Texture b = textureIn(turn(uSpinB * uArmTurn) * (p - uCoreB), uSeed + 500u);
+  Texture a = textureIn(turn(uSpinA * uArmTurn) * (p - uCoreA), uSeed);
   return Texture(
     mix(b.mottle, a.mottle, shareA),
     mix(b.oldGrain, a.oldGrain, shareA),
@@ -114,15 +117,18 @@ void main() {
 
   float shareA = members.r / max(members.r + members.g, 1e-6);
   float cold = mix(uColdB, uColdA, shareA);
-  vec4 arms = mix(spiralArms(p, uCoreB, -1.0, uSeed + 500u), spiralArms(p, uCoreA, 1.0, uSeed), shareA);
+  vec4 arms = mix(spiralArms(p, uCoreB, uSpinB, uSeed + 500u), spiralArms(p, uCoreA, uSpinA, uSeed), shareA);
   vec3 coldArms = arms.rgb * cold;
   float armLight = mix(1.0, arms.a, cold);
 
-  Texture look = textureFollowing(p, shareA);
-  float formingStars = pow(stars.g, 0.8) * cold * crowded;
+  float awayFromCores = smoothstep(8.0, 16.0, min(length(p - uCoreA), length(p - uCoreB)));
+  float tail = awayFromCores * uTailYouth * smoothstep(0.02, 0.12, stars.b / uSharpDensity);
 
-  float young = uYoung * formingStars * (0.08 + crowding + coldArms.r) * look.mottle;
-  float gasMask = smoothstep(0.08, 0.6, 0.8 * crowding + coldArms.g + 0.25 * look.gasNoise);
+  Texture look = textureFollowing(p, shareA);
+  float formingStars = max(pow(stars.g, 0.8) * cold * crowded, pow(stars.b, 0.8) * tail);
+
+  float young = uYoung * formingStars * (0.08 + crowding + coldArms.r + 0.7 * tail) * look.mottle;
+  float gasMask = smoothstep(0.08, 0.6, 0.8 * crowding + coldArms.g + 0.6 * tail + 0.25 * look.gasNoise);
   float gas = uGas * formingStars * gasMask * look.complexes * look.knots * 16.0;
   float clusters = uYoung * look.clusterClumps * smoothstep(0.04, 0.5, crowding + coldArms.r) * formingStars;
   float dust = uDust * pow(stars.g, 0.7) * cold * crowded * (0.12 + crowding + coldArms.b) * mix(0.35, 1.6, look.filaments) * mix(0.55, 1.0, look.holes);
