@@ -75,6 +75,8 @@ export function lightingOf(settings) {
     uNucleusLight: 0.4 * bulge,
     uCoreA: [0, 0],
     uCoreB: [0, 0],
+    uFrameTurnA: 0,
+    uFrameTurnB: 0,
   };
 }
 

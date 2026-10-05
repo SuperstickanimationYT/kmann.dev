@@ -58,6 +58,49 @@ vec4 spiralArms(vec2 p, vec2 core, float spin, uint seed) {
   );
 }
 
+struct Texture {
+  float mottle;
+  float oldGrain;
+  float gasNoise;
+  float complexes;
+  float knots;
+  float clusterClumps;
+  float filaments;
+  float holes;
+  float extraplanar;
+};
+
+Texture textureIn(vec2 q, uint seed) {
+  vec2 warped = q + 1.2 * vec2(fbm(q * 0.09, seed + 11u, 3), fbm(q * 0.09, seed + 12u, 3));
+  return Texture(
+    0.5 + 1.0 * smoothstep(-0.4, 0.5, fbm(warped * 1.6, seed + 41u, 4)),
+    0.93 + 0.14 * smoothstep(-0.5, 0.5, fbm(warped * 2.0, seed + 43u, 4)),
+    fbm(warped * 0.5, seed + 55u, 3),
+    clumps(q, 0.55, 0.4, 2.0, seed + 51u),
+    clumps(q, 0.16, 0.4, 3.0, seed + 53u),
+    clumps(q, 0.09, 0.22, 7.0, seed + 61u),
+    ridged(warped * 0.75, seed + 71u, 5),
+    smoothstep(-0.25, 0.25, fbm(warped * 0.5, seed + 73u, 4)),
+    pow(ridged(warped * 0.9, seed + 81u, 4), 3.0) * smoothstep(-0.2, 0.3, fbm(q * 0.6, seed + 83u, 3))
+  );
+}
+
+Texture textureFollowing(vec2 p, float shareA) {
+  Texture b = textureIn(turn(-uArmTurn) * (p - uCoreB), uSeed + 500u);
+  Texture a = textureIn(turn(uArmTurn) * (p - uCoreA), uSeed);
+  return Texture(
+    mix(b.mottle, a.mottle, shareA),
+    mix(b.oldGrain, a.oldGrain, shareA),
+    mix(b.gasNoise, a.gasNoise, shareA),
+    mix(b.complexes, a.complexes, shareA),
+    mix(b.knots, a.knots, shareA),
+    mix(b.clusterClumps, a.clusterClumps, shareA),
+    mix(b.filaments, a.filaments, shareA),
+    mix(b.holes, a.holes, shareA),
+    mix(b.extraplanar, a.extraplanar, shareA)
+  );
+}
+
 void main() {
   vec2 p = (vUv * 2.0 - 1.0) * uRmax;
   vec4 stars = texture(uStarLight, vUv);
@@ -75,24 +118,16 @@ void main() {
   vec3 coldArms = arms.rgb * cold;
   float armLight = mix(1.0, arms.a, cold);
 
-  vec2 warpedP = p + 1.2 * vec2(fbm(p * 0.09, uSeed + 11u, 3), fbm(p * 0.09, uSeed + 12u, 3));
-  float mottle = 0.5 + 1.0 * smoothstep(-0.4, 0.5, fbm(warpedP * 1.6, uSeed + 41u, 4));
-  float oldGrain = 0.93 + 0.14 * smoothstep(-0.5, 0.5, fbm(warpedP * 2.0, uSeed + 43u, 4));
+  Texture look = textureFollowing(p, shareA);
   float formingStars = pow(stars.g, 0.8) * cold * crowded;
 
-  float young = uYoung * formingStars * (0.08 + crowding + coldArms.r) * mottle;
-  float complexes = clumps(p, 0.55, 0.4, 2.0, uSeed + 51u);
-  float knots = clumps(p, 0.16, 0.4, 3.0, uSeed + 53u);
-  float gasMask = smoothstep(0.08, 0.6, 0.8 * crowding + coldArms.g + 0.25 * fbm(warpedP * 0.5, uSeed + 55u, 3));
-  float gas = uGas * formingStars * gasMask * complexes * knots * 16.0;
-  float clusters = uYoung * clumps(p, 0.09, 0.22, 7.0, uSeed + 61u) * smoothstep(0.04, 0.5, crowding + coldArms.r) * formingStars;
+  float young = uYoung * formingStars * (0.08 + crowding + coldArms.r) * look.mottle;
+  float gasMask = smoothstep(0.08, 0.6, 0.8 * crowding + coldArms.g + 0.25 * look.gasNoise);
+  float gas = uGas * formingStars * gasMask * look.complexes * look.knots * 16.0;
+  float clusters = uYoung * look.clusterClumps * smoothstep(0.04, 0.5, crowding + coldArms.r) * formingStars;
+  float dust = uDust * pow(stars.g, 0.7) * cold * crowded * (0.12 + crowding + coldArms.b) * mix(0.35, 1.6, look.filaments) * mix(0.55, 1.0, look.holes);
 
-  float filaments = ridged(warpedP * 0.75, uSeed + 71u, 5);
-  float holes = smoothstep(-0.25, 0.25, fbm(warpedP * 0.5, uSeed + 73u, 4));
-  float dust = uDust * pow(stars.g, 0.7) * cold * crowded * (0.12 + crowding + coldArms.b) * mix(0.35, 1.6, filaments) * mix(0.55, 1.0, holes);
-  float extraplanarDust = pow(ridged(warpedP * 0.9, uSeed + 81u, 4), 3.0) * smoothstep(-0.2, 0.3, fbm(p * 0.6, uSeed + 83u, 3));
-
-  outDisk = vec4(surface * oldGrain * armLight, young, gas, dust);
-  outDetail = vec4(clusters, extraplanarDust, stars.a, 0.0);
+  outDisk = vec4(surface * look.oldGrain * armLight, young, gas, dust);
+  outDetail = vec4(clusters, look.extraplanar, stars.a, shareA);
 }
 `;
