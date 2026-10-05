@@ -47,7 +47,13 @@ const stackButton = $('[data-stack]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
-const renderer = createRenderer(view, armMap, galaxies);
+let renderer = null;
+let rendererProblem = 'This game needs WebGL 2 with float render targets.';
+try {
+  renderer = createRenderer(view, armMap, galaxies);
+} catch (error) {
+  rendererProblem = `Your graphics chip could not run the sky shader: ${String(error.message).split('\n')[0]}`;
+}
 const nebulae = placeNebulae(NEBULAE);
 let nearby = [];
 
@@ -533,7 +539,7 @@ $('[data-new-game]').addEventListener('click', () => newGame());
 new ResizeObserver(resize).observe(stage);
 
 if (!renderer) {
-  showStatus('This game needs WebGL 2 with float render targets.', 3600);
+  showStatus(rendererProblem, 3600);
 } else {
   const requested = Number(new URL(window.location.href).searchParams.get('seed'));
   newGame(Number.isInteger(requested) && requested > 0 ? requested : randomSeed());

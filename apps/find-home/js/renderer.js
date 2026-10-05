@@ -7,7 +7,7 @@ import { luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.
 import { createRandom } from './random.js';
 import {
   DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
-  SCOPE_STAR_FRAGMENT, SCOPE_STAR_VERTEX, SKY_FRAGMENT, UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
+  SCOPE_STAR_FRAGMENT, SCOPE_STAR_VERTEX, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH, UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
@@ -48,24 +48,24 @@ function modelUniforms() {
   };
 }
 
-function unresolvedTable(bins, reaches) {
-  const table = new Float32Array(UNRESOLVED_STEPS * 3);
-  const logNear = Math.log(UNRESOLVED_NEAREST);
-  const logStep = (Math.log(UNRESOLVED_FARTHEST) - logNear) / (UNRESOLVED_STEPS - 1);
+const UNRESOLVED_LOG_NEAR = Math.log(UNRESOLVED_NEAREST);
+const UNRESOLVED_LOG_STEP = (Math.log(UNRESOLVED_FARTHEST) - UNRESOLVED_LOG_NEAR) / (UNRESOLVED_STEPS - 1);
+
+const tableRow = (tables, row) => tables.subarray(row * TABLE_WIDTH * 4, (row + 1) * TABLE_WIDTH * 4);
+
+function writeUnresolved(row, bins, reaches) {
+  row.fill(0);
   for (let step = 0; step < UNRESOLVED_STEPS; step++) {
-    const distance = Math.exp(logNear + step * logStep);
+    const distance = Math.exp(UNRESOLVED_LOG_NEAR + step * UNRESOLVED_LOG_STEP);
     bins.forEach((bin, i) => {
       const reach = reaches[i];
       const hidden = reach <= 0 ? 1 : Math.min(1, Math.max(0, 5 * Math.log10(distance / reach) + 0.5));
-      for (let band = 0; band < 3; band++) table[step * 3 + band] += hidden * bin.light[band];
+      for (let band = 0; band < 3; band++) row[step * 4 + band] += hidden * bin.light[band];
     });
   }
-  return { table, logNear, logStep };
 }
 
-function nebulaUniforms(nebulae, camera) {
-  const place = new Float32Array(MAX_NEBULAE * 4);
-  const glow = new Float32Array(MAX_NEBULAE * 4);
+function writeNebulae(place, glow, nebulae, camera) {
   nebulae.slice(0, MAX_NEBULAE).forEach((nebula, i) => {
     const firstGuess = Math.hypot(...nebula.present.map((value, axis) => value - camera[axis]));
     const seen = positionSeenAt(nebula.present, [0, 0, 0], firstGuess * LY_PER_PC);
@@ -76,7 +76,7 @@ function nebulaUniforms(nebulae, camera) {
     const light = NEBULA_LIGHT_PER_IONIZING * nebula.ionizing;
     glow.set([(light * NANOMAGGIES_PER_LIGHT_AT_PC) / Math.max(distance, radius) ** 2, distance, 0, i * 0.618], i * 4);
   });
-  return { uNebulaPlace: place, uNebulaGlow: glow, count: Math.min(nebulae.length, MAX_NEBULAE) };
+  return Math.min(nebulae.length, MAX_NEBULAE);
 }
 
 function galaxyUniforms(galaxies, camera) {
@@ -168,6 +168,12 @@ export function createRenderer(canvas, armMap, galaxies) {
     target.count = stars.count;
   }
 
+  const tables = new Float32Array(TABLE_WIDTH * Object.keys(TABLE_ROWS).length * 4);
+  const tableTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tableTexture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
   let scopeSignal = null;
   let scopePicture = null;
 
@@ -185,15 +191,16 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.useProgram(skyProgram.program);
     bindGalaxyTextures(skyProgram);
     setUniforms(gl, skyProgram, { ...viewUniforms(view), uOutputScale: outputScale, uFrameSeed: { uint: seed } });
-    const old = unresolvedTable(OLD_BINS, reaches.slice(YOUNG_BINS.length));
-    const young = unresolvedTable(YOUNG_BINS, reaches.slice(0, YOUNG_BINS.length));
-    setArray(gl, skyProgram, 'uOldUnresolved', old.table, 3);
-    setArray(gl, skyProgram, 'uYoungUnresolved', young.table, 3);
-    setUniforms(gl, skyProgram, { uUnresolvedLogNear: old.logNear, uUnresolvedLogStep: old.logStep });
-    const nebulaValues = nebulaUniforms(nebulae, view.camera);
-    setArray(gl, skyProgram, 'uNebulaPlace', nebulaValues.uNebulaPlace, 4);
-    setArray(gl, skyProgram, 'uNebulaGlow', nebulaValues.uNebulaGlow, 4);
-    gl.uniform1i(skyProgram.uniforms.uNebulaCount, nebulaValues.count);
+    writeUnresolved(tableRow(tables, TABLE_ROWS.oldUnresolved), OLD_BINS, reaches.slice(YOUNG_BINS.length));
+    writeUnresolved(tableRow(tables, TABLE_ROWS.youngUnresolved), YOUNG_BINS, reaches.slice(0, YOUNG_BINS.length));
+    const nebulaCount = writeNebulae(tableRow(tables, TABLE_ROWS.nebulaPlace), tableRow(tables, TABLE_ROWS.nebulaGlow), nebulae, view.camera);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, tableTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, TABLE_WIDTH, Object.keys(TABLE_ROWS).length, 0, gl.RGBA, gl.FLOAT, tables);
+    gl.uniform1i(skyProgram.uniforms.uTables, 2);
+    gl.activeTexture(gl.TEXTURE0);
+    setUniforms(gl, skyProgram, { uUnresolvedLogNear: UNRESOLVED_LOG_NEAR, uUnresolvedLogStep: UNRESOLVED_LOG_STEP });
+    gl.uniform1i(skyProgram.uniforms.uNebulaCount, nebulaCount);
     const galaxyValues = galaxyUniforms(galaxies, view.camera);
     setArray(gl, skyProgram, 'uGalaxyCentre', galaxyValues.centre, 3);
     setArray(gl, skyProgram, 'uGalaxyNormal', galaxyValues.normal, 3);
