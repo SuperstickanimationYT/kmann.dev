@@ -46,8 +46,12 @@
         <legend>Merger</legend>
         <label class="gx-field">
           <span>Time (million years) <output data-myr></output></span>
-          <input type="range" name="mergerTime" min="0" max="60" step="1" value="10">
+          <input type="range" name="mergerTime" min="0" max="240" step="1" value="40">
         </label>
+        <div class="gx-actions">
+          <button type="button" data-play>Play</button>
+          <button type="button" data-record-video>Download video</button>
+        </div>
         <p class="gx-hint" data-merger-progress></p>
       </fieldset>
 

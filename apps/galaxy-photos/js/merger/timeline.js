@@ -1,6 +1,6 @@
 const MYR_PER_SIM_SECOND = 59;
 
-export const MERGER_SIMULATION = { seed: 314, starsEach: 3000, secondsPerSnapshot: 0.5, snapshots: 61 };
+export const MERGER_SIMULATION = { seed: 314, starsEach: 3000, secondsPerSnapshot: 0.125, snapshots: 241 };
 
 export const myrAt = (index) => Math.round(index * MERGER_SIMULATION.secondsPerSnapshot * MYR_PER_SIM_SECOND);
 
@@ -11,11 +11,14 @@ export function createMergerTimeline(onProgress) {
   const waiting = new Map();
   let nextRequest = 1;
   let ready = 0;
+  const readyWaiters = [];
 
   worker.addEventListener('message', ({ data }) => {
     if (data.type === 'progress') {
       ready = data.ready;
       onProgress(ready);
+      readyWaiters.filter(({ count }) => count <= ready).forEach(({ resolve }) => resolve());
+      readyWaiters.splice(0, readyWaiters.length, ...readyWaiters.filter(({ count }) => count > ready));
       return;
     }
     waiting.get(data.request)?.({ ...data.field, index: data.index });
@@ -30,5 +33,10 @@ export function createMergerTimeline(onProgress) {
     });
   }
 
-  return { fieldAt, ready: () => ready };
+  function untilReady(count) {
+    if (count <= ready) return Promise.resolve();
+    return new Promise((resolve) => readyWaiters.push({ count, resolve }));
+  }
+
+  return { fieldAt, untilReady, ready: () => ready };
 }

@@ -2,10 +2,12 @@ import { createRenderer } from './renderer.js';
 import { PRESETS, presetSettings, randomGalaxy } from './presets.js';
 import { randomSeed } from './random.js';
 import { createMergerTimeline, MERGER_SIMULATION, myrAt } from './merger/timeline.js';
+import { recordFrames, videoFormat } from './merger/video.js';
 
 const PREVIEW_WIDTH = 1024;
 const PREVIEW_HEIGHT = 768;
 const COPIED_LABEL_MS = 1500;
+const PLAY_STEP = 4;
 const TEXT_FIELDS = ['telescope', 'scene'];
 const SHAPE_NEUTRAL_FIELDS = ['seed', 'scene', 'mergerTime'];
 const CAMERA_FIELDS = ['telescope', 'exposure', 'stretch', 'noise', 'saturation', 'stars', 'background', 'resolved'];
@@ -18,6 +20,8 @@ const status = document.querySelector('[data-status]');
 const downloadButton = document.querySelector('[data-download]');
 const copyLinkButton = document.querySelector('[data-copy-link]');
 const mergerProgress = document.querySelector('[data-merger-progress]');
+const playButton = document.querySelector('[data-play]');
+const recordButton = document.querySelector('[data-record-video]');
 
 preview.width = PREVIEW_WIDTH;
 preview.height = PREVIEW_HEIGHT;
@@ -86,6 +90,8 @@ let mergerField = null;
 let fieldInFlight = null;
 let drawnMergerIndex = -1;
 let drawRequest = 0;
+let playing = false;
+let recording = null;
 
 function showMergerProgress() {
   const ready = timeline?.ready() ?? 0;
@@ -104,6 +110,11 @@ function onMergerProgress(ready) {
   if (settings.scene === 'merger' && drawnMergerIndex < Math.min(settings.mergerTime, ready - 1)) redraw();
 }
 
+function mergerTimeline() {
+  timeline ??= createMergerTimeline(onMergerProgress);
+  return timeline;
+}
+
 function buildField(index) {
   fieldInFlight ??= timeline.fieldAt(index).then((field) => {
     mergerField = field;
@@ -113,7 +124,7 @@ function buildField(index) {
 }
 
 async function mergerFieldFor(settings, stillWanted = () => true) {
-  timeline ??= createMergerTimeline(onMergerProgress);
+  mergerTimeline();
   if (!timeline.ready()) return null;
   const index = Math.min(settings.mergerTime, timeline.ready() - 1);
   while (mergerField?.index !== index) {
@@ -141,7 +152,7 @@ async function redraw() {
   showValues();
   showScene(settings.scene);
   window.history.replaceState(null, '', toLink(settings));
-  if (!renderer) return;
+  if (!renderer || recording) return;
   const request = ++drawRequest;
   const latest = () => request === drawRequest;
   const merger = settings.scene === 'merger' ? await mergerFieldFor(settings, latest) : null;
@@ -173,6 +184,7 @@ presetPicker.addEventListener('change', () => {
 });
 
 form.addEventListener('input', (event) => {
+  if (event.isTrusted) stopPlaying();
   if (event.target === presetPicker) return;
   if (!CAMERA_FIELDS.includes(event.target.name) && !SHAPE_NEUTRAL_FIELDS.includes(event.target.name)) presetPicker.value = '';
   redraw();
@@ -234,3 +246,103 @@ if (linked) {
   presetPicker.value = 'grand';
   apply(presetSettings('grand', 1));
 }
+
+const lastMergerIndex = MERGER_SIMULATION.snapshots - 1;
+
+const untilPreviewDrawn = async () => {
+  while (job) await nextFrame();
+};
+
+function stopPlaying() {
+  playing = false;
+  playButton.textContent = 'Play';
+}
+
+async function play() {
+  playing = true;
+  playButton.textContent = 'Pause';
+  if (Number(form.mergerTime.value) >= lastMergerIndex) form.mergerTime.value = 0;
+  while (playing && Number(form.mergerTime.value) < lastMergerIndex) {
+    const index = Math.min(Number(form.mergerTime.value) + PLAY_STEP, lastMergerIndex);
+    await mergerTimeline().untilReady(index + 1);
+    if (!playing) break;
+    form.mergerTime.value = index;
+    await redraw();
+    await untilPreviewDrawn();
+  }
+  stopPlaying();
+}
+
+playButton.addEventListener('click', () => (playing ? stopPlaying() : play()));
+
+function lockControlsExcept(kept, locked) {
+  for (const control of document.querySelectorAll('.studio-panel button, .studio-panel input, .studio-panel select')) {
+    if (control !== kept) control.disabled = locked;
+  }
+}
+
+function downloadBlob(blob, name) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+const whenAborted = (signal) => new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
+
+async function recordVideo() {
+  stopPlaying();
+  recording = new AbortController();
+  const { signal } = recording;
+  recordButton.textContent = 'Cancel video';
+  lockControlsExcept(recordButton, true);
+  job = null;
+  const settings = readSettings();
+  const frames = MERGER_SIMULATION.snapshots;
+  const fieldFor = (index) => {
+    const field = Promise.race([mergerTimeline().untilReady(index + 1), whenAborted(signal)]).then(() => {
+      signal.throwIfAborted();
+      return mergerTimeline().fieldAt(index);
+    });
+    field.catch(() => {});
+    return field;
+  };
+  let upcoming = fieldFor(0);
+  const pictureAt = async (index) => {
+    const field = await upcoming;
+    if (index + 1 < frames) upcoming = fieldFor(index + 1);
+    return renderer.renderToCanvas(settings, PREVIEW_WIDTH, PREVIEW_HEIGHT, nextFrame, field);
+  };
+  showStatus('Making the video. Keep this tab in view.');
+  try {
+    const video = await recordFrames({
+      width: PREVIEW_WIDTH,
+      height: PREVIEW_HEIGHT,
+      frames,
+      pictureAt,
+      onFrame: (made) => showStatus(`Making the video: frame ${made} of ${frames}. Keep this tab in view.`),
+      onPlayback: (seconds) => showStatus(`Saving the ${Math.round(seconds)}-second video. Keep this tab in view.`),
+      cancelled: () => signal.aborted,
+    });
+    if (video) downloadBlob(video.blob, `galaxy-merger-${settings.seed}.${video.extension}`);
+  } catch (error) {
+    if (!signal.aborted) throw error;
+  } finally {
+    recording = null;
+    recordButton.textContent = 'Download video';
+    recordButton.disabled = false;
+    lockControlsExcept(recordButton, false);
+    showStatus(null);
+    redraw();
+  }
+}
+
+recordButton.hidden = !videoFormat();
+function cancelVideo() {
+  recording.abort();
+  recordButton.textContent = 'Cancelling…';
+  recordButton.disabled = true;
+}
+
+recordButton.addEventListener('click', () => (recording ? cancelVideo() : recordVideo()));
