@@ -64,11 +64,15 @@
   right: 16px;
   bottom: 56px;
   display: none;
-  flex-direction: column;
+  grid-template-columns: repeat(2, 52px);
   gap: 10px;
 }
 
 .fh-touch button {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   width: 52px;
   height: 52px;
   border: 1px solid var(--edge);
@@ -80,7 +84,7 @@
 
 @media (pointer: coarse) {
   .fh-touch {
-    display: flex;
+    display: grid;
   }
 }
 
