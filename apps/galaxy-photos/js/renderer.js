@@ -1,6 +1,6 @@
-import { bindTextures, createByteTarget, createContext, createFloatTexture, createProgram, createTarget, setUniforms } from './gl.js';
+import { bindTextures, createByteTarget, createContext, createProgram, createTarget, setUniforms } from './gl.js';
 import { lightingOf, morphologyOf, TELESCOPES } from './galaxy.js';
-import { FIELD_GRID } from './merger/density.js';
+import { createStarFieldBuilder } from './merger/star-field.js';
 import { mergerLightingOf, mergerMorphologyOf } from './merger/look.js';
 import { buildSky } from './sky.js';
 import { FULLSCREEN_VERTEX, MAP_FRAGMENT } from './shaders/map.js';
@@ -58,8 +58,7 @@ export function createRenderer(canvas) {
   gl.bindVertexArray(null);
 
   const maps = createTarget(gl, MAP_SIZE, MAP_SIZE, 2);
-  const starLight = createFloatTexture(gl, FIELD_GRID, FIELD_GRID);
-  const starMembers = createFloatTexture(gl, FIELD_GRID, FIELD_GRID);
+  const starFields = createStarFieldBuilder(gl);
   const fine = createByteTarget(gl, FINE_SIZE, FINE_SIZE);
   const fineProgram = createProgram(gl, FULLSCREEN_VERTEX, FINE_FRAGMENT);
   gl.bindFramebuffer(gl.FRAMEBUFFER, fine.framebuffer);
@@ -102,26 +101,19 @@ export function createRenderer(canvas) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  function uploadStarField(merger) {
-    for (const [texture, data] of [[starLight, merger.light], [starMembers, merger.members]]) {
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, FIELD_GRID, FIELD_GRID, 0, gl.RGBA, gl.FLOAT, data);
-    }
-  }
-
   function* buildMaps(settings, merger) {
     const morphology = merger ? mergerMorphologyOf(settings, merger) : morphologyOf(settings);
     const program = merger ? mergerMapProgram : mapProgram;
     const key = JSON.stringify(morphology);
     if (key === mapsKey) return;
     mapsKey = '';
-    if (merger) uploadStarField(merger);
+    const starField = merger && starFields.build(merger);
     const stripHeight = MAP_SIZE / MAP_STRIPS;
     for (let strip = 0; strip < MAP_STRIPS; strip++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, maps.framebuffer);
       gl.viewport(0, 0, MAP_SIZE, MAP_SIZE);
       gl.useProgram(program.program);
-      if (merger) bindTextures(gl, program, { uStarLight: starLight, uMembers: starMembers });
+      if (merger) bindTextures(gl, program, { uStarLight: starField.light, uMembers: starField.members });
       setUniforms(gl, program, morphology);
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(0, strip * stripHeight, MAP_SIZE, stripHeight);
