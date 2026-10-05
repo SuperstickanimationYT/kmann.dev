@@ -1,8 +1,11 @@
-import { bindTextures, createByteTarget, createContext, createProgram, createTarget, setUniforms } from './gl.js';
+import { bindTextures, createByteTarget, createContext, createFloatTexture, createProgram, createTarget, setUniforms } from './gl.js';
 import { lightingOf, morphologyOf, TELESCOPES } from './galaxy.js';
+import { FIELD_GRID } from './merger/density.js';
+import { mergerLightingOf, mergerMorphologyOf } from './merger/look.js';
 import { buildSky } from './sky.js';
 import { FULLSCREEN_VERTEX, MAP_FRAGMENT } from './shaders/map.js';
 import { MARCH_FRAGMENT } from './shaders/march.js';
+import { MERGER_MAP_FRAGMENT } from './shaders/merger-map.js';
 import { BLOB_FRAGMENT, BLOB_VERTEX, SPECKLE_FRAGMENT, SPECKLE_VERTEX, STAR_FRAGMENT, STAR_VERTEX } from './shaders/points.js';
 import { FINISH_FRAGMENT } from './shaders/finish.js';
 import { FINE_FRAGMENT, FINE_SIZE, FINE_TILE_KPC } from './shaders/fine.js';
@@ -34,6 +37,7 @@ export function createRenderer(canvas) {
   if (!gl) return null;
 
   const mapProgram = createProgram(gl, FULLSCREEN_VERTEX, MAP_FRAGMENT);
+  const mergerMapProgram = createProgram(gl, FULLSCREEN_VERTEX, MERGER_MAP_FRAGMENT);
   const marchProgram = createProgram(gl, FULLSCREEN_VERTEX, MARCH_FRAGMENT);
   const starProgram = createProgram(gl, STAR_VERTEX, STAR_FRAGMENT);
   const speckleProgram = createProgram(gl, SPECKLE_VERTEX, SPECKLE_FRAGMENT);
@@ -54,6 +58,8 @@ export function createRenderer(canvas) {
   gl.bindVertexArray(null);
 
   const maps = createTarget(gl, MAP_SIZE, MAP_SIZE, 2);
+  const starLight = createFloatTexture(gl, FIELD_GRID, FIELD_GRID);
+  const starMembers = createFloatTexture(gl, FIELD_GRID, FIELD_GRID);
   const fine = createByteTarget(gl, FINE_SIZE, FINE_SIZE);
   const fineProgram = createProgram(gl, FULLSCREEN_VERTEX, FINE_FRAGMENT);
   gl.bindFramebuffer(gl.FRAMEBUFFER, fine.framebuffer);
@@ -96,17 +102,27 @@ export function createRenderer(canvas) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  function* buildMaps(settings) {
-    const morphology = morphologyOf(settings);
+  function uploadStarField(merger) {
+    for (const [texture, data] of [[starLight, merger.light], [starMembers, merger.members]]) {
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, FIELD_GRID, FIELD_GRID, 0, gl.RGBA, gl.FLOAT, data);
+    }
+  }
+
+  function* buildMaps(settings, merger) {
+    const morphology = merger ? mergerMorphologyOf(settings, merger) : morphologyOf(settings);
+    const program = merger ? mergerMapProgram : mapProgram;
     const key = JSON.stringify(morphology);
     if (key === mapsKey) return;
     mapsKey = '';
+    if (merger) uploadStarField(merger);
     const stripHeight = MAP_SIZE / MAP_STRIPS;
     for (let strip = 0; strip < MAP_STRIPS; strip++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, maps.framebuffer);
       gl.viewport(0, 0, MAP_SIZE, MAP_SIZE);
-      gl.useProgram(mapProgram.program);
-      setUniforms(gl, mapProgram, morphology);
+      gl.useProgram(program.program);
+      if (merger) bindTextures(gl, program, { uStarLight: starLight, uMembers: starMembers });
+      setUniforms(gl, program, morphology);
       gl.enable(gl.SCISSOR_TEST);
       gl.scissor(0, strip * stripHeight, MAP_SIZE, stripHeight);
       drawFullscreen();
@@ -116,8 +132,8 @@ export function createRenderer(canvas) {
     mapsKey = key;
   }
 
-  function* march(settings, frame, width, height) {
-    const lighting = lightingOf(settings);
+  function* march(settings, merger, frame, width, height) {
+    const lighting = merger ? mergerLightingOf(settings, merger) : lightingOf(settings);
     const stripHeight = Math.max(8, Math.floor(MARCH_PIXELS_PER_STRIP / width));
     for (let top = 0; top < height; top += stripHeight) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, frame.galaxy.framebuffer);
@@ -155,9 +171,9 @@ export function createRenderer(canvas) {
     };
   }
 
-  function drawPoints(settings, frame, width, height) {
+  function drawPoints(settings, merger, frame, width, height) {
     const telescope = TELESCOPES[settings.telescope];
-    const sky = buildSky(settings);
+    const sky = buildSky(merger ? { ...settings, bulge: 0 } : settings);
     const shared = psfUniforms(telescope, width, height, sky);
 
     gl.enable(gl.BLEND);
@@ -228,17 +244,17 @@ export function createRenderer(canvas) {
     drawFullscreen();
   }
 
-  function* render(settings, width, height, destination = null) {
-    yield* buildMaps(settings);
+  function* render(settings, width, height, destination = null, merger = null) {
+    yield* buildMaps(settings, merger);
     const frame = frameFor(width, height);
-    yield* march(settings, frame, width, height);
-    drawPoints(settings, frame, width, height);
+    yield* march(settings, merger, frame, width, height);
+    drawPoints(settings, merger, frame, width, height);
     finish(settings, frame, width, height, destination);
   }
 
-  async function renderToCanvas(settings, width, height, nextFrame) {
+  async function renderToCanvas(settings, width, height, nextFrame, merger = null) {
     const destination = createByteTarget(gl, width, height);
-    for (const _ of render(settings, width, height, destination)) await nextFrame();
+    for (const _ of render(settings, width, height, destination, merger)) await nextFrame();
     const pixels = new Uint8Array(width * height * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, destination.framebuffer);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -259,8 +275,8 @@ export function createRenderer(canvas) {
     return flat;
   }
 
-  async function renderToBlob(settings, width, height, nextFrame) {
-    const flat = await renderToCanvas(settings, width, height, nextFrame);
+  async function renderToBlob(settings, width, height, nextFrame, merger = null) {
+    const flat = await renderToCanvas(settings, width, height, nextFrame, merger);
     return new Promise((resolve) => flat.toBlob(resolve, 'image/png'));
   }
 

@@ -35,6 +35,23 @@
       </div>
 
       <label class="gx-field">
+        <span>Scene</span>
+        <select name="scene">
+          <option value="galaxy">One galaxy</option>
+          <option value="merger">Two galaxies merging</option>
+        </select>
+      </label>
+
+      <fieldset data-merger-only hidden>
+        <legend>Merger</legend>
+        <label class="gx-field">
+          <span>Time (million years) <output data-myr></output></span>
+          <input type="range" name="mergerTime" min="0" max="60" step="1" value="10">
+        </label>
+        <p class="gx-hint" data-merger-progress></p>
+      </fieldset>
+
+      <label class="gx-field">
         <span>Type</span>
         <select data-preset>
           <option value="">Custom</option>
@@ -60,11 +77,11 @@
           <span>Arm contrast <output></output></span>
           <input type="range" name="armContrast" min="0" max="100" step="1">
         </label>
-        <label class="gx-field">
+        <label class="gx-field" data-galaxy-only>
           <span>Patchy arms <output></output></span>
           <input type="range" name="flocculence" min="0" max="100" step="1">
         </label>
-        <label class="gx-field">
+        <label class="gx-field" data-galaxy-only>
           <span>Bar <output></output></span>
           <input type="range" name="bar" min="0" max="100" step="1">
         </label>
@@ -80,7 +97,7 @@
           <span>Disk <output></output></span>
           <input type="range" name="disk" min="0" max="100" step="1">
         </label>
-        <label class="gx-field">
+        <label class="gx-field" data-galaxy-only>
           <span>Disk thickness <output></output></span>
           <input type="range" name="thickness" min="0" max="100" step="1">
         </label>

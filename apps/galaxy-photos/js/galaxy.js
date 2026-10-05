@@ -73,6 +73,8 @@ export function lightingOf(settings) {
     uBarLight: barShare > 0.04 ? 1.6 * barShare : 0,
     uBarLength: barShare > 0.04 ? DISK_SCALE * (0.45 + 0.85 * barShare) : 0,
     uNucleusLight: 0.4 * bulge,
+    uCoreA: [0, 0],
+    uCoreB: [0, 0],
   };
 }
 

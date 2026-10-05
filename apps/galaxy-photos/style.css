@@ -47,6 +47,16 @@
   color: var(--text-strong);
 }
 
+.gx-panel [hidden] {
+  display: none;
+}
+
+.gx-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
 .gx-field output {
   font-variant-numeric: tabular-nums;
   color: var(--link);
