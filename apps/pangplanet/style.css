@@ -1424,8 +1424,8 @@ fieldset.pp-setting {
 
 .pp-world-list li {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  gap: 2px 8px;
+  grid-template-columns: repeat(3, auto) 1fr;
+  gap: 4px 8px;
   align-items: center;
   margin-bottom: 8px;
   padding: 10px 12px;
@@ -1436,33 +1436,24 @@ fieldset.pp-setting {
 }
 
 .pp-world-list strong {
-  grid-area: 1 / 1;
+  grid-column: 1 / -1;
   overflow-wrap: anywhere;
 }
 
 .pp-world-list span {
-  grid-area: 2 / 1;
+  grid-column: 1 / -1;
   font-size: 13px;
   color: #b9d6ee;
 }
 
 .pp-world-list .pp-action {
-  grid-row: 1 / span 2;
+  margin-top: 6px;
   padding: 5px 10px;
 }
 
-.pp-world-list .pp-buy {
-  grid-column: 2;
-}
-
 .pp-world-list .pp-export {
-  grid-column: 3;
   background: #0f6b6b;
   color: #fff;
-}
-
-.pp-world-list .pp-restart {
-  grid-column: 4;
 }
 
 .pp-import {
