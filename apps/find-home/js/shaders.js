@@ -2,6 +2,8 @@ export const MAX_NEBULAE = 64;
 export const MAX_GALAXIES = 4;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
+export const TABLE_WIDTH = 64;
+export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3 };
 export const UNRESOLVED_NEAREST = 0.1;
 export const UNRESOLVED_FARTHEST = 1e6;
 
@@ -169,12 +171,9 @@ float dustColumn(vec3 target, int steps) {
 
 export const SKY_FRAGMENT = `#version 300 es
 ${COMMON}
-uniform vec3 uOldUnresolved[${UNRESOLVED_STEPS}];
-uniform vec3 uYoungUnresolved[${UNRESOLVED_STEPS}];
+uniform highp sampler2D uTables;
 uniform float uUnresolvedLogNear;
 uniform float uUnresolvedLogStep;
-uniform vec4 uNebulaPlace[${MAX_NEBULAE}];
-uniform vec4 uNebulaGlow[${MAX_NEBULAE}];
 uniform int uNebulaCount;
 uniform vec3 uGalaxyCentre[${MAX_GALAXIES}];
 uniform vec3 uGalaxyNormal[${MAX_GALAXIES}];
@@ -193,12 +192,12 @@ const int MAX_STEPS = 240;
 const int CHECKPOINTS = 32;
 const float LIGHT_TO_SURFACE_BRIGHTNESS = 0.02748;
 
-vec3 lookupUnresolved(vec3 table[${UNRESOLVED_STEPS}], float distance) {
+vec3 lookupUnresolved(int row, float distance) {
   float x = (log(max(distance, 1e-3)) - uUnresolvedLogNear) / uUnresolvedLogStep;
   x = clamp(x, 0.0, float(${UNRESOLVED_STEPS - 1}));
   int i = int(floor(x));
   int j = min(i + 1, ${UNRESOLVED_STEPS - 1});
-  return mix(table[i], table[j], x - float(i));
+  return mix(texelFetch(uTables, ivec2(i, row), 0).rgb, texelFetch(uTables, ivec2(j, row), 0).rgb, x - float(i));
 }
 
 vec2 slabSpan(vec3 origin, vec3 direction, vec3 halfSize) {
@@ -234,8 +233,8 @@ void main() {
       vec3 p = uCamera + direction * t;
       float footprint = max(t * uPixelAngle, ds * 0.25);
       Matter m = matterAt(p, t * uYearsPerPc, footprint);
-      vec3 emission = (m.disk + m.bar) * lookupUnresolved(uOldUnresolved, t)
-        + m.young * (lookupUnresolved(uYoungUnresolved, t) + uGasPerYoung * uGasColour);
+      vec3 emission = (m.disk + m.bar) * lookupUnresolved(${TABLE_ROWS.oldUnresolved}, t)
+        + m.young * (lookupUnresolved(${TABLE_ROWS.youngUnresolved}, t) + uGasPerYoung * uGasColour);
       vec3 tau = m.dust * MAG_TO_TAU * EXTINCTION_BANDS * ds;
       vec3 transmit = exp(-depth);
       vec3 absorbed = (1.0 - exp(-tau)) / max(tau, vec3(1e-6));
@@ -255,8 +254,8 @@ void main() {
 
   for (int n = 0; n < ${MAX_NEBULAE}; n++) {
     if (n >= uNebulaCount) break;
-    vec4 place = uNebulaPlace[n];
-    vec4 glow = uNebulaGlow[n];
+    vec4 place = texelFetch(uTables, ivec2(n, ${TABLE_ROWS.nebulaPlace}), 0);
+    vec4 glow = texelFetch(uTables, ivec2(n, ${TABLE_ROWS.nebulaGlow}), 0);
     float cosAngle = dot(direction, place.xyz);
     if (cosAngle <= 0.0) continue;
     float angle = acos(min(cosAngle, 1.0));
