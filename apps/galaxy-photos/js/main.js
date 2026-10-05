@@ -83,6 +83,7 @@ let job = null;
 let pumping = false;
 let timeline = null;
 let mergerField = null;
+let fieldInFlight = null;
 let drawnMergerIndex = -1;
 let drawRequest = 0;
 
@@ -103,11 +104,23 @@ function onMergerProgress(ready) {
   if (settings.scene === 'merger' && drawnMergerIndex < Math.min(settings.mergerTime, ready - 1)) redraw();
 }
 
-async function mergerFieldFor(settings) {
+function buildField(index) {
+  fieldInFlight ??= timeline.fieldAt(index).then((field) => {
+    mergerField = field;
+    fieldInFlight = null;
+  });
+  return fieldInFlight;
+}
+
+async function mergerFieldFor(settings, stillWanted = () => true) {
   timeline ??= createMergerTimeline(onMergerProgress);
   if (!timeline.ready()) return null;
   const index = Math.min(settings.mergerTime, timeline.ready() - 1);
-  if (mergerField?.index !== index) mergerField = await timeline.fieldAt(index);
+  while (mergerField?.index !== index) {
+    if (!stillWanted()) return null;
+    showStatus('Building frame…');
+    await buildField(index);
+  }
   return mergerField;
 }
 
@@ -130,8 +143,11 @@ async function redraw() {
   window.history.replaceState(null, '', toLink(settings));
   if (!renderer) return;
   const request = ++drawRequest;
-  const merger = settings.scene === 'merger' ? await mergerFieldFor(settings) : null;
-  if (request !== drawRequest || (settings.scene === 'merger' && !merger)) return;
+  const latest = () => request === drawRequest;
+  const merger = settings.scene === 'merger' ? await mergerFieldFor(settings, latest) : null;
+  if (!latest()) return;
+  showStatus(null);
+  if (settings.scene === 'merger' && !merger) return;
   drawnMergerIndex = merger?.index ?? -1;
   showMergerProgress();
   job = renderer.render(settings, PREVIEW_WIDTH, PREVIEW_HEIGHT, null, merger);
