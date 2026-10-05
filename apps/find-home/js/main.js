@@ -511,9 +511,17 @@ window.addEventListener('blur', () => held.clear());
 
 document.querySelectorAll('[data-thrust]').forEach((button) => {
   const key = button.dataset.thrust === '1' ? 'thrust+' : 'thrust-';
-  button.addEventListener('pointerdown', () => held.add(key));
-  for (const type of ['pointerup', 'pointerleave', 'pointercancel']) button.addEventListener(type, () => held.delete(key));
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    held.add(key);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, () => held.delete(key));
 });
+document.querySelectorAll('[data-speed-change]').forEach((button) => {
+  button.addEventListener('click', () => changeSpeed(Number(button.dataset.speedChange)));
+});
+document.querySelector('[data-touch]').addEventListener('contextmenu', (event) => event.preventDefault());
 
 let atlasDrawn = false;
 function toggleAtlas() {
