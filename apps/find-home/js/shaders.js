@@ -401,7 +401,7 @@ void main() {
   outColour = vec4(vColour * (core + halo), 1.0);
 }`;
 
-export const SCOPE_STAR_VERTEX = `#version 300 es
+export const CAMERA_STAR_VERTEX = `#version 300 es
 ${COMMON}
 layout(location = 0) in vec3 aOffset;
 layout(location = 1) in vec3 aLook;
@@ -440,7 +440,7 @@ void main() {
   gl_Position = vec4(ndc, 0.0, 1.0);
 }`;
 
-export const SCOPE_STAR_FRAGMENT = `#version 300 es
+export const CAMERA_STAR_FRAGMENT = `#version 300 es
 precision highp float;
 in vec3 vRate;
 in float vSigma;

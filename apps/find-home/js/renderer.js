@@ -6,8 +6,9 @@ import {
 import { luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.js';
 import { createRandom } from './random.js';
 import {
-  DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
-  SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SCOPE_STAR_FRAGMENT, SCOPE_STAR_VERTEX, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH, UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
+  MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
+  UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
@@ -122,7 +123,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   const skyProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FRAGMENT);
   const eyeProgram = createProgram(gl, FULLSCREEN_VERTEX, EYE_FRAGMENT);
   const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
-  const scopeStarProgram = createProgram(gl, SCOPE_STAR_VERTEX, SCOPE_STAR_FRAGMENT);
+  const cameraStarProgram = createProgram(gl, CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT);
   const developProgram = createProgram(gl, FULLSCREEN_VERTEX, DEVELOP_FRAGMENT);
   const sampleProgram = createProgram(gl, FULLSCREEN_VERTEX, SAMPLE_FRAGMENT);
   const sampleTarget = createByteTarget(gl, SAMPLE_WIDTH, SAMPLE_HEIGHT);
@@ -146,7 +147,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   for (const wrap of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, wrap, gl.REPEAT);
 
   const model = modelUniforms();
-  [skyProgram, eyeStarProgram, scopeStarProgram].forEach((program) => {
+  [skyProgram, eyeStarProgram, cameraStarProgram].forEach((program) => {
     gl.useProgram(program.program);
     setUniforms(gl, program, model);
   });
@@ -164,7 +165,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     return { buffer, vao, count: 0 };
   }
   const eyeStars = makeStarBuffer();
-  const scopeStars = makeStarBuffer();
+  const cameraStars = makeStarBuffer();
 
   function uploadStars(target, stars) {
     gl.bindBuffer(gl.ARRAY_BUFFER, target.buffer);
@@ -178,8 +179,8 @@ export function createRenderer(canvas, armMap, galaxies) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-  let scopeSignal = null;
-  let scopePicture = null;
+  let cameraSignal = null;
+  let cameraPicture = null;
 
   function bindGalaxyTextures(program) {
     gl.activeTexture(gl.TEXTURE0);
@@ -262,19 +263,19 @@ export function createRenderer(canvas, armMap, galaxies) {
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
   }
 
-  function exposeScope({ view, nebulae, stars, width, height, electronsPerNanomaggy, electronsPerUnit, psfPixels }) {
-    if (!scopeSignal || scopeSignal.width !== width || scopeSignal.height !== height) {
-      scopeSignal?.destroy();
-      scopePicture?.destroy();
-      scopeSignal = createTarget(gl, width, height);
-      scopePicture = createByteTarget(gl, width, height);
+  function exposeCamera({ view, nebulae, stars, width, height, electronsPerNanomaggy, electronsPerUnit, psfPixels }) {
+    if (!cameraSignal || cameraSignal.width !== width || cameraSignal.height !== height) {
+      cameraSignal?.destroy();
+      cameraPicture?.destroy();
+      cameraSignal = createTarget(gl, width, height);
+      cameraPicture = createByteTarget(gl, width, height);
     }
-    uploadStars(scopeStars, stars);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, scopeSignal.framebuffer);
+    uploadStars(cameraStars, stars);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, cameraSignal.framebuffer);
     gl.viewport(0, 0, width, height);
     const pixelArcsec2 = (view.pixelAngle * 206264.8) ** 2;
     drawSky(view, nebulae, stars.reaches, (pixelArcsec2 * electronsPerNanomaggy) / electronsPerUnit, 1);
-    drawStars(scopeStarProgram, scopeStars, view, { uElectronsPerNanomaggy: electronsPerNanomaggy, uElectronsPerUnit: electronsPerUnit, uPsfPixels: psfPixels, uAnchorShift: [0, 0, 0] });
+    drawStars(cameraStarProgram, cameraStars, view, { uElectronsPerNanomaggy: electronsPerNanomaggy, uElectronsPerUnit: electronsPerUnit, uPsfPixels: psfPixels, uAnchorShift: view.anchorShift });
     return sampleSignal(width, height);
   }
 
@@ -283,7 +284,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.viewport(0, 0, SAMPLE_WIDTH, SAMPLE_HEIGHT);
     gl.useProgram(sampleProgram.program);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, scopeSignal.textures[0]);
+    gl.bindTexture(gl.TEXTURE_2D, cameraSignal.textures[0]);
     gl.uniform1i(sampleProgram.uniforms.uSignal, 0);
     gl.uniform2f(sampleProgram.uniforms.uStride, width / SAMPLE_WIDTH, height / SAMPLE_HEIGHT);
     gl.bindVertexArray(emptyVao);
@@ -303,13 +304,13 @@ export function createRenderer(canvas, armMap, galaxies) {
     return bands;
   }
 
-  function developScope({ electronsPerUnit, seconds, frames, seed, black, white, stretch, readNoise, dark, fullWell }) {
-    const { width, height } = scopeSignal;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, scopePicture.framebuffer);
+  function developCamera({ electronsPerUnit, seconds, frames, seed, black, white, stretch, readNoise, dark, fullWell }) {
+    const { width, height } = cameraSignal;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, cameraPicture.framebuffer);
     gl.viewport(0, 0, width, height);
     gl.useProgram(developProgram.program);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, scopeSignal.textures[0]);
+    gl.bindTexture(gl.TEXTURE_2D, cameraSignal.textures[0]);
     gl.uniform1i(developProgram.uniforms.uSignal, 0);
     setUniforms(gl, developProgram, {
       uSize: [width, height],
@@ -332,5 +333,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeScope, developScope };
+  return { renderEye, exposeCamera, developCamera };
 }
