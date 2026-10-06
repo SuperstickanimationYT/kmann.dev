@@ -350,6 +350,7 @@ vec3 cabinColour(vec3 direction) {
 
 export const EYE_FRAGMENT = `#version 300 es
 precision highp float;
+precision highp int;
 uniform sampler2D uSky;
 uniform vec3 uWhiteBalance;
 uniform uint uFrameSeed;
