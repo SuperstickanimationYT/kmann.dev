@@ -3,6 +3,8 @@ import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from 
 import { createCutscene } from './cutscene.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
+import { KOTO_GARDEN } from './music/koto-garden.js';
+import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
 import { describeStar, drawGuides } from './practice.js';
 import { createRandom, randomSeed } from './random.js';
@@ -32,6 +34,9 @@ const TAP_DISTANCE = 6;
 const AU_PER_LY = 63241;
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
+const MUSIC_STORAGE_KEY = 'find-home-music';
+const MUSIC_FADE_SECONDS = 1.5;
+const MUSIC_TEMPO = { from: 72, to: 200 };
 
 const $ = (selector) => document.querySelector(selector);
 const view = $('[data-view]');
@@ -55,6 +60,7 @@ const labelsToggle = $('[data-labels]');
 const labelsField = $('[data-labels-field]');
 const introFrame = $('[data-intro]');
 const introText = $('[data-intro-text]');
+const musicToggle = $('[data-music]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -124,28 +130,62 @@ function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice'
 }
 
 let intro = null;
+const music = createMusicPlayer();
+
+function musicWanted() {
+  try {
+    return localStorage.getItem(MUSIC_STORAGE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function unlockMusic() {
+  if (musicToggle.checked) music.unlock();
+}
+
+function showCaption(text, black) {
+  introFrame.classList.toggle('fh-revealed', !black);
+  introText.textContent = text;
+  introText.classList.remove('fh-fade');
+  void introText.offsetWidth;
+  introText.classList.add('fh-fade');
+}
 
 function playIntro() {
-  intro = { home: { camera: game.camera, ship: game.ship }, cutscene: null, startedAt: 0, caption: null, planet: null };
+  const waiting = musicToggle.checked && !navigator.userActivation?.hasBeenActive;
+  intro = { home: { camera: game.camera, ship: game.ship }, cutscene: null, startedAt: 0, caption: null, planet: null, music: null, waiting };
   introFrame.classList.remove('fh-revealed');
   introText.textContent = '';
   introFrame.hidden = false;
+  if (waiting) showCaption('Tap or press any key to begin, with sound.', true);
+}
+
+function beginIntro() {
+  unlockMusic();
+  intro.waiting = false;
+  showCaption('', true);
 }
 
 function startCutscene(now) {
   const alphaCentauri = nearby.find((star) => star.name === 'Alpha Centauri').position;
   const distance = Math.hypot(...subtract(SUN_POSITION, intro.home.camera)) * LY_PER_PC;
-  intro.cutscene = createCutscene({
+  const cutscene = createCutscene({
     home: intro.home,
     alphaCentauri,
     odometer: formatLightYears(Math.round(distance / 1000) * 1000),
     energy: formatLightYears(game.energy),
   });
+  intro.cutscene = cutscene;
   intro.startedAt = now;
+  if (musicToggle.checked && music.unlocked) {
+    const rise = MUSIC_TEMPO.to / MUSIC_TEMPO.from;
+    intro.music = music.play(KOTO_GARDEN, { loops: Infinity, tempoAt: (seconds) => MUSIC_TEMPO.from * rise ** Math.min(1, seconds / cutscene.duration) });
+  }
 }
 
 function advanceIntro(now) {
-  if (!nearby.length) return;
+  if (!nearby.length || intro.waiting) return;
   if (!intro.cutscene) startCutscene(now);
   const elapsed = (now - intro.startedAt) / 1000;
   if (elapsed >= intro.cutscene.duration) {
@@ -161,15 +201,12 @@ function advanceIntro(now) {
   const caption = intro.cutscene.captionAt(elapsed);
   if (caption === intro.caption) return;
   intro.caption = caption;
-  introFrame.classList.toggle('fh-revealed', !caption.black);
-  introText.textContent = caption.text;
-  introText.classList.remove('fh-fade');
-  void introText.offsetWidth;
-  introText.classList.add('fh-fade');
+  showCaption(caption.text, caption.black);
 }
 
 function endIntro() {
   if (!intro) return;
+  intro.music?.fadeOut(MUSIC_FADE_SECONDS);
   game.camera = intro.home.camera;
   game.ship = intro.home.ship;
   game.head = { yaw: 0, pitch: 0 };
@@ -178,6 +215,17 @@ function endIntro() {
   aimView();
   introFrame.hidden = true;
   view.focus();
+}
+
+function setMusic(wanted) {
+  try {
+    localStorage.setItem(MUSIC_STORAGE_KEY, wanted ? 'on' : 'off');
+  } catch {}
+  if (wanted) unlockMusic();
+  else if (intro?.music) {
+    intro.music.fadeOut(MUSIC_FADE_SECONDS);
+    intro.music = null;
+  }
 }
 
 const labelsShown = () => game.practice && labelsToggle.checked;
@@ -599,7 +647,8 @@ window.addEventListener('keydown', (event) => {
   if (event.target.closest?.('select, input, textarea')) return;
   if (intro) {
     event.preventDefault();
-    endIntro();
+    if (intro.waiting) beginIntro();
+    else endIntro();
     return;
   }
   if (FLIGHT_KEYS.has(event.code)) {
@@ -647,6 +696,10 @@ function toggleAtlas() {
 photoCanvas.addEventListener('click', (event) => !photo?.running && claimInView(event.clientX, event.clientY));
 $('[data-photo-close]').addEventListener('click', closePhoto);
 $('[data-intro-skip]').addEventListener('click', endIntro);
+introFrame.addEventListener('pointerdown', (event) => intro?.waiting && !event.target.closest('[data-intro-skip]') && beginIntro());
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, unlockMusic, { capture: true });
+musicToggle.checked = musicWanted();
+musicToggle.addEventListener('change', () => setMusic(musicToggle.checked));
 $('[data-atlas-close]').addEventListener('click', () => (atlasFrame.hidden = true));
 $('[data-atlas-open]').addEventListener('click', toggleAtlas);
 exposeButton.addEventListener('click', toggleExposure);
