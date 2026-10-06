@@ -6,6 +6,7 @@ import { NEBULAE } from './nebulae.js';
 import { describeStar, drawGuides } from './practice.js';
 import { createRandom, randomSeed } from './random.js';
 import { createRenderer } from './renderer.js';
+import { cockpitUniforms, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
@@ -18,7 +19,7 @@ const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
-const SPEED_RANGE = [0.001, 2e6];
+const SPEED_RANGE = [0.001, SHIP.thrusterTopSpeed];
 const START_DISTANCE_KLY = [130, 220];
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
@@ -42,6 +43,8 @@ const ending = $('[data-ending]');
 const exposureSelect = $('[data-exposure]');
 const stretchInput = $('[data-stretch]');
 const exposeButton = $('[data-expose]');
+const jumpInput = $('[data-jump-distance]');
+const warpVeil = $('[data-warp]');
 const guides = $('[data-guides]');
 const modeSelect = $('[data-mode]');
 const clockLabel = $('[data-clock-label]');
@@ -107,14 +110,21 @@ function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice'
   const random = createRandom(seed);
   let camera = startingPoint(random);
   while (galaxies.some((galaxy) => Math.hypot(...subtract(galaxy.centre, camera)) < START_CLEARANCE)) camera = startingPoint(random);
+  const ship = orthonormal(scale(camera, -1), [0, 0, 1]);
+  const head = { yaw: 0, pitch: 0 };
+  const energy = SHIP.energyBudgetShare * Math.hypot(...subtract(SUN_POSITION, camera)) * LY_PER_PC;
   game = {
     seed,
     camera,
-    basis: orthonormal(scale(camera, -1), [0, 0, 1]),
-    speed: 1000,
+    ship,
+    head,
+    basis: viewBasis(ship, head),
+    speed: 1,
+    energy,
     clock: 0,
     wrongClaims: 0,
     exposures: 0,
+    jumps: 0,
     over: false,
     practice: false,
     practiceUsed: false,
@@ -198,8 +208,56 @@ function eyeTanHalf() {
 
 const held = new Set();
 
+function aimView() {
+  game.basis = viewBasis(game.ship, game.head);
+  viewChanged();
+}
+
+function faceDirection(direction) {
+  game.ship = orthonormal(direction, game.ship.up);
+  game.head = { yaw: 0, pitch: 0 };
+  aimView();
+}
+
+function turnHead(yaw, pitch) {
+  const clamp = (value, limit) => Math.max(-limit, Math.min(limit, value));
+  game.head = { yaw: clamp(game.head.yaw + yaw, SHIP.headYawLimit), pitch: clamp(game.head.pitch + pitch, SHIP.headPitchLimit) };
+  aimView();
+}
+
+let jumping = false;
+
+function jump() {
+  if (photo?.running || jumping || (game.over && !game.practice)) return;
+  const lightYears = Number(jumpInput.value);
+  if (!(lightYears > 0)) return;
+  if (!game.practice && lightYears > game.energy) {
+    showStatus(`Not enough energy: ${formatLightYears(game.energy)} of jumping left.`);
+    return;
+  }
+  jumping = true;
+  warpVeil.hidden = false;
+  setTimeout(() => land(lightYears), SHIP.jumpRealSeconds * 1000);
+}
+
+function land(lightYears) {
+  const miss = (SHIP.jumpScatter * lightYears) / LY_PER_PC;
+  const scatter = normalize([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]).map((value) => value * miss * Math.cbrt(Math.random()));
+  game.camera = add(add(game.camera, scale(game.ship.forward, lightYears / LY_PER_PC)), scatter);
+  if (!game.practice && !game.over) {
+    game.energy -= lightYears;
+    game.clock += SHIP.jumpClockSeconds;
+  }
+  game.jumps += 1;
+  eyeStars = null;
+  jumping = false;
+  warpVeil.hidden = true;
+  viewChanged();
+  showStatus(`Dropped out of warp after ${formatLightYears(lightYears)}.`);
+}
+
 function flightStep(seconds) {
-  if (photo?.running) return;
+  if (photo?.running || jumping) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
@@ -208,17 +266,18 @@ function flightStep(seconds) {
   let moved = false;
   if (move.some(Boolean)) {
     const pcPerSecond = game.speed / LY_PER_PC;
-    const step = add(add(scale(game.basis.right, move[0]), scale(game.basis.up, move[1])), scale(game.basis.forward, move[2]));
+    const step = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, move[2]));
     game.camera = add(game.camera, scale(step, pcPerSecond * seconds));
     moved = true;
   }
   const yaw = (held.has('ArrowRight') ? 1 : 0) - (held.has('ArrowLeft') ? 1 : 0);
   const pitch = (held.has('ArrowUp') ? 1 : 0) - (held.has('ArrowDown') ? 1 : 0);
   const roll = (held.has('KeyE') ? 1 : 0) - (held.has('KeyQ') ? 1 : 0);
-  if (yaw) game.basis = turn(game.basis, 'up', -yaw * LOOK_RATE * seconds);
-  if (pitch) game.basis = turn(game.basis, 'right', pitch * LOOK_RATE * seconds);
-  if (roll) game.basis = turn(game.basis, 'forward', roll * ROLL_RATE * seconds);
-  if (moved || yaw || pitch || roll) viewChanged();
+  if (yaw) game.ship = turn(game.ship, 'up', -yaw * LOOK_RATE * seconds);
+  if (pitch) game.ship = turn(game.ship, 'right', pitch * LOOK_RATE * seconds);
+  if (roll) game.ship = turn(game.ship, 'forward', roll * ROLL_RATE * seconds);
+  if (yaw || pitch || roll) aimView();
+  else if (moved) viewChanged();
 }
 
 let skyStale = true;
@@ -265,7 +324,7 @@ let lastFrame = performance.now();
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
-  if (!game.over && !game.practice && !photo?.running && document.visibilityState === 'visible') game.clock += seconds;
+  if (!game.over && !game.practice && !photo?.running && !jumping && document.visibilityState === 'visible') game.clock += seconds;
   flightStep(seconds);
   refreshEyeStars(now);
   if (eyeStars) {
@@ -277,12 +336,14 @@ function frame(now) {
       starsChanged: eyeStarsChanged,
       seed: frameSeed,
       skyResolution: nextSkyResolution(),
+      cockpit: { ...cockpitUniforms(game.ship), enabled: true },
     });
     eyeStarsChanged = false;
   }
   if (labelsShown()) refreshGuides();
   $('[data-clock]').textContent = game.practice ? '' : formatClock(game.clock);
   $('[data-speed]').textContent = formatSpeed(game.speed);
+  $('[data-energy]').textContent = game.practice ? 'unlimited' : formatLightYears(Math.max(0, game.energy));
   requestAnimationFrame(frame);
 }
 
@@ -431,6 +492,7 @@ function claimInView(clientX, clientY) {
     const depth = dot(offset, game.basis.forward);
     if (depth <= 0) continue;
     const distance = Math.hypot(...offset);
+    if (!throughWindow(game.ship, scale(offset, 1 / distance))) continue;
     if (eyeStars.precise[i * 6 + 3] + 5 * Math.log10(distance / 10) > EYE_LIMIT) continue;
     const x = box.left + ((dot(offset, game.basis.right) / depth / tanX) * 0.5 + 0.5) * box.width;
     const y = box.top + (0.5 - (dot(offset, game.basis.up) / depth / tanY) * 0.5) * box.height;
@@ -445,13 +507,10 @@ function claimInView(clientX, clientY) {
 function finish(found) {
   game.over = true;
   const distance = Math.hypot(...subtract(SUN_POSITION, game.camera)) * LY_PER_PC;
-  if (!found) {
-    game.basis = orthonormal(subtract(SUN_POSITION, game.camera), game.basis.up);
-    viewChanged();
-  }
+  if (!found) faceDirection(subtract(SUN_POSITION, game.camera));
   $('[data-ending-title]').textContent = found ? 'Home found' : 'Lost in space';
   $('[data-ending-text]').textContent = found
-    ? `You found the Sun from ${formatLightYears(distance)} away in ${formatClock(game.clock)}, with ${count(game.exposures, 'exposure')} and ${count(game.wrongClaims, 'wrong claim')}.`
+    ? `You found the Sun from ${formatLightYears(distance)} away in ${formatClock(game.clock)}, with ${count(game.jumps, 'jump')}, ${count(game.exposures, 'exposure')} and ${count(game.wrongClaims, 'wrong claim')}.`
     : `The Sun was ${formatLightYears(distance)} away, at the centre of your view now.`;
   if (game.practiceUsed) $('[data-ending-text]').textContent += ' Practice mode was used during this mission.';
   ending.hidden = false;
@@ -459,7 +518,7 @@ function finish(found) {
 
 let drag = null;
 view.addEventListener('pointerdown', (event) => {
-  if (photo?.running) return;
+  if (photo?.running || jumping) return;
   view.focus();
   view.setPointerCapture(event.pointerId);
   drag = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY };
@@ -467,11 +526,9 @@ view.addEventListener('pointerdown', (event) => {
 view.addEventListener('pointermove', (event) => {
   if (!drag) return;
   const perPixel = EYE_FIELD_HEIGHT / stage.clientHeight;
-  game.basis = turn(game.basis, 'up', (event.clientX - drag.x) * perPixel);
-  game.basis = turn(game.basis, 'right', (event.clientY - drag.y) * perPixel);
+  turnHead(-(event.clientX - drag.x) * perPixel, (event.clientY - drag.y) * perPixel);
   drag.x = event.clientX;
   drag.y = event.clientY;
-  viewChanged();
 });
 view.addEventListener('pointerup', (event) => {
   if (drag && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < TAP_DISTANCE) claimInView(event.clientX, event.clientY);
@@ -500,6 +557,8 @@ window.addEventListener('keydown', (event) => {
   } else if (event.code === 'KeyZ') changeSpeed(0.5);
   else if (event.code === 'KeyX') changeSpeed(2);
   else if (event.code === 'KeyT') toggleExposure();
+  else if (event.code === 'KeyJ') jump();
+  else if (event.code === 'KeyC') faceDirection(game.basis.forward);
   else if (event.code === 'KeyM') toggleAtlas();
   else if (event.code === 'KeyL' && game.practice) setLabels(!labelsToggle.checked);
   else if (event.code === 'Escape') {
@@ -546,9 +605,10 @@ giveUpButton.addEventListener('click', () => {
     finish(false);
     return;
   }
-  game.basis = orthonormal(subtract(SUN_POSITION, game.camera), game.basis.up);
-  viewChanged();
+  faceDirection(subtract(SUN_POSITION, game.camera));
 });
+$('[data-jump]').addEventListener('click', jump);
+$('[data-align]').addEventListener('click', () => faceDirection(game.basis.forward));
 modeSelect.addEventListener('change', () => setMode(modeSelect.value === 'practice'));
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-restart]').addEventListener('click', () => newGame());

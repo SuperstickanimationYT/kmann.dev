@@ -55,6 +55,19 @@
   pointer-events: none;
 }
 
+.fh-warp {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #000;
+  font-size: 15px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
 .fh-touch {
   position: absolute;
   right: 16px;
@@ -229,7 +242,8 @@
   accent-color: var(--edge-bright);
 }
 
-.studio-panel select {
+.studio-panel select,
+.studio-panel input[type="number"] {
   width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--edge);

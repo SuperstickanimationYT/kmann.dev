@@ -24,9 +24,11 @@
   <canvas class="fh-guides" data-guides aria-hidden="true"></canvas>
   <div class="fh-hud" aria-live="polite">
     <span><span data-clock-label>Mission clock</span> <strong data-clock>0:00:00</strong></span>
-    <span>Speed <strong data-speed></strong></span>
+    <span>Thrusters <strong data-speed></strong></span>
+    <span>Warp energy <strong data-energy></strong></span>
   </div>
   <p class="fh-status" data-status hidden></p>
+  <div class="fh-warp" data-warp hidden>In warp. Nothing to see until you drop out.</div>
   <div class="fh-touch" data-touch>
     <button type="button" data-speed-change="2" aria-label="Fly faster">+</button>
     <button type="button" data-thrust="1" aria-label="Fly forward">&#9650;</button>
@@ -55,8 +57,9 @@
   <div class="studio-panel-body">
     <div class="fh-panel">
       <p class="fh-brief">
-        You are somewhere outside the Milky Way. Find the Sun and click it. The mission clock never stops;
-        exposures add their length and every wrong claim costs an hour.
+        Your ship is somewhere outside the Milky Way. Find the Sun and click it. Warp jumps are blind and burn
+        energy you cannot refill. The mission clock never stops; jumps and exposures add their length and every
+        wrong claim costs an hour.
       </p>
 
       <label class="fh-field">
@@ -70,6 +73,23 @@
         <input type="checkbox" data-labels checked>
         <span>Show labels and star names <kbd>L</kbd></span>
       </label>
+
+      <fieldset>
+        <legend>Warp drive</legend>
+        <label class="fh-field">
+          <span>Jump distance (light-years)</span>
+          <input type="number" data-jump-distance min="1" step="1" value="20000" inputmode="numeric">
+        </label>
+        <div class="fh-actions">
+          <button type="button" class="fh-primary" data-jump>Jump</button>
+          <button type="button" data-align>Point ship where I look</button>
+        </div>
+        <p class="fh-note">
+          Jumps go along the ship's nose, the middle of the big front window. You are blind until you drop out,
+          up to 2% of the distance off target. Each light-year costs one unit of energy; you start with 1.5&times;
+          your distance from home, so plan before you jump. Thrusters are free but top out at 10 ly/s.
+        </p>
+      </fieldset>
 
       <fieldset>
         <legend>Camera</legend>
@@ -98,10 +118,11 @@
       <fieldset>
         <legend>Flight</legend>
         <ul class="fh-keys">
-          <li><kbd>Drag</kbd> or <kbd>&larr;&uarr;&rarr;&darr;</kbd> look</li>
-          <li><kbd>W</kbd><kbd>S</kbd> forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
-          <li><kbd>Q</kbd><kbd>E</kbd> roll &middot; <kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> speed</li>
-          <li><kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; click a star to claim it</li>
+          <li><kbd>Drag</kbd> turn your head &middot; <kbd>&larr;&uarr;&rarr;&darr;</kbd> <kbd>Q</kbd><kbd>E</kbd> turn the ship</li>
+          <li><kbd>C</kbd> point the ship where you look &middot; <kbd>J</kbd> jump</li>
+          <li><kbd>W</kbd><kbd>S</kbd> thrust forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
+          <li><kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> thruster speed &middot; <kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas</li>
+          <li>Click a star through a window to claim it</li>
           <li>Touch: drag to look &middot; hold <kbd>&#9650;</kbd><kbd>&#9660;</kbd> to fly &middot; <kbd>+</kbd><kbd>&minus;</kbd> speed</li>
         </ul>
       </fieldset>

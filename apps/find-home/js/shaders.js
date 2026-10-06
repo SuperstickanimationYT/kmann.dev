@@ -308,11 +308,56 @@ void main() {
   outColour = vec4(light * uOutputScale, 1.0);
 }`;
 
+const COCKPIT = `
+uniform vec3 uShipRight;
+uniform vec3 uShipUp;
+uniform vec3 uShipForward;
+uniform vec4 uWindows[3];
+uniform vec2 uStruts[2];
+uniform float uCockpit;
+
+vec2 shipAngles(vec3 direction) {
+  return vec2(atan(dot(direction, uShipRight), dot(direction, uShipForward)), asin(clamp(dot(direction, uShipUp), -1.0, 1.0)));
+}
+
+float distanceOutsideWindows(vec2 angles) {
+  float nearest = 10.0;
+  for (int i = 0; i < 3; i++) {
+    vec4 window = uWindows[i];
+    vec2 centre = vec2(window.x + window.y, window.z + window.w) * 0.5;
+    vec2 extent = vec2(window.y - window.x, window.w - window.z) * 0.5;
+    vec2 q = abs(angles - centre) - extent;
+    nearest = min(nearest, length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
+  }
+  for (int i = 0; i < 2; i++) {
+    float strut = uStruts[i].y - abs(angles.x - uStruts[i].x);
+    if (strut > 0.0 && abs(angles.y) < 1.0) nearest = max(nearest, strut);
+  }
+  return nearest;
+}
+
+bool seenThroughCockpit(vec3 direction) {
+  return uCockpit < 0.5 || distanceOutsideWindows(shipAngles(direction)) < 0.0;
+}
+
+vec3 cabinColour(vec3 direction) {
+  vec2 angles = shipAngles(direction);
+  float rim = exp(-distanceOutsideWindows(angles) / 0.008);
+  float shade = 0.75 + 0.25 * cos(angles.y * 1.4);
+  return vec3(0.028, 0.034, 0.046) * shade + vec3(0.07, 0.09, 0.12) * rim;
+}
+`;
+
 export const EYE_FRAGMENT = `#version 300 es
 precision highp float;
 uniform sampler2D uSky;
 uniform vec3 uWhiteBalance;
 uniform uint uFrameSeed;
+uniform vec3 uRight;
+uniform vec3 uUp;
+uniform vec3 uForward;
+uniform vec2 uTanHalf;
+${COCKPIT}
 in vec2 vUv;
 out vec4 outColour;
 
@@ -331,6 +376,12 @@ float grain() {
 }
 
 void main() {
+  vec2 ndc = vUv * 2.0 - 1.0;
+  vec3 direction = normalize(uForward + uRight * ndc.x * uTanHalf.x + uUp * ndc.y * uTanHalf.y);
+  if (!seenThroughCockpit(direction)) {
+    outColour = vec4(cabinColour(direction), 1.0);
+    return;
+  }
   vec3 sky = max(texture(uSky, vUv).rgb, vec3(0.0));
   float photopic = 1.08e-4 * sky.g;
   float scotopic = 1.08e-4 * (0.3 * sky.g + 0.7 * sky.b);
@@ -353,6 +404,7 @@ layout(location = 0) in vec3 aOffset;
 layout(location = 1) in vec3 aLook;
 uniform vec3 uAnchorShift;
 uniform vec3 uWhiteBalance;
+${COCKPIT}
 out vec3 vColour;
 out float vSpread;
 out float vSize;
@@ -366,7 +418,7 @@ void main() {
   vec3 offset = aOffset - uAnchorShift;
   float distance = length(offset);
   vec3 local = vec3(dot(offset, uRight), dot(offset, uUp), dot(offset, uForward));
-  if (local.z <= 0.0) {
+  if (local.z <= 0.0 || !seenThroughCockpit(offset / distance)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     gl_PointSize = 0.0;
     return;
