@@ -2,14 +2,14 @@ import { drawAtlas } from './atlas.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
-import { buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
+import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { KOTO_GARDEN } from './music/koto-garden.js';
 import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
 import { describeStar, drawGuides } from './practice.js';
 import { createRandom, randomSeed } from './random.js';
 import { createRenderer } from './renderer.js';
-import { cockpitUniforms, SHIP, throughWindow, viewBasis } from './ship.js';
+import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
 import { add, dot, normalize, orthonormal, rotateAbout, scale, subtract } from './vectors.js';
 
@@ -24,14 +24,12 @@ const REGATHER_INTERVAL = 150;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
 const SPEED_RANGE = [0.001, SHIP.thrusterTopSpeed];
-const START_DISTANCE_KLY = [130, 220];
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
 
 const WRONG_CLAIM_SECONDS = 3600;
 const PICK_RADIUS_PX = 10;
 const TAP_DISTANCE = 6;
-const AU_PER_LY = 63241;
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MUSIC_STORAGE_KEY = 'find-home-music';
@@ -91,10 +89,11 @@ let statusTimer = 0;
 let frameSeed = 1;
 
 function startingPoint(random) {
-  const distance = (random.between(...START_DISTANCE_KLY) * 1000) / LY_PER_PC;
+  const distance = OVERSHOOT_LY / LY_PER_PC;
   const latitude = random.between(...START_LATITUDE) * DEGREES * (random.next() < 0.5 ? -1 : 1);
   const azimuth = random.between(0, 2 * Math.PI);
-  return [distance * Math.cos(latitude) * Math.sin(azimuth), distance * Math.cos(latitude) * Math.cos(azimuth), distance * Math.sin(latitude)];
+  const away = [Math.cos(latitude) * Math.sin(azimuth), Math.cos(latitude) * Math.cos(azimuth), Math.sin(latitude)];
+  return add(SUN_POSITION, scale(away, distance));
 }
 
 function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice') {
@@ -174,7 +173,7 @@ function startCutscene(now) {
     home: intro.home,
     alphaCentauri,
     odometer: formatLightYears(Math.round(distance / 1000) * 1000),
-    energy: formatLightYears(game.energy),
+    warpLeft: formatWarpTime(game.energy),
   });
   intro.cutscene = cutscene;
   intro.startedAt = now;
@@ -282,6 +281,11 @@ function formatLightYears(lightYears) {
   return `${(lightYears * AU_PER_LY).toFixed(0)} AU`;
 }
 
+function formatWarpTime(lightYears) {
+  const seconds = Math.max(0, Math.round(lightYears / SHIP.warpLightYearsPerSecond));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 const count = (amount, noun) => `${amount} ${noun}${amount === 1 ? '' : 's'}`;
 
 const formatSpeed = (lightYearsPerSecond) => `${formatLightYears(lightYearsPerSecond)}/s`;
@@ -324,7 +328,7 @@ function jump() {
   const lightYears = Number(jumpInput.value);
   if (!(lightYears > 0)) return;
   if (!game.practice && lightYears > game.energy) {
-    showStatus(`Not enough energy: ${formatLightYears(game.energy)} of jumping left.`);
+    showStatus(`Not enough warp: ${formatWarpTime(game.energy)} left, enough for ${formatLightYears(game.energy)}.`);
     return;
   }
   jumping = true;
@@ -338,7 +342,7 @@ function land(lightYears) {
   game.camera = add(add(game.camera, scale(game.ship.forward, lightYears / LY_PER_PC)), scatter);
   if (!game.practice && !game.over) {
     game.energy -= lightYears;
-    game.clock += SHIP.jumpClockSeconds;
+    game.clock += lightYears / SHIP.warpLightYearsPerSecond;
   }
   game.jumps += 1;
   eyeStars = null;
@@ -437,7 +441,7 @@ function frame(now) {
   if (labelsShown()) refreshGuides();
   $('[data-clock]').textContent = game.practice ? '' : formatClock(game.clock);
   $('[data-speed]').textContent = formatSpeed(game.speed);
-  $('[data-energy]').textContent = game.practice ? 'unlimited' : formatLightYears(Math.max(0, game.energy));
+  $('[data-energy]').textContent = game.practice ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
   requestAnimationFrame(frame);
 }
 

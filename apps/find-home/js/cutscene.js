@@ -32,7 +32,7 @@ const ease = (x) => {
   return t * t * (3 - 2 * t);
 };
 
-export function createCutscene({ home, alphaCentauri, odometer, energy }) {
+export function createCutscene({ home, alphaCentauri, odometer, warpLeft }) {
   const toStar = normalize(subtract(alphaCentauri, SUN_POSITION));
   const side = normalize(cross(toStar, [0, 0, 1]));
   const tilted = (angle) => add(scale(toStar, Math.cos(angle)), scale(side, Math.sin(angle)));
@@ -81,17 +81,17 @@ export function createCutscene({ home, alphaCentauri, odometer, energy }) {
   }
 
   const captions = [
-    { at: 0.5, text: "2150. Humanity's first crewed warp ship leaves Earth for Alpha Centauri, 4.4 light-years away." },
+    { at: 0.5, text: "2150. Humanity's first crewed warp ship leaves Earth for Alpha Centauri: 4.4 light-years in a three-minute burn." },
     { at: departAt, text: 'The drive engages.' },
-    { at: passAt - 2.5, text: 'Alpha Centauri. The ship should be slowing down.' },
-    { at: passAt + 0.5, text: 'It is not.' },
+    { at: passAt - 2.5, text: 'Alpha Centauri, already. Far too soon.' },
+    { at: passAt + 0.5, text: 'The burn has three minutes left.' },
     { at: blackAt, text: '', black: true },
-    { at: blackAt + 1, text: 'A bug in the navigation software never sent the stop command.', black: true },
-    { at: blackAt + 5.5, text: 'The drive ran until its safety cut-out tripped.', black: true },
+    { at: blackAt + 1, text: 'The navigation software set the speed in light-years instead of astronomical units.', black: true },
+    { at: blackAt + 5.5, text: 'The burn ends on schedule, 63,000 times too far out.', black: true },
     { at: blackAt + 9.5, text: 'You wake to alarms.', black: true },
     { at: wakeAt, text: `The odometer reads ${odometer}. The navigation computer is dead.` },
     { at: wakeAt + WAKE_HOLD + 5, text: 'That is the Milky Way, seen from outside. Home is somewhere in it.' },
-    { at: wakeAt + 11.5, text: `${energy} of warp energy left. Enough to get home, if you know the way.` },
+    { at: wakeAt + 11.5, text: `${warpLeft} of warp left: fuel for the trip home at the same broken speed. Enough, if you know the way.` },
   ];
 
   const captionAt = (time) => captions.findLast((caption) => caption.at <= time) ?? { text: '' };
