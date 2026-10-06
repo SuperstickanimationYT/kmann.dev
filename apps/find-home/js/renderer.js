@@ -116,6 +116,20 @@ function viewUniforms({ camera, basis, tanHalf, pixelAngle }) {
   };
 }
 
+const NO_PLANET = { uPlanet: [0, 0, 1, 0] };
+
+function planetUniforms(planet, camera) {
+  if (!planet) return NO_PLANET;
+  const offset = planet.centre.map((value, axis) => value - camera[axis]);
+  const distance = Math.hypot(...offset);
+  return {
+    uPlanet: [...offset.map((value) => value / distance), Math.asin(Math.min(1, planet.radius / distance))],
+    uPlanetSun: planet.sunward,
+    uPlanetNorth: planet.north,
+    uPlanetSpin: planet.spin,
+  };
+}
+
 export function createRenderer(canvas, armMap, galaxies) {
   const gl = createContext(canvas);
   if (!gl) return null;
@@ -248,7 +262,8 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet }) {
+    const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution) {
       shownSky = skyTargetFor(skyResolution);
@@ -265,10 +280,12 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform1i(eyeProgram.uniforms.uSky, 0);
     setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed } });
     setCockpit(eyeProgram, cockpit);
+    setUniforms(gl, eyeProgram, planetValues);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
+    setUniforms(gl, eyeStarProgram, planetValues);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
   }
 

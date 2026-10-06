@@ -78,12 +78,13 @@
   justify-content: center;
   padding: 24px 16px 84px;
   background: #000;
-  transition: background-color 2.5s ease;
+  transition: background-color 0.8s ease;
 }
 
 .fh-intro.fh-revealed {
   justify-content: flex-end;
   background: rgba(0, 0, 0, 0);
+  transition-duration: 2.5s;
 }
 
 .fh-intro p {

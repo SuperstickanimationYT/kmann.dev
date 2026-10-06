@@ -1,5 +1,6 @@
 import { drawAtlas } from './atlas.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
+import { createCutscene } from './cutscene.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { NEBULAE } from './nebulae.js';
@@ -8,6 +9,7 @@ import { createRandom, randomSeed } from './random.js';
 import { createRenderer } from './renderer.js';
 import { cockpitUniforms, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
+import { add, dot, normalize, orthonormal, rotateAbout, scale, subtract } from './vectors.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
 const MAX_PIXEL_RATIO = 1.25;
@@ -66,25 +68,6 @@ try {
 const nebulae = placeNebulae(NEBULAE);
 let nearby = [];
 
-const add = (a, b) => a.map((value, i) => value + b[i]);
-const subtract = (a, b) => a.map((value, i) => value - b[i]);
-const scale = (a, factor) => a.map((value) => value * factor);
-const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const normalize = (a) => scale(a, 1 / Math.hypot(...a));
-
-function rotateAbout(vector, axis, angle) {
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return add(add(scale(vector, cos), scale(cross(axis, vector), sin)), scale(axis, dot(axis, vector) * (1 - cos)));
-}
-
-function orthonormal(forward, upHint) {
-  const f = normalize(forward);
-  const right = normalize(cross(f, upHint));
-  return { forward: f, right, up: cross(right, f) };
-}
-
 function turn(basis, axisName, angle) {
   const axis = basis[axisName];
   const next = { ...basis };
@@ -109,6 +92,7 @@ function startingPoint(random) {
 }
 
 function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice') {
+  endIntro();
   const random = createRandom(seed);
   let camera = startingPoint(random);
   while (galaxies.some((galaxy) => Math.hypot(...subtract(galaxy.centre, camera)) < START_CLEARANCE)) camera = startingPoint(random);
@@ -133,56 +117,65 @@ function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice'
   };
   eyeStars = null;
   closePhoto();
-  endIntro();
   skyStale = true;
   ending.hidden = true;
   setMode(practice);
   if (!practice) playIntro();
 }
 
-function introBeats() {
-  const distance = Math.hypot(...subtract(SUN_POSITION, game.camera)) * LY_PER_PC;
-  const odometer = formatLightYears(Math.round(distance / 1000) * 1000);
-  return [
-    { text: '2150.', seconds: 2.5 },
-    { text: "Humanity's first crewed warp ship leaves orbit for Alpha Centauri, 4.4 light-years away.", seconds: 5 },
-    { text: 'A bug in the navigation software never sends the stop command.', seconds: 4.5 },
-    { text: 'The drive runs until its safety cut-out trips.', seconds: 4 },
-    { text: 'You wake to alarms.', seconds: 3 },
-    { text: `The odometer reads ${odometer}. The navigation computer is dead.`, seconds: 6, reveal: true },
-    { text: 'That is the Milky Way, seen from outside. Home is somewhere in it.', seconds: 5.5, reveal: true },
-    { text: `${formatLightYears(game.energy)} of warp energy left. Enough to get home, if you know the way.`, seconds: 6.5, reveal: true },
-  ];
-}
-
 let intro = null;
 
 function playIntro() {
-  const beats = introBeats();
-  intro = { timer: 0 };
+  intro = { home: { camera: game.camera, ship: game.ship }, cutscene: null, startedAt: 0, caption: null, planet: null };
   introFrame.classList.remove('fh-revealed');
+  introText.textContent = '';
   introFrame.hidden = false;
-  let index = 0;
-  const next = () => {
-    if (index >= beats.length) {
-      endIntro();
-      return;
-    }
-    const beat = beats[index++];
-    introFrame.classList.toggle('fh-revealed', Boolean(beat.reveal));
-    introText.textContent = beat.text;
-    introText.classList.remove('fh-fade');
-    void introText.offsetWidth;
-    introText.classList.add('fh-fade');
-    intro.timer = setTimeout(next, beat.seconds * 1000);
-  };
-  next();
+}
+
+function startCutscene(now) {
+  const alphaCentauri = nearby.find((star) => star.name === 'Alpha Centauri').position;
+  const distance = Math.hypot(...subtract(SUN_POSITION, intro.home.camera)) * LY_PER_PC;
+  intro.cutscene = createCutscene({
+    home: intro.home,
+    alphaCentauri,
+    odometer: formatLightYears(Math.round(distance / 1000) * 1000),
+    energy: formatLightYears(game.energy),
+  });
+  intro.startedAt = now;
+}
+
+function advanceIntro(now) {
+  if (!nearby.length) return;
+  if (!intro.cutscene) startCutscene(now);
+  const elapsed = (now - intro.startedAt) / 1000;
+  if (elapsed >= intro.cutscene.duration) {
+    endIntro();
+    return;
+  }
+  const { camera, ship, head, planet } = intro.cutscene.at(elapsed);
+  game.camera = camera;
+  game.ship = ship;
+  game.head = head;
+  intro.planet = planet;
+  aimView();
+  const caption = intro.cutscene.captionAt(elapsed);
+  if (caption === intro.caption) return;
+  intro.caption = caption;
+  introFrame.classList.toggle('fh-revealed', !caption.black);
+  introText.textContent = caption.text;
+  introText.classList.remove('fh-fade');
+  void introText.offsetWidth;
+  introText.classList.add('fh-fade');
 }
 
 function endIntro() {
   if (!intro) return;
-  clearTimeout(intro.timer);
+  game.camera = intro.home.camera;
+  game.ship = intro.home.ship;
+  game.head = { yaw: 0, pitch: 0 };
   intro = null;
+  eyeStars = null;
+  aimView();
   introFrame.hidden = true;
   view.focus();
 }
@@ -376,6 +369,7 @@ function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
   if (!intro && !game.over && !game.practice && !photo?.running && !jumping && document.visibilityState === 'visible') game.clock += seconds;
+  if (intro) advanceIntro(now);
   flightStep(seconds);
   refreshEyeStars(now);
   if (eyeStars) {
@@ -388,6 +382,7 @@ function frame(now) {
       seed: frameSeed,
       skyResolution: nextSkyResolution(),
       cockpit: { ...cockpitUniforms(game.ship), enabled: true },
+      planet: intro?.planet ?? null,
     });
     eyeStarsChanged = false;
   }
@@ -658,6 +653,7 @@ exposeButton.addEventListener('click', toggleExposure);
 stretchInput.addEventListener('input', () => photo && developPhoto());
 giveUpButton.addEventListener('click', () => {
   if (game.over) return;
+  endIntro();
   if (!game.practice) {
     finish(false);
     return;

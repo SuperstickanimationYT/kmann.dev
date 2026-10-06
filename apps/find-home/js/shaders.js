@@ -375,11 +375,84 @@ float grain() {
   return float(h) / 4294967295.0 - 0.5;
 }
 
+float latticeValue(vec3 corner) {
+  uvec3 q = uvec3(ivec3(corner) + 4096);
+  return float(hashUint(q.x * 73856093u ^ q.y * 19349663u ^ q.z * 83492791u)) / 4294967295.0;
+}
+
+float smoothNoise(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(latticeValue(i), latticeValue(i + vec3(1, 0, 0)), f.x), mix(latticeValue(i + vec3(0, 1, 0)), latticeValue(i + vec3(1, 1, 0)), f.x), f.y),
+    mix(mix(latticeValue(i + vec3(0, 0, 1)), latticeValue(i + vec3(1, 0, 1)), f.x), mix(latticeValue(i + vec3(0, 1, 1)), latticeValue(i + vec3(1, 1, 1)), f.x), f.y),
+    f.z);
+}
+
+float terrain(vec3 p) {
+  float total = 0.0;
+  float amplitude = 0.5;
+  for (int i = 0; i < 6; i++) {
+    total += amplitude * smoothNoise(p);
+    p = p * 2.03 + vec3(7.1, 2.9, 5.3);
+    amplitude *= 0.5;
+  }
+  return total / 0.984;
+}
+
+uniform vec4 uPlanet;
+uniform vec3 uPlanetSun;
+uniform vec3 uPlanetNorth;
+uniform float uPlanetSpin;
+
+vec3 planetSurface(vec3 normal) {
+  float c = cos(uPlanetSpin);
+  float s = sin(uPlanetSpin);
+  vec3 body = normal * c + cross(uPlanetNorth, normal) * s + uPlanetNorth * dot(uPlanetNorth, normal) * (1.0 - c);
+  float land = terrain(body * 1.7);
+  vec3 ocean = mix(vec3(0.01, 0.04, 0.13), vec3(0.03, 0.1, 0.26), smoothstep(0.3, 0.52, land));
+  vec3 ground = mix(vec3(0.13, 0.22, 0.08), vec3(0.42, 0.34, 0.22), smoothstep(0.58, 0.72, land));
+  vec3 surface = land > 0.53 ? ground : ocean;
+  float latitude = abs(dot(normal, uPlanetNorth));
+  surface = mix(surface, vec3(0.85), smoothstep(0.86, 0.9, latitude + 0.05 * land));
+  float cloud = smoothstep(0.5, 0.68, terrain(body * 3.4 + vec3(4.1, 1.7, 8.3)));
+  return mix(surface, vec3(0.9), 0.85 * cloud);
+}
+
+vec4 planetColour(vec3 direction) {
+  if (uPlanet.w <= 0.0) return vec4(0.0);
+  float radius = sin(uPlanet.w);
+  float along = dot(direction, uPlanet.xyz);
+  vec3 fromCentre = direction * along - uPlanet.xyz;
+  float miss = length(fromCentre);
+  float haloEdge = radius * 1.035;
+  if (along <= 0.0 || miss > haloEdge) return vec4(0.0);
+  vec3 edgeNormal = fromCentre / max(miss, 1e-12);
+  float edgeLit = smoothstep(-0.25, 0.35, dot(edgeNormal, uPlanetSun));
+  float haze = 1.0 - smoothstep(radius, haloEdge, miss);
+  vec3 halo = vec3(0.25, 0.5, 1.0) * haze * haze * edgeLit * 0.7;
+  float cover = clamp((radius - miss) / max(fwidth(miss), 1e-9) + 0.5, 0.0, 1.0);
+  if (cover <= 0.0) return vec4(halo, 0.0);
+  float inside = min(miss, radius * 0.9999);
+  float hit = along - sqrt(radius * radius - inside * inside);
+  vec3 normal = normalize(direction * hit - uPlanet.xyz);
+  float sunlit = max(dot(normal, uPlanetSun), 0.0);
+  float limb = pow(1.0 - max(dot(normal, -direction), 0.0), 3.0);
+  vec3 lit = planetSurface(normal) * sunlit + vec3(0.2, 0.4, 0.9) * limb * smoothstep(-0.15, 0.4, dot(normal, uPlanetSun));
+  return vec4(mix(halo, lit, cover), cover);
+}
+
 void main() {
   vec2 ndc = vUv * 2.0 - 1.0;
   vec3 direction = normalize(uForward + uRight * ndc.x * uTanHalf.x + uUp * ndc.y * uTanHalf.y);
   if (!seenThroughCockpit(direction)) {
     outColour = vec4(cabinColour(direction), 1.0);
+    return;
+  }
+  vec4 planet = planetColour(direction);
+  if (planet.a >= 1.0) {
+    outColour = vec4(planet.rgb, 1.0);
     return;
   }
   vec3 sky = max(texture(uSky, vUv).rgb, vec3(0.0));
@@ -395,7 +468,7 @@ void main() {
   vec3 tint = sky / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), max(tint.b, 1e-9));
   vec3 colour = mix(vec3(0.86, 0.9, 1.0), tint, colourShare);
-  outColour = vec4(colour * max(lightness, 0.0), 1.0);
+  outColour = vec4(mix(colour * max(lightness, 0.0) + planet.rgb, planet.rgb, planet.a), 1.0);
 }`;
 
 export const EYE_STAR_VERTEX = `#version 300 es
@@ -404,10 +477,12 @@ layout(location = 0) in vec3 aOffset;
 layout(location = 1) in vec3 aLook;
 uniform vec3 uAnchorShift;
 uniform vec3 uWhiteBalance;
+uniform vec4 uPlanet;
 ${COCKPIT}
 out vec3 vColour;
 out float vSpread;
 out float vSize;
+out float vGlare;
 
 vec3 bandFluxes(float colour) {
   float redIndex = min(1.4, 0.62 * colour + 0.04);
@@ -418,7 +493,9 @@ void main() {
   vec3 offset = aOffset - uAnchorShift;
   float distance = length(offset);
   vec3 local = vec3(dot(offset, uRight), dot(offset, uUp), dot(offset, uForward));
-  if (local.z <= 0.0 || !seenThroughCockpit(offset / distance)) {
+  vGlare = 0.0;
+  bool behindPlanet = uPlanet.w > 0.0 && dot(offset / distance, uPlanet.xyz) > cos(uPlanet.w);
+  if (local.z <= 0.0 || behindPlanet || !seenThroughCockpit(offset / distance)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     gl_PointSize = 0.0;
     return;
@@ -434,7 +511,8 @@ void main() {
   tint /= max(max(tint.r, tint.g), tint.b);
   vColour = mix(vec3(0.9, 0.93, 1.0), tint, colourShare) * brightness;
   vSpread = 1.0 + max(0.0, 4.0 - seenMagnitude) * 0.5;
-  vSize = seenMagnitude < 6.8 ? min(48.0, ceil(vSpread * 4.0)) : 0.0;
+  vGlare = clamp(-1.0 - seenMagnitude, 0.0, 10.0);
+  vSize = seenMagnitude < 6.8 ? min(128.0, ceil(vSpread * 4.0 + vGlare * 10.0)) : 0.0;
   gl_PointSize = vSize;
   gl_Position = vec4(ndc, 0.0, 1.0);
 }`;
@@ -444,13 +522,16 @@ precision highp float;
 in vec3 vColour;
 in float vSpread;
 in float vSize;
+in float vGlare;
 out vec4 outColour;
 void main() {
   vec2 offset = (gl_PointCoord - 0.5) * vSize;
   float r2 = dot(offset, offset);
+  float r = sqrt(r2);
   float core = exp(-r2 / (2.0 * 0.6 * 0.6 * vSpread * vSpread / 1.21));
-  float halo = 0.05 * exp(-sqrt(r2) / (0.9 * vSpread));
-  outColour = vec4(vColour * (core + halo), 1.0);
+  float halo = (0.05 + 0.06 * vGlare) * exp(-r / (0.9 * vSpread + 1.5 * vGlare));
+  float edge = 1.0 - smoothstep(0.3 * vSize, 0.5 * vSize, r);
+  outColour = vec4(vColour * (core + halo * edge), 1.0);
 }`;
 
 export const CAMERA_STAR_VERTEX = `#version 300 es
