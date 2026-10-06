@@ -27,6 +27,7 @@
 
 .fh-hud {
   position: absolute;
+  z-index: 2;
   top: 12px;
   left: 16px;
   display: flex;
@@ -40,15 +41,6 @@
 
 .fh-hud strong {
   color: var(--text-strong);
-}
-
-.fh-reticle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border: 1px solid rgba(95, 227, 255, 0.35);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
 }
 
 .fh-status {
@@ -92,7 +84,35 @@
   }
 }
 
-.fh-scope,
+.fh-photo {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  background: #000;
+}
+
+.fh-photo canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  cursor: crosshair;
+}
+
+.fh-photo figcaption {
+  position: absolute;
+  inset: auto 16px 48px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-strong);
+  text-shadow: 0 1px 4px #000;
+  pointer-events: none;
+}
+
+.fh-photo .fh-close {
+  top: 40px;
+  right: 16px;
+}
+
 .fh-atlas {
   position: absolute;
   inset: 44px 16px 16px;
@@ -104,7 +124,6 @@
   background: rgba(3, 8, 15, 0.82);
 }
 
-.fh-scope canvas,
 .fh-atlas canvas {
   position: static;
   width: 100%;
@@ -118,7 +137,6 @@
   cursor: default;
 }
 
-.fh-scope figcaption,
 .fh-atlas figcaption {
   max-width: 60ch;
   font-size: 13px;

@@ -1,9 +1,9 @@
 import { drawAtlas } from './atlas.js';
+import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { NEBULAE } from './nebulae.js';
 import { describeStar, drawGuides } from './practice.js';
-import { WHITE_BALANCE } from './population.js';
 import { createRandom, randomSeed } from './random.js';
 import { createRenderer } from './renderer.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
@@ -23,32 +23,25 @@ const START_DISTANCE_KLY = [130, 220];
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
 
-const SENSOR = { width: 1024, height: 768, electronsPerNanomaggy: 3.9, readNoise: 4, dark: 0.002, fullWell: 90000, psfArcsec: 0.058 };
-const SCOPE_BUDGET = (SENSOR.width * SENSOR.height) / 40;
-const SCOPE_DEPTH_SECONDS = 600;
-const SATURATED_BLACK_SHARE = 0.5;
-const SIGNAL_REFERENCE_PIXEL_ARCSEC = 3.5;
-const ELECTRONS_PER_UNIT_AT_REFERENCE = 1000;
 const WRONG_CLAIM_SECONDS = 3600;
 const PICK_RADIUS_PX = 10;
 const TAP_DISTANCE = 6;
 const AU_PER_LY = 63241;
-const SCOPE_GUIDE_FONT = 22;
+const ARCSEC_PER_RADIAN = 206264.8;
+const GUIDE_FONT = 13;
 
 const $ = (selector) => document.querySelector(selector);
 const view = $('[data-view]');
 const stage = $('[data-stage]');
-const scopeFrame = $('[data-scope-frame]');
-const scopeCanvas = $('[data-scope]');
-const scopeCaption = $('[data-scope-caption]');
+const photoFrame = $('[data-photo-frame]');
+const photoCanvas = $('[data-photo]');
+const photoCaption = $('[data-photo-caption]');
 const atlasFrame = $('[data-atlas-frame]');
-const reticle = $('[data-reticle]');
 const status = $('[data-status]');
 const ending = $('[data-ending]');
-const fieldSelect = $('[data-field]');
 const exposureSelect = $('[data-exposure]');
 const stretchInput = $('[data-stretch]');
-const stackButton = $('[data-stack]');
+const exposeButton = $('[data-expose]');
 const guides = $('[data-guides]');
 const modeSelect = $('[data-mode]');
 const clockLabel = $('[data-clock-label]');
@@ -99,7 +92,7 @@ let eyeStars = null;
 let eyeAnchor = null;
 let eyeGatheredAt = 0;
 let eyeStarsChanged = false;
-let scope = null;
+let photo = null;
 let statusTimer = 0;
 let frameSeed = 1;
 
@@ -127,11 +120,9 @@ function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice'
     practiceUsed: false,
   };
   eyeStars = null;
-  scope = null;
+  closePhoto();
   skyStale = true;
-  scopeFrame.hidden = true;
   ending.hidden = true;
-  stackButton.disabled = true;
   setMode(practice);
   if (!practice) showStatus('Somewhere out there is home.');
 }
@@ -154,14 +145,14 @@ function setMode(practice) {
   else url.searchParams.delete('mode');
   window.history.replaceState(null, '', url);
   clearGuides();
-  if (scope) develop();
+  if (photo) developPhoto();
   if (practice) showStatus(labelsShown() ? 'Practice: labels on. Click any star to identify it.' : 'Practice: labels hidden. Click a star to check whether it is the Sun.', 6);
 }
 
 function setLabels(shown) {
   labelsToggle.checked = shown;
   clearGuides();
-  if (scope) develop();
+  if (photo) developPhoto();
 }
 
 function hideStatus() {
@@ -198,7 +189,6 @@ function resize() {
   view.width = Math.max(1, Math.round(stage.clientWidth * ratio));
   view.height = Math.max(1, Math.round(stage.clientHeight * ratio));
   skyStale = true;
-  placeReticle();
 }
 
 function eyeTanHalf() {
@@ -206,19 +196,10 @@ function eyeTanHalf() {
   return [tanY * (view.width / view.height), tanY];
 }
 
-function placeReticle() {
-  const fieldArcsec = Number(fieldSelect.value);
-  const tanX = Math.tan((fieldArcsec / 3600) * DEGREES * 0.5);
-  const [eyeX] = eyeTanHalf();
-  const width = Math.max(6, (tanX / eyeX) * stage.clientWidth);
-  reticle.style.width = `${width}px`;
-  reticle.style.height = `${width * (SENSOR.height / SENSOR.width)}px`;
-  reticle.hidden = false;
-}
-
 const held = new Set();
 
 function flightStep(seconds) {
+  if (photo?.running) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
@@ -245,7 +226,7 @@ let skySharp = false;
 function viewChanged() {
   skyStale = true;
   skySharp = false;
-  markScopeStale();
+  if (photo && !photo.running) closePhoto();
 }
 
 function nextSkyResolution() {
@@ -258,13 +239,6 @@ function nextSkyResolution() {
     return SKY_RESOLUTION_STILL;
   }
   return 0;
-}
-
-function markScopeStale() {
-  if (scope && !scope.stale) {
-    scope.stale = true;
-    stackButton.disabled = true;
-  }
 }
 
 function refreshEyeStars(now) {
@@ -291,7 +265,7 @@ let lastFrame = performance.now();
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
-  if (!game.over && !game.practice && document.visibilityState === 'visible') game.clock += seconds;
+  if (!game.over && !game.practice && !photo?.running && document.visibilityState === 'visible') game.clock += seconds;
   flightStep(seconds);
   refreshEyeStars(now);
   if (eyeStars) {
@@ -327,134 +301,99 @@ function refreshGuides() {
   const context = guides.getContext('2d');
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
-  if (!scopeFrame.hidden || !atlasFrame.hidden) return;
+  if (photo || !atlasFrame.hidden) return;
   drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
 }
 
-function percentile(sorted, share) {
-  return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))];
+function photoSize() {
+  const width = Math.min(view.width, CAMERA.maxWidth);
+  return { width, height: Math.round((width * view.height) / view.width) };
 }
 
-function measureSignal(bands) {
-  return bands.map((values) => {
-    values.sort();
-    return { median: percentile(values, 0.5), bright: percentile(values, 0.9995) };
-  });
-}
-
-const DETECTION_ELECTRONS = 25;
-const detectionLimit = (seconds) => 22.5 + 2.5 * Math.log10((SENSOR.electronsPerNanomaggy * seconds) / DETECTION_ELECTRONS);
-
-function projectScopeStars(stars, basis, tanHalf) {
-  const positions = new Float32Array(stars.count * 2);
-  for (let i = 0; i < stars.count; i++) {
-    const offset = stars.precise.slice(i * 6, i * 6 + 3);
-    const depth = dot(offset, basis.forward);
-    const x = dot(offset, basis.right) / depth / tanHalf[0];
-    const y = dot(offset, basis.up) / depth / tanHalf[1];
-    positions[i * 2] = (x * 0.5 + 0.5) * SENSOR.width;
-    positions[i * 2 + 1] = (0.5 - y * 0.5) * SENSOR.height;
+function toggleExposure() {
+  if (photo?.running) {
+    stopExposure();
+    return;
   }
-  return positions;
-}
-
-function expose() {
-  if (game.over || !nearby.length) return;
-  showStatus('Exposing…');
-  setTimeout(exposeNow, 30);
-}
-
-function exposeNow() {
-  const fieldArcsec = Number(fieldSelect.value);
-  const seconds = Number(exposureSelect.value);
-  const tanX = Math.tan((fieldArcsec / 3600) * DEGREES * 0.5);
-  const tanHalf = [tanX, tanX * (SENSOR.height / SENSOR.width)];
-  const pixelArcsec = fieldArcsec / SENSOR.width;
-  const electronsPerUnit = ELECTRONS_PER_UNIT_AT_REFERENCE * (pixelArcsec / SIGNAL_REFERENCE_PIXEL_ARCSEC) ** 2;
-  const limit = detectionLimit(Math.max(seconds * 4, SCOPE_DEPTH_SECONDS));
-  const basis = { ...game.basis };
-  const camera = [...game.camera];
-  const pointing = { camera, basis, tanHalf };
-  const stars = gatherStars({ camera, axis: basis.forward, tanHalf: Math.hypot(...tanHalf), limit, budget: SCOPE_BUDGET, armMap, nebulae, nearby });
-  const samples = renderer.exposeScope({
-    view: { camera, basis, tanHalf, pixelAngle: (pixelArcsec / 206264.8) },
+  if ((game.over && !game.practice) || !eyeStars) return;
+  const { width, height } = photoSize();
+  const pixelAngle = EYE_FIELD_HEIGHT / height;
+  const electronsPerUnit = CAMERA.electronsPerNanomaggy * (pixelAngle * ARCSEC_PER_RADIAN) ** 2;
+  const pointing = { camera: [...game.camera], basis: { ...game.basis }, tanHalf: eyeTanHalf() };
+  const samples = renderer.exposeCamera({
+    view: { ...pointing, pixelAngle, anchorShift: subtract(pointing.camera, eyeAnchor) },
     nebulae,
-    stars,
-    width: SENSOR.width,
-    height: SENSOR.height,
-    electronsPerNanomaggy: SENSOR.electronsPerNanomaggy,
+    stars: eyeStars,
+    width,
+    height,
+    electronsPerNanomaggy: CAMERA.electronsPerNanomaggy,
     electronsPerUnit,
-    psfPixels: Math.max(0.55, SENSOR.psfArcsec / pixelArcsec),
+    psfPixels: CAMERA.psfPixels,
   });
-  scope = {
-    stars,
-    positions: projectScopeStars(stars, basis, tanHalf),
-    psfPixels: Math.max(0.55, SENSOR.psfArcsec / pixelArcsec),
-    signal: measureSignal(samples),
+  photo = {
     pointing,
+    width,
+    height,
+    signal: measureSignal(samples),
     electronsPerUnit,
-    seconds: 0,
     frames: 0,
-    exposure: seconds,
-    fieldArcsec,
-    stale: false,
+    target: Number(exposureSelect.value) / CAMERA.frameSeconds,
+    running: true,
+    timer: setInterval(exposeFrame, CAMERA.realSecondsPerFrame * 1000),
   };
-  stack();
-}
-
-function stack() {
-  if (!scope || scope.stale || game.over) return;
-  scope.seconds += scope.exposure;
-  scope.frames += 1;
-  game.clock += scope.exposure;
   game.exposures += 1;
-  develop();
-  scopeFrame.hidden = false;
+  exposeButton.textContent = 'Stop exposure';
   atlasFrame.hidden = true;
-  stackButton.disabled = false;
-  const skyPerFrame = scope.signal[1].median * scope.electronsPerUnit * scope.exposure;
-  if (skyPerFrame > SATURATED_BLACK_SHARE * SENSOR.fullWell) showStatus('The sky alone filled the pixels. Take shorter exposures and stack them.', 6);
-  else hideStatus();
+  clearGuides();
+  exposeFrame();
+  if (skyFillsPixels(photo)) showStatus('Even a 10 s frame fills the pixels here. The bright parts will show as white.', 6);
 }
 
-function develop() {
-  const { seconds, frames, signal, electronsPerUnit } = scope;
-  const noiseOf = (electrons) => Math.sqrt(electrons + SENSOR.dark * seconds + frames * SENSOR.readNoise ** 2);
-  const visual = signal[1];
-  const skyV = visual.median * electronsPerUnit * seconds;
-  const span = Math.max(200 * noiseOf(skyV), (visual.bright - visual.median) * electronsPerUnit * seconds);
-  const saturation = SENSOR.fullWell * frames;
-  const black = signal.map(({ median }) => {
-    const sky = median * electronsPerUnit * seconds;
-    return Math.min(sky - 1.5 * noiseOf(sky), SATURATED_BLACK_SHARE * saturation);
-  });
-  const white = black.map((low, band) => Math.min(low + span * (WHITE_BALANCE[band] / WHITE_BALANCE[1]), saturation));
-  const pixels = renderer.developScope({
+function exposeFrame() {
+  photo.frames += 1;
+  if (!game.practice && !game.over) game.clock += CAMERA.frameSeconds;
+  developPhoto();
+  photoFrame.hidden = false;
+  if (photo.frames >= photo.target) stopExposure();
+}
+
+function stopExposure() {
+  clearInterval(photo.timer);
+  photo.running = false;
+  exposeButton.textContent = 'Start exposure';
+  developPhoto();
+}
+
+function closePhoto() {
+  if (photo) clearInterval(photo.timer);
+  photo = null;
+  photoFrame.hidden = true;
+  exposeButton.textContent = 'Start exposure';
+}
+
+function developPhoto() {
+  const { width, height, frames, signal, electronsPerUnit } = photo;
+  const seconds = frames * CAMERA.frameSeconds;
+  const pixels = renderer.developCamera({
     electronsPerUnit,
     seconds,
     frames,
-    seed: (game.seed * 7919 + scope.frames * 104729 + game.exposures) >>> 0,
-    black,
-    white,
+    seed: (game.seed * 7919 + frames * 104729 + game.exposures) >>> 0,
+    ...levelsFor({ signal, seconds, frames, electronsPerUnit }),
     stretch: Number(stretchInput.value),
-    readNoise: SENSOR.readNoise,
-    dark: SENSOR.dark,
-    fullWell: SENSOR.fullWell,
+    readNoise: CAMERA.readNoise,
+    dark: CAMERA.dark,
+    fullWell: CAMERA.fullWell,
   });
-  const image = new ImageData(SENSOR.width, SENSOR.height);
-  const rowBytes = SENSOR.width * 4;
-  for (let row = 0; row < SENSOR.height; row++) {
-    image.data.set(pixels.subarray((SENSOR.height - 1 - row) * rowBytes, (SENSOR.height - row) * rowBytes), row * rowBytes);
-  }
-  scopeCanvas.width = SENSOR.width;
-  scopeCanvas.height = SENSOR.height;
-  const scopeContext = scopeCanvas.getContext('2d');
-  scopeContext.putImageData(image, 0, 0);
+  photoCanvas.width = width;
+  photoCanvas.height = height;
+  const context = photoCanvas.getContext('2d');
+  context.putImageData(imageFromRows(pixels, width, height), 0, 0);
   if (labelsShown()) {
-    drawGuides(scopeContext, { ...scope.pointing, width: SENSOR.width, height: SENSOR.height, nebulae, galaxies, fontSize: SCOPE_GUIDE_FONT });
+    drawGuides(context, { ...photo.pointing, width, height, nebulae, galaxies, fontSize: (GUIDE_FONT * width) / stage.clientWidth });
   }
-  const field = scope.fieldArcsec >= 3600 ? `${scope.fieldArcsec / 3600}°` : `${scope.fieldArcsec / 60}′`;
-  scopeCaption.textContent = `${field} field, ${frames} × ${formatClock(scope.exposure)} = ${formatClock(seconds)} total. ${labelsShown() ? 'Click a star to identify it.' : game.practice ? 'Click a star to check whether it is the Sun.' : 'Click a star to claim it is the Sun.'}`;
+  const progress = `${count(frames, 'frame')} × ${CAMERA.frameSeconds} s = ${formatClock(seconds)}`;
+  photoCaption.textContent = photo.running ? `Exposing… ${progress}. Ship frozen until it ends.` : `${progress}. Move or look to return to your eyes.`;
   $('[data-stretch-value]').textContent = stretchInput.value;
 }
 
@@ -479,27 +418,6 @@ function claim(star) {
   game.wrongClaims += 1;
   game.clock += WRONG_CLAIM_SECONDS;
   showStatus('Not the Sun. One hour added to the clock.');
-}
-
-function claimInScope(event) {
-  if (!scope) return;
-  const box = scopeCanvas.getBoundingClientRect();
-  const shown = Math.min(box.width / SENSOR.width, box.height / SENSOR.height);
-  const x = (event.clientX - box.left - (box.width - SENSOR.width * shown) / 2) / shown;
-  const y = (event.clientY - box.top - (box.height - SENSOR.height * shown) / 2) / shown;
-  const radius = Math.max(4, 3 * scope.psfPixels, PICK_RADIUS_PX / shown);
-  const faintest = detectionLimit(scope.seconds);
-  let nearest = null;
-  for (let i = 0; i < scope.stars.count; i++) {
-    const dx = scope.positions[i * 2] - x;
-    const dy = scope.positions[i * 2 + 1] - y;
-    const offset2 = dx * dx + dy * dy;
-    if (offset2 > radius * radius || (nearest && offset2 >= nearest.offset2)) continue;
-    const values = scope.stars.precise;
-    if (values[i * 6 + 3] + 5 * Math.log10(values[i * 6 + 5] / 10) > faintest) continue;
-    nearest = { kind: scope.stars.kinds[i], name: scope.stars.names[i], absolute: values[i * 6 + 3], distance: values[i * 6 + 5], offset2 };
-  }
-  claim(nearest);
 }
 
 function claimInView(clientX, clientY) {
@@ -541,6 +459,7 @@ function finish(found) {
 
 let drag = null;
 view.addEventListener('pointerdown', (event) => {
+  if (photo?.running) return;
   view.focus();
   view.setPointerCapture(event.pointerId);
   drag = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY };
@@ -580,11 +499,11 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault();
   } else if (event.code === 'KeyZ') changeSpeed(0.5);
   else if (event.code === 'KeyX') changeSpeed(2);
-  else if (event.code === 'KeyT') expose();
+  else if (event.code === 'KeyT') toggleExposure();
   else if (event.code === 'KeyM') toggleAtlas();
   else if (event.code === 'KeyL' && game.practice) setLabels(!labelsToggle.checked);
   else if (event.code === 'Escape') {
-    scopeFrame.hidden = true;
+    closePhoto();
     atlasFrame.hidden = true;
   }
 });
@@ -612,17 +531,15 @@ function toggleAtlas() {
     atlasDrawn = true;
   }
   atlasFrame.hidden = !atlasFrame.hidden;
-  if (!atlasFrame.hidden) scopeFrame.hidden = true;
+  if (!atlasFrame.hidden && photo && !photo.running) closePhoto();
 }
 
-scopeCanvas.addEventListener('click', claimInScope);
-$('[data-scope-close]').addEventListener('click', () => (scopeFrame.hidden = true));
+photoCanvas.addEventListener('click', (event) => !photo?.running && claimInView(event.clientX, event.clientY));
+$('[data-photo-close]').addEventListener('click', closePhoto);
 $('[data-atlas-close]').addEventListener('click', () => (atlasFrame.hidden = true));
 $('[data-atlas-open]').addEventListener('click', toggleAtlas);
-$('[data-expose]').addEventListener('click', expose);
-stackButton.addEventListener('click', stack);
-stretchInput.addEventListener('input', () => scope && develop());
-fieldSelect.addEventListener('change', placeReticle);
+exposeButton.addEventListener('click', toggleExposure);
+stretchInput.addEventListener('input', () => photo && developPhoto());
 giveUpButton.addEventListener('click', () => {
   if (game.over) return;
   if (!game.practice) {

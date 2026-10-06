@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Find Home &mdash; kmann314</title>
-<meta name="description" content="Lost outside the Milky Way with only your eyes and a noisy telescope. Find the Sun.">
+<meta name="description" content="Lost outside the Milky Way with only your eyes and a wide-field camera. Find the Sun.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../assets/css/site.css">
 <link rel="stylesheet" href="../../assets/css/studio.css">
@@ -22,7 +22,6 @@
 <main class="studio-stage fh-stage" data-stage>
   <canvas class="fh-view" data-view tabindex="0" aria-label="Naked-eye view. Drag to look, WASD to fly."></canvas>
   <canvas class="fh-guides" data-guides aria-hidden="true"></canvas>
-  <div class="fh-reticle" data-reticle hidden></div>
   <div class="fh-hud" aria-live="polite">
     <span><span data-clock-label>Mission clock</span> <strong data-clock>0:00:00</strong></span>
     <span>Speed <strong data-speed></strong></span>
@@ -34,10 +33,10 @@
     <button type="button" data-speed-change="0.5" aria-label="Fly slower">&minus;</button>
     <button type="button" data-thrust="-1" aria-label="Fly backward">&#9660;</button>
   </div>
-  <figure class="fh-scope" data-scope-frame hidden>
-    <canvas data-scope aria-label="Telescope image. Click a star to claim it is the Sun."></canvas>
-    <figcaption data-scope-caption></figcaption>
-    <button type="button" class="fh-close" data-scope-close aria-label="Close telescope image">&times;</button>
+  <figure class="fh-photo" data-photo-frame hidden>
+    <canvas data-photo aria-label="Long exposure of your current view. Click a star to claim it."></canvas>
+    <figcaption data-photo-caption></figcaption>
+    <button type="button" class="fh-close" data-photo-close aria-label="Close the exposure">&times;</button>
   </figure>
   <figure class="fh-atlas" data-atlas-frame hidden>
     <canvas data-atlas aria-label="Atlas of the Milky Way seen from above"></canvas>
@@ -73,36 +72,27 @@
       </label>
 
       <fieldset>
-        <legend>Telescope</legend>
-        <label class="fh-field">
-          <span>Field of view</span>
-          <select data-field>
-            <option value="3600">1&deg;</option>
-            <option value="900" selected>15&prime;</option>
-            <option value="240">4&prime;</option>
-            <option value="60">1&prime;</option>
-          </select>
-        </label>
+        <legend>Camera</legend>
         <label class="fh-field">
           <span>Exposure</span>
           <select data-exposure>
-            <option value="1">1 s</option>
-            <option value="10">10 s</option>
-            <option value="60" selected>1 min</option>
-            <option value="300">5 min</option>
-            <option value="1200">20 min</option>
-            <option value="3600">1 h</option>
+            <option value="60">1 min (6 s real time)</option>
+            <option value="300" selected>5 min (30 s)</option>
+            <option value="1200">20 min (2 min)</option>
+            <option value="3600">1 h (6 min)</option>
           </select>
         </label>
         <div class="fh-actions">
-          <button type="button" class="fh-primary" data-expose>Expose here</button>
-          <button type="button" data-stack disabled>Stack another</button>
+          <button type="button" class="fh-primary" data-expose>Start exposure</button>
         </div>
         <label class="fh-field">
           <span>Stretch <output data-stretch-value></output></span>
           <input type="range" data-stretch min="1" max="100" step="1" value="5">
         </label>
-        <p class="fh-note">1 m aperture, 1024 &times; 768 colour sensor, 4 e&minus; read noise. Points where the view's centre points.</p>
+        <p class="fh-note">
+          Wide-field camera with a 36 mm lens, framed like your eyes. It stacks 10 s frames; each takes 1 s of
+          real time and adds 10 s to the clock. Your ship holds still until the exposure ends or you stop it.
+        </p>
       </fieldset>
 
       <fieldset>
@@ -111,7 +101,7 @@
           <li><kbd>Drag</kbd> or <kbd>&larr;&uarr;&rarr;&darr;</kbd> look</li>
           <li><kbd>W</kbd><kbd>S</kbd> forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
           <li><kbd>Q</kbd><kbd>E</kbd> roll &middot; <kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> speed</li>
-          <li><kbd>T</kbd> expose &middot; <kbd>M</kbd> atlas &middot; click a star to claim it</li>
+          <li><kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; click a star to claim it</li>
           <li>Touch: drag to look &middot; hold <kbd>&#9650;</kbd><kbd>&#9660;</kbd> to fly &middot; <kbd>+</kbd><kbd>&minus;</kbd> speed</li>
         </ul>
       </fieldset>
