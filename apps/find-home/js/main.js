@@ -51,6 +51,8 @@ const clockLabel = $('[data-clock-label]');
 const giveUpButton = $('[data-give-up]');
 const labelsToggle = $('[data-labels]');
 const labelsField = $('[data-labels-field]');
+const introFrame = $('[data-intro]');
+const introText = $('[data-intro-text]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -131,10 +133,58 @@ function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice'
   };
   eyeStars = null;
   closePhoto();
+  endIntro();
   skyStale = true;
   ending.hidden = true;
   setMode(practice);
-  if (!practice) showStatus('Somewhere out there is home.');
+  if (!practice) playIntro();
+}
+
+function introBeats() {
+  const distance = Math.hypot(...subtract(SUN_POSITION, game.camera)) * LY_PER_PC;
+  const odometer = formatLightYears(Math.round(distance / 1000) * 1000);
+  return [
+    { text: '2150.', seconds: 2.5 },
+    { text: "Humanity's first crewed warp ship leaves orbit for Alpha Centauri, 4.4 light-years away.", seconds: 5 },
+    { text: 'A bug in the navigation software never sends the stop command.', seconds: 4.5 },
+    { text: 'The drive runs until its safety cut-out trips.', seconds: 4 },
+    { text: 'You wake to alarms.', seconds: 3 },
+    { text: `The odometer reads ${odometer}. The navigation computer is dead.`, seconds: 6, reveal: true },
+    { text: 'That is the Milky Way, seen from outside. Home is somewhere in it.', seconds: 5.5, reveal: true },
+    { text: `${formatLightYears(game.energy)} of warp energy left. Enough to get home, if you know the way.`, seconds: 6.5, reveal: true },
+  ];
+}
+
+let intro = null;
+
+function playIntro() {
+  const beats = introBeats();
+  intro = { timer: 0 };
+  introFrame.classList.remove('fh-revealed');
+  introFrame.hidden = false;
+  let index = 0;
+  const next = () => {
+    if (index >= beats.length) {
+      endIntro();
+      return;
+    }
+    const beat = beats[index++];
+    introFrame.classList.toggle('fh-revealed', Boolean(beat.reveal));
+    introText.textContent = beat.text;
+    introText.classList.remove('fh-fade');
+    void introText.offsetWidth;
+    introText.classList.add('fh-fade');
+    intro.timer = setTimeout(next, beat.seconds * 1000);
+  };
+  next();
+}
+
+function endIntro() {
+  if (!intro) return;
+  clearTimeout(intro.timer);
+  intro = null;
+  introFrame.hidden = true;
+  view.focus();
 }
 
 const labelsShown = () => game.practice && labelsToggle.checked;
@@ -142,6 +192,7 @@ const labelsShown = () => game.practice && labelsToggle.checked;
 function setMode(practice) {
   game.practice = practice;
   if (practice) {
+    endIntro();
     game.practiceUsed = true;
     ending.hidden = true;
   }
@@ -228,7 +279,7 @@ function turnHead(yaw, pitch) {
 let jumping = false;
 
 function jump() {
-  if (photo?.running || jumping || (game.over && !game.practice)) return;
+  if (intro || photo?.running || jumping || (game.over && !game.practice)) return;
   const lightYears = Number(jumpInput.value);
   if (!(lightYears > 0)) return;
   if (!game.practice && lightYears > game.energy) {
@@ -257,7 +308,7 @@ function land(lightYears) {
 }
 
 function flightStep(seconds) {
-  if (photo?.running || jumping) return;
+  if (intro || photo?.running || jumping) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
@@ -324,7 +375,7 @@ let lastFrame = performance.now();
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
-  if (!game.over && !game.practice && !photo?.running && !jumping && document.visibilityState === 'visible') game.clock += seconds;
+  if (!intro && !game.over && !game.practice && !photo?.running && !jumping && document.visibilityState === 'visible') game.clock += seconds;
   flightStep(seconds);
   refreshEyeStars(now);
   if (eyeStars) {
@@ -376,7 +427,7 @@ function toggleExposure() {
     stopExposure();
     return;
   }
-  if ((game.over && !game.practice) || !eyeStars) return;
+  if (intro || (game.over && !game.practice) || !eyeStars) return;
   const { width, height } = photoSize();
   const pixelAngle = EYE_FIELD_HEIGHT / height;
   const electronsPerUnit = CAMERA.electronsPerNanomaggy * (pixelAngle * ARCSEC_PER_RADIAN) ** 2;
@@ -551,6 +602,11 @@ function changeSpeed(factor) {
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', (event) => {
   if (event.target.closest?.('select, input, textarea')) return;
+  if (intro) {
+    event.preventDefault();
+    endIntro();
+    return;
+  }
   if (FLIGHT_KEYS.has(event.code)) {
     held.add(event.code);
     event.preventDefault();
@@ -595,6 +651,7 @@ function toggleAtlas() {
 
 photoCanvas.addEventListener('click', (event) => !photo?.running && claimInView(event.clientX, event.clientY));
 $('[data-photo-close]').addEventListener('click', closePhoto);
+$('[data-intro-skip]').addEventListener('click', endIntro);
 $('[data-atlas-close]').addEventListener('click', () => (atlasFrame.hidden = true));
 $('[data-atlas-open]').addEventListener('click', toggleAtlas);
 exposeButton.addEventListener('click', toggleExposure);
