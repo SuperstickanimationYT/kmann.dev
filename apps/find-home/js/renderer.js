@@ -242,7 +242,13 @@ export function createRenderer(canvas, armMap, galaxies) {
     return target;
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution }) {
+  function setCockpit(program, cockpit) {
+    setUniforms(gl, program, { uShipRight: cockpit.uShipRight, uShipUp: cockpit.uShipUp, uShipForward: cockpit.uShipForward, uCockpit: cockpit.enabled ? 1 : 0 });
+    gl.uniform4fv(program.uniforms.uWindows, cockpit.windows);
+    gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
+  }
+
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit }) {
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution) {
       shownSky = skyTargetFor(skyResolution);
@@ -257,9 +263,12 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, shownSky.textures[0]);
     gl.uniform1i(eyeProgram.uniforms.uSky, 0);
-    setUniforms(gl, eyeProgram, { uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed } });
+    setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed } });
+    setCockpit(eyeProgram, cockpit);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.useProgram(eyeStarProgram.program);
+    setCockpit(eyeStarProgram, cockpit);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
   }
 
