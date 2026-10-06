@@ -1,5 +1,6 @@
 export const DEGREES = Math.PI / 180;
 export const LY_PER_PC = 3.26156;
+export const AU_PER_LY = 63241;
 export const PC_PER_YEAR_PER_KM_S = 1.02271e-6;
 
 export const SUN_RADIUS = 8150;

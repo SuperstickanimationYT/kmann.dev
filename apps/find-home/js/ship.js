@@ -1,11 +1,15 @@
-import { DEGREES } from './milky-way.js';
+import { AU_PER_LY, DEGREES } from './milky-way.js';
+
+export const PLANNED_TRIP_LY = 4.37;
+export const PLANNED_BURN_SECONDS = 180;
+export const OVERSHOOT_LY = PLANNED_TRIP_LY * AU_PER_LY;
 
 export const SHIP = {
   thrusterTopSpeed: 10,
   jumpScatter: 0.02,
   energyBudgetShare: 1.5,
   jumpRealSeconds: 2.5,
-  jumpClockSeconds: 600,
+  warpLightYearsPerSecond: OVERSHOOT_LY / PLANNED_BURN_SECONDS,
   headYawLimit: 110 * DEGREES,
   headPitchLimit: 70 * DEGREES,
 };
