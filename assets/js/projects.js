@@ -90,4 +90,11 @@ const PROJECTS = [
     blurb: 'Fly through five real star systems drawn to scale, from home to TRAPPIST-1 to a nova about to go off.',
     status: 'live',
   },
+  {
+    title: 'Worm Simulator',
+    href: 'apps/worm-simulator/',
+    poster: 'assets/img/posters/worm-simulator.webp',
+    blurb: 'A worm looks after itself: it hunts food, drinks at the pond, sleeps at home and ploughs through the sand.',
+    status: 'live',
+  },
 ];

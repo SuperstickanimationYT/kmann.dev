@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worm Simulator &mdash; kmann314</title>
+<meta name="description" content="A worm that looks after itself: it hunts food, drinks at the pond, sleeps at home and shoves sand around on the way.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Worm Simulator</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-stage></canvas>
+
+  <div class="worm-hud" aria-live="polite">
+    <p class="worm-mode"><span data-mode></span> <span class="worm-clock" data-clock></span></p>
+    <div class="worm-meter" data-meter="fullness" role="meter" aria-label="Food" aria-valuemin="0" aria-valuemax="100">
+      <span>Food</span><span class="worm-bar"></span><output></output>
+    </div>
+    <div class="worm-meter" data-meter="hydration" role="meter" aria-label="Water" aria-valuemin="0" aria-valuemax="100">
+      <span>Water</span><span class="worm-bar"></span><output></output>
+    </div>
+    <div class="worm-meter" data-meter="stamina" role="meter" aria-label="Energy" aria-valuemin="0" aria-valuemax="100">
+      <span>Energy</span><span class="worm-bar"></span><output></output>
+    </div>
+  </div>
+
+  <div class="worm-death" data-death hidden>
+    <h2>Game over</h2>
+    <p data-death-text></p>
+    <button type="button" data-restart>New worm</button>
+  </div>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
+    <form class="worm-panel" data-controls>
+      <div class="worm-actions">
+        <button type="button" class="worm-primary" data-restart>New worm</button>
+        <button type="button" data-pause>Pause</button>
+      </div>
+
+      <label class="worm-field">
+        <span>Speed <output></output></span>
+        <input type="range" name="speed" min="1" max="10" step="1" value="1">
+      </label>
+      <label class="worm-field">
+        <span>Food on the ground <output></output></span>
+        <input type="range" name="food" min="0" max="8" step="1" value="1">
+      </label>
+      <label class="worm-field">
+        <span>Sand grains <output></output></span>
+        <input type="range" name="sand" min="0" max="400" step="10" value="200">
+      </label>
+      <label class="worm-check">
+        <input type="checkbox" name="steer">
+        <span>Steer the worm yourself</span>
+      </label>
+      <p class="worm-hint" data-hint>Click or tap the sand to drop food.</p>
+    </form>
+
+    <div class="worm-about">
+      <h2>How the worm thinks</h2>
+      <p>
+        Food and water each drop by 1 every 2 seconds. If either hits zero, the worm dies.
+        It eats until food is above 80, drinks until water is above 80, then crawls home to sleep.
+        It wakes when food or water falls below 50.
+      </p>
+      <p>
+        Crawling costs energy and sleeping restores it. A worm that runs out of energy
+        collapses where it is and sleeps until it has 40 back.
+      </p>
+      <p>
+        Sand grains push each other apart, and the worm's body shoves them aside,
+        so it ploughs a path wherever it crawls.
+      </p>
+      <p>Rebuilt from Worm Simulator v1.1, a 2020 Scratch project.</p>
+    </div>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+</body>
+</html>

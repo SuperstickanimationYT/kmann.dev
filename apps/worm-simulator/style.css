@@ -1,0 +1,217 @@
+.studio-stage {
+  background: #e9cf9b;
+}
+
+.studio-stage canvas {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.worm-hud {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(240px, calc(100% - 24px));
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: rgba(3, 8, 15, 0.78);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.worm-mode {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.worm-clock {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.worm-meter {
+  --fill: 0%;
+  --tone: #4cc38a;
+  display: grid;
+  grid-template-columns: 52px 1fr 28px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.worm-meter[data-meter="hydration"] {
+  --tone: #3aa8ff;
+}
+
+.worm-meter[data-meter="stamina"] {
+  --tone: #f2c14e;
+}
+
+.worm-meter.worm-low {
+  --tone: #ff5a4f;
+}
+
+.worm-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, var(--tone) var(--fill), rgba(255, 255, 255, 0.12) var(--fill));
+}
+
+.worm-meter output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.worm-death {
+  position: relative;
+  z-index: 1;
+  max-width: min(320px, calc(100% - 32px));
+  padding: 20px 24px;
+  border: 1px solid var(--edge-bright);
+  border-radius: var(--radius);
+  background: rgba(3, 8, 15, 0.9);
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+
+.worm-death[hidden] {
+  display: none;
+}
+
+.worm-death h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  color: var(--text-strong);
+}
+
+.worm-death p {
+  margin: 0 0 14px;
+}
+
+.worm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.worm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.worm-field > span {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-strong);
+}
+
+.worm-field output {
+  font-variant-numeric: tabular-nums;
+  color: var(--link);
+}
+
+.worm-panel input[type="range"] {
+  width: 100%;
+  accent-color: var(--edge-bright);
+}
+
+.worm-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.worm-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--edge-bright);
+}
+
+.worm-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.worm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.worm-actions button,
+.worm-death button {
+  flex: 1 1 auto;
+  padding: 9px 14px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.worm-actions button:hover,
+.worm-death button:hover {
+  background: #133659;
+}
+
+.worm-actions .worm-primary,
+.worm-death button {
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.studio-panel :focus-visible,
+.worm-death :focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.worm-about {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--edge);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.worm-about h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+
+.worm-about p {
+  margin: 0 0 8px;
+}
+
+@media (max-width: 820px) {
+  .worm-hud {
+    top: 8px;
+    left: 8px;
+    width: min(210px, calc(100% - 16px));
+    padding: 8px 10px;
+  }
+}
