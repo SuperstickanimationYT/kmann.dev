@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planet Calculator &mdash; kmann314</title>
+<meta name="description" content="Worldbuilding calculator: pick a star and an orbit, get the year, gravity, temperature, habitable zone, tidal locking and what the sky looks like.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Planet Calculator</h2>
+    </div>
+  </div>
+
+  <div class="shell pc-app">
+    <form class="pc-form" data-form onsubmit="return false"></form>
+
+    <div class="pc-output">
+      <div class="pc-views">
+        <figure class="pc-view">
+          <canvas class="pc-zone" data-zone role="img"></canvas>
+          <figcaption>Habitable zone: dark green is conservative, light green optimistic. The line shows how far the orbit swings.</figcaption>
+        </figure>
+        <figure class="pc-view">
+          <canvas class="pc-sky" data-sky role="img" aria-label="Its star in the daytime sky, next to the Sun as seen from Earth"></canvas>
+          <figcaption>Its star at noon, to scale with the Sun as seen from Earth.</figcaption>
+        </figure>
+      </div>
+
+      <div class="pc-actions">
+        <button type="button" class="pc-button" data-copy-text>Copy summary</button>
+        <button type="button" class="pc-button" data-copy-link>Copy link to this world</button>
+        <span class="pc-status" data-status role="status"></span>
+      </div>
+
+      <div class="pc-results" data-results></div>
+
+      <p class="pc-note">Stars follow average main-sequence trends unless picked from the list. Temperatures assume heat spreads around the planet. Air retention uses a rule of thumb for gas escape. Good enough for worldbuilding, not for a paper.</p>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

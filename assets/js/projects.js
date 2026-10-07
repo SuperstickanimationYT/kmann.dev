@@ -63,6 +63,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Planet Calculator',
+    href: 'apps/planet-calculator/',
+    poster: 'assets/img/posters/planet-calculator.webp',
+    blurb: 'Worldbuilding maths: pick a star and an orbit, get the year, gravity, temperature, tidal locking and what the sky looks like.',
+    status: 'live',
+  },
+  {
     title: 'Planet Texture Generator',
     href: 'apps/planet-textures/',
     poster: 'assets/img/posters/planet-textures.webp',
