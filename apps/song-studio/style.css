@@ -352,6 +352,7 @@
   display: block;
   border-right: 1px solid var(--edge);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .ss-scroll {
@@ -363,7 +364,10 @@
 .ss-canvas {
   display: block;
   cursor: pointer;
-  touch-action: none;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .ss-hint {
@@ -385,6 +389,33 @@
   font-size: 12px;
 }
 
+.ss-hint-touch {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .ss-hint-mouse {
+    display: none;
+  }
+
+  .ss-hint-touch {
+    display: inline;
+  }
+
+  .ss-button {
+    padding: 10px 14px;
+  }
+
+  .ss-toggle {
+    width: 38px;
+    height: 36px;
+  }
+
+  .ss-input {
+    font-size: 16px;
+  }
+}
+
 .ss-status {
   margin-left: 8px;
   color: var(--link);
@@ -394,6 +425,21 @@
 @media (max-width: 700px) {
   .ss-push {
     margin-left: 0;
+  }
+
+  .ss-bar,
+  .ss-editor-bar {
+    padding-inline: 12px;
+  }
+
+  .ss-name,
+  .ss-tempo {
+    flex: 1 1 140px;
+    max-width: none;
+  }
+
+  .ss-slider {
+    flex: 1 1 110px;
   }
 
   .ss-track {
