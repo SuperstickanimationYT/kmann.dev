@@ -1,4 +1,5 @@
 import { circularVelocity, createBody, INVERSE_SQUARE_STRENGTH, KINDS, pullAt, updatePulls } from './physics.js';
+import { STAR_SYSTEMS } from './systems.js';
 
 const FIGURE_EIGHT = {
   size: 160,
@@ -222,4 +223,7 @@ export const SCENES = {
   gasCloud: { name: 'Collapsing gas cloud', build: () => gasCloud() },
   cosmicWeb: { name: 'Cosmic web', law: { exponent: TRUE_2D_GRAVITY, darkEnergy: COSMIC_DARK_ENERGY }, expands: true, glowsAsCosmos: true, build: () => centredAtRest(cosmicWeb()) },
   empty: { name: 'Empty space', build: () => [] },
+  ...Object.fromEntries(
+    Object.entries(STAR_SYSTEMS).map(([key, { name, scale, build }]) => [key, { name, group: 'Real star systems, to scale', law: { exponent: 2, darkEnergy: 0 }, scale, build: ({ startMs }) => centredAtRest(build(startMs)) }]),
+  ),
 };

@@ -1,9 +1,11 @@
 import { driftThroughCones, isCone, outOfMissingSpace, wedgeAngleOf } from './cones.js';
 import { circularVelocity, cloneBodies, createBody, leapfrogStep, STEP_SECONDS, strongestPullOn } from './physics.js';
 import { GALAXY, SCENES } from './scenes.js';
+import { formatMass, formatPace, NEW_BODY_MASS, radiusFor, REAL_MASS_RANGE, starColour } from './units.js';
 import { createView, noteTrails } from './view.js';
 
 const MASS_RANGE = { min: 0.1, max: 3000, sliderSteps: 1000 };
+const REAL_MASS_SLIDER = { ...REAL_MASS_RANGE, sliderSteps: 1000 };
 const GALAXY_STARS_RANGE = { min: 300, max: 12000, sliderSteps: 1000 };
 const DEFAULT_NEW_MASS = 1;
 const TAP_MAX_PX = 6;
@@ -17,6 +19,12 @@ const SLOWED_BELOW = 0.9;
 const PREDICTION_SECONDS = 4;
 const PREDICTION_PAIR_BUDGET = 250000;
 const PREDICTION_BODIES = 24;
+const PREDICTION_SUBSTEPS = 64;
+const PREDICTION_MS = 25;
+const PREDICTION_LIGHTEST_SHARE = 1e-6;
+const LAUNCH_KM_PER_S_PER_PX = 0.5;
+const TRAIL_MIN_GAP_PX = 2;
+const NEW_BODY_NAMES = { planet: 'Rogue planet', star: 'Star', blackHole: 'Black hole' };
 const THROW_SMOOTHING = 0.5;
 const WHEEL_ZOOM = 1.0015;
 const TEST_BALL_MASS = 0.1;
@@ -32,11 +40,15 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, darkEnergy: 0, followExpansion: true, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newPinned: false, galaxyStars: GALAXY.stars, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, darkEnergy: 0, followExpansion: true, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newLook: 'planet', newPinned: false, galaxyStars: GALAXY.stars, paused: false };
 let bodies = [];
 let selected = null;
 let expansion = null;
 let cosmicGlow = false;
+let scale = null;
+let startMs = Date.now();
+let elapsed = 0;
+let following = null;
 let launch = null;
 let grab = null;
 let pan = null;
@@ -45,8 +57,10 @@ const pointers = new Map();
 
 const fromLogSlider = ({ min, max, sliderSteps }, value) => Number((min * (max / min) ** (value / sliderSteps)).toPrecision(2));
 const toLogSlider = ({ min, max, sliderSteps }, amount) => Math.round((Math.log(amount / min) / Math.log(max / min)) * sliderSteps);
-const massFromSlider = (value) => fromLogSlider(MASS_RANGE, value);
-const sliderFromMass = (mass) => toLogSlider(MASS_RANGE, mass);
+const massRange = () => (scale ? REAL_MASS_SLIDER : MASS_RANGE);
+const massFromSlider = (value) => fromLogSlider(massRange(), value);
+const sliderFromMass = (mass) => toLogSlider(massRange(), mass);
+const massLabel = (mass) => (scale ? formatMass(mass) : mass.toLocaleString());
 
 function lawLabel(exponent) {
   if (exponent === 0) return 'constant';
@@ -58,9 +72,9 @@ function lawLabel(exponent) {
 
 const inCones = () => settings.spacetime === 'cones';
 
-function stepWorld(world, { trails }) {
-  if (inCones()) driftThroughCones(world, settings.cutAngle, STEP_SECONDS, { trails });
-  else leapfrogStep(world, settings);
+function stepWorld(world, { trails }, seconds = STEP_SECONDS, mostSubsteps) {
+  if (inCones()) driftThroughCones(world, settings.cutAngle, seconds, { trails });
+  else leapfrogStep(world, settings, seconds, mostSubsteps);
 }
 
 function intoConesAndBalls() {
@@ -145,13 +159,25 @@ function setDarkEnergy(darkEnergy) {
   showSettings();
 }
 
+function setScale(next) {
+  scale = next;
+  settings.newMass = scale ? NEW_BODY_MASS[settings.newLook] : DEFAULT_NEW_MASS;
+  form.newMass.value = sliderFromMass(settings.newMass);
+  document.querySelectorAll('[data-real-only]').forEach((element) => (element.hidden = !scale));
+  showSettings();
+}
+
 function loadScene(key) {
-  const { law, expands, glowsAsCosmos, build } = SCENES[key];
+  const { law, expands, glowsAsCosmos, build, scale: sceneScale = null } = SCENES[key];
   if (law) {
     setExponent(law.exponent);
     setDarkEnergy(law.darkEnergy);
   }
-  bodies = build(settings);
+  setScale(sceneScale);
+  startMs = Date.now();
+  elapsed = 0;
+  following = null;
+  bodies = build({ ...settings, startMs });
   const { spread } = massSpread(bodies);
   expansion = expands ? { startingSpread: spread, spread } : null;
   cosmicGlow = Boolean(glowsAsCosmos);
@@ -171,10 +197,39 @@ function select(body) {
 function showSelected() {
   find('[data-selected]').hidden = !selected;
   if (!selected) return;
+  find('[data-selected-legend]').textContent = selected.name ?? 'Selected body';
   form.selectedMass.value = sliderFromMass(selected.mass);
   form.selectedPinned.checked = selected.pinned;
   const wedge = inCones() && isCone(selected) ? ` · ${Math.round(wedgeAngleOf(selected.mass) / DEGREES)}° wedge` : '';
-  find('[data-selected-mass-label]').textContent = `${selected.mass.toLocaleString()}${wedge}`;
+  find('[data-selected-mass-label]').textContent = `${massLabel(selected.mass)}${wedge}`;
+  showFollowing();
+}
+
+function showFollowing() {
+  const button = find('[data-follow]');
+  const isFollowed = Boolean(selected) && following?.body === selected;
+  button.textContent = isFollowed ? 'Stop following' : 'Follow';
+  button.setAttribute('aria-pressed', String(isFollowed));
+}
+
+function toggleFollow() {
+  if (!selected) return;
+  following = following?.body === selected ? null : { body: selected, lastX: selected.x, lastY: selected.y };
+  if (following) Object.assign(view.camera, { x: selected.x, y: selected.y });
+  showFollowing();
+}
+
+function followCamera() {
+  if (!following) return;
+  const { body, lastX, lastY } = following;
+  if (!bodies.includes(body)) {
+    following = null;
+    showFollowing();
+    return;
+  }
+  view.camera.x += body.x - lastX;
+  view.camera.y += body.y - lastY;
+  Object.assign(following, { lastX: body.x, lastY: body.y });
 }
 
 function removeBody(body) {
@@ -182,13 +237,20 @@ function removeBody(body) {
   if (selected === body) select(null);
 }
 
+function setSelectedMass(mass) {
+  selected.mass = mass;
+  if (!scale || !selected.look) return;
+  selected.radius = radiusFor(selected.look, mass, scale);
+  if (selected.look === 'star') selected.colour = starColour(mass);
+}
+
 function showSettings() {
   find('[data-law-label]').textContent = lawLabel(settings.exponent);
   find('[data-dark-energy-label]').textContent = settings.darkEnergy ? settings.darkEnergy.toFixed(4) : 'off';
   document.querySelectorAll('[data-law]').forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.law) === settings.exponent)));
-  find('[data-new-mass-label]').textContent = settings.newMass.toLocaleString();
+  find('[data-new-mass-label]').textContent = massLabel(settings.newMass);
   find('[data-galaxy-stars-label]').textContent = settings.galaxyStars.toLocaleString();
-  find('[data-speed-label]').textContent = `${settings.speed}×`;
+  find('[data-speed-label]').textContent = scale ? `${settings.speed}× · ${formatPace(settings.speed, scale)}` : `${settings.speed}×`;
   find('[data-pause]').textContent = settings.paused ? 'Play' : 'Pause';
   document.querySelectorAll('[data-spacetime]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.spacetime === settings.spacetime)));
   find('[data-cut-label]').textContent = `${Math.round(settings.cutAngle / DEGREES)}°`;
@@ -199,9 +261,16 @@ function togglePause() {
   showSettings();
 }
 
+function realBodyAt(x, y) {
+  const { newLook: look, newMass: mass } = settings;
+  const body = createBody({ x, y, mass, pinned: settings.newPinned });
+  return Object.assign(body, { name: NEW_BODY_NAMES[look], look, radius: radiusFor(look, mass, scale), colour: look === 'star' ? starColour(mass) : undefined });
+}
+
 function newBodyAt(x, y, velocity) {
   if (inCones() && !settings.newCone) return createBody({ x, y, mass: TEST_BALL_MASS, test: true, ...velocity });
   if (inCones()) return createBody({ x, y, mass: settings.newMass });
+  if (scale) return realBodyAt(x, y);
   return createBody({ x, y, mass: settings.newMass, pinned: settings.newPinned, ...(settings.newPinned ? {} : velocity) });
 }
 
@@ -211,24 +280,42 @@ function tapVelocity(x, y) {
 }
 
 function launchVelocity() {
-  return { vx: (launch.body.x - launch.pullX) * LAUNCH_SPEED_PER_UNIT, vy: (launch.body.y - launch.pullY) * LAUNCH_SPEED_PER_UNIT };
+  const [dx, dy] = [launch.body.x - launch.pullX, launch.body.y - launch.pullY];
+  if (!scale || inCones()) return { vx: dx * LAUNCH_SPEED_PER_UNIT, vy: dy * LAUNCH_SPEED_PER_UNIT };
+  const perUnit = scale.fromKmPerS(LAUNCH_KM_PER_S_PER_PX) * view.camera.zoom;
+  const anchor = launch.anchor && bodies.includes(launch.anchor) ? launch.anchor : { vx: 0, vy: 0 };
+  return { vx: anchor.vx + dx * perUnit, vy: anchor.vy + dy * perUnit };
 }
 
-const heaviest = (count) => (bodies.length <= count ? bodies : [...bodies].sort((a, b) => b.mass - a.mass).slice(0, count));
+function launchLabel() {
+  if (!scale || inCones()) return null;
+  const kmPerS = Math.hypot(launch.body.x - launch.pullX, launch.body.y - launch.pullY) * view.camera.zoom * LAUNCH_KM_PER_S_PER_PX;
+  const anchor = launch.anchor?.name ? ` relative to ${launch.anchor.name}` : '';
+  return `${Math.round(kmPerS).toLocaleString()} km/s${anchor}`;
+}
+
+function heaviestThatMatter(count) {
+  const total = bodies.reduce((sum, body) => sum + body.mass, 0);
+  const matter = bodies.filter((body) => body.mass >= total * PREDICTION_LIGHTEST_SHARE);
+  return matter.length <= count ? matter : matter.sort((a, b) => b.mass - a.mass).slice(0, count);
+}
 
 function predictPath() {
-  const world = [...cloneBodies(heaviest(PREDICTION_BODIES)), { ...launch.body, ...launchVelocity(), trail: [] }];
+  const world = [...cloneBodies(heaviestThatMatter(PREDICTION_BODIES)), { ...launch.body, ...launchVelocity(), trail: [] }];
   const ghost = world.at(-1);
   const pairs = (world.length * (world.length - 1)) / 2;
   const steps = Math.min(PREDICTION_SECONDS / STEP_SECONDS, PREDICTION_PAIR_BUDGET / Math.max(1, pairs));
+  const seconds = STEP_SECONDS * settings.speed;
   const path = [[ghost.x, ghost.y]];
-  for (let i = 0; i < steps && world.includes(ghost); i++) {
+  const deadline = performance.now() + PREDICTION_MS;
+  for (let i = 0; i < steps && world.includes(ghost) && performance.now() < deadline; i++) {
     const [beforeX, beforeY] = [ghost.x, ghost.y];
-    stepWorld(world, { trails: false });
-    if (Math.hypot(ghost.x - beforeX, ghost.y - beforeY) > Math.hypot(ghost.vx, ghost.vy) * STEP_SECONDS * 2) path.push(null);
+    stepWorld(world, { trails: false }, seconds, PREDICTION_SUBSTEPS);
+    if (Math.hypot(ghost.x - beforeX, ghost.y - beforeY) > Math.hypot(ghost.vx, ghost.vy) * seconds * 2) path.push(null);
     if (i % 4 === 0) path.push([ghost.x, ghost.y]);
   }
   launch.path = path;
+  launch.label = launchLabel();
 }
 
 function pointerDown(event) {
@@ -248,11 +335,12 @@ function pointerDown(event) {
   const body = view.bodyAt(bodies, event.clientX, event.clientY, GRAB_SLACK_PX);
   const [x, y] = view.toWorld(event.clientX, event.clientY);
   if (body) {
-    grab = { ...start, body, wasPinned: body.pinned, lastX: x, lastY: y, lastTime: start.time, vx: 0, vy: 0, offsetX: body.x - x, offsetY: body.y - y };
+    grab = { ...start, body, wasPinned: body.pinned, heldVx: body.vx, heldVy: body.vy, lastX: x, lastY: y, lastTime: start.time, vx: 0, vy: 0, offsetX: body.x - x, offsetY: body.y - y };
     body.pinned = true;
     return;
   }
-  launch = { ...start, body: newBodyAt(x, y, {}), pullX: x, pullY: y, path: [] };
+  const anchor = scale ? strongestPullOn(bodies, x, y, settings.exponent) : null;
+  launch = { ...start, body: newBodyAt(x, y, {}), anchor, pullX: x, pullY: y, path: [] };
 }
 
 function pinchState() {
@@ -261,15 +349,16 @@ function pinchState() {
 }
 
 function cancelSingleGestures() {
-  if (grab) releaseGrab(false);
+  if (grab) releaseGrab('drop');
   launch = null;
   pan = null;
 }
 
-function releaseGrab(throwIt) {
-  const { body, wasPinned, vx, vy } = grab;
+function releaseGrab(release) {
+  const { body, wasPinned, vx, vy, heldVx, heldVy } = grab;
   body.pinned = wasPinned;
-  if (!wasPinned) Object.assign(body, throwIt && !(inCones() && isCone(body)) ? { vx, vy } : { vx: 0, vy: 0 });
+  const velocities = { throw: { vx, vy }, drop: { vx: 0, vy: 0 }, keep: { vx: heldVx, vy: heldVy } };
+  if (!wasPinned) Object.assign(body, velocities[release === 'throw' && inCones() && isCone(body) ? 'drop' : release]);
   if (inCones() && body.test) [body.x, body.y] = outOfMissingSpace(bodies, settings.cutAngle, [body.x, body.y]);
   grab = null;
 }
@@ -323,7 +412,7 @@ function pointerUp(event) {
     const tapped = wasTap(grab, event);
     const { body } = grab;
     const stillMoving = performance.now() - grab.lastTime < 80;
-    releaseGrab(!tapped && stillMoving);
+    releaseGrab(tapped ? 'keep' : stillMoving ? 'throw' : 'drop');
     if (tapped) select(body);
     return;
   }
@@ -361,7 +450,11 @@ function bindCanvas() {
 
 function fillSceneList() {
   const list = find('[data-scene]');
-  for (const [key, { name }] of Object.entries(SCENES)) list.append(new Option(name, key));
+  const groups = new Map();
+  for (const [key, { name, group }] of Object.entries(SCENES)) {
+    if (group && !groups.has(group)) groups.set(group, list.appendChild(Object.assign(document.createElement('optgroup'), { label: group })));
+    (group ? groups.get(group) : list).append(new Option(name, key));
+  }
 }
 
 function setExponent(exponent) {
@@ -380,6 +473,10 @@ function bindPanel() {
   });
   form.exponent.addEventListener('input', () => setExponent(Number(form.exponent.value)));
   document.querySelectorAll('[data-law]').forEach((button) => button.addEventListener('click', () => setExponent(Number(button.dataset.law))));
+  form.newLook.addEventListener('change', () => {
+    settings.newLook = form.newLook.value;
+    setScale(scale);
+  });
   form.newMass.addEventListener('input', () => {
     settings.newMass = massFromSlider(Number(form.newMass.value));
     showSettings();
@@ -409,7 +506,7 @@ function bindPanel() {
   find('[data-flash]').addEventListener('click', fireFlash);
   form.selectedMass.addEventListener('input', () => {
     if (!selected) return;
-    selected.mass = massFromSlider(Number(form.selectedMass.value));
+    setSelectedMass(massFromSlider(Number(form.selectedMass.value)));
     showSelected();
   });
   form.selectedPinned.addEventListener('change', () => {
@@ -422,6 +519,7 @@ function bindPanel() {
     const others = bodies.filter((body) => body !== selected);
     Object.assign(selected, circularVelocity(strongestPullOn(others, selected.x, selected.y, settings.exponent), selected.x, selected.y, settings.exponent));
   });
+  find('[data-follow]').addEventListener('click', toggleFollow);
   find('[data-delete]').addEventListener('click', () => selected && removeBody(selected));
   find('[data-deselect]').addEventListener('click', () => select(null));
   find('[data-pause]').addEventListener('click', togglePause);
@@ -464,6 +562,11 @@ function bindKeys() {
 
 const counted = (count, one, many) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
+function simulatedDate() {
+  const date = new Date(startMs + scale.toMs(elapsed));
+  return Number.isNaN(date.getTime()) ? 'beyond year 275,000' : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 function showStatus() {
   const paused = settings.paused ? ' · paused' : '';
   const cones = bodies.filter(isCone).length;
@@ -471,7 +574,7 @@ function showStatus() {
     ? `${counted(cones, 'mass', 'masses')} · ${counted(bodies.length - cones, 'ball', 'balls')} · 2+1 relativity`
     : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}${settings.mond ? ' · MOND' : ''}${settings.darkEnergy ? ' · dark energy' : ''}${expansion ? ` · space ×${(expansion.spread / expansion.startingSpread).toFixed(2)}` : ''}`;
   const slowed = !settings.paused && achievedSpeed < settings.speed * SLOWED_BELOW ? ` · slowed to ${achievedSpeed.toFixed(2)}×` : '';
-  find('[data-status]').textContent = description + paused + slowed;
+  find('[data-status]').textContent = description + (scale ? ` · ${simulatedDate()}` : '') + paused + slowed;
 }
 
 let lastTime = null;
@@ -486,21 +589,24 @@ function frame(time) {
     const budget = Math.min(PHYSICS_MS_PER_FRAME.most, Math.max(PHYSICS_MS_PER_FRAME.least, seconds * 1000 * PHYSICS_SHARE_OF_FRAME));
     const deadline = performance.now() + budget;
     let steps = 0;
+    const trailGap = TRAIL_MIN_GAP_PX / view.camera.zoom;
     while (backlog >= STEP_SECONDS && performance.now() < deadline) {
       stepWorld(bodies, settings);
+      if (settings.trails) noteTrails(bodies, trailGap);
       backlog -= STEP_SECONDS;
       steps++;
     }
+    elapsed += steps * STEP_SECONDS;
     if (backlog >= STEP_SECONDS) backlog = 0;
     if (seconds > 0) achievedSpeed = achievedSpeed * SPEED_SMOOTHING + ((steps * STEP_SECONDS) / seconds) * (1 - SPEED_SMOOTHING);
     if (inCones()) dropFarTestBalls();
     if (expansion) trackExpansion();
     if (selected && !bodies.includes(selected)) select(null);
     if (grab && !bodies.includes(grab.body)) grab = null;
-    if (settings.trails) noteTrails(bodies);
     if (launch) predictPath();
   }
-  view.draw({ bodies, selected, launch, trails: settings.trails, glow: settings.glow, cosmicGlow, cutAngle: inCones() ? settings.cutAngle : null });
+  followCamera();
+  view.draw({ bodies, selected, launch, trails: settings.trails, glow: settings.glow, cosmicGlow, cutAngle: inCones() ? settings.cutAngle : null, scale });
   showStatus();
   window.requestAnimationFrame(frame);
 }

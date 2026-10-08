@@ -90,17 +90,26 @@
       </fieldset>
 
       <fieldset>
-        <legend>New planet</legend>
+        <legend>New body</legend>
+        <label class="gp-field" data-real-only hidden>
+          <span>Kind</span>
+          <select name="newLook">
+            <option value="planet">Rogue planet</option>
+            <option value="star">Star</option>
+            <option value="blackHole">Black hole</option>
+          </select>
+        </label>
         <label class="gp-field">
           <span>Mass <output data-new-mass-label></output></span>
           <input type="range" name="newMass" min="0" max="1000" step="1">
         </label>
         <label class="gp-toggle" data-newton-only><input type="checkbox" name="autoOrbit" checked> Tap puts it in a circular orbit</label>
         <label class="gp-toggle"><input type="checkbox" name="newPinned"> Pinned in place</label>
+        <p class="gp-note" data-real-only hidden>Each pixel you drag adds 0.5 km/s, measured from whatever pulls hardest where you start, so zoom out to throw something in from far away.</p>
       </fieldset>
 
       <fieldset class="gp-selected" data-selected hidden>
-        <legend>Selected body</legend>
+        <legend data-selected-legend>Selected body</legend>
         <label class="gp-field">
           <span>Mass <output data-selected-mass-label></output></span>
           <input type="range" name="selectedMass" min="0" max="1000" step="1">
@@ -108,6 +117,7 @@
         <label class="gp-toggle"><input type="checkbox" name="selectedPinned"> Pinned in place</label>
         <div class="gp-actions">
           <button type="button" data-circularize>Circular orbit</button>
+          <button type="button" data-follow>Follow</button>
           <button type="button" data-delete>Delete</button>
           <button type="button" data-deselect>Done</button>
         </div>
@@ -117,7 +127,7 @@
         <legend>Simulation</legend>
         <label class="gp-field">
           <span>Speed <output data-speed-label></output></span>
-          <input type="range" name="speed" min="-2" max="3" step="0.25" value="0">
+          <input type="range" name="speed" min="-2" max="8" step="0.25" value="0">
         </label>
         <label class="gp-toggle"><input type="checkbox" name="trails" checked> Trails</label>
         <label class="gp-toggle"><input type="checkbox" name="glow" checked> Galaxies glow instead of showing dots</label>
@@ -146,6 +156,13 @@
           <li>Drag a body: grab and throw it. Click one: select it.</li>
           <li>Right-click a body: delete it. Right- or middle-drag: pan. Wheel: zoom.</li>
           <li>Keys: <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>T</kbd> trails, <kbd>G</kbd> glow, <kbd>F</kbd> fit view, <kbd>Esc</kbd> deselect.</li>
+        </ul>
+        <p><strong>Real star systems</strong></p>
+        <ul>
+          <li>The "Real star systems, to scale" scenes use real masses, sizes and distances. Planets start where they really are today, flattened onto one plane. The status line shows the simulated date and the scale bar shows distance.</li>
+          <li>Throw in a rogue planet, a star or a black hole, then speed time up to watch the flyby. Select a body and press Follow to keep it centred while you zoom in on it.</li>
+          <li>Close passes get smaller time steps automatically, so a black hole can graze a planet without the orbits blowing up.</li>
+          <li>It's still Newtonian gravity in 2D: no relativity, no tidal disruption. Black holes swallow whatever touches their event horizon, which is only tens of km wide.</li>
         </ul>
         <p><strong>Galaxies</strong></p>
         <ul>
