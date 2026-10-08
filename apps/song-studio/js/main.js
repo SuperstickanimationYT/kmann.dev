@@ -13,6 +13,7 @@ const store = createStore(DEMOS[0].build);
 const player = createPlayer(() => store.song, (step) => grid.setPlayStep(step));
 const grid = createGrid({ labels: find('[data-labels]'), canvas: find('[data-grid]'), scroller: find('[data-scroller]') }, store, {
   onPreview: (track, row) => player.preview(track, row),
+  onPlayRow: playLive,
 });
 
 const controls = {
@@ -242,6 +243,13 @@ controls.wav.addEventListener('click', async () => {
   }
 });
 
+function playLive(row) {
+  const track = store.track;
+  player.preview(track, row);
+  const step = recording && player.playing ? player.nearestStep() : null;
+  if (step !== null && !noteAt(track, row, step)) store.edit(() => track.notes.push({ row, step, length: 1 }));
+}
+
 const typing = (target) => target.matches('input[type="text"], textarea, select');
 
 document.addEventListener('keydown', (event) => {
@@ -261,13 +269,9 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   const row = LIVE_KEYS.indexOf(event.code);
-  const track = store.track;
-  if (row < 0 || row >= trackRows(store.song, track)) return;
+  if (row < 0 || row >= trackRows(store.song, store.track)) return;
   event.preventDefault();
-  if (event.repeat) return;
-  player.preview(track, row);
-  const step = recording && player.playing ? player.nearestStep() : null;
-  if (step !== null && !noteAt(track, row, step)) store.edit(() => track.notes.push({ row, step, length: 1 }));
+  if (!event.repeat) playLive(row);
 });
 
 store.onChange(render);

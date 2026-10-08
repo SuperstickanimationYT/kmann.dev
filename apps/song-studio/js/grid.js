@@ -4,6 +4,9 @@ import { totalSteps, trackRows } from './song.js';
 
 const LABEL_WIDTH = 64;
 const BEAT_WIDTH = 112;
+const HOLD_MS = 350;
+const TOUCH_SLOP = 10;
+const coarsePointer = window.matchMedia('(pointer: coarse)');
 
 function fitCanvas(canvas, width, height) {
   const ratio = window.devicePixelRatio || 1;
@@ -24,10 +27,11 @@ function roundedRect(context, x, y, width, height, radius) {
 
 export const noteAt = (track, row, step) => track.notes.find((note) => note.row === row && step >= note.step && step < note.step + note.length);
 
-export function createGrid({ labels, canvas, scroller }, store, { onPreview }) {
+export function createGrid({ labels, canvas, scroller }, store, { onPreview, onPlayRow }) {
   let playStep = -1;
   let hover = null;
   let drag = null;
+  let heldTouch = null;
   let layout = { rows: 0, steps: 0, cellWidth: 28, cellHeight: 24 };
 
   function measure() {
@@ -38,7 +42,7 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview }) {
       rows,
       steps,
       cellWidth: Math.max(BEAT_WIDTH / song.stepsPerBeat, Math.floor(scroller.clientWidth / steps)),
-      cellHeight: Math.max(16, Math.min(34, Math.floor(430 / rows))),
+      cellHeight: Math.max(coarsePointer.matches ? 28 : 16, Math.min(34, Math.floor(430 / rows))),
     };
   }
 
@@ -165,12 +169,7 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview }) {
     track.notes.splice(track.notes.indexOf(note), 1);
   }
 
-  canvas.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) return;
-    const cell = cellAt(event);
-    if (!cell) return;
-    event.preventDefault();
-    canvas.setPointerCapture(event.pointerId);
+  function beginDrag(cell) {
     const track = store.track;
     const hit = noteAt(track, cell.row, cell.step);
     store.checkpoint();
@@ -182,12 +181,54 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview }) {
       drag = track.kind === 'drums' ? { mode: 'paint' } : { mode: 'stretch', note };
     }
     store.changed();
+  }
+
+  function toggleNote(cell) {
+    const track = store.track;
+    const hit = noteAt(track, cell.row, cell.step);
+    store.checkpoint();
+    if (hit) removeNote(track, hit);
+    else addNote(track, cell.row, cell.step);
+    store.changed();
+  }
+
+  function releaseHeldTouch() {
+    clearTimeout(heldTouch?.timer);
+    heldTouch = null;
+  }
+
+  function holdTouch(event, cell) {
+    heldTouch = {
+      cell,
+      x: event.clientX,
+      y: event.clientY,
+      timer: setTimeout(() => {
+        heldTouch = null;
+        navigator.vibrate?.(15);
+        beginDrag(cell);
+      }, HOLD_MS),
+    };
+  }
+
+  canvas.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const cell = cellAt(event);
+    if (!cell) return;
+    if (event.pointerType === 'touch') {
+      holdTouch(event, cell);
+      return;
+    }
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    beginDrag(cell);
   });
 
   canvas.addEventListener('pointermove', (event) => {
+    if (heldTouch && Math.hypot(event.clientX - heldTouch.x, event.clientY - heldTouch.y) > TOUCH_SLOP) releaseHeldTouch();
     const cell = cellAt(event);
     const track = store.track;
     if (!drag) {
+      if (event.pointerType !== 'mouse') return;
       const moved = cell?.row !== hover?.row || cell?.step !== hover?.step;
       hover = cell;
       if (moved) drawGrid();
@@ -209,11 +250,19 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview }) {
     store.changed();
   });
 
-  const endDrag = () => {
+  canvas.addEventListener('pointerup', () => {
+    if (heldTouch) toggleNote(heldTouch.cell);
+    releaseHeldTouch();
     drag = null;
-  };
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
+  });
+  canvas.addEventListener('pointercancel', () => {
+    releaseHeldTouch();
+    drag = null;
+  });
+  canvas.addEventListener('touchmove', (event) => {
+    if (drag) event.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
   canvas.addEventListener('pointerleave', () => {
     hover = null;
     if (!drag) drawGrid();
@@ -222,10 +271,11 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview }) {
   labels.addEventListener('pointerdown', (event) => {
     const box = labels.getBoundingClientRect();
     const row = layout.rows - 1 - Math.floor((event.clientY - box.top) / layout.cellHeight);
-    if (row >= 0 && row < layout.rows) onPreview(store.track, row);
+    if (row >= 0 && row < layout.rows) onPlayRow(row);
   });
 
   new ResizeObserver(() => draw()).observe(scroller);
+  coarsePointer.addEventListener('change', draw);
 
   return {
     draw,

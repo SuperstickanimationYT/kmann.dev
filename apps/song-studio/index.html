@@ -38,7 +38,7 @@
       <button class="ss-play" type="button" data-play aria-pressed="false">
         <span class="ss-play-icon" aria-hidden="true"></span><span data-play-label>Play</span>
       </button>
-      <button class="ss-button ss-record" type="button" data-record aria-pressed="false" title="While playing, notes you play on the keyboard get added to the grid">
+      <button class="ss-button ss-record" type="button" data-record aria-pressed="false" title="While playing, notes you play live get added to the grid">
         <span class="ss-dot" aria-hidden="true"></span>Record
       </button>
       <label class="ss-field ss-tempo">
@@ -143,8 +143,14 @@
         </div>
       </div>
       <p class="ss-hint">
-        Click a square to add a note, drag right to hold it longer, click a note to remove it.
-        Play live with <kbd>A</kbd>&ndash;<kbd>'</kbd> and <kbd>Q</kbd>&ndash;<kbd>]</kbd>. <kbd>Space</kbd> plays and stops.
+        <span class="ss-hint-mouse">
+          Click a square to add a note, drag right to hold it longer, click a note to remove it.
+          Play live with <kbd>A</kbd>&ndash;<kbd>'</kbd> and <kbd>Q</kbd>&ndash;<kbd>]</kbd>. <kbd>Space</kbd> plays and stops.
+        </span>
+        <span class="ss-hint-touch">
+          Tap a square to add or remove a note. Hold a note, then slide right to make it longer.
+          Tap the note names on the left to play live; with Record on, they go into the grid.
+        </span>
         <span class="ss-status" data-status role="status"></span>
       </p>
     </section>
