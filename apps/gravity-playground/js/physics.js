@@ -6,6 +6,8 @@ const PULL_AT_REFERENCE = 3125 / REFERENCE_DISTANCE ** 2;
 export const INVERSE_SQUARE_STRENGTH = PULL_AT_REFERENCE * REFERENCE_DISTANCE ** 2;
 const RADIUS_PER_CUBE_ROOT_MASS = 4;
 export const STEP_SECONDS = 1 / 240;
+const STEP_SHARE_OF_PAIR_TIME = 0.03;
+const MOST_SUBSTEPS = 20000;
 const EXACT_PULLS_UP_TO_BODIES = 64;
 const MOND_ACCELERATION = 300;
 const STAR_BIRTH = { density: 0.1, radius: 6 };
@@ -21,6 +23,8 @@ let nextId = 1;
 export const KINDS = { solid: 'solid', star: 'star', darkMatter: 'darkMatter', gas: 'gas' };
 
 export const isGas = (body) => body.kind === KINDS.gas;
+
+export const isBlackHole = (body) => body.look === 'blackHole';
 
 export const isCollisionless = (body) => body.kind === KINDS.star || body.kind === KINDS.darkMatter || isGas(body);
 
@@ -41,6 +45,7 @@ function pullPerDistance(distance, surface, exponent) {
 }
 
 const world = { xs: new Float64Array(0), ys: new Float64Array(0), ms: new Float64Array(0), softenings: new Float64Array(0), solid: new Uint8Array(0), count: 0 };
+let shortestPairTime = Infinity;
 
 function snapshot(bodies) {
   if (world.xs.length < bodies.length) {
@@ -60,6 +65,7 @@ function snapshot(bodies) {
 function exactPulls(bodies, exponent, touching) {
   const { xs, ys, ms, softenings, solid, count } = world;
   for (const body of bodies) body.ax = body.ay = 0;
+  let fastestPairRateSquared = 0;
   for (let i = 0; i < count; i++) {
     for (let j = i + 1; j < count; j++) {
       const dx = xs[j] - xs[i];
@@ -68,12 +74,16 @@ function exactPulls(bodies, exponent, touching) {
       const surface = Math.max(softenings[i], softenings[j]);
       if (distance <= surface && solid[i] && solid[j]) touching.push(i, j);
       const perMass = pullPerDistance(distance, surface, exponent);
+      const reach = Math.max(distance, surface);
+      const closing = ((bodies[j].vx - bodies[i].vx) ** 2 + (bodies[j].vy - bodies[i].vy) ** 2) / (reach * reach);
+      fastestPairRateSquared = Math.max(fastestPairRateSquared, Math.abs(perMass) * (ms[i] + ms[j]), closing);
       bodies[i].ax += dx * perMass * ms[j];
       bodies[i].ay += dy * perMass * ms[j];
       bodies[j].ax -= dx * perMass * ms[i];
       bodies[j].ay -= dy * perMass * ms[i];
     }
   }
+  shortestPairTime = 1 / Math.sqrt(fastestPairRateSquared);
 }
 
 function treePulls(bodies, exponent, touching) {
@@ -120,12 +130,13 @@ function trustPulls(bodies, { exponent, mond, darkEnergy }) {
     body.pulledY = body.y;
     body.pulledMass = body.mass;
   }
-  pullsAreFor.set(bodies, { exponent, mond, darkEnergy, count: bodies.length });
+  pullsAreFor.set(bodies, { exponent, mond, darkEnergy, count: bodies.length, shortestPairTime });
 }
 
 export function updatePulls(bodies, law) {
   const touching = [];
   snapshot(bodies);
+  shortestPairTime = Infinity;
   if (bodies.length <= EXACT_PULLS_UP_TO_BODIES) exactPulls(bodies, law.exponent, touching);
   else treePulls(bodies, law.exponent, touching);
   if (law.mond) strengthenWeakPulls(bodies);
@@ -206,6 +217,27 @@ function removeGone(bodies, gone) {
   bodies.length = kept;
 }
 
+const tidalReach = (hole, body) => Math.max(sizeOf(hole), sizeOf(body) * Math.cbrt(hole.mass / body.mass));
+
+function swallowTornApart(bodies) {
+  const holes = bodies.filter(isBlackHole);
+  if (!holes.length) return false;
+  const gone = new Set();
+  for (const hole of holes) {
+    if (gone.has(hole)) continue;
+    for (const body of bodies) {
+      if (body === hole || gone.has(body) || isCollisionless(body) || (isBlackHole(body) && body.mass > hole.mass)) continue;
+      if (Math.hypot(body.x - hole.x, body.y - hole.y) > tidalReach(hole, body)) continue;
+      const before = hole.mass;
+      absorb(hole, body);
+      hole.radius *= hole.mass / before;
+      gone.add(body);
+    }
+  }
+  if (gone.size) removeGone(bodies, gone);
+  return gone.size > 0;
+}
+
 function gatherIntoStars(bodies) {
   if (!bodies.some(isGas)) return false;
   snapshot(bodies);
@@ -253,30 +285,42 @@ function eccentricityAround(star, body) {
   return Math.sqrt(Math.max(0, 1 + (2 * energy * spin * spin) / (pull * pull)));
 }
 
-function condenseSettledGas(bodies) {
+function condenseSettledGas(bodies, seconds) {
   const star = heaviestStar(bodies);
   if (!star) return;
   for (const gas of bodies) {
     if (!isGas(gas)) continue;
-    gas.settledFor = eccentricityAround(star, gas) < CONDENSING.roundestOrbit ? (gas.settledFor ?? 0) + STEP_SECONDS : 0;
+    gas.settledFor = eccentricityAround(star, gas) < CONDENSING.roundestOrbit ? (gas.settledFor ?? 0) + seconds : 0;
     if (gas.settledFor >= CONDENSING.seconds) Object.assign(gas, { kind: KINDS.solid, softening: undefined });
   }
 }
 
-export function leapfrogStep(bodies, { exponent, mond = false, darkEnergy = 0, merge }) {
-  const law = { exponent, mond, darkEnergy };
-  if (!bodies.length) return false;
-  if (!pullsStillHold(bodies, law)) updatePulls(bodies, law);
-  kick(bodies, STEP_SECONDS / 2);
-  drift(bodies, STEP_SECONDS);
+function substep(bodies, law, merge, seconds) {
+  kick(bodies, seconds / 2);
+  drift(bodies, seconds);
   const touching = updatePulls(bodies, law);
-  kick(bodies, STEP_SECONDS / 2);
+  kick(bodies, seconds / 2);
   const merged = merge && mergeTouching(bodies, touching);
+  const swallowed = merge && swallowTornApart(bodies);
   const gathered = gatherIntoStars(bodies);
-  condenseSettledGas(bodies);
-  if (!merged && !gathered) return false;
+  condenseSettledGas(bodies, seconds);
+  if (!merged && !swallowed && !gathered) return false;
   trustPulls(bodies, law);
   return true;
+}
+
+export function leapfrogStep(bodies, { exponent, mond = false, darkEnergy = 0, merge }, seconds = STEP_SECONDS, mostSubsteps = MOST_SUBSTEPS) {
+  const law = { exponent, mond, darkEnergy };
+  const shortestStep = seconds / mostSubsteps;
+  let changed = false;
+  let left = seconds;
+  while (left > 0 && bodies.length) {
+    if (!pullsStillHold(bodies, law)) updatePulls(bodies, law);
+    const step = Math.min(left, Math.max(shortestStep, STEP_SHARE_OF_PAIR_TIME * pullsAreFor.get(bodies).shortestPairTime));
+    changed = substep(bodies, law, merge, step) || changed;
+    left -= step;
+  }
+  return changed;
 }
 
 export function strongestPullOn(bodies, x, y, exponent) {
