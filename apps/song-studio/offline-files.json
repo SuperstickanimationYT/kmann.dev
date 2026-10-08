@@ -1,0 +1,23 @@
+{
+  "bytes": 80810,
+  "files": [
+    "./",
+    "index.html",
+    "js/arrange.js",
+    "js/demos.js",
+    "js/dom.js",
+    "js/drums.js",
+    "js/engine.js",
+    "js/grid.js",
+    "js/instruments.js",
+    "js/main.js",
+    "js/music.js",
+    "js/song.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

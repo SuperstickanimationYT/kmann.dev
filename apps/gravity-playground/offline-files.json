@@ -1,0 +1,21 @@
+{
+  "bytes": 101991,
+  "files": [
+    "./",
+    "index.html",
+    "js/cones.js",
+    "js/gas.js",
+    "js/glow.js",
+    "js/main.js",
+    "js/physics.js",
+    "js/scenes.js",
+    "js/tree.js",
+    "js/view.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

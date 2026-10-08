@@ -1,0 +1,25 @@
+{
+  "bytes": 79846,
+  "files": [
+    "./",
+    "index.html",
+    "js/alphabet-view.js",
+    "js/dom.js",
+    "js/drawpad.js",
+    "js/example.js",
+    "js/generator.js",
+    "js/grammar-view.js",
+    "js/grammar.js",
+    "js/main.js",
+    "js/script.js",
+    "js/store.js",
+    "js/words-view.js",
+    "js/write-view.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

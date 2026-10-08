@@ -14,6 +14,9 @@ assets/css/home.css        project card grid
 assets/css/app.css         app page chrome
 assets/css/studio.css      full-screen canvas with an overlay settings panel
 assets/js/studio.js        collapsible side panel on desktop, draggable bottom sheet on phones
+assets/js/offline.js       the per-app "Save offline" / "Install app" button
+sw.js                      serves a saved app from cache when the network is gone
+tools/offline-files.mjs    writes each app's manifest.webmanifest and offline-files.json
 assets/js/projects.js      the project list
 assets/js/render-projects.js
 apps/<slug>/               one folder per app that lives in this repo
@@ -46,6 +49,23 @@ Apps built around a canvas and a settings panel use the studio layout instead of
 `<main class="studio-stage">` and the controls in an `<aside class="studio-panel"
 data-studio-panel>` holding a `data-studio-handle` button and a `.studio-panel-body`,
 then load `studio.js` as a module. The Galaxy Photo Generator is the reference.
+
+## Offline copies
+
+Every app has a "Save offline" button. It downloads the files listed in the app's
+`offline-files.json` into the browser's cache and registers `sw.js` for that app's
+folder. From then on the app loads from the network when it can and from the saved
+copy when it can't, and each online visit refreshes the copy. Browsers that support it
+then offer "Install app", which opens the app in its own window.
+
+The list is generated from `git ls-files`, so after adding, renaming or deleting files
+in an app, commit them and run:
+
+```
+node tools/offline-files.mjs
+```
+
+A stale list only matters for files a visitor never loaded while online.
 
 ## Adding an app that lives in another repo
 

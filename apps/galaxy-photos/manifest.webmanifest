@@ -1,0 +1,18 @@
+{
+  "name": "Galaxy Photo Generator",
+  "short_name": "Galaxy Photo Generator",
+  "description": "Generate galaxies that look like real telescope photos: dust lanes, star-forming knots, diffraction spikes and all.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "bytes": 68737,
+  "files": [
+    "./",
+    "index.html",
+    "js/camera.js",
+    "js/kepler.js",
+    "js/main.js",
+    "js/render.js",
+    "js/surface-guess.js",
+    "js/systems.js",
+    "js/texture-worker.js",
+    "js/textures.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

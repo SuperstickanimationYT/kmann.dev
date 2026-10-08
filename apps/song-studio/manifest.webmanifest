@@ -1,0 +1,18 @@
+{
+  "name": "Song Studio",
+  "short_name": "Song Studio",
+  "description": "Make music in your browser: click notes onto a grid, stack melody, chords, bass and drums, and stay in a pentatonic scale so every note sounds good.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

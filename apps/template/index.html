@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Template &mdash; kmann314</title>
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="../../assets/css/site.css">
 <link rel="stylesheet" href="../../assets/css/app.css">
 </head>
@@ -38,11 +39,13 @@
   <div class="shell">
     <nav class="footer-links">
       <a href="../../about.html">About me</a>
+      <button type="button" class="save-offline" data-save-offline hidden></button>
     </nav>
     <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
   </div>
 </footer>
 
 <script src="app.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
 </body>
 </html>

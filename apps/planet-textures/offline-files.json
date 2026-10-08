@@ -1,0 +1,28 @@
+{
+  "bytes": 72675,
+  "files": [
+    "./",
+    "index.html",
+    "js/clouds.js",
+    "js/color.js",
+    "js/craters.js",
+    "js/download-worker.js",
+    "js/flow.js",
+    "js/giant.js",
+    "js/haze.js",
+    "js/main.js",
+    "js/physics.js",
+    "js/planet.js",
+    "js/presets.js",
+    "js/random.js",
+    "js/sphere.js",
+    "js/terrain.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}

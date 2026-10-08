@@ -1,0 +1,18 @@
+{
+  "name": "PangPlanet",
+  "short_name": "PangPlanet",
+  "description": "Fly a rocket between planets, moons and wormholes, mine fuel and trade galactokens.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

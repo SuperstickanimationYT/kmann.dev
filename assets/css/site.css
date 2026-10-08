@@ -158,3 +158,33 @@ a:focus-visible,
     height: 46px;
   }
 }
+
+.save-offline {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--link);
+  cursor: pointer;
+}
+
+.save-offline:hover:not(:disabled) {
+  color: #a6f2ff;
+}
+
+.save-offline:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.studio-panel .save-offline {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.save-offline[hidden] {
+  display: none;
+}
