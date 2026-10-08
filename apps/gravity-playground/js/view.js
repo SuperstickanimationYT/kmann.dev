@@ -60,12 +60,15 @@ const isDust = (body) => !body.test && !body.look && body.kind === KINDS.solid &
 
 const isSpeck = (body) => !body.test && (isDust(body) || isCollisionless(body));
 
-export function noteTrails(bodies, minGap) {
+export const WORLD_ORIGIN = { x: 0, y: 0 };
+
+export function noteTrails(bodies, minGap, origin) {
   for (const body of bodies) {
     if (isSpeck(body)) continue;
+    const [x, y] = [body.x - origin.x, body.y - origin.y];
     const last = body.trail.at(-1);
-    if (last && Math.hypot(last[0] - body.x, last[1] - body.y) < minGap) continue;
-    body.trail.push([body.x, body.y]);
+    if (last && Math.hypot(last[0] - x, last[1] - y) < minGap) continue;
+    body.trail.push([x, y]);
     if (body.trail.length > TRAIL_POINTS) body.trail.shift();
   }
 }
@@ -129,7 +132,7 @@ export function createView(canvas) {
     context.stroke();
   }
 
-  function tracePath(points) {
+  function tracePath(points, origin) {
     context.beginPath();
     let penDown = false;
     for (const point of points) {
@@ -137,18 +140,18 @@ export function createView(canvas) {
         penDown = false;
         continue;
       }
-      const [sx, sy] = toScreen(...point);
+      const [sx, sy] = toScreen(point[0] + origin.x, point[1] + origin.y);
       if (penDown) context.lineTo(sx, sy);
       else context.moveTo(sx, sy);
       penDown = true;
     }
   }
 
-  function drawTrail(body) {
+  function drawTrail(body, origin) {
     if (body.trail.length < 2) return;
     context.strokeStyle = body.test ? rgb(TEST_BALL, 0.5) : rgb(body.look === 'blackHole' ? PHOTON_RING : colourFor(body), 0.35);
     context.lineWidth = 1.5;
-    tracePath(body.trail);
+    tracePath(body.trail, origin);
     context.lineTo(...toScreen(body.x, body.y));
     context.stroke();
   }
@@ -313,12 +316,12 @@ export function createView(canvas) {
     context.fillText(label, right, bottom - SCALE_BAR.tickPx - 4);
   }
 
-  function drawLaunch({ body, pullX, pullY, path, label }) {
+  function drawLaunch({ body, pullX, pullY, path, label }, origin) {
     context.save();
     context.strokeStyle = PREDICTION;
     context.lineWidth = 1.5;
     context.setLineDash([5, 5]);
-    tracePath(path);
+    tracePath(path, origin);
     context.stroke();
     context.setLineDash([]);
     const [fromX, fromY] = toScreen(body.x, body.y);
@@ -343,12 +346,12 @@ export function createView(canvas) {
   const isDarkMatter = (body) => !body.test && body.kind === KINDS.darkMatter;
   const isGasParcel = (body) => !body.test && body.kind === KINDS.gas;
 
-  function draw({ bodies, selected, launch, trails, glow, cosmicGlow, cutAngle, scale }) {
+  function draw({ bodies, selected, launch, trails, glow, cosmicGlow, cutAngle, scale, origin }) {
     context.fillStyle = '#060f1c';
     context.fillRect(0, 0, width, height);
     drawGrid();
     if (cutAngle !== null) for (const cone of bodies.filter((body) => !body.test)) drawWedge(cone, cutAngle);
-    if (trails) bodies.forEach(drawTrail);
+    if (trails) for (const body of bodies) drawTrail(body, origin);
     const screen = { toScreen, zoom: camera.zoom, width, height };
     const hazy = glow && cosmicGlow;
     if (hazy) darkMatterHaze.draw(context, bodies.filter(isDarkMatter), screen);
@@ -361,7 +364,7 @@ export function createView(canvas) {
     for (const body of bodies) if (!isSpeck(body)) drawBody(body, { selected: body === selected });
     drawLabels(bodies);
     if (scale) drawScaleBar(scale);
-    if (launch) drawLaunch(launch);
+    if (launch) drawLaunch(launch, origin);
   }
 
   function bodyAt(bodies, clientX, clientY, slackPx) {
