@@ -207,6 +207,10 @@
   margin: 0 0 8px;
 }
 
+.worm-about a {
+  color: var(--link);
+}
+
 @media (max-width: 820px) {
   .worm-hud {
     top: 8px;
