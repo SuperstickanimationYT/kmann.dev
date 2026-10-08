@@ -315,6 +315,7 @@ uniform vec3 uShipForward;
 uniform vec4 uWindows[3];
 uniform vec2 uStruts[2];
 uniform float uCockpit;
+uniform float uShutter;
 
 vec2 shipAngles(vec3 direction) {
   return vec2(atan(dot(direction, uShipRight), dot(direction, uShipForward)), asin(clamp(dot(direction, uShipUp), -1.0, 1.0)));
@@ -324,8 +325,9 @@ float distanceOutsideWindows(vec2 angles) {
   float nearest = 10.0;
   for (int i = 0; i < 3; i++) {
     vec4 window = uWindows[i];
-    vec2 centre = vec2(window.x + window.y, window.z + window.w) * 0.5;
-    vec2 extent = vec2(window.y - window.x, window.w - window.z) * 0.5;
+    float top = mix(window.w, window.z, uShutter);
+    vec2 centre = vec2(window.x + window.y, window.z + top) * 0.5;
+    vec2 extent = vec2(window.y - window.x, top - window.z) * 0.5;
     vec2 q = abs(angles - centre) - extent;
     nearest = min(nearest, length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
   }
@@ -348,6 +350,89 @@ vec3 cabinColour(vec3 direction) {
 }
 `;
 
+const WARP = `
+uniform highp sampler2D uWarpTable;
+uniform vec4 uWarpAxis;
+uniform float uWarpRow;
+uniform float uWarpAngleMin;
+uniform int uWarpAngleCount;
+uniform int uWarpSpeedCount;
+uniform vec3 uBandToPhysical;
+
+const vec3 BAND_MICRONS = vec3(0.658, 0.551, 0.445);
+const float CMB_KELVIN = 2.725;
+const float HALF_TURN = 3.14159265;
+
+float planck(float microns, float kelvin) {
+  float x = 14387.77 / (microns * kelvin);
+  if (x > 80.0) return 0.0;
+  float denominator = x < 1e-3 ? x * (1.0 + 0.5 * x) : exp(x) - 1.0;
+  return 2.5718e14 / (microns * microns * microns * denominator);
+}
+
+vec3 planckBands(float kelvin) {
+  return vec3(planck(BAND_MICRONS.r, kelvin), planck(BAND_MICRONS.g, kelvin), planck(BAND_MICRONS.b, kelvin));
+}
+
+float colourTemperature(float blueOverVisual) {
+  float low = log(600.0);
+  float high = log(3.0e6);
+  for (int i = 0; i < 20; i++) {
+    float mid = 0.5 * (low + high);
+    float kelvin = exp(mid);
+    if (planck(BAND_MICRONS.b, kelvin) < blueOverVisual * planck(BAND_MICRONS.g, kelvin)) low = mid;
+    else high = mid;
+  }
+  return exp(0.5 * (low + high));
+}
+
+vec2 warpTexel(int angleIndex) {
+  int low = int(floor(uWarpRow));
+  int high = min(low + 1, uWarpSpeedCount - 1);
+  vec2 a = texelFetch(uWarpTable, ivec2(angleIndex, low), 0).rg;
+  vec2 b = texelFetch(uWarpTable, ivec2(angleIndex, high), 0).rg;
+  if (a.x < 0.0 || b.x < 0.0) return vec2(-1.0, -30.0);
+  return mix(a, b, uWarpRow - float(low));
+}
+
+float warpAngleOf(float index) {
+  return index <= 0.0 ? 0.0 : uWarpAngleMin * pow(HALF_TURN / uWarpAngleMin, (index - 1.0) / float(uWarpAngleCount - 2));
+}
+
+float warpIndexOf(float angle) {
+  if (angle <= uWarpAngleMin) return angle / uWarpAngleMin;
+  return clamp(1.0 + float(uWarpAngleCount - 2) * log(angle / uWarpAngleMin) / log(HALF_TURN / uWarpAngleMin), 0.0, float(uWarpAngleCount - 1));
+}
+
+vec2 warpLookup(float angle) {
+  float x = warpIndexOf(angle);
+  int i = int(floor(x));
+  int j = min(i + 1, uWarpAngleCount - 1);
+  vec2 a = warpTexel(i);
+  vec2 b = warpTexel(j);
+  if (a.x < 0.0 || b.x < 0.0) return vec2(-1.0, -30.0);
+  return mix(a, b, x - float(i));
+}
+
+vec3 atAngleFromAxis(vec3 direction, float angle) {
+  vec3 axis = uWarpAxis.xyz;
+  vec3 side = direction - axis * dot(direction, axis);
+  float size = length(side);
+  side = size > 1e-7 ? side / size : normalize(cross(axis, abs(axis.x) < 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0)));
+  return axis * cos(angle) + side * sin(angle);
+}
+
+vec3 blueshifted(vec3 bands, float shift) {
+  vec3 physical = bands * uBandToPhysical;
+  vec3 light = planckBands(CMB_KELVIN * shift);
+  if (physical.g > 0.0 && physical.b > 0.0) {
+    float kelvin = colourTemperature(physical.b / physical.g);
+    light += physical.g / max(planck(BAND_MICRONS.g, kelvin), 1e-30) * planckBands(kelvin * shift);
+  }
+  return light / uBandToPhysical;
+}
+`;
+
 export const EYE_FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
@@ -358,7 +443,11 @@ uniform vec3 uRight;
 uniform vec3 uUp;
 uniform vec3 uForward;
 uniform vec2 uTanHalf;
+uniform samplerCube uSkyCube;
+uniform float uGlareLux;
+uniform float uAdaptation;
 ${COCKPIT}
+${WARP}
 in vec2 vUv;
 out vec4 outColour;
 
@@ -444,6 +533,30 @@ vec4 planetColour(vec3 direction) {
   return vec4(mix(halo, lit, cover), cover);
 }
 
+vec3 warpedSky(vec3 direction) {
+  vec2 look = warpLookup(acos(clamp(dot(direction, uWarpAxis.xyz), -1.0, 1.0)));
+  if (look.x < 0.0) return vec3(0.0);
+  vec3 bands = max(texture(uSkyCube, atAngleFromAxis(direction, look.x)).rgb, vec3(0.0));
+  return blueshifted(bands, pow(10.0, look.y));
+}
+
+float glare(vec3 direction) {
+  if (uGlareLux <= 0.0) return 0.0;
+  vec3 axis = uWarpAxis.xyz;
+  float degreesOff = max(degrees(acos(clamp(dot(direction, axis), -1.0, 1.0))), 0.1);
+  float veil = 10.0 * uGlareLux / (degreesOff * degreesOff);
+  vec3 across = normalize(uUp - axis * dot(uUp, axis));
+  float turn = atan(dot(direction, cross(axis, across)), dot(direction, across));
+  float spikes = 0.0;
+  for (int i = 0; i < 18; i++) {
+    float spikeTurn = float(hashUint(uint(i) * 2654435761u) % 6283u) / 1000.0;
+    float strength = 0.4 + float(hashUint(uint(i) * 40503u + 7u) % 1000u) / 1000.0;
+    float gap = abs(mod(turn - spikeTurn + HALF_TURN, 2.0 * HALF_TURN) - HALF_TURN);
+    spikes += strength * exp(-gap * gap / 6e-5) * exp(-degreesOff / (3.0 + 9.0 * strength));
+  }
+  return veil * (1.0 + 6.0 * spikes * degreesOff) / 1.08e-4;
+}
+
 void main() {
   vec2 ndc = vUv * 2.0 - 1.0;
   vec3 direction = normalize(uForward + uRight * ndc.x * uTanHalf.x + uUp * ndc.y * uTanHalf.y);
@@ -456,13 +569,13 @@ void main() {
     outColour = vec4(planet.rgb, 1.0);
     return;
   }
-  vec3 sky = max(texture(uSky, vUv).rgb, vec3(0.0));
+  vec3 sky = uWarpAxis.w > 0.5 ? warpedSky(direction) + glare(direction) * uWhiteBalance : max(texture(uSky, vUv).rgb, vec3(0.0));
   float photopic = 1.08e-4 * sky.g;
   float scotopic = 1.08e-4 * (0.3 * sky.g + 0.7 * sky.b);
   float logPhotopic = log(max(photopic, 1e-12)) / log(10.0);
   float colourShare = smoothstep(-3.0, -0.5, logPhotopic);
   float seen = mix(scotopic, photopic, colourShare);
-  float logSeen = log(max(seen, 1e-12)) / log(10.0);
+  float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation;
   float lightness = clamp((logSeen + 5.6) / 5.1, 0.0, 1.0);
   lightness = lightness * lightness * smoothstep(-6.2, -5.4, logSeen);
   lightness += grain() * 0.06 * (1.0 - colourShare) * smoothstep(-6.6, -5.0, logSeen);
@@ -480,6 +593,7 @@ uniform vec3 uAnchorShift;
 uniform vec3 uWhiteBalance;
 uniform vec4 uPlanet;
 ${COCKPIT}
+${WARP}
 out vec3 vColour;
 out float vSpread;
 out float vSize;
@@ -490,22 +604,67 @@ vec3 bandFluxes(float colour) {
   return vec3(pow(10.0, 0.4 * redIndex), 1.0, pow(10.0, -0.4 * colour));
 }
 
+float warpedAngle(float skyAngle, out float magnification) {
+  int low = 0;
+  int high = uWarpAngleCount - 1;
+  for (int i = 0; i < 9; i++) {
+    if (high - low <= 1) break;
+    int middle = (low + high) / 2;
+    vec2 probe = warpTexel(middle);
+    if (probe.x >= 0.0 && probe.x <= skyAngle) low = middle;
+    else high = middle;
+  }
+  vec2 a = warpTexel(low);
+  vec2 b = warpTexel(low + 1);
+  if (a.x < 0.0 || b.x <= a.x) return -1.0;
+  float share = (skyAngle - a.x) / (b.x - a.x);
+  if (share < -0.01 || share > 1.01) return -1.0;
+  float angleLow = warpAngleOf(float(low));
+  float angleHigh = warpAngleOf(float(low + 1));
+  float observed = mix(angleLow, angleHigh, clamp(share, 0.0, 1.0));
+  float slope = (b.x - a.x) / max(angleHigh - angleLow, 1e-12);
+  magnification = skyAngle < 1e-6 ? 1.0 / (slope * slope) : sin(observed) / max(sin(skyAngle) * slope, 1e-12);
+  return observed;
+}
+
+vec3 warpBrightening(float colour, float shift, float magnification) {
+  vec3 physical = bandFluxes(colour) * uBandToPhysical;
+  float kelvin = colourTemperature(physical.b / physical.g);
+  return magnification * planckBands(kelvin * shift) / max(planckBands(kelvin), vec3(1e-30));
+}
+
+void hide() {
+  gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+  gl_PointSize = 0.0;
+}
+
 void main() {
   vec3 offset = aOffset - uAnchorShift;
   float distance = length(offset);
-  vec3 local = vec3(dot(offset, uRight), dot(offset, uUp), dot(offset, uForward));
+  vec3 seen = offset / distance;
+  vec3 warping = vec3(1.0);
   vGlare = 0.0;
-  bool behindPlanet = uPlanet.w > 0.0 && dot(offset / distance, uPlanet.xyz) > cos(uPlanet.w);
-  if (local.z <= 0.0 || behindPlanet || !seenThroughCockpit(offset / distance)) {
-    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-    gl_PointSize = 0.0;
+  if (uWarpAxis.w > 0.5) {
+    float magnification = 1.0;
+    float observed = warpedAngle(acos(clamp(dot(seen, uWarpAxis.xyz), -1.0, 1.0)), magnification);
+    if (observed < 0.0) {
+      hide();
+      return;
+    }
+    seen = atAngleFromAxis(seen, observed);
+    warping = warpBrightening(aLook.y, pow(10.0, warpLookup(observed).y), magnification);
+  }
+  vec3 local = vec3(dot(seen, uRight), dot(seen, uUp), dot(seen, uForward));
+  bool behindPlanet = uPlanet.w > 0.0 && dot(seen, uPlanet.xyz) > cos(uPlanet.w);
+  if (local.z <= 0.0 || behindPlanet || !seenThroughCockpit(seen) || warping.g <= 0.0) {
+    hide();
     return;
   }
   vec2 ndc = local.xy / local.z / uTanHalf;
   float apparent = aLook.x + 5.0 * log(distance / 10.0) / log(10.0);
   float tau = distance > 30.0 ? dustColumn(uCamera + offset, 10) : 0.0;
-  vec3 extinction = exp(-tau * EXTINCTION_BANDS);
-  float seenMagnitude = apparent - 2.5 * log(extinction.g) / log(10.0);
+  vec3 extinction = exp(-tau * EXTINCTION_BANDS) * warping / warping.g;
+  float seenMagnitude = apparent + 2.5 * tau / log(10.0) - 2.5 * log(warping.g) / log(10.0);
   float brightness = min(2.5, 0.2 * pow(10.0, 0.16 * (6.5 - seenMagnitude)));
   float colourShare = smoothstep(2.0, -1.0, seenMagnitude) * 0.75;
   vec3 tint = bandFluxes(aLook.y) * extinction / uWhiteBalance;

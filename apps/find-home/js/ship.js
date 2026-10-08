@@ -8,7 +8,6 @@ export const SHIP = {
   thrusterTopSpeed: 10,
   jumpScatter: 0.02,
   energyBudgetShare: 1.5,
-  jumpRealSeconds: 2.5,
   warpLightYearsPerSecond: OVERSHOOT_LY / PLANNED_BURN_SECONDS,
   headYawLimit: 110 * DEGREES,
   headPitchLimit: 70 * DEGREES,

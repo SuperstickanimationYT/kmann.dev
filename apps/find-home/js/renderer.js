@@ -5,6 +5,7 @@ import {
 } from './milky-way.js';
 import { luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.js';
 import { createRandom } from './random.js';
+import { planckNanomaggies } from './warp.js';
 import {
   CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
@@ -117,6 +118,22 @@ function viewUniforms({ camera, basis, tanHalf, pixelAngle }) {
 }
 
 const NO_PLANET = { uPlanet: [0, 0, 1, 0] };
+const SKY_CUBE_SIZE = 256;
+const SKY_CUBE_UNIT = 3;
+const WARP_TABLE_UNIT = 4;
+const SUN_KELVIN = 5772;
+const BAND_MICRONS = [0.658, 0.551, 0.445];
+const SUN_BANDS = BAND_MICRONS.map((microns) => planckNanomaggies(microns, SUN_KELVIN));
+const BAND_TO_PHYSICAL = SUN_BANDS.map((flux, band) => flux / SUN_BANDS[1] / WHITE_BALANCE[band]);
+const CUBE_FACES = [
+  { forward: [1, 0, 0], right: [0, 0, -1], up: [0, -1, 0] },
+  { forward: [-1, 0, 0], right: [0, 0, 1], up: [0, -1, 0] },
+  { forward: [0, 1, 0], right: [1, 0, 0], up: [0, 0, 1] },
+  { forward: [0, -1, 0], right: [1, 0, 0], up: [0, 0, -1] },
+  { forward: [0, 0, 1], right: [1, 0, 0], up: [0, -1, 0] },
+  { forward: [0, 0, -1], right: [-1, 0, 0], up: [0, -1, 0] },
+];
+const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
 function planetUniforms(planet, camera) {
   if (!planet) return NO_PLANET;
@@ -196,6 +213,57 @@ export function createRenderer(canvas, armMap, galaxies) {
   let cameraSignal = null;
   let cameraPicture = null;
 
+  const skyCube = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + SKY_CUBE_UNIT);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyCube);
+  for (let face = 0; face < 6; face++) {
+    gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA16F, SKY_CUBE_SIZE, SKY_CUBE_SIZE, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  }
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const skyCubeFramebuffer = gl.createFramebuffer();
+
+  const warpTable = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0 + WARP_TABLE_UNIT);
+  gl.bindTexture(gl.TEXTURE_2D, warpTable);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, 1, 1, 0, gl.RG, gl.FLOAT, new Float32Array([0, 0]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.activeTexture(gl.TEXTURE0);
+  let warpShape = { uWarpAngleMin: 1, uWarpAngleCount: { int: 2 }, uWarpSpeedCount: { int: 1 } };
+
+  function loadWarpTable(optics) {
+    gl.activeTexture(gl.TEXTURE0 + WARP_TABLE_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, warpTable);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, optics.angleCount, optics.speedCount, 0, gl.RG, gl.FLOAT, optics.table);
+    gl.activeTexture(gl.TEXTURE0);
+    warpShape = { uWarpAngleMin: optics.smallestAngle, uWarpAngleCount: { int: optics.angleCount }, uWarpSpeedCount: { int: optics.speedCount } };
+  }
+
+  function bindWarp(program, warp, adaptation) {
+    gl.activeTexture(gl.TEXTURE0 + SKY_CUBE_UNIT);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyCube);
+    gl.activeTexture(gl.TEXTURE0 + WARP_TABLE_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, warpTable);
+    gl.activeTexture(gl.TEXTURE0);
+    if (program.uniforms.uSkyCube) gl.uniform1i(program.uniforms.uSkyCube, SKY_CUBE_UNIT);
+    if (program.uniforms.uWarpTable) gl.uniform1i(program.uniforms.uWarpTable, WARP_TABLE_UNIT);
+    const values = warp ? { uWarpAxis: [...warp.axis, 1], uWarpRow: warp.row, uGlareLux: warp.glareLux, uShutter: warp.shutter } : NO_WARP;
+    setUniforms(gl, program, { ...warpShape, ...values, uBandToPhysical: BAND_TO_PHYSICAL, uAdaptation: adaptation });
+  }
+
+  function captureSkyCube({ camera, nebulae, stars }) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, skyCubeFramebuffer);
+    gl.viewport(0, 0, SKY_CUBE_SIZE, SKY_CUBE_SIZE);
+    CUBE_FACES.forEach((basis, face) => {
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, skyCube, 0);
+      drawSky({ camera, basis, tanHalf: [1, 1], pixelAngle: Math.PI / 2 / SKY_CUBE_SIZE }, nebulae, stars.reaches, 1, 1);
+    });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   function bindGalaxyTextures(program) {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, armTexture);
@@ -262,10 +330,10 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, warp, adaptation }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
-    if (skyResolution) {
+    if (skyResolution && !warp) {
       shownSky = skyTargetFor(skyResolution);
       gl.bindFramebuffer(gl.FRAMEBUFFER, shownSky.framebuffer);
       gl.viewport(0, 0, shownSky.width, shownSky.height);
@@ -281,11 +349,13 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed } });
     setCockpit(eyeProgram, cockpit);
     setUniforms(gl, eyeProgram, planetValues);
+    bindWarp(eyeProgram, warp, adaptation);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
     setUniforms(gl, eyeStarProgram, planetValues);
+    bindWarp(eyeStarProgram, warp, adaptation);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
   }
 
@@ -359,5 +429,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable };
 }
