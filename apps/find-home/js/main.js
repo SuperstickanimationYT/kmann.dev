@@ -8,6 +8,7 @@ import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
 import { describeStar, drawGuides } from './practice.js';
 import { createRandom, randomSeed } from './random.js';
+import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
@@ -49,7 +50,6 @@ const exposureSelect = $('[data-exposure]');
 const stretchInput = $('[data-stretch]');
 const exposeButton = $('[data-expose]');
 const jumpInput = $('[data-jump-distance]');
-const warpVeil = $('[data-warp]');
 const guides = $('[data-guides]');
 const modeSelect = $('[data-mode]');
 const clockLabel = $('[data-clock-label]');
@@ -98,6 +98,7 @@ function startingPoint(random) {
 
 function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice') {
   endIntro();
+  warp = null;
   const random = createRandom(seed);
   let camera = startingPoint(random);
   while (galaxies.some((galaxy) => Math.hypot(...subtract(galaxy.centre, camera)) < START_CLEARANCE)) camera = startingPoint(random);
@@ -321,19 +322,52 @@ function turnHead(yaw, pitch) {
   aimView();
 }
 
-let jumping = false;
+let warp = null;
+let warpOptics = null;
+let adaptation = 0;
+const CRUISE_TIMES_LIGHT = SHIP.warpLightYearsPerSecond * 365.25 * 86400;
 
 function jump() {
-  if (intro || photo?.running || jumping || (game.over && !game.practice)) return;
+  if (intro || photo?.running || warp || !warpOptics || !eyeStars || (game.over && !game.practice)) return;
   const lightYears = Number(jumpInput.value);
   if (!(lightYears > 0)) return;
   if (!game.practice && lightYears > game.energy) {
     showStatus(`Not enough warp: ${formatWarpTime(game.energy)} left, enough for ${formatLightYears(game.energy)}.`);
     return;
   }
-  jumping = true;
-  warpVeil.hidden = false;
-  setTimeout(() => land(lightYears), SHIP.jumpRealSeconds * 1000);
+  renderer.captureSkyCube({ camera: game.camera, nebulae, stars: eyeStars });
+  warp = { axis: [...game.ship.forward], lightYears, startedAt: performance.now(), arrived: false };
+  clearGuides();
+}
+
+const timesLight = (speed) => (speed < 10 ? speed.toFixed(2) : Math.round(speed).toLocaleString('en'));
+
+function warpCaption(stage) {
+  if (stage.shutter >= 1) return `Shutters closed. Cruising at ${Math.round(CRUISE_TIMES_LIGHT / 1e9)} billion times light speed.`;
+  if (stage.shutter > 0) return 'Blast shutters closing against the glare.';
+  return `${warp.arrived ? 'Dropping out' : 'Bubble forming'}: ${timesLight(stage.speed)} times light speed.`;
+}
+
+function advanceWarp(now) {
+  const elapsed = (now - warp.startedAt) / 1000;
+  if (elapsed >= WARP_SECONDS) {
+    showStatus(`Dropped out of warp after ${formatLightYears(warp.lightYears)}.`);
+    warp = null;
+    viewChanged();
+    return null;
+  }
+  const stage = warpStage(elapsed);
+  if (stage.arrived && !warp.arrived) {
+    warp.arrived = true;
+    land(warp.lightYears);
+    refreshEyeStars(now);
+    renderer.captureSkyCube({ camera: game.camera, nebulae, stars: eyeStars });
+  }
+  status.textContent = warpCaption(stage);
+  status.hidden = false;
+  clearTimeout(statusTimer);
+  const row = rowForSpeed(warpOptics, stage.speed);
+  return { axis: warp.axis, row, shutter: stage.shutter, glareLux: glareForRow(warpOptics, row) * (1 - stage.shutter) };
 }
 
 function land(lightYears) {
@@ -346,14 +380,10 @@ function land(lightYears) {
   }
   game.jumps += 1;
   eyeStars = null;
-  jumping = false;
-  warpVeil.hidden = true;
-  viewChanged();
-  showStatus(`Dropped out of warp after ${formatLightYears(lightYears)}.`);
 }
 
 function flightStep(seconds) {
-  if (intro || photo?.running || jumping) return;
+  if (intro || photo?.running || warp) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
@@ -420,8 +450,10 @@ let lastFrame = performance.now();
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
-  if (!intro && !game.over && !game.practice && !photo?.running && !jumping && document.visibilityState === 'visible') game.clock += seconds;
+  if (!intro && !game.over && !game.practice && !photo?.running && !warp && document.visibilityState === 'visible') game.clock += seconds;
   if (intro) advanceIntro(now);
+  const warpView = warp ? advanceWarp(now) : null;
+  adaptation = adaptEyes(adaptation, warpView?.glareLux ?? 0, seconds);
   flightStep(seconds);
   refreshEyeStars(now);
   if (eyeStars) {
@@ -435,6 +467,8 @@ function frame(now) {
       skyResolution: nextSkyResolution(),
       cockpit: { ...cockpitUniforms(game.ship), enabled: true },
       planet: intro?.planet ?? null,
+      warp: warpView,
+      adaptation,
     });
     eyeStarsChanged = false;
   }
@@ -460,7 +494,7 @@ function refreshGuides() {
   const context = guides.getContext('2d');
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
-  if (photo || !atlasFrame.hidden) return;
+  if (photo || warp || !atlasFrame.hidden) return;
   drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
 }
 
@@ -474,7 +508,7 @@ function toggleExposure() {
     stopExposure();
     return;
   }
-  if (intro || (game.over && !game.practice) || !eyeStars) return;
+  if (intro || warp || (game.over && !game.practice) || !eyeStars) return;
   const { width, height } = photoSize();
   const pixelAngle = EYE_FIELD_HEIGHT / height;
   const electronsPerUnit = CAMERA.electronsPerNanomaggy * (pixelAngle * ARCSEC_PER_RADIAN) ** 2;
@@ -603,6 +637,7 @@ function claimInView(clientX, clientY) {
 }
 
 function finish(found) {
+  warp = null;
   game.over = true;
   const distance = Math.hypot(...subtract(SUN_POSITION, game.camera)) * LY_PER_PC;
   if (!found) faceDirection(subtract(SUN_POSITION, game.camera));
@@ -616,7 +651,7 @@ function finish(found) {
 
 let drag = null;
 view.addEventListener('pointerdown', (event) => {
-  if (photo?.running || jumping) return;
+  if (photo?.running) return;
   view.focus();
   view.setPointerCapture(event.pointerId);
   drag = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY };
@@ -629,7 +664,7 @@ view.addEventListener('pointermove', (event) => {
   drag.y = event.clientY;
 });
 view.addEventListener('pointerup', (event) => {
-  if (drag && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < TAP_DISTANCE) claimInView(event.clientX, event.clientY);
+  if (drag && !warp && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < TAP_DISTANCE) claimInView(event.clientX, event.clientY);
   drag = null;
 });
 view.addEventListener('pointercancel', () => (drag = null));
@@ -732,6 +767,10 @@ if (!renderer) {
   const practice = new URL(window.location.href).searchParams.get('mode') === 'practice';
   newGame(Number.isInteger(requested) && requested > 0 ? requested : randomSeed(), practice);
   resize();
+  loadWarpOptics('data/warp-optics.bin').then((optics) => {
+    warpOptics = optics;
+    renderer.loadWarpTable(optics);
+  });
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     nearby = stars;
   });

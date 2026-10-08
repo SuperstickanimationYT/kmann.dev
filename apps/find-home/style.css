@@ -55,19 +55,6 @@
   pointer-events: none;
 }
 
-.fh-warp {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: #000;
-  font-size: 15px;
-  text-align: center;
-  color: var(--text-dim);
-}
-
 .fh-intro {
   position: absolute;
   inset: 0;
