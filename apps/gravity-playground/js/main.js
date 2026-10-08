@@ -2,7 +2,7 @@ import { driftThroughCones, isCone, outOfMissingSpace, wedgeAngleOf } from './co
 import { circularVelocity, cloneBodies, createBody, leapfrogStep, STEP_SECONDS, strongestPullOn } from './physics.js';
 import { GALAXY, SCENES } from './scenes.js';
 import { formatMass, formatPace, NEW_BODY_MASS, radiusFor, REAL_MASS_RANGE, starColour } from './units.js';
-import { createView, noteTrails } from './view.js';
+import { createView, noteTrails, WORLD_ORIGIN } from './view.js';
 
 const MASS_RANGE = { min: 0.1, max: 3000, sliderSteps: 1000 };
 const REAL_MASS_SLIDER = { ...REAL_MASS_RANGE, sliderSteps: 1000 };
@@ -48,7 +48,7 @@ let cosmicGlow = false;
 let scale = null;
 let startMs = Date.now();
 let elapsed = 0;
-let following = null;
+let heldStill = null;
 let launch = null;
 let grab = null;
 let pan = null;
@@ -87,6 +87,7 @@ function intoConesAndBalls() {
 
 function setSpacetime(spacetime) {
   settings.spacetime = spacetime;
+  heldStill = null;
   if (inCones()) intoConesAndBalls();
   else bodies = bodies.filter(isCone);
   bodies.forEach((body) => (body.trail = []));
@@ -176,7 +177,7 @@ function loadScene(key) {
   setScale(sceneScale);
   startMs = Date.now();
   elapsed = 0;
-  following = null;
+  heldStill = null;
   bodies = build({ ...settings, startMs });
   const { spread } = massSpread(bodies);
   expansion = expands ? { startingSpread: spread, spread } : null;
@@ -202,34 +203,37 @@ function showSelected() {
   form.selectedPinned.checked = selected.pinned;
   const wedge = inCones() && isCone(selected) ? ` · ${Math.round(wedgeAngleOf(selected.mass) / DEGREES)}° wedge` : '';
   find('[data-selected-mass-label]').textContent = `${massLabel(selected.mass)}${wedge}`;
-  showFollowing();
+  showHeldStill();
 }
 
-function showFollowing() {
-  const button = find('[data-follow]');
-  const isFollowed = Boolean(selected) && following?.body === selected;
-  button.textContent = isFollowed ? 'Stop following' : 'Follow';
-  button.setAttribute('aria-pressed', String(isFollowed));
+const frameOrigin = () => heldStill?.body ?? WORLD_ORIGIN;
+
+function showHeldStill() {
+  const button = find('[data-hold-still]');
+  const isHeld = Boolean(selected) && heldStill?.body === selected;
+  button.textContent = isHeld ? 'Let it move' : 'Hold still';
+  button.setAttribute('aria-pressed', String(isHeld));
 }
 
-function toggleFollow() {
-  if (!selected) return;
-  following = following?.body === selected ? null : { body: selected, lastX: selected.x, lastY: selected.y };
-  if (following) Object.assign(view.camera, { x: selected.x, y: selected.y });
-  showFollowing();
+function holdStill(body) {
+  heldStill = body ? { body, lastX: body.x, lastY: body.y } : null;
+  if (body) Object.assign(view.camera, { x: body.x, y: body.y });
+  bodies.forEach((each) => (each.trail = []));
+  showHeldStill();
 }
 
-function followCamera() {
-  if (!following) return;
-  const { body, lastX, lastY } = following;
+const toggleHoldStill = () => selected && holdStill(heldStill?.body === selected ? null : selected);
+
+function keepHeldBodyStill() {
+  if (!heldStill) return;
+  const { body, lastX, lastY } = heldStill;
   if (!bodies.includes(body)) {
-    following = null;
-    showFollowing();
+    holdStill(null);
     return;
   }
   view.camera.x += body.x - lastX;
   view.camera.y += body.y - lastY;
-  Object.assign(following, { lastX: body.x, lastY: body.y });
+  Object.assign(heldStill, { lastX: body.x, lastY: body.y });
 }
 
 function removeBody(body) {
@@ -301,18 +305,22 @@ function heaviestThatMatter(count) {
 }
 
 function predictPath() {
-  const world = [...cloneBodies(heaviestThatMatter(PREDICTION_BODIES)), { ...launch.body, ...launchVelocity(), trail: [] }];
+  const others = heaviestThatMatter(PREDICTION_BODIES);
+  if (heldStill && !others.includes(heldStill.body)) others.push(heldStill.body);
+  const world = [...cloneBodies(others), { ...launch.body, ...launchVelocity(), trail: [] }];
   const ghost = world.at(-1);
+  const origin = world.find((body) => body.id === heldStill?.body.id) ?? WORLD_ORIGIN;
+  const relative = () => [ghost.x - origin.x, ghost.y - origin.y];
   const pairs = (world.length * (world.length - 1)) / 2;
   const steps = Math.min(PREDICTION_SECONDS / STEP_SECONDS, PREDICTION_PAIR_BUDGET / Math.max(1, pairs));
   const seconds = STEP_SECONDS * settings.speed;
-  const path = [[ghost.x, ghost.y]];
+  const path = [relative()];
   const deadline = performance.now() + PREDICTION_MS;
   for (let i = 0; i < steps && world.includes(ghost) && performance.now() < deadline; i++) {
     const [beforeX, beforeY] = [ghost.x, ghost.y];
     stepWorld(world, { trails: false }, seconds, PREDICTION_SUBSTEPS);
     if (Math.hypot(ghost.x - beforeX, ghost.y - beforeY) > Math.hypot(ghost.vx, ghost.vy) * seconds * 2) path.push(null);
-    if (i % 4 === 0) path.push([ghost.x, ghost.y]);
+    if (i % 4 === 0) path.push(relative());
   }
   launch.path = path;
   launch.label = launchLabel();
@@ -519,7 +527,7 @@ function bindPanel() {
     const others = bodies.filter((body) => body !== selected);
     Object.assign(selected, circularVelocity(strongestPullOn(others, selected.x, selected.y, settings.exponent), selected.x, selected.y, settings.exponent));
   });
-  find('[data-follow]').addEventListener('click', toggleFollow);
+  find('[data-hold-still]').addEventListener('click', toggleHoldStill);
   find('[data-delete]').addEventListener('click', () => selected && removeBody(selected));
   find('[data-deselect]').addEventListener('click', () => select(null));
   find('[data-pause]').addEventListener('click', togglePause);
@@ -574,7 +582,8 @@ function showStatus() {
     ? `${counted(cones, 'mass', 'masses')} · ${counted(bodies.length - cones, 'ball', 'balls')} · 2+1 relativity`
     : `${counted(bodies.length, 'body', 'bodies')} · force ∝ ${lawLabel(settings.exponent)}${settings.mond ? ' · MOND' : ''}${settings.darkEnergy ? ' · dark energy' : ''}${expansion ? ` · space ×${(expansion.spread / expansion.startingSpread).toFixed(2)}` : ''}`;
   const slowed = !settings.paused && achievedSpeed < settings.speed * SLOWED_BELOW ? ` · slowed to ${achievedSpeed.toFixed(2)}×` : '';
-  find('[data-status]').textContent = description + (scale ? ` · ${simulatedDate()}` : '') + paused + slowed;
+  const seenFrom = heldStill ? ` · seen from ${heldStill.body.name ?? 'held body'}` : '';
+  find('[data-status]').textContent = description + seenFrom + (scale ? ` · ${simulatedDate()}` : '') + paused + slowed;
 }
 
 let lastTime = null;
@@ -592,7 +601,7 @@ function frame(time) {
     const trailGap = TRAIL_MIN_GAP_PX / view.camera.zoom;
     while (backlog >= STEP_SECONDS && performance.now() < deadline) {
       stepWorld(bodies, settings);
-      if (settings.trails) noteTrails(bodies, trailGap);
+      if (settings.trails) noteTrails(bodies, trailGap, frameOrigin());
       backlog -= STEP_SECONDS;
       steps++;
     }
@@ -605,8 +614,8 @@ function frame(time) {
     if (grab && !bodies.includes(grab.body)) grab = null;
     if (launch) predictPath();
   }
-  followCamera();
-  view.draw({ bodies, selected, launch, trails: settings.trails, glow: settings.glow, cosmicGlow, cutAngle: inCones() ? settings.cutAngle : null, scale });
+  keepHeldBodyStill();
+  view.draw({ bodies, selected, launch, trails: settings.trails, glow: settings.glow, cosmicGlow, cutAngle: inCones() ? settings.cutAngle : null, scale, origin: frameOrigin() });
   showStatus();
   window.requestAnimationFrame(frame);
 }
