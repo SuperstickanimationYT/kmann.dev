@@ -1,0 +1,26 @@
+{
+  "bytes": 90757,
+  "files": [
+    "./",
+    "index.html",
+    "js/levels.js",
+    "js/main.js",
+    "js/maze.js",
+    "js/paint.js",
+    "js/projection.js",
+    "js/render3d.js",
+    "js/render4d.js",
+    "js/rooms.js",
+    "js/sensors.js",
+    "js/sensorview.js",
+    "js/shapes.js",
+    "js/vec.js",
+    "js/world.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

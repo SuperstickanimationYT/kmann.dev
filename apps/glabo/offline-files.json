@@ -1,0 +1,25 @@
+{
+  "bytes": 82852,
+  "files": [
+    "./",
+    "index.html",
+    "js/conversation.js",
+    "js/crowd.js",
+    "js/dom.js",
+    "js/knowledge.js",
+    "js/lexicon.js",
+    "js/main.js",
+    "js/parser.js",
+    "js/render.js",
+    "js/semantics.js",
+    "js/understand.js",
+    "js/views.js",
+    "js/world.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

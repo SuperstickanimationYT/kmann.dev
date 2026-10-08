@@ -1,0 +1,13 @@
+{
+  "bytes": 10744,
+  "files": [
+    "./",
+    "app.js",
+    "index.html",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

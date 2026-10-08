@@ -1,0 +1,18 @@
+{
+  "name": "Planet Calculator",
+  "short_name": "Planet Calculator",
+  "description": "Worldbuilding calculator: pick a star and an orbit, get the year, gravity, temperature, habitable zone, tidal locking and what the sky looks like.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
