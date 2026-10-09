@@ -8,37 +8,26 @@
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="../../assets/css/site.css">
-<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body class="app-page">
+<body class="app-page studio">
 
-<header class="site-header">
-  <div class="shell">
-    <a class="mark" href="../../" aria-label="Home">
-      <img src="../../assets/img/mark.svg" alt="">
-    </a>
-    <div class="banner">
-      <h1 class="banner-title">kmann314's projects</h1>
-    </div>
-  </div>
-  <div class="header-rule"></div>
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Gravity Playground</h1>
 </header>
 
-<main>
-  <div class="shell">
-    <div class="app-bar">
-      <a class="back-link" href="../../">&larr; All projects</a>
-      <h2 class="app-title">Gravity Playground</h2>
-    </div>
-  </div>
+<main class="studio-stage">
+  <canvas data-stage aria-label="Gravity simulation. Drag on empty space to pull back and launch a planet the opposite way."></canvas>
+  <p class="gp-status" data-status></p>
+</main>
 
-  <div class="shell gp-layout">
-    <div class="app-stage gp-stage">
-      <canvas data-stage aria-label="Gravity simulation. Drag on empty space to pull back and launch a planet the opposite way."></canvas>
-      <p class="gp-status" data-status></p>
-    </div>
-
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
     <form class="gp-panel" data-controls>
       <div class="gp-actions">
         <button type="button" class="gp-primary" data-pause>Pause</button>
@@ -195,20 +184,14 @@
         </ul>
       </details>
     </form>
-  </div>
-</main>
 
-<footer class="site-footer">
-  <div class="shell">
-    <nav class="footer-links">
-      <a href="../../about.html">About me</a>
-      <button type="button" class="save-offline" data-save-offline hidden></button>
-    </nav>
-    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
   </div>
-</footer>
+</aside>
 
 <script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
 <script type="module" src="../../assets/js/offline.js"></script>
 </body>
 </html>
