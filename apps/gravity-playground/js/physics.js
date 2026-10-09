@@ -338,6 +338,15 @@ export function strongestPullOn(bodies, x, y, exponent) {
   return strongest;
 }
 
+const hillRadius = (body, primary) => (primary ? Math.hypot(body.x - primary.x, body.y - primary.y) * Math.cbrt(body.mass / (3 * primary.mass)) : Infinity);
+
+export function orbitedBodyAt(bodies, x, y, exponent) {
+  const reaches = new Map(bodies.map((body) => [body, hillRadius(body, strongestPullOn(bodies.filter((other) => other.mass > body.mass), body.x, body.y, exponent))]));
+  const containing = bodies.filter((body) => Math.hypot(body.x - x, body.y - y) < reaches.get(body));
+  const innermost = Math.min(...containing.map((body) => reaches.get(body)));
+  return strongestPullOn(containing.filter((body) => reaches.get(body) === innermost), x, y, exponent);
+}
+
 export function circularVelocity(centre, x, y, exponent, clockwise = false) {
   if (!centre) return { vx: 0, vy: 0 };
   const dx = x - centre.x;

@@ -1,5 +1,5 @@
 import { driftThroughCones, isCone, outOfMissingSpace, wedgeAngleOf } from './cones.js';
-import { circularVelocity, cloneBodies, createBody, leapfrogStep, STEP_SECONDS, strongestPullOn } from './physics.js';
+import { circularVelocity, cloneBodies, createBody, leapfrogStep, orbitedBodyAt, pullAt, STEP_SECONDS } from './physics.js';
 import { GALAXY, SCENES } from './scenes.js';
 import { formatMass, formatPace, NEW_BODY_MASS, radiusFor, REAL_MASS_RANGE, starColour } from './units.js';
 import { createView, noteTrails, WORLD_ORIGIN } from './view.js';
@@ -25,6 +25,7 @@ const PREDICTION_SUBSTEPS = 64;
 const PREDICTION_MS = 25;
 const PREDICTION_LIGHTEST_SHARE = 1e-6;
 const LAUNCH_KM_PER_S_PER_PX = 0.5;
+const LAUNCH_PX_FOR_CIRCULAR_ORBIT = 80;
 const TRAIL_MIN_GAP_PX = 2;
 const NEW_BODY_NAMES = { planet: 'Rogue planet', star: 'Star', blackHole: 'Black hole' };
 const THROW_SMOOTHING = 0.5;
@@ -344,22 +345,33 @@ function newBodyAt(x, y, velocity) {
 
 function tapVelocity(x, y) {
   if (inCones() || !settings.autoOrbit) return { vx: 0, vy: 0 };
-  return circularVelocity(strongestPullOn(bodies, x, y, settings.exponent), x, y, settings.exponent);
+  return circularVelocity(orbitedFrom(x, y), x, y, settings.exponent);
 }
+
+const orbitedFrom = (x, y, exclude) => orbitedBodyAt(heaviestThatMatter(PREDICTION_BODIES).filter((body) => body !== exclude && !body.test), x, y, settings.exponent);
+
+function circularSpeedAround(centre, x, y) {
+  const distance = Math.hypot(centre.x - x, centre.y - y);
+  return distance ? Math.sqrt(pullAt(centre.mass, distance, settings.exponent) * distance) : 0;
+}
+
+const launchSpeedPerUnit = () => (launch.circularSpeed ? launch.circularSpeed / LAUNCH_PX_FOR_CIRCULAR_ORBIT : scale.fromKmPerS(LAUNCH_KM_PER_S_PER_PX)) * view.camera.zoom;
+const kmPerSLabel = (kmPerS) => kmPerS.toLocaleString(undefined, { maximumSignificantDigits: 3 });
 
 function launchVelocity() {
   const [dx, dy] = [launch.body.x - launch.pullX, launch.body.y - launch.pullY];
-  if (!scale || inCones()) return { vx: dx * LAUNCH_SPEED_PER_UNIT, vy: dy * LAUNCH_SPEED_PER_UNIT };
-  const perUnit = scale.fromKmPerS(LAUNCH_KM_PER_S_PER_PX) * view.camera.zoom;
+  if (inCones()) return { vx: dx * LAUNCH_SPEED_PER_UNIT, vy: dy * LAUNCH_SPEED_PER_UNIT };
+  const perUnit = scale ? launchSpeedPerUnit() : LAUNCH_SPEED_PER_UNIT;
   const anchor = launch.anchor && bodies.includes(launch.anchor) ? launch.anchor : { vx: 0, vy: 0 };
   return { vx: anchor.vx + dx * perUnit, vy: anchor.vy + dy * perUnit };
 }
 
 function launchLabel() {
   if (!scale || inCones()) return null;
-  const kmPerS = Math.hypot(launch.body.x - launch.pullX, launch.body.y - launch.pullY) * view.camera.zoom * LAUNCH_KM_PER_S_PER_PX;
+  const kmPerS = scale.toKmPerS(Math.hypot(launch.body.x - launch.pullX, launch.body.y - launch.pullY) * launchSpeedPerUnit());
   const anchor = launch.anchor?.name ? ` relative to ${launch.anchor.name}` : '';
-  return `${Math.round(kmPerS).toLocaleString()} km/s${anchor}`;
+  const circular = launch.circularSpeed ? ` · circular orbit ${kmPerSLabel(scale.toKmPerS(launch.circularSpeed))}` : '';
+  return `${kmPerSLabel(kmPerS)} km/s${anchor}${circular}`;
 }
 
 function heaviestThatMatter(count) {
@@ -412,8 +424,9 @@ function pointerDown(event) {
     body.pinned = true;
     return;
   }
-  const anchor = scale ? strongestPullOn(bodies, x, y, settings.exponent) : null;
-  launch = { ...start, body: newBodyAt(x, y, {}), anchor, pullX: x, pullY: y, path: [] };
+  const anchor = inCones() ? null : orbitedFrom(x, y);
+  const circularSpeed = anchor && scale ? circularSpeedAround(anchor, x, y) : 0;
+  launch = { ...start, body: newBodyAt(x, y, {}), anchor, circularSpeed, pullX: x, pullY: y, path: [] };
 }
 
 function pinchState() {
@@ -595,8 +608,7 @@ function bindPanel() {
   });
   find('[data-circularize]').addEventListener('click', () => {
     if (!selected || selected.pinned || inCones()) return;
-    const others = bodies.filter((body) => body !== selected);
-    Object.assign(selected, circularVelocity(strongestPullOn(others, selected.x, selected.y, settings.exponent), selected.x, selected.y, settings.exponent));
+    Object.assign(selected, circularVelocity(orbitedFrom(selected.x, selected.y, selected), selected.x, selected.y, settings.exponent));
   });
   find('[data-hold-still]').addEventListener('click', toggleHoldStill);
   find('[data-delete]').addEventListener('click', () => selected && removeBody(selected));
