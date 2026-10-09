@@ -56,7 +56,7 @@
         </label>
         <label class="gp-toggle" data-newton-only><input type="checkbox" name="autoOrbit" form="gp-controls" checked> Tap puts it in a circular orbit</label>
         <label class="gp-toggle"><input type="checkbox" name="newPinned" form="gp-controls"> Pinned in place</label>
-        <p class="gp-note" data-real-only hidden>Each pixel you drag adds 0.5 km/s, measured from whatever pulls hardest where you start, so zoom out to throw something in from far away.</p>
+        <p class="gp-note" data-real-only hidden>Speed is measured from the body you'd orbit where you start: Earth close to Earth, the Sun farther out. Dragging 80 pixels gives a circular orbit around it; the label shows your speed against that. A tap drops it straight into a circular orbit.</p>
       </fieldset>
     </div>
   </div>
@@ -160,7 +160,7 @@
         <p><strong>Real star systems</strong></p>
         <ul>
           <li>The "Real star systems, to scale" scenes use real masses, sizes and distances. Planets start where they really are today, flattened onto one plane. The status line shows the simulated date and the scale bar shows distance.</li>
-          <li>Throw in a rogue planet, a star or a black hole, then speed time up to watch the flyby. Select a body and press Hold still to watch everything from its point of view: it stays in the middle of the screen, and trails show motion relative to it. Hold the Sun still to see clean heliocentric orbits even while a flyby drags the Sun away.</li>
+          <li>Throw in a rogue planet, a star or a black hole, then speed time up to watch the flyby. To add a moon, zoom in on a planet and launch from close to it: speed counts from that planet, not the Sun. Select a body and press Hold still to watch everything from its point of view: it stays in the middle of the screen, and trails show motion relative to it. Hold the Sun still to see clean heliocentric orbits even while a flyby drags the Sun away.</li>
           <li>Close passes get smaller time steps automatically, so a black hole can graze a planet without the orbits blowing up.</li>
           <li>It's still Newtonian gravity in 2D: no relativity, no tidal disruption. Black holes swallow whatever touches their event horizon, which is only tens of km wide.</li>
         </ul>
