@@ -8,6 +8,8 @@ const MASS_RANGE = { min: 0.1, max: 3000, sliderSteps: 1000 };
 const REAL_MASS_SLIDER = { ...REAL_MASS_RANGE, sliderSteps: 1000 };
 const GALAXY_STARS_RANGE = { min: 300, max: 12000, sliderSteps: 1000 };
 const DEFAULT_NEW_MASS = 1;
+const SPEED_POWERS = { slowest: -2, fastest: 8 };
+const UNDO_STEPS = 20;
 const TAP_MAX_PX = 6;
 const TAP_MAX_MS = 400;
 const GRAB_SLACK_PX = 10;
@@ -40,7 +42,7 @@ const form = document.querySelector('[data-controls]');
 const view = createView(canvas);
 const find = (selector) => document.querySelector(selector);
 
-const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, darkEnergy: 0, followExpansion: true, merge: true, trails: true, speed: 1, glow: true, autoOrbit: true, newMass: DEFAULT_NEW_MASS, newLook: 'planet', newPinned: false, galaxyStars: GALAXY.stars, paused: false };
+const settings = { spacetime: 'newton', cutAngle: 0, newCone: false, exponent: 2, mond: false, darkEnergy: 0, followExpansion: true, merge: true, trails: true, speed: 1, glow: true, mode: 'look', autoOrbit: true, newMass: DEFAULT_NEW_MASS, newLook: 'planet', newPinned: false, galaxyStars: GALAXY.stars, paused: false };
 let bodies = [];
 let selected = null;
 let expansion = null;
@@ -53,7 +55,9 @@ let launch = null;
 let grab = null;
 let pan = null;
 let pinch = null;
+let speedPower = 0;
 const pointers = new Map();
+const undoPoints = [];
 
 const fromLogSlider = ({ min, max, sliderSteps }, value) => Number((min * (max / min) ** (value / sliderSteps)).toPrecision(2));
 const toLogSlider = ({ min, max, sliderSteps }, amount) => Math.round((Math.log(amount / min) / Math.log(max / min)) * sliderSteps);
@@ -88,6 +92,7 @@ function intoConesAndBalls() {
 function setSpacetime(spacetime) {
   settings.spacetime = spacetime;
   heldStill = null;
+  forgetUndo();
   if (inCones()) intoConesAndBalls();
   else bodies = bodies.filter(isCone);
   bodies.forEach((body) => (body.trail = []));
@@ -115,6 +120,7 @@ function dropFarTestBalls() {
 const acrossTheCut = () => [Math.cos(settings.cutAngle + Math.PI / 2), Math.sin(settings.cutAngle + Math.PI / 2)];
 
 function fireBeam() {
+  saveUndo();
   const target = heaviestCone();
   const [alongX, alongY] = acrossTheCut();
   for (let i = 0; i < BEAM.balls; i++) {
@@ -126,6 +132,7 @@ function fireBeam() {
 }
 
 function fireFlash() {
+  saveUndo();
   const target = heaviestCone();
   const [alongX, alongY] = acrossTheCut();
   const [x, y] = [target.x - alongX * FLASH.distance, target.y - alongY * FLASH.distance];
@@ -175,6 +182,8 @@ function loadScene(key) {
     setDarkEnergy(law.darkEnergy);
   }
   setScale(sceneScale);
+  forgetUndo();
+  form.scene.value = key;
   startMs = Date.now();
   elapsed = 0;
   heldStill = null;
@@ -236,7 +245,60 @@ function keepHeldBodyStill() {
   Object.assign(heldStill, { lastX: body.x, lastY: body.y });
 }
 
+const undoPoint = () => ({ bodies: bodies.map((body) => ({ ...body, trail: body.trail.slice() })), elapsed });
+
+function saveUndo(point = undoPoint()) {
+  undoPoints.push(point);
+  if (undoPoints.length > UNDO_STEPS) undoPoints.shift();
+  showUndo();
+}
+
+function forgetUndo() {
+  undoPoints.length = 0;
+  showUndo();
+}
+
+const showUndo = () => (find('[data-undo]').disabled = !undoPoints.length);
+
+function undo() {
+  const point = undoPoints.pop();
+  if (!point) return;
+  cancelSingleGestures();
+  const heldId = heldStill?.body.id;
+  ({ bodies, elapsed } = point);
+  select(bodies.find((body) => body.id === selected?.id) ?? null);
+  if (heldId !== undefined) holdStill(bodies.find((body) => body.id === heldId) ?? null);
+  showUndo();
+}
+
+function setMode(mode) {
+  settings.mode = mode;
+  cancelSingleGestures();
+  canvas.dataset.mode = mode;
+  document.querySelectorAll('[data-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
+  document.querySelectorAll('[data-launch-only]').forEach((element) => (element.hidden = mode !== 'launch'));
+  if (mode !== 'launch') showNewBodyOptions(false);
+}
+
+function showNewBodyOptions(open) {
+  find('[data-new-body-options]').hidden = !open;
+  find('[data-new-body-chip]').setAttribute('aria-expanded', String(open));
+}
+
+function newBodyLabel() {
+  if (inCones() && !settings.newCone) return 'Test ball';
+  const name = scale ? NEW_BODY_NAMES[settings.newLook] : inCones() ? 'Mass' : 'Planet';
+  return `${name} · ${massLabel(settings.newMass)}`;
+}
+
+function setSpeedPower(power) {
+  speedPower = Math.min(SPEED_POWERS.fastest, Math.max(SPEED_POWERS.slowest, power));
+  settings.speed = 2 ** speedPower;
+  showSettings();
+}
+
 function removeBody(body) {
+  saveUndo();
   bodies = bodies.filter((candidate) => candidate !== body);
   if (selected === body) select(null);
 }
@@ -253,9 +315,11 @@ function showSettings() {
   find('[data-dark-energy-label]').textContent = settings.darkEnergy ? settings.darkEnergy.toFixed(4) : 'off';
   document.querySelectorAll('[data-law]').forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.law) === settings.exponent)));
   find('[data-new-mass-label]').textContent = massLabel(settings.newMass);
+  find('[data-new-body-chip]').textContent = newBodyLabel();
   find('[data-galaxy-stars-label]').textContent = settings.galaxyStars.toLocaleString();
   find('[data-speed-label]').textContent = scale ? `${settings.speed}× · ${formatPace(settings.speed, scale)}` : `${settings.speed}×`;
   find('[data-pause]').textContent = settings.paused ? 'Play' : 'Pause';
+  document.querySelectorAll('[data-speed-step]').forEach((button) => (button.disabled = speedPower === SPEED_POWERS[button.dataset.speedStep > 0 ? 'fastest' : 'slowest']));
   document.querySelectorAll('[data-spacetime]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.spacetime === settings.spacetime)));
   find('[data-cut-label]').textContent = `${Math.round(settings.cutAngle / DEGREES)}°`;
 }
@@ -327,6 +391,7 @@ function predictPath() {
 }
 
 function pointerDown(event) {
+  showNewBodyOptions(false);
   canvas.setPointerCapture(event.pointerId);
   pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   if (pointers.size === 2) {
@@ -336,14 +401,14 @@ function pointerDown(event) {
   }
   if (pointers.size > 2) return;
   const start = { x: event.clientX, y: event.clientY, time: performance.now() };
-  if (event.pointerType === 'mouse' && event.button !== 0) {
+  if (settings.mode === 'look' || (event.pointerType === 'mouse' && event.button !== 0)) {
     pan = { ...start, lastX: event.clientX, lastY: event.clientY, button: event.button };
     return;
   }
   const body = view.bodyAt(bodies, event.clientX, event.clientY, GRAB_SLACK_PX);
   const [x, y] = view.toWorld(event.clientX, event.clientY);
   if (body) {
-    grab = { ...start, body, wasPinned: body.pinned, heldVx: body.vx, heldVy: body.vy, lastX: x, lastY: y, lastTime: start.time, vx: 0, vy: 0, offsetX: body.x - x, offsetY: body.y - y };
+    grab = { ...start, body, undoPoint: undoPoint(), wasPinned: body.pinned, heldVx: body.vx, heldVy: body.vy, lastX: x, lastY: y, lastTime: start.time, vx: 0, vy: 0, offsetX: body.x - x, offsetY: body.y - y };
     body.pinned = true;
     return;
   }
@@ -411,14 +476,16 @@ function pointerUp(event) {
     return;
   }
   if (pan) {
-    const body = pan.button === 2 && wasTap(pan, event) ? view.bodyAt(bodies, event.clientX, event.clientY, GRAB_SLACK_PX) : null;
-    if (body) removeBody(body);
+    const tapped = wasTap(pan, event) ? view.bodyAt(bodies, event.clientX, event.clientY, GRAB_SLACK_PX) : null;
+    if (settings.mode === 'look' && pan.button === 0 && wasTap(pan, event)) select(tapped);
+    else if (settings.mode === 'launch' && pan.button === 2 && tapped) removeBody(tapped);
     pan = null;
     return;
   }
   if (grab) {
     const tapped = wasTap(grab, event);
     const { body } = grab;
+    if (!tapped) saveUndo(grab.undoPoint);
     const stillMoving = performance.now() - grab.lastTime < 80;
     releaseGrab(tapped ? 'keep' : stillMoving ? 'throw' : 'drop');
     if (tapped) select(body);
@@ -429,6 +496,7 @@ function pointerUp(event) {
     const { body } = launch;
     if (body.test || (!inCones() && !settings.newPinned)) Object.assign(body, dragged ? launchVelocity() : tapVelocity(body.x, body.y));
     if (body.test) [body.x, body.y] = outOfMissingSpace(bodies, settings.cutAngle, [body.x, body.y]);
+    saveUndo();
     bodies.push(body);
     launch = null;
   }
@@ -491,10 +559,10 @@ function bindPanel() {
   });
   form.autoOrbit.addEventListener('change', () => (settings.autoOrbit = form.autoOrbit.checked));
   form.newPinned.addEventListener('change', () => (settings.newPinned = form.newPinned.checked));
-  form.speed.addEventListener('input', () => {
-    settings.speed = 2 ** Number(form.speed.value);
-    showSettings();
-  });
+  document.querySelectorAll('[data-speed-step]').forEach((button) => button.addEventListener('click', () => setSpeedPower(speedPower + Number(button.dataset.speedStep))));
+  document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
+  find('[data-new-body-chip]').addEventListener('click', () => showNewBodyOptions(find('[data-new-body-options]').hidden));
+  find('[data-undo]').addEventListener('click', undo);
   form.glow.addEventListener('change', () => (settings.glow = form.glow.checked));
   form.trails.addEventListener('change', () => {
     settings.trails = form.trails.checked;
@@ -509,7 +577,10 @@ function bindPanel() {
     settings.cutAngle = Number(form.cutAngle.value) * DEGREES;
     showSettings();
   });
-  form.newCone.addEventListener('change', () => (settings.newCone = form.newCone.checked));
+  form.newCone.addEventListener('change', () => {
+    settings.newCone = form.newCone.checked;
+    showSettings();
+  });
   find('[data-beam]').addEventListener('click', fireBeam);
   find('[data-flash]').addEventListener('click', fireFlash);
   form.selectedMass.addEventListener('input', () => {
@@ -533,12 +604,14 @@ function bindPanel() {
   find('[data-pause]').addEventListener('click', togglePause);
   find('[data-frame]').addEventListener('click', () => view.frame(bodies));
   find('[data-clear]').addEventListener('click', () => {
+    saveUndo();
     bodies = [];
     expansion = null;
     find('[data-follow-expansion]').hidden = true;
     select(null);
   });
-  find('[data-load-scene]').addEventListener('click', () => loadScene(form.scene.value));
+  form.scene.addEventListener('change', () => loadScene(form.scene.value));
+  find('[data-reload-scene]').addEventListener('click', () => loadScene(form.scene.value));
 }
 
 const typingIn = (target) => target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLButtonElement;
@@ -557,10 +630,16 @@ const KEYS = {
     form.glow.dispatchEvent(new Event('change'));
   },
   f: () => view.frame(bodies),
+  m: () => setMode(settings.mode === 'look' ? 'launch' : 'look'),
 };
 
 function bindKeys() {
   window.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !typingIn(event.target)) {
+      event.preventDefault();
+      undo();
+      return;
+    }
     const action = KEYS[event.key.length === 1 ? event.key.toLowerCase() : event.key];
     if (!action || typingIn(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault();
