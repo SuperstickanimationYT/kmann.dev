@@ -3,6 +3,176 @@
   cursor: crosshair;
 }
 
+.studio-stage canvas[data-mode="look"] {
+  cursor: grab;
+}
+
+.studio-stage canvas[data-mode="look"]:active {
+  cursor: grabbing;
+}
+
+.studio-stage [hidden] {
+  display: none !important;
+}
+
+.gp-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.gp-toolbar,
+.gp-new-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.gp-new-body {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.gp-toolbar button,
+.gp-toolbar select,
+.gp-chip {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: rgba(12, 37, 64, 0.88);
+  backdrop-filter: blur(6px);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gp-toolbar select {
+  max-width: 190px;
+  font-weight: 400;
+}
+
+.gp-toolbar button:hover:not(:disabled),
+.gp-chip:hover {
+  background: #133659;
+}
+
+.gp-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gp-toolbar .gp-primary {
+  min-width: 64px;
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.gp-modes,
+.gp-speed {
+  display: flex;
+  align-items: center;
+}
+
+.gp-modes button:first-child,
+.gp-speed button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.gp-modes button:last-child,
+.gp-speed button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.gp-modes button + button {
+  border-left: 0;
+}
+
+.gp-modes button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--link);
+}
+
+.gp-speed button {
+  width: 34px;
+  padding-inline: 0;
+}
+
+.gp-speed output {
+  min-height: 34px;
+  padding: 7px 10px;
+  border-block: 1px solid var(--edge-bright);
+  background: rgba(12, 37, 64, 0.88);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--link);
+}
+
+.gp-chip {
+  border-style: dashed;
+  font-weight: 400;
+}
+
+.gp-chip[aria-expanded="true"] {
+  border-style: solid;
+  border-color: var(--link);
+}
+
+.gp-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(300px, 100%);
+  margin: 0;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: rgba(11, 33, 55, 0.94);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.gp-popover legend {
+  float: left;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.gp-popover input[type="range"] {
+  width: 100%;
+  accent-color: var(--edge-bright);
+}
+
+.gp-popover input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--edge-bright);
+}
+
+.gp-popover select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+}
+
 .gp-status {
   position: absolute;
   left: 12px;
@@ -177,7 +347,8 @@
   font-size: 12px;
 }
 
-.studio-panel :focus-visible {
+.studio-panel :focus-visible,
+.gp-overlay :focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 2px;
 }

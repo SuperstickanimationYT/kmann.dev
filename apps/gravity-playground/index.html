@@ -21,19 +21,52 @@
 </header>
 
 <main class="studio-stage">
-  <canvas data-stage aria-label="Gravity simulation. Drag on empty space to pull back and launch a planet the opposite way."></canvas>
+  <canvas data-stage data-mode="look" aria-label="Gravity simulation. In Look mode, drag to pan. In Launch mode, drag on empty space to pull back and launch a planet the opposite way."></canvas>
+  <div class="gp-overlay">
+    <div class="gp-toolbar" role="toolbar" aria-label="Simulation">
+      <div class="gp-modes" role="group" aria-label="Mode">
+        <button type="button" data-mode="look" aria-pressed="true" title="Pan, zoom and select without changing anything (M)">Look</button>
+        <button type="button" data-mode="launch" aria-pressed="false" title="Drop, launch and throw bodies (M)">Launch</button>
+      </div>
+      <button type="button" data-undo title="Undo the last drop, launch, throw or delete (Ctrl+Z)" disabled>Undo</button>
+      <button type="button" class="gp-primary" data-pause>Pause</button>
+      <div class="gp-speed" role="group" aria-label="Speed">
+        <button type="button" data-speed-step="-1" aria-label="Slower">&minus;</button>
+        <output data-speed-label></output>
+        <button type="button" data-speed-step="1" aria-label="Faster">+</button>
+      </div>
+      <button type="button" data-frame title="Fit everything in view (F)">Fit</button>
+      <select name="scene" form="gp-controls" data-scene aria-label="Scene"></select>
+    </div>
+    <div class="gp-new-body" data-launch-only hidden>
+      <button type="button" class="gp-chip" data-new-body-chip aria-expanded="false"></button>
+      <fieldset class="gp-popover" data-new-body-options hidden>
+        <legend>New body</legend>
+        <label class="gp-field" data-real-only hidden>
+          <span>Kind</span>
+          <select name="newLook" form="gp-controls">
+            <option value="planet">Rogue planet</option>
+            <option value="star">Star</option>
+            <option value="blackHole">Black hole</option>
+          </select>
+        </label>
+        <label class="gp-field">
+          <span>Mass <output data-new-mass-label></output></span>
+          <input type="range" name="newMass" form="gp-controls" min="0" max="1000" step="1">
+        </label>
+        <label class="gp-toggle" data-newton-only><input type="checkbox" name="autoOrbit" form="gp-controls" checked> Tap puts it in a circular orbit</label>
+        <label class="gp-toggle"><input type="checkbox" name="newPinned" form="gp-controls"> Pinned in place</label>
+        <p class="gp-note" data-real-only hidden>Each pixel you drag adds 0.5 km/s, measured from whatever pulls hardest where you start, so zoom out to throw something in from far away.</p>
+      </fieldset>
+    </div>
+  </div>
   <p class="gp-status" data-status></p>
 </main>
 
 <aside class="studio-panel" data-studio-panel aria-label="Settings">
   <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
   <div class="studio-panel-body">
-    <form class="gp-panel" data-controls>
-      <div class="gp-actions">
-        <button type="button" class="gp-primary" data-pause>Pause</button>
-        <button type="button" data-frame>Fit view</button>
-        <button type="button" data-clear>Clear</button>
-      </div>
+    <form class="gp-panel" id="gp-controls" data-controls>
 
       <fieldset>
         <legend>Spacetime</legend>
@@ -78,25 +111,6 @@
         <p class="gp-note">Every pair of bodies also repels, harder the farther apart they are. Summed over all pairs, that is one outward push from the centre of mass that grows with distance: the Newtonian form of a cosmological constant.</p>
       </fieldset>
 
-      <fieldset>
-        <legend>New body</legend>
-        <label class="gp-field" data-real-only hidden>
-          <span>Kind</span>
-          <select name="newLook">
-            <option value="planet">Rogue planet</option>
-            <option value="star">Star</option>
-            <option value="blackHole">Black hole</option>
-          </select>
-        </label>
-        <label class="gp-field">
-          <span>Mass <output data-new-mass-label></output></span>
-          <input type="range" name="newMass" min="0" max="1000" step="1">
-        </label>
-        <label class="gp-toggle" data-newton-only><input type="checkbox" name="autoOrbit" checked> Tap puts it in a circular orbit</label>
-        <label class="gp-toggle"><input type="checkbox" name="newPinned"> Pinned in place</label>
-        <p class="gp-note" data-real-only hidden>Each pixel you drag adds 0.5 km/s, measured from whatever pulls hardest where you start, so zoom out to throw something in from far away.</p>
-      </fieldset>
-
       <fieldset class="gp-selected" data-selected hidden>
         <legend data-selected-legend>Selected body</legend>
         <label class="gp-field">
@@ -114,37 +128,34 @@
 
       <fieldset>
         <legend>Simulation</legend>
-        <label class="gp-field">
-          <span>Speed <output data-speed-label></output></span>
-          <input type="range" name="speed" min="-2" max="8" step="0.25" value="0">
-        </label>
         <label class="gp-toggle"><input type="checkbox" name="trails" checked> Trails</label>
         <label class="gp-toggle"><input type="checkbox" name="glow" checked> Galaxies glow instead of showing dots</label>
         <label class="gp-toggle" data-newton-only><input type="checkbox" name="merge" checked> Merge on collision</label>
         <label class="gp-toggle" data-follow-expansion hidden><input type="checkbox" name="followExpansion" checked> Zoom out with the expansion</label>
-        <label class="gp-field">
-          <span>Scene</span>
-          <select name="scene" data-scene></select>
-        </label>
         <label class="gp-field">
           <span>Stars per galaxy <output data-galaxy-stars-label></output></span>
           <input type="range" name="galaxyStars" min="0" max="1000" step="1">
         </label>
         <p class="gp-note">Used when a galaxy scene loads. More stars show finer structure such as spiral arms, but run slower.</p>
         <div class="gp-actions">
-          <button type="button" data-load-scene>Load scene</button>
+          <button type="button" data-reload-scene>Reload scene</button>
+          <button type="button" data-clear>Clear everything</button>
         </div>
       </fieldset>
 
       <details class="gp-help">
         <summary>Controls</summary>
+        <p><strong>Modes</strong></p>
+        <ul>
+          <li>Look (the default) only moves the camera: nothing you tap or drag changes the simulation.</li>
+          <li>Launch adds and throws bodies. The chip under the toolbar shows what you'll launch; tap it to change kind, mass and whether it's pinned.</li>
+          <li>Undo reverts the last drop, launch, throw or delete, up to 20 steps back. Loading a scene starts a fresh history.</li>
+        </ul>
         <p><strong>Mouse</strong></p>
         <ul>
-          <li>Drag empty space: pull back like a slingshot to launch a planet the opposite way; the arrow is its velocity and the dashed line its path.</li>
-          <li>Click empty space: drop a planet.</li>
-          <li>Drag a body: grab and throw it. Click one: select it.</li>
-          <li>Right-click a body: delete it. Right- or middle-drag: pan. Wheel: zoom.</li>
-          <li>Keys: <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>T</kbd> trails, <kbd>G</kbd> glow, <kbd>F</kbd> fit view, <kbd>Esc</kbd> deselect.</li>
+          <li>Look: drag to pan, wheel to zoom, click a body to select it.</li>
+          <li>Launch: drag empty space to pull back like a slingshot and launch a planet the opposite way; the arrow is its velocity and the dashed line its path. Click empty space: drop a planet. Drag a body: grab and throw it. Right-click a body: delete it. Right- or middle-drag: pan.</li>
+          <li>Keys: <kbd>M</kbd> switch mode, <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo, <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>T</kbd> trails, <kbd>G</kbd> glow, <kbd>F</kbd> fit view, <kbd>Esc</kbd> deselect.</li>
         </ul>
         <p><strong>Real star systems</strong></p>
         <ul>
@@ -172,15 +183,15 @@
         </ul>
         <p><strong>2+1 relativity</strong></p>
         <ul>
-          <li>Drag or tap to launch or drop test balls; tick "Place masses" to add cones instead. Drag a mass to move it.</li>
+          <li>In Launch mode, drag or tap to launch or drop test balls; tick "Place masses" to add cones instead. Drag a mass to move it.</li>
           <li>A ball dropped at rest stays at rest: nothing falls. Parallel beam shows paths crossing behind a mass; Flash shows two overlapping wavefronts, which is why you'd see double images.</li>
           <li>Switching to 2+1 turns light bodies (wedge under 1°) into balls that keep their velocity, so orbits fly apart in straight lines.</li>
         </ul>
         <p><strong>Touch</strong></p>
         <ul>
-          <li>Drag empty space: pull back like a slingshot to launch a planet the opposite way. Tap: drop one.</li>
-          <li>Drag a body: grab and throw it. Tap one: select it, then delete it from the panel.</li>
-          <li>Two fingers: pan and pinch to zoom.</li>
+          <li>Look: drag to pan, pinch to zoom, tap a body to select it.</li>
+          <li>Launch: drag empty space to pull back like a slingshot and launch a planet the opposite way. Tap: drop one. Drag a body: grab and throw it. Two fingers pan and zoom.</li>
+          <li>Delete a selected body from the panel.</li>
         </ul>
       </details>
     </form>
