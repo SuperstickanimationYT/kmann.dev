@@ -1,5 +1,5 @@
 {
-  "bytes": 124459,
+  "bytes": 130921,
   "files": [
     "./",
     "index.html",
@@ -17,7 +17,8 @@
     "style.css",
     "../../assets/img/mark.svg",
     "../../assets/css/site.css",
-    "../../assets/css/app.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
     "../../assets/js/offline.js"
   ]
 }
