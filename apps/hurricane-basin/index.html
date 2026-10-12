@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hurricane Basin &mdash; kmann314</title>
+<meta name="description" content="A live Atlantic weather model: seed tropical disturbances, watch hurricanes grow over warm water, steer with the trade winds, dance around each other and die over land.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Hurricane Basin</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-map data-tool="watch" aria-label="Map of the Atlantic with clouds and storms. In Watch mode, tap a storm to see its details. In the seeding tools, tap the ocean to start a storm."></canvas>
+  <div class="hb-overlay">
+    <div class="hb-toolbar" role="toolbar" aria-label="Simulation">
+      <div class="hb-segmented" role="group" aria-label="Tool">
+        <button type="button" data-tool-pick="watch" aria-pressed="true" title="Tap a storm to see its details">Watch</button>
+        <button type="button" data-tool-pick="disturbance" aria-pressed="false" title="Tap the ocean to start a weak disturbance">Disturbance</button>
+        <button type="button" data-tool-pick="hurricane" aria-pressed="false" title="Tap the ocean to drop a ready-made hurricane">Hurricane</button>
+      </div>
+      <button type="button" class="hb-primary" data-pause>Pause</button>
+      <div class="hb-segmented hb-speed" role="group" aria-label="Speed">
+        <button type="button" data-speed-step="-1" aria-label="Slower">&minus;</button>
+        <output data-speed-label></output>
+        <button type="button" data-speed-step="1" aria-label="Faster">+</button>
+      </div>
+      <select data-layer aria-label="Map layer">
+        <option value="satellite">Satellite</option>
+        <option value="wind">Wind speed</option>
+        <option value="pressure">Pressure</option>
+        <option value="ocean">Sea temperature</option>
+      </select>
+    </div>
+  </div>
+  <section class="hb-card" data-storm-card hidden aria-live="polite">
+    <header>
+      <strong data-storm-name></strong>
+      <button type="button" data-storm-close aria-label="Close">&times;</button>
+    </header>
+    <p data-storm-category></p>
+    <dl data-storm-facts></dl>
+  </section>
+  <p class="hb-status" data-status></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
+    <form class="hb-panel" data-controls>
+      <fieldset>
+        <legend>Start over</legend>
+        <label class="hb-field">
+          <span>Scenario</span>
+          <select name="scenario">
+            <option value="waves">Waves rolling off Africa</option>
+            <option value="pair">Two hurricanes close together</option>
+            <option value="busy">Busy season</option>
+            <option value="calm">Empty ocean</option>
+          </select>
+        </label>
+        <div class="hb-actions">
+          <button type="button" data-start>Start</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Climate</legend>
+        <label class="hb-field">
+          <span>Ocean temperature <output data-warming-label></output></span>
+          <input type="range" name="warming" min="-3" max="3" step="0.5" value="0">
+        </label>
+        <p class="hb-note">Hurricanes run on evaporation from water warmer than about 26.5&nbsp;&deg;C. The Sea temperature layer marks that line in white. Warmer water gives storms more fuel; cooler water starves them.</p>
+        <label class="hb-field">
+          <span>Steering winds <output data-steering-label></output></span>
+          <input type="range" name="steering" min="0" max="1.5" step="0.1" value="1">
+        </label>
+        <p class="hb-note">The trade winds blow storms west in the tropics; the westerlies farther north sweep them back east. Turn them off to watch storms drift on their own: still north-west, because the spin of the Earth changes with latitude.</p>
+        <label class="hb-toggle"><input type="checkbox" name="waves" checked> Tropical waves roll off Africa</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Map</legend>
+        <label class="hb-toggle"><input type="checkbox" name="tracks" checked> Storm tracks</label>
+        <div class="hb-actions">
+          <button type="button" data-clear-tracks>Clear old tracks</button>
+        </div>
+      </fieldset>
+
+      <details class="hb-help">
+        <summary>How it works</summary>
+        <p>The atmosphere here is one layer of air on a spinning Earth, solved on a 256 &times; 128 grid of 35&nbsp;km cells. There is no hurricane code in it. Every storm comes out of five rules:</p>
+        <ul>
+          <li><strong>Pressure pushes air</strong> from high to low, and the spin of the Earth turns moving air to the right, so lows spin counter-clockwise.</li>
+          <li><strong>Warm ocean evaporates water</strong>, faster where the wind is stronger.</li>
+          <li><strong>Where moist air piles up, it rains.</strong> Rain releases heat, the heated air rises out of the layer, and pressure drops. Lower pressure pulls in more moist air. That loop is what grows a hurricane.</li>
+          <li><strong>Lifted air sinks again nearby</strong>, warming and drying a ring around each storm. That keeps storms compact and leaves the clear moat you see around them.</li>
+          <li><strong>Land and friction drain energy</strong>: little evaporation over land, and rough ground slows the wind.</li>
+        </ul>
+        <p>Things to try:</p>
+        <ul>
+          <li>Drop two hurricanes a few hundred km apart and watch them orbit each other, then merge: the Fujiwhara effect.</li>
+          <li>Watch a storm curve: west with the trade winds, north around the Bermuda High, then east into the westerlies.</li>
+          <li>Steer one into Florida or Mexico and watch it fall apart over land.</li>
+          <li>Cool the ocean by 3&nbsp;&deg;C and see how few disturbances become storms.</li>
+        </ul>
+        <p>Categories use the Saffir-Simpson scale on the strongest wind near the centre. Cells are 35&nbsp;km wide, so the calm eye you see is several times wider than a real one, and intensities are rougher than the tracks.</p>
+      </details>
+    </form>
+
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>

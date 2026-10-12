@@ -49,6 +49,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Hurricane Basin',
+    href: 'apps/hurricane-basin/',
+    poster: 'assets/img/posters/hurricane-basin.webp',
+    blurb: 'A live Atlantic weather model. Seed storms and watch them grow over warm water, orbit and merge, and fall apart over land.',
+    status: 'live',
+  },
+  {
     title: 'Markov Pictures',
     href: 'apps/planet-markov/',
     poster: 'assets/img/posters/planet-markov.webp',
