@@ -1,4 +1,4 @@
-import { GATE_OPS, inputCount } from './parts.js';
+import { GATE_OPS, bitsOf, inputCount, pinWidth } from './parts.js';
 
 const INVERT = 4;
 const MAX_NESTING = 64;
@@ -26,43 +26,58 @@ export function compile(circuit, chips, previous) {
   const clocks = [];
   const top = new Map();
 
+  const bitEndpoints = (width) => Array.from({ length: width }, newEndpoint);
+
   function walk(circuit, path, pins, depth) {
     if (depth > MAX_NESTING) return;
     const endpoints = new Map();
     for (const comp of circuit.components) {
       const at = (key) => `${comp.id}:${key}`;
+      const bits = bitsOf(comp);
       switch (comp.kind) {
         case 'switch':
         case 'button': {
-          const endpoint = pins?.get(comp.id) ?? newEndpoint();
-          endpoints.set(at('out'), endpoint);
-          if (!pins) switches.push({ id: comp.id, endpoint });
+          const out = pins?.get(comp.id) ?? bitEndpoints(comp.kind === 'button' ? 1 : bits);
+          endpoints.set(at('out'), out);
+          if (!pins) switches.push({ id: comp.id, out });
           break;
         }
         case 'clock': {
-          const endpoint = newEndpoint();
-          endpoints.set(at('out'), endpoint);
-          clocks.push({ hz: comp.hz ?? 1, endpoint });
+          const out = bitEndpoints(1);
+          endpoints.set(at('out'), out);
+          clocks.push({ hz: comp.hz ?? 1, endpoint: out[0] });
           break;
         }
         case 'light': {
-          const endpoint = newEndpoint();
-          endpoints.set(at('in'), endpoint);
+          const input = bitEndpoints(bits);
+          endpoints.set(at('in'), input);
           const pin = pins?.get(comp.id);
-          if (pin !== undefined) union(endpoint, pin);
+          if (pin?.length === input.length) input.forEach((endpoint, i) => union(endpoint, pin[i]));
           break;
         }
         case 'hex':
-          for (let i = 0; i < 4; i++) endpoints.set(at(`in${i}`), newEndpoint());
+          for (let i = 0; i < 4; i++) endpoints.set(at(`in${i}`), bitEndpoints(1));
           break;
+        case 'join': {
+          const singles = bitEndpoints(bits);
+          singles.forEach((endpoint, i) => endpoints.set(at(`in${i}`), [endpoint]));
+          endpoints.set(at('out'), singles);
+          break;
+        }
+        case 'split': {
+          const bus = bitEndpoints(bits);
+          endpoints.set(at('in'), bus);
+          bus.forEach((endpoint, i) => endpoints.set(at(`out${i}`), [endpoint]));
+          break;
+        }
         case 'chip': {
           const def = chips.get(comp.chip);
           if (!def) break;
           const inner = new Map();
           for (const pin of [...def.inputs, ...def.outputs]) {
-            const endpoint = newEndpoint();
-            inner.set(pin.id, endpoint);
-            endpoints.set(at(pin.id), endpoint);
+            const bus = bitEndpoints(pinWidth(pin));
+            inner.set(pin.id, bus);
+            endpoints.set(at(pin.id), bus);
           }
           walk(def.circuit, `${path}${comp.id}/`, inner, depth + 1);
           break;
@@ -72,12 +87,12 @@ export function compile(circuit, chips, previous) {
           if (op === undefined) break;
           const ins = [];
           for (let i = 0; i < inputCount(comp); i++) {
-            const endpoint = newEndpoint();
-            endpoints.set(at(`in${i}`), endpoint);
+            const [endpoint] = bitEndpoints(1);
+            endpoints.set(at(`in${i}`), [endpoint]);
             ins.push(endpoint);
           }
           const out = newEndpoint();
-          endpoints.set(at('out'), out);
+          endpoints.set(at('out'), [out]);
           gates.push({ op, ins, out, key: path + comp.id });
         }
       }
@@ -85,9 +100,9 @@ export function compile(circuit, chips, previous) {
     for (const wire of circuit.wires) {
       const a = endpoints.get(`${wire.from.c}:${wire.from.p}`);
       const b = endpoints.get(`${wire.to.c}:${wire.to.p}`);
-      if (a !== undefined && b !== undefined) union(a, b);
+      if (a && b && a.length === b.length) a.forEach((endpoint, i) => union(endpoint, b[i]));
     }
-    if (!pins) for (const [key, endpoint] of endpoints) top.set(key, endpoint);
+    if (!pins) for (const [key, bus] of endpoints) top.set(key, bus);
   }
 
   walk(circuit, '', null, 0);
@@ -114,9 +129,9 @@ export function compile(circuit, chips, previous) {
     ins,
     outs: Int32Array.from(gates, (gate) => net(gate.out)),
     keys: gates.map((gate) => gate.key),
-    switches: new Map(switches.map(({ id, endpoint }) => [id, net(endpoint)])),
+    switches: new Map(switches.map(({ id, out }) => [id, out.map(net)])),
     clocks: clocks.map(({ hz, endpoint }) => ({ hz, net: net(endpoint) })),
-    top: new Map([...top].map(([key, endpoint]) => [key, net(endpoint)])),
+    top: new Map([...top].map(([key, bus]) => [key, bus.map(net)])),
     netCount: () => netOfRoot.size,
     previous,
   });
@@ -165,13 +180,16 @@ class Simulation {
   }
 
   read(compId, key) {
-    const net = this.top.get(`${compId}:${key}`);
-    return net === undefined ? 0 : this.values[net];
+    const nets = this.top.get(`${compId}:${key}`);
+    if (!nets) return 0;
+    let value = 0;
+    for (let i = 0; i < nets.length; i++) value |= this.values[nets[i]] << i;
+    return value;
   }
 
-  setSwitch(compId, on) {
-    const net = this.switches.get(compId);
-    if (net !== undefined) this.setNet(net, on ? 1 : 0);
+  setSwitch(compId, value) {
+    const nets = this.switches.get(compId);
+    nets?.forEach((net, i) => this.setNet(net, (value >> i) & 1));
   }
 
   setNet(net, value) {

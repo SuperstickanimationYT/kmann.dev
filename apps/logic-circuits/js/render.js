@@ -1,4 +1,4 @@
-import { COLORS, curveControls, inputCount, layout, pinPosition, wirePoints } from './parts.js';
+import { BIT_CELL, COLORS, bitCellsLeft, bitsOf, curveControls, inputCount, isWord, layout, pinPosition, pinWidth, switchValue, wirePoints } from './parts.js';
 
 const HEX_SEGMENTS = [0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f, 0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71];
 const DETAIL_ZOOM = 0.35;
@@ -27,7 +27,16 @@ export function drawScene(ctx, scene) {
     const outside = Math.max(a.x, b.x) < visible.left || Math.min(a.x, b.x) > visible.right
       || Math.max(a.y, b.y) < visible.top || Math.min(a.y, b.y) > visible.bottom;
     if (outside && !wire.points.length) continue;
-    drawWire(ctx, a, b, wire.points, read(from, wire.from.p), wireSelection.has(wire.id));
+    drawWire(ctx, a, b, wire.points, read(from, wire.from.p), wireSelection.has(wire.id), a.width);
+  }
+  if (zoom >= DETAIL_ZOOM) {
+    for (const wire of circuit.wires) {
+      const from = byId.get(wire.from.c);
+      const to = byId.get(wire.to.c);
+      const a = from && pinPosition(from, wire.from.p, chips);
+      const b = to && pinPosition(to, wire.to.p, chips);
+      if (a?.width > 1 && b) drawBusValue(ctx, wirePoints(a, b, wire.points), read(from, wire.from.p), visible);
+    }
   }
 
   const detailed = zoom >= DETAIL_ZOOM;
@@ -69,18 +78,54 @@ function drawDots(ctx, view, width, height) {
   }
 }
 
-function drawWire(ctx, a, b, bends, on, selected) {
+function drawWire(ctx, a, b, bends, value, selected, width) {
+  const bus = width > 1;
   tracePath(ctx, a, b, bends);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   if (selected) {
     ctx.strokeStyle = 'rgba(95, 227, 255, 0.45)';
-    ctx.lineWidth = 8;
+    ctx.lineWidth = bus ? 12 : 8;
     ctx.stroke();
   }
-  ctx.strokeStyle = on ? COLORS.on : COLORS.off;
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = value ? COLORS.on : COLORS.off;
+  ctx.lineWidth = bus ? 7 : 3;
   ctx.stroke();
+  if (bus) {
+    ctx.strokeStyle = value ? '#7a5a10' : COLORS.pinHole;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+function midpoint(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  let left = total / 2;
+  for (let i = 1; i < points.length; i++) {
+    const length = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    if (left <= length) {
+      const t = length ? left / length : 0;
+      return { x: points[i - 1].x + (points[i].x - points[i - 1].x) * t, y: points[i - 1].y + (points[i].y - points[i - 1].y) * t };
+    }
+    left -= length;
+  }
+  return points[0];
+}
+
+function drawBusValue(ctx, points, value, visible) {
+  const at = midpoint(points);
+  if (at.x < visible.left || at.x > visible.right || at.y < visible.top || at.y > visible.bottom) return;
+  const label = String(value);
+  ctx.font = `700 11px ${FONT}`;
+  const w = ctx.measureText(label).width + 10;
+  roundRect(ctx, at.x - w / 2, at.y - 8, w, 16, 8);
+  ctx.fillStyle = value ? COLORS.on : '#0c2540';
+  ctx.fill();
+  ctx.strokeStyle = value ? '#fff1c2' : COLORS.edge;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  text(ctx, label, at.x, at.y + 0.5, 11, 'center', value ? '#1d1500' : COLORS.text, 700);
 }
 
 function tracePath(ctx, a, b, bends) {
@@ -103,6 +148,7 @@ function drawDraft(ctx, draft, byId, chips) {
   const ends = draft.anchor.dir === 'out' ? [start, draft.cursor] : [draft.cursor, start];
   const bends = draft.anchor.dir === 'out' ? draft.points : [...draft.points].reverse();
   ctx.setLineDash([7, 6]);
+  const bus = draft.anchor.width > 1;
   if (bends.length) {
     const points = wirePoints(ends[0], ends[1], bends);
     ctx.beginPath();
@@ -111,7 +157,7 @@ function drawDraft(ctx, draft, byId, chips) {
     tracePath(ctx, ends[0], ends[1], bends);
   }
   ctx.strokeStyle = COLORS.selected;
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = bus ? 5 : 2.5;
   ctx.stroke();
   ctx.setLineDash([]);
   for (const [x, y] of draft.points) {
@@ -147,10 +193,18 @@ export function drawComponent(ctx, comp, chips, read, { selected = false, detail
   }
 
   switch (comp.kind) {
-    case 'switch': drawSwitch(ctx, x, y, comp.on); break;
+    case 'switch':
+      if (isWord(comp)) drawWord(ctx, comp, box, switchValue(comp), true, detailed);
+      else drawSwitch(ctx, x, y, comp.on);
+      break;
     case 'button': drawButton(ctx, x, y, comp.pressed); break;
     case 'clock': drawClock(ctx, x, y, read('out'), comp.hz ?? 1, detailed); break;
-    case 'light': drawLight(ctx, x, y, read('in')); break;
+    case 'light':
+      if (isWord(comp)) drawWord(ctx, comp, box, read('in'), false, detailed);
+      else drawLight(ctx, x, y, read('in'));
+      break;
+    case 'join':
+    case 'split': drawBusPart(ctx, comp, box, detailed); break;
     case 'hex': drawHex(ctx, x, y, read); break;
     case 'chip': drawChip(ctx, comp, box, chips.get(comp.chip), detailed); break;
     default: drawGate(ctx, comp, box, read);
@@ -162,13 +216,14 @@ export function drawComponent(ctx, comp, chips, read, { selected = false, detail
     else text(ctx, comp.label, x - 6, y + box.h / 2, 13, 'right');
   }
 
-  for (const pin of box.inputs) drawPin(ctx, x + pin.x, y + pin.y, read(pin.key));
-  for (const pin of box.outputs) drawPin(ctx, x + pin.x, y + pin.y, read(pin.key));
+  for (const pin of box.inputs) drawPin(ctx, x + pin.x, y + pin.y, read(pin.key), pinWidth(pin));
+  for (const pin of box.outputs) drawPin(ctx, x + pin.x, y + pin.y, read(pin.key), pinWidth(pin));
 }
 
-function drawPin(ctx, x, y, on) {
+function drawPin(ctx, x, y, on, width = 1) {
   ctx.beginPath();
-  ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+  if (width > 1) ctx.roundRect(x - 5.5, y - 5.5, 11, 11, 2.5);
+  else ctx.arc(x, y, 4.5, 0, Math.PI * 2);
   ctx.fillStyle = on ? COLORS.on : COLORS.pinHole;
   ctx.fill();
   ctx.strokeStyle = on ? COLORS.on : COLORS.edge;
@@ -194,6 +249,33 @@ function drawSwitch(ctx, x, y, on) {
   ctx.arc(on ? x + 23 : x + 17, y + 20, 6, 0, Math.PI * 2);
   ctx.fillStyle = on ? COLORS.on : COLORS.dim;
   ctx.fill();
+}
+
+function drawWord(ctx, comp, box, value, clickable, detailed) {
+  const { x, y } = comp;
+  frame(ctx, x + 2, y + 2, box.w - 4, box.h - 4);
+  const bits = bitsOf(comp);
+  const left = x + bitCellsLeft(comp, box);
+  for (let column = 0; column < bits; column++) {
+    const on = (value >> (bits - 1 - column)) & 1;
+    const cellX = left + column * BIT_CELL;
+    roundRect(ctx, cellX + 1.5, y + 22, BIT_CELL - 3, 12, clickable ? 2 : 6);
+    ctx.fillStyle = on ? COLORS.on : clickable ? '#163a60' : '#10233a';
+    ctx.fill();
+  }
+  if (detailed) text(ctx, String(value), x + box.w / 2, y + 13, 12, 'center', value ? COLORS.on : COLORS.dim, 700);
+}
+
+function drawBusPart(ctx, comp, box, detailed) {
+  const { x, y } = comp;
+  roundRect(ctx, x + 6, y + 1, 18, box.h - 2, 6);
+  ctx.fillStyle = COLORS.body;
+  ctx.fill();
+  ctx.strokeStyle = COLORS.edge;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (!detailed) return;
+  for (const pin of comp.kind === 'join' ? box.inputs : box.outputs) text(ctx, pin.name, x + 15, y + pin.y + 0.5, 9, 'center', COLORS.dim);
 }
 
 function drawButton(ctx, x, y, pressed) {

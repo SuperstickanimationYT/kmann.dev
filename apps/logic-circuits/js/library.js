@@ -1,4 +1,4 @@
-import { isChipInput, isChipOutput, layout, pinPosition } from './parts.js';
+import { bitsOf, isChipInput, isChipOutput, layout, pinPosition } from './parts.js';
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -25,7 +25,10 @@ function columnOrder(comps) {
 }
 
 export function chipPins(circuit, previous = null) {
-  const pin = (comp) => ({ id: comp.id, name: comp.label?.trim() || '?' });
+  const pin = (comp) => {
+    const width = comp.kind === 'button' ? 1 : bitsOf(comp);
+    return { id: comp.id, name: comp.label?.trim() || '?', ...(width > 1 && { width }) };
+  };
   const ordered = (comps, before = []) => {
     const rank = new Map(before.map((entry, i) => [entry.id, i]));
     const fresh = columnOrder(comps);
@@ -82,8 +85,9 @@ export function pruneWires(circuit, chips) {
     const to = byId.get(wire.to.c);
     const target = `${wire.to.c}:${wire.to.p}`;
     if (!from || !to || fed.has(target)) continue;
-    if (pinPosition(from, wire.from.p, chips)?.dir !== 'out') continue;
-    if (pinPosition(to, wire.to.p, chips)?.dir !== 'in') continue;
+    const out = pinPosition(from, wire.from.p, chips);
+    const into = pinPosition(to, wire.to.p, chips);
+    if (out?.dir !== 'out' || into?.dir !== 'in' || out.width !== into.width) continue;
     fed.add(target);
     kept.push(wire);
   }
