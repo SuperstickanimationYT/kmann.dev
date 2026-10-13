@@ -12,6 +12,7 @@ export function makeTab(name, circuit = emptyCircuit(), view = null) {
 
 export const store = {
   chips: new Map(),
+  folders: [],
   tabs: [],
   activeTab: null,
   listeners: new Set(),

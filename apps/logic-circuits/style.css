@@ -284,6 +284,148 @@
   gap: 4px;
 }
 
+.lc-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.lc-section-head h2 {
+  margin: 0;
+}
+
+.lc-section-head button {
+  padding: 4px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lc-section-head button:hover {
+  background: #0f2a47;
+}
+
+.lc-library {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.lc-library .lc-chips {
+  margin: 0;
+}
+
+.lc-folder {
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: rgba(4, 11, 20, 0.45);
+}
+
+.lc-folder > .lc-chips,
+.lc-folder > .lc-folder-empty {
+  padding: 0 8px 8px;
+}
+
+.lc-folder-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 4px;
+}
+
+.lc-folder-head button {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lc-folder-head button:hover {
+  background: #0f2a47;
+}
+
+.lc-folder-head .lc-folder-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.lc-folder-toggle::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid var(--link);
+  transition: transform 0.15s ease;
+}
+
+.lc-folder-toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.lc-folder-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lc-folder-toggle small {
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+.lc-folder-input {
+  flex: 1;
+  min-width: 0;
+  margin: 2px;
+  padding: 5px 8px;
+  border: 1px solid var(--link);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+}
+
+.lc-unfiled-hint {
+  display: none;
+  padding: 10px;
+  border: 1px dashed var(--edge-bright);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.lc-dragging .lc-unfiled-hint {
+  display: block;
+}
+
+.lc-drop-target {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: 10px;
+  background: rgba(95, 227, 255, 0.08);
+}
+
 .lc-chip {
   display: flex;
   align-items: baseline;

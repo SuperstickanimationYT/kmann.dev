@@ -56,8 +56,11 @@
     </section>
 
     <section class="lc-section">
-      <h2>My chips</h2>
-      <ul class="lc-chips" data-chips></ul>
+      <div class="lc-section-head">
+        <h2>My chips</h2>
+        <button type="button" data-new-folder>New folder</button>
+      </div>
+      <div class="lc-library" data-chips></div>
       <p class="lc-note" data-no-chips>No chips yet. Put switches, gates and lights together, select them and press <strong>Make chip</strong>. The switches become the chip's inputs and the lights its outputs.</p>
     </section>
 
@@ -93,6 +96,7 @@
         <li><strong>Wire</strong> by dragging from one pin to another. Outputs sit on the right of a part, inputs on the left. An output can feed many inputs; each input takes one wire. While wiring, click empty space to add bends.</li>
         <li><strong>Move</strong> parts by dragging them. Drag empty space to select an area with a mouse, or to move the board on a touch screen. Scroll or pinch to zoom; drag with the right mouse button or hold Space to move the board.</li>
         <li><strong>Make a chip</strong> by selecting a finished circuit and pressing Make chip. Switches and buttons turn into input pins, lights into output pins. Pins start out ordered column by column, top to bottom, as they sit on the board; move them up or down in the Make chip window, or later with Details under My chips. Their labels become the pin names.</li>
+        <li><strong>Folders</strong> keep My chips tidy. Press New folder, then drag a chip onto a folder, or pick its folder in the Make chip window or in Details. Click a folder's name to fold it shut. Deleting a folder keeps its chips.</li>
         <li><strong>Buses</strong> carry many bits on one thick wire, with the number it holds written on it. Set a switch or light to 2 to 16 bits to send or show a whole number; click a bit to flip it. A Bus join bundles single wires into a bus and a Bus split opens one up, top pin first as bit 0. Inside a chip, a multi-bit switch or light becomes one bus pin, drawn square. A bus only connects to a pin of the same width.</li>
         <li><strong>Tabs</strong> hold separate boards that share your chips. Halfway through a build and need a new chip? Press <strong>+</strong> above the board, build and make the chip there, then switch back. Click the open tab's name to rename it.</li>
         <li><strong>Chips inside chips</strong>: a chip is a part like any other, so you can use it to build bigger chips. Double-click a chip to open it and change it; every copy updates.</li>
@@ -120,6 +124,10 @@
     <label class="lc-field">
       <span>Name</span>
       <input name="name" maxlength="24" required autocomplete="off" spellcheck="false">
+    </label>
+    <label class="lc-field" data-dialog-folder>
+      <span>Folder</span>
+      <select name="folder"></select>
     </label>
     <fieldset class="lc-swatches" data-swatches>
       <legend>Colour</legend>
