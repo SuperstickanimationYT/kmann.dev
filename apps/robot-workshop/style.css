@@ -13,6 +13,10 @@
   top: 10px;
   right: 10px;
   left: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -60,6 +64,48 @@
 .rw-toolbar .rw-primary[aria-pressed="true"] {
   background: linear-gradient(103deg, #c4561f 0%, #8a3317 100%);
   border-color: #ffb454;
+}
+
+.rw-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.rw-layers button {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid var(--edge);
+  border-bottom: 3px solid var(--layer, var(--edge));
+  border-radius: 7px;
+  background: rgba(4, 11, 20, 0.85);
+  backdrop-filter: blur(6px);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rw-layers button:hover:not(:disabled) {
+  background: #133659;
+}
+
+.rw-layers button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rw-layers .rw-target {
+  color: var(--text-strong);
+}
+
+.rw-layers button[aria-pressed="true"] {
+  border-color: var(--layer, var(--link));
+  background: rgba(19, 54, 89, 0.95);
+  color: var(--text-strong);
 }
 
 .rw-group {

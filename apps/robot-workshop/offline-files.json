@@ -1,5 +1,5 @@
 {
-  "bytes": 62465,
+  "bytes": 67922,
   "files": [
     "./",
     "index.html",
@@ -7,8 +7,8 @@
     "js/main.js",
     "js/presets.js",
     "js/sim.js",
-    "style.css",
     "manifest.webmanifest",
+    "style.css",
     "../../assets/img/mark.svg",
     "../../assets/css/site.css",
     "../../assets/css/studio.css",

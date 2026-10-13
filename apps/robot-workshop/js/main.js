@@ -1,4 +1,4 @@
-import { addBeam, addMotor, addNode, beamMap, cloneDesign, isDesign, motorPivot, nodeMap, removeBeam, removeMotor, removeNode, sharedNode } from './design.js';
+import { addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, withLayers } from './design.js';
 import { PRESETS } from './presets.js';
 import { Simulation } from './sim.js';
 
@@ -30,6 +30,8 @@ const MOTOR_FIELDS = [
   { key: 'freeRpm', label: 'Top speed', min: 5, max: 120, step: 5, format: (v) => `${v} rpm` },
 ];
 
+const LAYER_COLORS = ['#9fd0ff', '#ffd36e', '#c4a8ff', '#7dffa8', '#ff9fc6', '#6fe8e0'];
+
 const COLORS = {
   sky: '#050d18',
   gridMinor: 'rgba(61, 143, 224, 0.08)',
@@ -37,7 +39,8 @@ const COLORS = {
   ground: '#0a1a2c',
   groundEdge: '#3d8fdd',
   label: '#6f9dc9',
-  beam: '#9fd0ff',
+  ghost: 'rgba(159, 208, 255, 0.12)',
+  link: '#ffffff',
   beamShadow: 'rgba(3, 8, 15, 0.7)',
   joint: '#e2effd',
   hover: '#5fe3ff',
@@ -54,6 +57,7 @@ const runButton = $('[data-run]');
 const undoButton = $('[data-undo]');
 const redoButton = $('[data-redo]');
 const toolButtons = [...document.querySelectorAll('[data-tool]')];
+const layerBar = $('[data-layers]');
 const motorList = $('[data-motors]');
 const noMotors = $('[data-no-motors]');
 const presetSelect = $('[data-preset]');
@@ -66,6 +70,8 @@ let committed = cloneDesign(design);
 const undoStack = [];
 const redoStack = [];
 let tool = 'beam';
+let activeLayer = 0;
+let focused = false;
 let sim = null;
 let finishTime = null;
 let warnedBackwards = false;
@@ -84,7 +90,7 @@ let fittedOnce = false;
 function loadDesign() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (isDesign(stored)) return stored;
+    if (isDesign(stored)) return withLayers(stored);
   } catch {}
   return PRESETS.strandbeest.build();
 }
@@ -116,9 +122,25 @@ function restore(from, to) {
   committed = cloneDesign(design);
   pendingMotorBeam = null;
   bestTime = null;
+  activeLayer = Math.min(activeLayer, design.layers.length - 1);
   save();
   renderMotors();
   renderControls();
+  renderLayers();
+}
+
+function layerColor(layer) {
+  return LAYER_COLORS[layer % LAYER_COLORS.length];
+}
+
+function beamEditable(beam) {
+  if (!focused || beam.layer === activeLayer) return true;
+  const pending = tool === 'motor' && pendingMotorBeam !== null && beamMap(design).get(pendingMotorBeam);
+  return Boolean(pending) && sharedNode(pending, beam) !== null;
+}
+
+function nodeEditable(layers) {
+  return !focused || layers.size === 0 || layers.has(activeLayer);
 }
 
 function toWorld(point) {
@@ -142,7 +164,9 @@ function positions() {
 function hitNode(point) {
   let best = null;
   let bestDistance = HIT_PX;
+  const layers = nodeLayers(design);
   for (const node of design.nodes) {
+    if (!nodeEditable(layers.get(node.id))) continue;
     const s = toScreen(node.x, node.y);
     const distance = Math.hypot(s.x - point.x, s.y - point.y);
     if (distance < bestDistance) {
@@ -166,6 +190,7 @@ function hitBeam(point) {
   let best = null;
   let bestDistance = HIT_PX * 0.7;
   for (const beam of design.beams) {
+    if (!beamEditable(beam)) continue;
     const a = nodes.get(beam.a);
     const b = nodes.get(beam.b);
     const distance = distanceToSegment(point, toScreen(a.x, a.y), toScreen(b.x, b.y));
@@ -188,7 +213,7 @@ function finishBeam({ from, to }) {
   const a = from.nodeId ?? addNode(design, from.x, from.y).id;
   const b = to.nodeId ?? addNode(design, to.x, to.y).id;
   if (a === b) return;
-  addBeam(design, a, b);
+  addBeam(design, a, b, activeLayer);
   commit();
 }
 
@@ -223,7 +248,9 @@ function tapMotor(point) {
 function tapErase(point) {
   const node = hitNode(point);
   const beam = node ? null : hitBeam(point);
-  if (node) removeNode(design, node.id);
+  if (node && focused) {
+    for (const own of design.beams.filter((b) => b.layer === activeLayer && (b.a === node.id || b.b === node.id))) removeBeam(design, own.id);
+  } else if (node) removeNode(design, node.id);
   else if (beam) removeBeam(design, beam.id);
   else return;
   commit();
@@ -380,6 +407,41 @@ function fit() {
   camera.y = (Math.max(...ys) + Math.min(...ys)) / 2 + toolbarRoom / 2 / camera.scale;
 }
 
+function showLayer(layer) {
+  focused = layer !== null;
+  if (focused) activeLayer = layer;
+  pendingMotorBeam = null;
+  hover = null;
+  const name = design.layers[activeLayer];
+  say(focused ? `Layer ${activeLayer + 1}: ${name}. Other layers are faded and locked. Rings mark joints shared with another layer.` : `All layers. New beams go on layer ${activeLayer + 1}: ${name}.`);
+  renderLayers();
+}
+
+function renderLayers() {
+  const chip = (text, title, pressed, onClick) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = text;
+    button.title = title;
+    button.setAttribute('aria-pressed', String(pressed));
+    button.addEventListener('click', onClick);
+    return button;
+  };
+  const all = chip('All', 'Show every layer', !focused, () => showLayer(null));
+  const layers = design.layers.map((name, layer) => {
+    const button = chip(String(layer + 1), `Layer ${layer + 1}: ${name}`, focused && layer === activeLayer, () => showLayer(layer));
+    button.style.setProperty('--layer', layerColor(layer));
+    button.classList.toggle('rw-target', layer === activeLayer);
+    return button;
+  });
+  const add = chip('+', 'Add a layer', false, () => {
+    showLayer(addLayer(design));
+    commit();
+  });
+  add.disabled = Boolean(sim);
+  layerBar.replaceChildren(all, ...layers, add);
+}
+
 function renderControls() {
   for (const button of toolButtons) {
     button.setAttribute('aria-pressed', String(button.dataset.tool === tool && !sim));
@@ -389,6 +451,7 @@ function renderControls() {
   redoButton.disabled = Boolean(sim) || !redoStack.length;
   runButton.textContent = sim ? 'Stop' : 'Run';
   runButton.setAttribute('aria-pressed', String(Boolean(sim)));
+  renderLayers();
   stats.mass.textContent = design.nodes.length ? `${new Simulation(design).totalMass.toFixed(1)} kg` : '–';
 }
 
@@ -592,10 +655,13 @@ function drawRobot() {
   const nodes = positions();
   const beams = beamMap(design);
   const beamWidth = Math.max(3, camera.scale * 0.022);
+  const segment = (beam, color, width) => drawSegment(nodes.get(beam.a), nodes.get(beam.b), color, width);
   context.lineCap = 'round';
 
-  for (const beam of design.beams) drawSegment(nodes.get(beam.a), nodes.get(beam.b), COLORS.beamShadow, beamWidth + 3);
-  for (const beam of design.beams) drawSegment(nodes.get(beam.a), nodes.get(beam.b), COLORS.beam, beamWidth);
+  const inFront = focused ? design.beams.filter((beam) => beam.layer === activeLayer) : design.beams;
+  if (focused) for (const beam of design.beams) if (beam.layer !== activeLayer) segment(beam, COLORS.ghost, beamWidth * 0.6);
+  for (const beam of inFront) segment(beam, COLORS.beamShadow, beamWidth + 3);
+  for (const beam of inFront) segment(beam, layerColor(beam.layer), beamWidth);
 
   const marked = new Map();
   if (pendingMotorBeam !== null) marked.set(pendingMotorBeam, COLORS.motor);
@@ -607,23 +673,41 @@ function drawRobot() {
   if (hover?.kind === 'beam') marked.set(hover.id, tool === 'erase' ? COLORS.erase : COLORS.hover);
   for (const [id, color] of marked) {
     const beam = beams.get(id);
-    if (beam) drawSegment(nodes.get(beam.a), nodes.get(beam.b), color, beamWidth + 2);
+    if (beam) segment(beam, color, beamWidth + 2);
   }
 
   design.motors.forEach((motor, index) => {
     const pivot = nodes.get(motorPivot(design, motor));
-    if (pivot) drawMotor(pivot, motor, sim?.motors[index]);
+    if (!pivot) return;
+    context.globalAlpha = !focused || motorLayer(design, motor) === activeLayer || highlightedMotor === motor.id ? 1 : 0.2;
+    drawMotor(pivot, motor, sim?.motors[index]);
+    context.globalAlpha = 1;
   });
 
   const jointRadius = Math.max(3, camera.scale * 0.012);
+  const layers = nodeLayers(design);
   for (const node of design.nodes) {
+    const own = layers.get(node.id);
+    if (!nodeEditable(own)) continue;
     const p = nodes.get(node.id);
     const s = toScreen(p.x, p.y);
     const hovered = hover?.kind === 'node' && hover.id === node.id;
-    context.fillStyle = hovered ? (tool === 'erase' ? COLORS.erase : COLORS.hover) : COLORS.joint;
-    context.beginPath();
-    context.arc(s.x, s.y, hovered ? jointRadius + 3 : jointRadius, 0, Math.PI * 2);
-    context.fill();
+    const color = hovered ? (tool === 'erase' ? COLORS.erase : COLORS.hover) : COLORS.joint;
+    const radius = hovered ? jointRadius + 3 : jointRadius;
+    if (own.size > 1) {
+      context.fillStyle = COLORS.sky;
+      context.strokeStyle = hovered ? color : COLORS.link;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(s.x, s.y, radius + 2, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    } else {
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(s.x, s.y, radius, 0, Math.PI * 2);
+      context.fill();
+    }
   }
 }
 
@@ -681,7 +765,10 @@ for (const [key, preset] of Object.entries(PRESETS)) presetSelect.add(new Option
 $('[data-load]').addEventListener('click', () => {
   if (sim) stopRun();
   design = PRESETS[presetSelect.value].build();
+  activeLayer = 0;
+  focused = false;
   commit();
+  renderLayers();
   renderMotors();
   fit();
 });
@@ -714,6 +801,7 @@ window.addEventListener('keydown', (event) => {
 
 new ResizeObserver(resize).observe(canvas);
 resize();
+renderLayers();
 renderMotors();
 renderControls();
 say(TOOL_HINTS[tool]);

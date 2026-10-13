@@ -9,7 +9,31 @@ export const MOTOR_DEFAULTS = {
 };
 
 export function emptyDesign() {
-  return { nodes: [], beams: [], motors: [], nextId: 1 };
+  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], nextId: 1 };
+}
+
+export function withLayers(design) {
+  design.layers ??= ['Layer 1'];
+  for (const beam of design.beams) beam.layer ??= 0;
+  return design;
+}
+
+export function addLayer(design) {
+  design.layers.push(`Layer ${design.layers.length + 1}`);
+  return design.layers.length - 1;
+}
+
+export function nodeLayers(design) {
+  const layers = new Map(design.nodes.map((node) => [node.id, new Set()]));
+  for (const beam of design.beams) {
+    layers.get(beam.a).add(beam.layer);
+    layers.get(beam.b).add(beam.layer);
+  }
+  return layers;
+}
+
+export function motorLayer(design, motor) {
+  return design.beams.find((beam) => beam.id === motor.driven)?.layer ?? 0;
 }
 
 export function cloneDesign(design) {
@@ -34,11 +58,11 @@ export function findBeam(design, a, b) {
   return design.beams.find((beam) => (beam.a === a && beam.b === b) || (beam.a === b && beam.b === a));
 }
 
-export function addBeam(design, a, b) {
+export function addBeam(design, a, b, layer = 0) {
   if (a === b) return null;
   const existing = findBeam(design, a, b);
   if (existing) return existing;
-  const beam = { id: takeId(design), a, b };
+  const beam = { id: takeId(design), a, b, layer };
   design.beams.push(beam);
   return beam;
 }
