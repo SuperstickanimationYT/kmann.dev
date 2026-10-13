@@ -1,6 +1,6 @@
 import { CHIP_COLORS, CLOCK_RATES, MAX_INPUTS, MIN_INPUTS, PART_NAMES, PARTS, hasInputCount, hasLabel, inputCount, isChipInput, isChipOutput, layout } from './parts.js';
 import { bounds, chipPins, cloneCircuit, emptyCircuit, extract, forbiddenChips, isChipDef, isCircuit, mergeLibrary, pruneWires, uid, usages } from './library.js';
-import { store } from './store.js';
+import { makeTab, store } from './store.js';
 import { compile } from './sim.js';
 import { drawComponent, drawScene } from './render.js';
 import { Editor } from './editor.js';
@@ -40,6 +40,7 @@ store.listeners.add((kind) => {
   if (kind === 'structure') {
     editor.syncSelection();
     rebuild(true);
+    renderTabs();
     renderChips();
     renderSelection();
   }
@@ -65,8 +66,7 @@ function rebuild(keepState) {
 
 function pruneEverywhere() {
   for (const def of store.chips.values()) pruneWires(def.circuit, store.chips);
-  pruneWires(store.root.circuit, store.chips);
-  for (const ws of store.stack) pruneWires(ws.circuit, store.chips);
+  for (const ws of store.workspaces()) pruneWires(ws.circuit, store.chips);
 }
 
 function starterBoard() {
@@ -81,6 +81,13 @@ function starterBoard() {
   };
 }
 
+function savedTabs(saved) {
+  if (saved?.version === 1 && isCircuit(saved.board)) {
+    return [{ name: 'Board 1', board: saved.board, view: saved.view, stack: (saved.stack ?? []).map((draft, i, all) => ({ ...draft, view: i === all.length - 1 ? saved.draftView : null })) }];
+  }
+  return Array.isArray(saved?.tabs) ? saved.tabs.filter((tab) => isCircuit(tab?.board)) : [];
+}
+
 function load() {
   let saved = null;
   try {
@@ -88,18 +95,19 @@ function load() {
   } catch {
     saved = null;
   }
-  if (!saved || !isCircuit(saved.board)) {
-    store.root.circuit = starterBoard();
+  for (const def of saved?.chips ?? []) if (isChipDef(def)) store.chips.set(def.id, def);
+  for (const entry of savedTabs(saved)) {
+    store.addTab(makeTab(String(entry.name || store.nextTabName()), entry.board, entry.view ?? null));
+    for (const draft of entry.stack ?? []) {
+      const def = store.chips.get(draft.chipId);
+      if (def && isCircuit(draft.circuit) && !store.tabEditing(def.id)) store.openChip(def, draft.circuit, draft.view ?? null);
+    }
+  }
+  if (!store.tabs.length) {
+    store.addTab(makeTab('Board 1', starterBoard()));
     return false;
   }
-  for (const def of saved.chips ?? []) if (isChipDef(def)) store.chips.set(def.id, def);
-  store.root.circuit = saved.board;
-  store.root.view = saved.view ?? null;
-  for (const draft of saved.stack ?? []) {
-    const def = store.chips.get(draft.chipId);
-    if (def && isCircuit(draft.circuit)) store.openChip(def, draft.circuit);
-  }
-  store.current().view = saved.stack?.length ? saved.draftView ?? null : saved.view ?? null;
+  store.activeTab = store.tabs[Math.min(Math.max(0, saved.active ?? 0), store.tabs.length - 1)];
   pruneEverywhere();
   return true;
 }
@@ -107,14 +115,18 @@ function load() {
 function save() {
   clearTimeout(saveTimer);
   saveTimer = 0;
-  const editingChip = store.stack.length > 0;
+  const current = store.current();
+  const viewOf = (ws) => (ws === current ? editor.view : ws.view);
   const state = {
-    version: 1,
-    board: store.root.circuit,
+    version: 2,
     chips: [...store.chips.values()],
-    stack: store.stack.map((ws) => ({ chipId: ws.chipId, circuit: ws.circuit })),
-    view: editingChip ? store.root.view : editor.view,
-    draftView: editingChip ? editor.view : null,
+    tabs: store.tabs.map((tab) => ({
+      name: tab.name,
+      board: tab.root.circuit,
+      view: viewOf(tab.root),
+      stack: tab.stack.map((ws) => ({ chipId: ws.chipId, circuit: ws.circuit, view: viewOf(ws) })),
+    })),
+    active: store.tabs.indexOf(store.activeTab),
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state, (key, value) => (key === 'pressed' ? undefined : value)));
@@ -398,11 +410,12 @@ function renderToolbar() {
   crumbs.hidden = !store.stack.length;
   if (store.stack.length) {
     const names = store.stack.map((entry) => store.chips.get(entry.chipId)?.name ?? '?');
-    $('[data-crumb-path]').textContent = `Board › ${names.join(' › ')}`;
+    $('[data-crumb-path]').textContent = `${store.activeTab.name} › ${names.join(' › ')}`;
   }
 }
 
 function renderAll() {
+  renderTabs();
   renderChips();
   renderSelection();
   renderToolbar();
@@ -502,6 +515,12 @@ async function makeChip() {
 function openChip(chipId) {
   const def = store.chips.get(chipId);
   if (!def || store.editingIds().includes(chipId)) return;
+  const elsewhere = store.tabEditing(chipId);
+  if (elsewhere) {
+    switchTab(elsewhere);
+    say(`${def.name} is already open in this tab.`);
+    return;
+  }
   editor.draft = null;
   store.current().view = { ...editor.view };
   store.openChip(def, cloneCircuit(def.circuit));
@@ -559,9 +578,12 @@ async function renameChip(chipId) {
 
 function deleteChip(chipId) {
   const def = store.chips.get(chipId);
-  const places = usages(chipId, store.root.circuit, store.chips);
-  for (const ws of store.stack) {
-    if (ws.chipId === chipId || ws.circuit.components.some((comp) => comp.chip === chipId)) places.push(`your open edit of ${store.chips.get(ws.chipId)?.name}`);
+  const boards = store.tabs.map((tab) => ({ name: `the ${tab.name} tab`, circuit: tab.root.circuit }));
+  const places = usages(chipId, boards, store.chips);
+  for (const tab of store.tabs) {
+    for (const ws of tab.stack) {
+      if (ws.chipId === chipId || ws.circuit.components.some((comp) => comp.chip === chipId)) places.push(`your open edit of ${store.chips.get(ws.chipId)?.name}`);
+    }
   }
   if (places.length) {
     say(`${def.name} is still used in ${places.join(', ')}. Remove it from there first.`);
@@ -575,16 +597,13 @@ function deleteChip(chipId) {
 function exportFile() {
   const data = { app: 'logic-circuits', version: 1, board: store.root.circuit, chips: [...store.chips.values()] };
   const blob = new Blob([JSON.stringify(data, (key, value) => (key === 'pressed' ? undefined : value))], { type: 'application/json' });
-  const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'logic-circuits.json' });
+  const fileName = `${store.activeTab.name.replace(/[^\w -]+/g, '').trim() || 'logic-circuits'}.json`;
+  const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: fileName });
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 async function importFile(file) {
-  if (store.stack.length) {
-    say('Save or discard the chip you are editing before importing.');
-    return;
-  }
   let data;
   try {
     data = JSON.parse(await file.text());
@@ -599,20 +618,15 @@ async function importFile(file) {
     return;
   }
   const added = mergeLibrary(store.chips, incoming, board ? [board] : []);
-  let replaced = false;
-  if (board?.components.length) {
-    const empty = !store.root.circuit.components.length;
-    if (empty || window.confirm('Replace your board with the one in the file? Cancel keeps your board and only adds the chips.')) {
-      store.record();
-      store.root.circuit = board;
-      replaced = true;
-    }
-  }
   pruneEverywhere();
-  editor.clearSelection();
-  store.emit('structure');
-  if (replaced) editor.fit();
-  say(`Imported ${added} chip${added === 1 ? '' : 's'}${replaced ? ' and the board' : ''}.`);
+  const opened = Boolean(board?.components.length);
+  if (opened) {
+    pruneWires(board, store.chips);
+    openTab(makeTab(file.name.replace(/\.json$/i, '').slice(0, 24) || store.nextTabName(), board));
+  } else {
+    store.emit('structure');
+  }
+  say(`Imported ${added} chip${added === 1 ? '' : 's'}${opened ? ' and opened the board in a new tab' : ''}.`);
 }
 
 function clearBoard() {
@@ -622,6 +636,98 @@ function clearBoard() {
   store.current().circuit = emptyCircuit();
   editor.clearSelection();
   store.emit('structure');
+}
+
+function leaveTab() {
+  editor.draft = null;
+  editor.ghost = null;
+  editor.clearSelection();
+  store.current().view = { ...editor.view };
+}
+
+function enterTab() {
+  const ws = store.current();
+  rebuild(false);
+  if (ws.view) editor.view = { ...ws.view };
+  else editor.fit();
+  renderAll();
+  scheduleSave();
+}
+
+function switchTab(tab) {
+  if (tab === store.activeTab) return;
+  leaveTab();
+  store.activeTab = tab;
+  enterTab();
+}
+
+function openTab(tab) {
+  leaveTab();
+  store.addTab(tab);
+  enterTab();
+}
+
+function closeTab(tab) {
+  if (store.tabs.length < 2) return;
+  const busy = tab.root.circuit.components.length || tab.stack.length;
+  if (busy && !window.confirm(`Close ${tab.name}? Everything on it goes. Chips you made stay in My chips.`)) return;
+  if (tab === store.activeTab) leaveTab();
+  const wasActive = tab === store.activeTab;
+  store.removeTab(tab);
+  if (wasActive) enterTab();
+  else {
+    renderTabs();
+    scheduleSave();
+  }
+}
+
+function renameTab(tab, label) {
+  const input = Object.assign(document.createElement('input'), { value: tab.name, maxLength: 24, spellcheck: false, className: 'lc-tab-name' });
+  input.setAttribute('aria-label', 'Tab name');
+  label.replaceWith(input);
+  input.select();
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (keep && input.value.trim()) tab.name = input.value.trim();
+    renderTabs();
+    renderToolbar();
+    scheduleSave();
+  };
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') finish(true);
+    if (event.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+function renderTabs() {
+  const strip = $('[data-tabs]');
+  strip.replaceChildren();
+  for (const tab of store.tabs) {
+    const active = tab === store.activeTab;
+    const item = document.createElement('div');
+    item.className = 'lc-tab';
+    item.setAttribute('role', 'tab');
+    item.setAttribute('aria-selected', String(active));
+    const label = button(tab.name, () => (active ? renameTab(tab, label) : switchTab(tab)), 'lc-tab-label');
+    label.title = active ? 'Click to rename' : `Switch to ${tab.name}`;
+    const editing = tab.stack.at(-1);
+    if (editing) label.append(Object.assign(document.createElement('small'), { textContent: ` › ${store.chips.get(editing.chipId)?.name ?? '?'}` }));
+    item.append(label);
+    if (store.tabs.length > 1) {
+      const close = button('×', () => closeTab(tab), 'lc-tab-close');
+      close.setAttribute('aria-label', `Close ${tab.name}`);
+      item.append(close);
+    }
+    strip.append(item);
+  }
+  const add = button('+', () => openTab(makeTab(store.nextTabName())), 'lc-tab-add');
+  add.setAttribute('aria-label', 'New tab');
+  add.title = 'New tab: a fresh board that shares your chips';
+  strip.append(add);
+  strip.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function setRunning(next) {

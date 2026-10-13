@@ -25,6 +25,101 @@
   pointer-events: none;
 }
 
+.lc-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  pointer-events: auto;
+}
+
+.lc-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: rgba(4, 11, 20, 0.85);
+  backdrop-filter: blur(6px);
+}
+
+.lc-tab[aria-selected="true"] {
+  border-color: var(--link);
+  background: rgba(19, 54, 89, 0.95);
+}
+
+.lc-tab button {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lc-tab[aria-selected="true"] button {
+  color: var(--text-strong);
+}
+
+.lc-tab-label {
+  max-width: 220px;
+  overflow: hidden;
+  padding: 7px 4px 7px 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lc-tab-label:only-child {
+  padding-right: 11px;
+}
+
+.lc-tab-label small {
+  font-weight: 400;
+  color: #b9a6ff;
+}
+
+.lc-tab-close {
+  padding: 4px 9px 6px 5px;
+  font-size: 16px !important;
+  line-height: 1;
+}
+
+.lc-tab-close:hover {
+  color: #ff8a9a !important;
+}
+
+.lc-tab-name {
+  width: 140px;
+  margin: 3px;
+  padding: 4px 7px;
+  border: 1px solid var(--link);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+}
+
+.lc-tab-add {
+  flex: none;
+  width: 34px;
+  border: 1px dashed var(--edge-bright);
+  border-radius: 8px;
+  background: rgba(4, 11, 20, 0.85);
+  color: var(--link);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lc-tab-add:hover {
+  background: #133659;
+}
+
 .lc-toolbar,
 .lc-crumbs {
   display: flex;
