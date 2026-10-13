@@ -44,9 +44,11 @@ export function forbiddenChips(editingIds, chips) {
   return forbidden;
 }
 
-export function usages(chipId, board, chips) {
+export function usages(chipId, boards, chips) {
   const places = [];
-  if (chipsUsedBy(board).includes(chipId)) places.push('the board');
+  for (const { name, circuit } of boards) {
+    if (chipsUsedBy(circuit).includes(chipId)) places.push(name);
+  }
   for (const def of chips.values()) {
     if (def.id !== chipId && chipsUsedBy(def.circuit).includes(chipId)) places.push(def.name);
   }

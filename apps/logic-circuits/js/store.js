@@ -1,27 +1,64 @@
-import { emptyCircuit } from './library.js';
+import { emptyCircuit, uid } from './library.js';
 
 const HISTORY_LIMIT = 200;
 
-function workspace(circuit, chipId = null) {
-  return { circuit, chipId, undo: [], redo: [], view: null };
+function workspace(circuit, chipId = null, view = null) {
+  return { circuit, chipId, undo: [], redo: [], view };
+}
+
+export function makeTab(name, circuit = emptyCircuit(), view = null) {
+  return { id: uid(), name, root: workspace(circuit, null, view), stack: [] };
 }
 
 export const store = {
   chips: new Map(),
-  root: workspace(emptyCircuit()),
-  stack: [],
+  tabs: [],
+  activeTab: null,
   listeners: new Set(),
+
+  get root() {
+    return this.activeTab.root;
+  },
+
+  get stack() {
+    return this.activeTab.stack;
+  },
 
   current() {
     return this.stack.at(-1) ?? this.root;
+  },
+
+  workspaces() {
+    return this.tabs.flatMap((tab) => [tab.root, ...tab.stack]);
   },
 
   editingIds() {
     return this.stack.map((ws) => ws.chipId);
   },
 
-  openChip(def, circuit) {
-    this.stack.push(workspace(circuit, def.id));
+  tabEditing(chipId) {
+    return this.tabs.find((tab) => tab.stack.some((ws) => ws.chipId === chipId)) ?? null;
+  },
+
+  nextTabName() {
+    const names = new Set(this.tabs.map((tab) => tab.name));
+    for (let n = 1; ; n++) if (!names.has(`Board ${n}`)) return `Board ${n}`;
+  },
+
+  addTab(tab) {
+    this.tabs.push(tab);
+    this.activeTab = tab;
+    return tab;
+  },
+
+  removeTab(tab) {
+    const index = this.tabs.indexOf(tab);
+    this.tabs.splice(index, 1);
+    if (this.activeTab === tab) this.activeTab = this.tabs[Math.min(index, this.tabs.length - 1)];
+  },
+
+  openChip(def, circuit, view = null) {
+    this.stack.push(workspace(circuit, def.id, view));
   },
 
   closeChip() {

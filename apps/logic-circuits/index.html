@@ -23,6 +23,7 @@
 <main class="studio-stage">
   <canvas data-board aria-label="Circuit board. Drag parts in from the panel, drag from one pin to another to connect them, and click switches to flip them."></canvas>
   <div class="lc-overlay">
+    <div class="lc-tabs" role="tablist" aria-label="Boards" data-tabs></div>
     <div class="lc-crumbs" data-crumbs hidden>
       <span data-crumb-path></span>
       <button type="button" class="lc-primary" data-chip-save>Save chip</button>
@@ -77,7 +78,7 @@
 
     <section class="lc-section">
       <h2>Save and share</h2>
-      <p class="lc-note">Your board and chips are saved in this browser as you go. Export a file to back them up or to give your chips to someone else.</p>
+      <p class="lc-note">Your tabs and chips are saved in this browser as you go. Export saves the open tab's board with all your chips, to back them up or give them to someone else. Importing opens the file's board in a new tab.</p>
       <div class="lc-actions">
         <button type="button" data-export>Export file</button>
         <button type="button" data-import>Import file</button>
@@ -92,6 +93,7 @@
         <li><strong>Wire</strong> by dragging from one pin to another. Outputs sit on the right of a part, inputs on the left. An output can feed many inputs; each input takes one wire. While wiring, click empty space to add bends.</li>
         <li><strong>Move</strong> parts by dragging them. Drag empty space to select an area with a mouse, or to move the board on a touch screen. Scroll or pinch to zoom; drag with the right mouse button or hold Space to move the board.</li>
         <li><strong>Make a chip</strong> by selecting a finished circuit and pressing Make chip. Switches and buttons turn into input pins, lights into output pins, ordered top to bottom as they sit on the board. Their labels become the pin names.</li>
+        <li><strong>Tabs</strong> hold separate boards that share your chips. Halfway through a build and need a new chip? Press <strong>+</strong> above the board, build and make the chip there, then switch back. Click the open tab's name to rename it.</li>
         <li><strong>Chips inside chips</strong>: a chip is a part like any other, so you can use it to build bigger chips. Double-click a chip to open it and change it; every copy updates.</li>
         <li><strong>Timing</strong>: each gate reacts one tick after its inputs change, and the board runs ticks until nothing changes. Loops that never settle, like a NOT gate wired to itself, keep flickering.</li>
       </ul>
