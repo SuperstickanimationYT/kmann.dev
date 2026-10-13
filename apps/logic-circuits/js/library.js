@@ -12,12 +12,29 @@ export function cloneCircuit(circuit) {
   return JSON.parse(JSON.stringify(circuit));
 }
 
-export function chipPins(circuit) {
-  const byPosition = (a, b) => a.y - b.y || a.x - b.x;
+const COLUMN_WIDTH = 40;
+
+function columnOrder(comps) {
+  const columns = [];
+  for (const comp of [...comps].sort((a, b) => a.x - b.x)) {
+    const column = columns.at(-1);
+    if (column && comp.x - column.left <= COLUMN_WIDTH) column.comps.push(comp);
+    else columns.push({ left: comp.x, comps: [comp] });
+  }
+  return columns.flatMap((column) => column.comps.sort((a, b) => a.y - b.y || a.x - b.x));
+}
+
+export function chipPins(circuit, previous = null) {
   const pin = (comp) => ({ id: comp.id, name: comp.label?.trim() || '?' });
+  const ordered = (comps, before = []) => {
+    const rank = new Map(before.map((entry, i) => [entry.id, i]));
+    const fresh = columnOrder(comps);
+    const kept = fresh.filter((comp) => rank.has(comp.id)).sort((a, b) => rank.get(a.id) - rank.get(b.id));
+    return [...kept, ...fresh.filter((comp) => !rank.has(comp.id))].map(pin);
+  };
   return {
-    inputs: circuit.components.filter((comp) => isChipInput(comp.kind)).sort(byPosition).map(pin),
-    outputs: circuit.components.filter((comp) => isChipOutput(comp.kind)).sort(byPosition).map(pin),
+    inputs: ordered(circuit.components.filter((comp) => isChipInput(comp.kind)), previous?.inputs),
+    outputs: ordered(circuit.components.filter((comp) => isChipOutput(comp.kind)), previous?.outputs),
   };
 }
 
