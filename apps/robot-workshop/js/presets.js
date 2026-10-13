@@ -44,7 +44,8 @@ function strandbeest() {
   const design = emptyDesign();
   const scale = JANSEN_METERS_PER_UNIT;
   const place = (point) => addNode(design, point.x * scale, point.y * scale);
-  const link = (p, q) => addBeam(design, p.id, q.id);
+  const link = (p, q, layer = 0) => addBeam(design, p.id, q.id, layer);
+  design.layers = ['Frame and crank', ...[0, 120, 240].map((degrees) => `Legs on the ${degrees}° crank pin`)];
 
   const axle = place({ x: 0, y: 0 });
   const top = place({ x: 0, y: 30 });
@@ -61,7 +62,8 @@ function strandbeest() {
   const cranks = crankPins.map((pin) => link(axle, pin.node));
   for (let n = 0; n < crankPins.length; n += 1) link(crankPins[n].node, crankPins[(n + 1) % crankPins.length].node);
 
-  for (const pin of crankPins) {
+  crankPins.forEach((pin, pinIndex) => {
+    const layer = pinIndex + 1;
     for (const side of [-1, 1]) {
       const leg = jansenLeg(pin.at, side);
       const upper = place(leg.upper);
@@ -70,9 +72,9 @@ function strandbeest() {
       const knee = place(leg.knee);
       const foot = place(leg.foot);
       const pivot = pivots[side];
-      for (const [p, q] of [[pin.node, upper], [pivot, upper], [pin.node, lower], [pivot, lower], [pivot, elbow], [upper, elbow], [elbow, knee], [lower, knee], [lower, foot], [knee, foot]]) link(p, q);
+      for (const [p, q] of [[pin.node, upper], [pivot, upper], [pin.node, lower], [pivot, lower], [pivot, elbow], [upper, elbow], [elbow, knee], [lower, knee], [lower, foot], [knee, foot]]) link(p, q, layer);
     }
-  }
+  });
 
   const frameBeam = design.beams.find((beam) => beam.a === axle.id && beam.b === pivots[1].id);
   addMotor(design, cranks[0], frameBeam, { mode: 'spin', power: -1, stallTorque: 40, freeRpm: 40 });
@@ -88,8 +90,9 @@ function rower() {
   const bodyTop = addBeam(design, corners[2].id, corners[3].id);
   const elbow = addNode(design, 0.95, 0.3);
   const hand = addNode(design, 1.25, 0);
-  const upperArm = addBeam(design, corners[2].id, elbow.id);
-  const forearm = addBeam(design, elbow.id, hand.id);
+  design.layers = ['Body', 'Arm'];
+  const upperArm = addBeam(design, corners[2].id, elbow.id, 1);
+  const forearm = addBeam(design, elbow.id, hand.id, 1);
   addMotor(design, upperArm, bodyTop, { mode: 'swing', amplitude: 45, frequency: 1.5, phase: 0, stallTorque: 30 });
   addMotor(design, forearm, upperArm, { mode: 'swing', amplitude: 35, frequency: 1.5, phase: -45, stallTorque: 20 });
   liftOntoGround(design);
