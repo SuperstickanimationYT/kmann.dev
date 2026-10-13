@@ -1,0 +1,269 @@
+.studio-stage canvas {
+  touch-action: none;
+  user-select: none;
+}
+
+.studio-stage [hidden],
+.studio-panel [hidden] {
+  display: none !important;
+}
+
+.rw-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: 10px;
+  pointer-events: none;
+}
+
+.rw-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.rw-toolbar button {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: rgba(12, 37, 64, 0.88);
+  backdrop-filter: blur(6px);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rw-toolbar button:hover:not(:disabled) {
+  background: #133659;
+}
+
+.rw-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rw-toolbar button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--link);
+}
+
+.rw-toolbar .rw-primary {
+  min-width: 64px;
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.rw-toolbar .rw-primary[aria-pressed="true"] {
+  background: linear-gradient(103deg, #c4561f 0%, #8a3317 100%);
+  border-color: #ffb454;
+}
+
+.rw-group {
+  display: flex;
+}
+
+.rw-group button {
+  border-radius: 0;
+}
+
+.rw-group button + button {
+  border-left: 0;
+}
+
+.rw-group > :first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.rw-group > :last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.rw-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(3, 8, 15, 0.85);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-strong);
+  pointer-events: none;
+}
+
+.rw-status:empty {
+  display: none;
+}
+
+.rw-section {
+  margin: 0 0 18px;
+}
+
+.rw-section h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.rw-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.rw-stats div {
+  padding: 6px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: rgba(4, 11, 20, 0.6);
+}
+
+.rw-stats dt {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rw-stats dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.rw-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.rw-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rw-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.rw-section select,
+.rw-section input[type="number"] {
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+}
+
+.rw-section button {
+  padding: 7px 14px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rw-section button:hover {
+  background: #133659;
+}
+
+.rw-motors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.rw-motor {
+  padding: 8px 10px 10px;
+  border: 1px solid var(--edge);
+  border-left: 3px solid #ffb454;
+  border-radius: 8px;
+  background: rgba(4, 11, 20, 0.6);
+}
+
+.rw-motor:hover,
+.rw-motor:focus-within {
+  border-color: #ffb454;
+}
+
+.rw-motor-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rw-motor-head strong {
+  flex: 1;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.rw-motor-head select {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.rw-section .rw-remove {
+  padding: 3px 9px;
+  border-color: var(--edge);
+  background: none;
+  color: #ff8a9a;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.rw-slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.rw-slider output {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.rw-slider input {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+}
+
+.rw-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.rw-note strong {
+  color: var(--text-strong);
+}

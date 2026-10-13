@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Workshop &mdash; kmann314</title>
+<meta name="description" content="Build 2D robots from beams, joints and electric motors, then drop them on the ground and see how far they walk. Prototype.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Robot Workshop</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-stage aria-label="Workshop. Drag between points to add beams, tap two beams that share a joint to add a motor, then press Run."></canvas>
+  <div class="rw-overlay">
+    <div class="rw-toolbar" role="toolbar" aria-label="Tools">
+      <div class="rw-group" role="group" aria-label="Tool" data-tools>
+        <button type="button" data-tool="beam" title="Drag between two points to add a beam (1)">Beam</button>
+        <button type="button" data-tool="motor" title="Tap the beam to turn, then the beam it pushes against (2)">Motor</button>
+        <button type="button" data-tool="move" title="Drag joints to move them (3)">Move</button>
+        <button type="button" data-tool="erase" title="Tap a joint or beam to remove it (4)">Erase</button>
+      </div>
+      <button type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" data-redo title="Redo (Ctrl+Y)">Redo</button>
+      <button type="button" data-fit title="Show the whole robot (F)">Fit</button>
+      <button type="button" class="rw-primary" data-run title="Start or stop the simulation (Space)">Run</button>
+    </div>
+  </div>
+  <p class="rw-status" data-status></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Robot">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Robot</button>
+  <div class="studio-panel-body">
+    <section class="rw-section">
+      <h2>Run</h2>
+      <dl class="rw-stats">
+        <div><dt>Distance</dt><dd data-stat="distance">&ndash;</dd></div>
+        <div><dt>Time</dt><dd data-stat="time">&ndash;</dd></div>
+        <div><dt>Mass</dt><dd data-stat="mass">&ndash;</dd></div>
+        <div><dt>Best to 10 m</dt><dd data-stat="best">&ndash;</dd></div>
+      </dl>
+      <label class="rw-check"><input type="checkbox" data-follow checked> Camera follows the robot</label>
+    </section>
+
+    <section class="rw-section">
+      <h2>Motors</h2>
+      <ul class="rw-motors" data-motors></ul>
+      <p class="rw-note" data-no-motors>No motors yet. Pick the <strong>Motor</strong> tool, tap the beam that should turn, then tap a beam joined to it at the same joint. The motor turns the first beam against the second.</p>
+    </section>
+
+    <section class="rw-section">
+      <h2>Start from</h2>
+      <div class="rw-row">
+        <select data-preset aria-label="Example robot"></select>
+        <button type="button" data-load>Load</button>
+      </div>
+      <p class="rw-note">Loading replaces the robot on the board. Undo brings it back.</p>
+    </section>
+
+    <section class="rw-section">
+      <h2>Building</h2>
+      <label class="rw-check"><input type="checkbox" data-snap checked> Snap joints to a 5 cm grid</label>
+      <p class="rw-note">Beams are rigid and pass through each other. Only joints touch the ground. Where two beams meet they pivot freely unless a motor drives them. Drag with the right mouse button or two fingers to pan, and scroll or pinch to zoom.</p>
+    </section>
+
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
