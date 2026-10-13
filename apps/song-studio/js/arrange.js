@@ -1,6 +1,6 @@
 import { DRUMS } from './drums.js';
 import { rowCount, snapRow } from './music.js';
-import { totalSteps } from './song.js';
+import { barSteps, maxBars, totalSteps } from './song.js';
 
 function withoutClashes(notes) {
   const seen = new Set();
@@ -34,10 +34,8 @@ export function setScale(song, scale) {
 }
 
 export function setBars(song, bars) {
-  const oldSteps = totalSteps(song);
   song.bars = bars;
-  const copies = Math.ceil(totalSteps(song) / oldSteps);
-  eachTrack(song, (track) => Array.from({ length: copies }, (_, copy) => track.notes.map((note) => ({ ...note, step: note.step + copy * oldSteps }))).flat());
+  eachTrack(song, (track) => track.notes);
 }
 
 export function setStepsPerBeat(song, stepsPerBeat) {
@@ -50,12 +48,49 @@ export function setBeatsPerBar(song, beatsPerBar) {
   const oldBar = song.beatsPerBar * song.stepsPerBeat;
   song.beatsPerBar = beatsPerBar;
   const newBar = beatsPerBar * song.stepsPerBeat;
+  song.bars = Math.min(song.bars, maxBars(song));
   eachTrack(song, (track) =>
     track.notes
       .filter((note) => note.step % oldBar < newBar)
       .map((note) => ({ ...note, step: Math.floor(note.step / oldBar) * newBar + (note.step % oldBar) })),
   );
 }
+
+export function copyBars(song, start, end) {
+  const size = barSteps(song);
+  const from = start * size;
+  const to = end * size;
+  const inside = (track) => track.notes.filter((note) => note.step >= from && note.step < to);
+  return {
+    bars: end - start,
+    barSteps: size,
+    tracks: Object.fromEntries(song.tracks.map((track) => [track.id, inside(track).map((note) => ({ row: note.row, step: note.step - from, length: Math.min(note.length, to - note.step) }))])),
+  };
+}
+
+function cutRange(notes, from, to, shift) {
+  return notes.flatMap((note) => {
+    if (note.step >= to) return [{ ...note, step: note.step + shift }];
+    if (note.step >= from) return [];
+    return [{ ...note, length: Math.min(note.length, from - note.step) }];
+  });
+}
+
+function spliceBars(song, start, end, shiftBars, clip) {
+  const size = barSteps(song);
+  song.bars += shiftBars;
+  const pasted = (track) => (clip?.tracks[track.id] ?? []).map((note) => ({ ...note, step: note.step + start * size }));
+  eachTrack(song, (track) => [...cutRange(track.notes, start * size, end * size, shiftBars * size), ...pasted(track)]);
+}
+
+export function pasteBars(song, clip, start) {
+  song.bars = Math.max(song.bars, start + clip.bars);
+  spliceBars(song, start, start + clip.bars, 0, clip);
+}
+
+export const insertBars = (song, clip, start) => spliceBars(song, start, start, clip.bars, clip);
+export const emptyBars = (song, start, end) => spliceBars(song, start, end, 0);
+export const deleteBars = (song, start, end) => spliceBars(song, start, end, start - end);
 
 const pick = (items) => items[Math.floor(Math.random() * items.length)];
 const chance = (probability) => Math.random() < probability;

@@ -1,8 +1,9 @@
 import { DRUMS } from './drums.js';
 import { isTonicRow, midiName, pitchHue, rowMidi } from './music.js';
-import { totalSteps, trackRows } from './song.js';
+import { barSteps, totalSteps, trackRows } from './song.js';
 
 const LABEL_WIDTH = 64;
+const RULER_HEIGHT = 24;
 const BEAT_WIDTH = 112;
 const HOLD_MS = 350;
 const TOUCH_SLOP = 10;
@@ -27,26 +28,35 @@ function roundedRect(context, x, y, width, height, radius) {
 
 export const noteAt = (track, row, step) => track.notes.find((note) => note.row === row && step >= note.step && step < note.step + note.length);
 
-export function createGrid({ labels, canvas, scroller }, store, { onPreview, onPlayRow }) {
+export function createGrid({ labels, ruler, canvas, lane, scroller }, store, { onPreview, onPlayRow, onPickBars }) {
   let playStep = -1;
   let hover = null;
   let drag = null;
   let heldTouch = null;
-  let layout = { rows: 0, steps: 0, cellWidth: 28, cellHeight: 24 };
+  let barDrag = null;
+  let frame = 0;
+  let layout = { rows: 0, steps: 0, cellWidth: 28, cellHeight: 24, viewWidth: 0 };
 
   function measure() {
     const { song, track } = store;
     const rows = trackRows(song, track);
     const steps = totalSteps(song);
+    const cellWidth = Math.max(BEAT_WIDTH / song.stepsPerBeat, Math.floor(scroller.clientWidth / steps));
     return {
       rows,
       steps,
-      cellWidth: Math.max(BEAT_WIDTH / song.stepsPerBeat, Math.floor(scroller.clientWidth / steps)),
+      cellWidth,
       cellHeight: Math.max(coarsePointer.matches ? 28 : 16, Math.min(34, Math.floor(430 / rows))),
+      viewWidth: Math.min(scroller.clientWidth, steps * cellWidth),
     };
   }
 
   const rowY = (row) => (layout.rows - 1 - row) * layout.cellHeight;
+
+  function visibleSteps() {
+    const left = scroller.scrollLeft;
+    return { left, first: Math.floor(left / layout.cellWidth), last: Math.min(layout.steps, Math.ceil((left + layout.viewWidth) / layout.cellWidth)) };
+  }
 
   function rowLabel(row) {
     const { song, track } = store;
@@ -55,9 +65,15 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
 
   function drawLabels() {
     const { song, track } = store;
-    const context = fitCanvas(labels, LABEL_WIDTH, layout.rows * layout.cellHeight);
-    context.font = `700 ${Math.min(13, layout.cellHeight - 4)}px Trebuchet MS, Segoe UI, sans-serif`;
+    const context = fitCanvas(labels, LABEL_WIDTH, RULER_HEIGHT + layout.rows * layout.cellHeight);
     context.textBaseline = 'middle';
+    context.fillStyle = '#0a1d31';
+    context.fillRect(0, 0, LABEL_WIDTH, RULER_HEIGHT);
+    context.font = '700 12px Trebuchet MS, Segoe UI, sans-serif';
+    context.fillStyle = '#8fb6de';
+    context.fillText('Bar', 8, RULER_HEIGHT / 2 + 1);
+    context.translate(0, RULER_HEIGHT);
+    context.font = `700 ${Math.min(13, layout.cellHeight - 4)}px Trebuchet MS, Segoe UI, sans-serif`;
     for (let row = 0; row < layout.rows; row++) {
       const y = rowY(row);
       const tonic = track.kind !== 'drums' && isTonicRow(song.scale, row);
@@ -74,22 +90,60 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
     return `hsl(${pitchHue(song, row)} 85% ${lightness}%)`;
   }
 
-  function drawGrid() {
-    const { song, track } = store;
-    const { rows, steps, cellWidth, cellHeight } = layout;
-    const width = steps * cellWidth;
-    const height = rows * cellHeight;
-    const context = fitCanvas(canvas, width, height);
-    const stepsPerBar = song.beatsPerBar * song.stepsPerBeat;
+  function drawRuler() {
+    const { song, selection } = store;
+    const { left, first, last } = visibleSteps();
+    const context = fitCanvas(ruler, layout.viewWidth, RULER_HEIGHT);
+    context.translate(-left, 0);
+    const barWidth = barSteps(song) * layout.cellWidth;
+    context.fillStyle = '#0a1d31';
+    context.fillRect(left, 0, layout.viewWidth, RULER_HEIGHT);
+    if (selection) {
+      context.fillStyle = 'rgba(252, 196, 25, 0.35)';
+      context.fillRect(selection.start * barWidth, 0, (selection.end - selection.start) * barWidth, RULER_HEIGHT);
+    }
+    context.font = '700 12px Trebuchet MS, Segoe UI, sans-serif';
+    context.textBaseline = 'middle';
+    context.lineWidth = 1;
+    context.strokeStyle = 'rgba(125, 185, 245, 0.7)';
+    const lastBar = Math.ceil(last / barSteps(song));
+    for (let bar = Math.floor(first / barSteps(song)); bar < lastBar; bar++) {
+      const x = bar * barWidth;
+      context.beginPath();
+      context.moveTo(x + 0.5, 0);
+      context.lineTo(x + 0.5, RULER_HEIGHT);
+      context.stroke();
+      const picked = selection && bar >= selection.start && bar < selection.end;
+      context.fillStyle = picked ? '#fff3bf' : '#8fb6de';
+      context.fillText(String(bar + 1), x + 8, RULER_HEIGHT / 2 + 1);
+    }
+    if (playStep >= 0) {
+      context.fillStyle = '#5fe3ff';
+      context.fillRect(playStep * layout.cellWidth, RULER_HEIGHT - 4, layout.cellWidth, 4);
+    }
+  }
 
-    for (let step = 0; step < steps; step++) {
+  function drawGrid() {
+    const { song, track, selection } = store;
+    const { rows, cellWidth, cellHeight, viewWidth } = layout;
+    const { left, first, last } = visibleSteps();
+    const height = rows * cellHeight;
+    const context = fitCanvas(canvas, viewWidth, height);
+    context.translate(-left, 0);
+    const stepsPerBar = barSteps(song);
+
+    for (let step = first; step < last; step++) {
       const beat = Math.floor(step / song.stepsPerBeat);
       context.fillStyle = beat % 2 ? '#081a2d' : '#0b2238';
       context.fillRect(step * cellWidth, 0, cellWidth, height);
     }
     if (track.kind !== 'drums') {
       context.fillStyle = 'rgba(95, 227, 255, 0.07)';
-      for (let row = 0; row < rows; row++) if (isTonicRow(song.scale, row)) context.fillRect(0, rowY(row), width, cellHeight);
+      for (let row = 0; row < rows; row++) if (isTonicRow(song.scale, row)) context.fillRect(left, rowY(row), viewWidth, cellHeight);
+    }
+    if (selection) {
+      context.fillStyle = 'rgba(252, 196, 25, 0.08)';
+      context.fillRect(selection.start * stepsPerBar * cellWidth, 0, (selection.end - selection.start) * stepsPerBar * cellWidth, height);
     }
     if (playStep >= 0) {
       context.fillStyle = 'rgba(95, 227, 255, 0.18)';
@@ -97,7 +151,7 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
     }
 
     context.lineWidth = 1;
-    for (let step = 0; step <= steps; step++) {
+    for (let step = first; step <= last; step++) {
       const x = step * cellWidth + 0.5;
       context.strokeStyle = step % stepsPerBar === 0 ? 'rgba(125, 185, 245, 0.7)' : step % song.stepsPerBeat === 0 ? 'rgba(80, 140, 205, 0.4)' : 'rgba(61, 120, 190, 0.16)';
       context.beginPath();
@@ -109,8 +163,8 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
     for (let row = 0; row <= rows; row++) {
       const y = row * cellHeight + 0.5;
       context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(width, y);
+      context.moveTo(left, y);
+      context.lineTo(left + viewWidth, y);
       context.stroke();
     }
 
@@ -120,6 +174,7 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
     }
 
     for (const note of track.notes) {
+      if (note.step >= last || note.step + note.length <= first) continue;
       const sounding = playStep >= note.step && playStep < note.step + note.length;
       const x = note.step * cellWidth;
       const y = rowY(note.row);
@@ -141,13 +196,15 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
 
   function draw() {
     layout = measure();
+    lane.style.width = `${layout.steps * layout.cellWidth}px`;
     drawLabels();
+    drawRuler();
     drawGrid();
   }
 
   function cellAt(event) {
     const box = canvas.getBoundingClientRect();
-    const step = Math.floor((event.clientX - box.left) / layout.cellWidth);
+    const step = Math.floor((event.clientX - box.left + scroller.scrollLeft) / layout.cellWidth);
     const row = layout.rows - 1 - Math.floor((event.clientY - box.top) / layout.cellHeight);
     if (step < 0 || step >= layout.steps || row < 0 || row >= layout.rows) return null;
     return { row, step };
@@ -270,9 +327,51 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
 
   labels.addEventListener('pointerdown', (event) => {
     const box = labels.getBoundingClientRect();
-    const row = layout.rows - 1 - Math.floor((event.clientY - box.top) / layout.cellHeight);
+    const row = layout.rows - 1 - Math.floor((event.clientY - box.top - RULER_HEIGHT) / layout.cellHeight);
     if (row >= 0 && row < layout.rows) onPlayRow(row);
   });
+
+  function barAt(event) {
+    const box = ruler.getBoundingClientRect();
+    const bar = Math.floor((event.clientX - box.left + scroller.scrollLeft) / (barSteps(store.song) * layout.cellWidth));
+    return Math.max(0, Math.min(store.song.bars - 1, bar));
+  }
+
+  const pickRange = (anchor, bar) => onPickBars({ start: Math.min(anchor, bar), end: Math.max(anchor, bar) + 1 });
+
+  function extendAnchor(bar) {
+    const { selection } = store;
+    if (!selection) return bar;
+    return bar < selection.start ? selection.end - 1 : selection.start;
+  }
+
+  ruler.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const bar = barAt(event);
+    const { selection } = store;
+    if (!event.shiftKey && selection?.start === bar && selection.end === bar + 1) {
+      onPickBars(null);
+      return;
+    }
+    ruler.setPointerCapture(event.pointerId);
+    barDrag = { anchor: event.shiftKey ? extendAnchor(bar) : bar };
+    pickRange(barDrag.anchor, bar);
+  });
+  ruler.addEventListener('pointermove', (event) => {
+    if (barDrag) pickRange(barDrag.anchor, barAt(event));
+  });
+  ruler.addEventListener('pointerup', () => (barDrag = null));
+  ruler.addEventListener('pointercancel', () => (barDrag = null));
+
+  scroller.addEventListener('scroll', () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      drawRuler();
+      drawGrid();
+    });
+  }, { passive: true });
 
   new ResizeObserver(() => draw()).observe(scroller);
   coarsePointer.addEventListener('change', draw);
@@ -281,6 +380,7 @@ export function createGrid({ labels, canvas, scroller }, store, { onPreview, onP
     draw,
     setPlayStep(step) {
       playStep = step;
+      drawRuler();
       drawGrid();
       if (step < 0) return;
       const x = step * layout.cellWidth;

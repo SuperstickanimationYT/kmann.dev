@@ -4,12 +4,17 @@ import { INSTRUMENTS } from './instruments.js';
 import { DEFAULT_SCALE, SCALES, rowCount } from './music.js';
 
 export const MAX_TRACKS = 8;
-export const BAR_CHOICES = [1, 2, 4, 8];
+export const MAX_SECONDS = 600;
+const MIN_TEMPO = 50;
 const TRACK_COLORS = ['#4dabf7', '#ff922b', '#51cf66', '#cc5de8', '#fcc419', '#22b8cf', '#ff6b6b', '#94d82d'];
 
-export const totalSteps = (song) => song.bars * song.beatsPerBar * song.stepsPerBeat;
+export const barSteps = (song) => song.beatsPerBar * song.stepsPerBeat;
+export const totalSteps = (song) => song.bars * barSteps(song);
 export const stepSeconds = (song) => 60 / song.tempo / song.stepsPerBeat;
 export const trackRows = (song, track) => (track.kind === 'drums' ? DRUMS.length : rowCount(song.scale));
+export const songSeconds = (song) => totalSteps(song) * stepSeconds(song);
+export const maxBars = (song) => Math.max(1, Math.floor((MAX_SECONDS * song.tempo) / 60 / song.beatsPerBar));
+export const minTempo = (song) => Math.max(MIN_TEMPO, Math.ceil((song.bars * song.beatsPerBar * 60) / MAX_SECONDS));
 export const hasNotes = (song) => song.tracks.some((track) => track.notes.length);
 
 export function newTrack(song, kind, instrument = 'piano') {
@@ -41,16 +46,17 @@ export function normalizeSong(raw) {
   const blank = blankSong();
   const song = {
     name: typeof raw.name === 'string' ? raw.name.slice(0, 60) : blank.name,
-    tempo: Math.round(number(raw.tempo, 50, 200, blank.tempo)),
+    tempo: Math.round(number(raw.tempo, MIN_TEMPO, 200, blank.tempo)),
     key: Math.round(number(raw.key, 0, 11, 0)),
     scale: SCALES[raw.scale] ? raw.scale : blank.scale,
-    bars: BAR_CHOICES.includes(raw.bars) ? raw.bars : blank.bars,
+    bars: blank.bars,
     beatsPerBar: [3, 4].includes(raw.beatsPerBar) ? raw.beatsPerBar : 4,
     stepsPerBeat: [2, 3, 4].includes(raw.stepsPerBeat) ? raw.stepsPerBeat : 4,
     swing: number(raw.swing, 0, 0.6, 0),
     reverb: number(raw.reverb, 0, 1, blank.reverb),
     tracks: [],
   };
+  if (Number.isInteger(raw.bars)) song.bars = Math.min(Math.max(raw.bars, 1), maxBars(song));
   for (const rawTrack of Array.isArray(raw.tracks) ? raw.tracks.slice(0, MAX_TRACKS) : []) {
     const kind = rawTrack.kind === 'drums' ? 'drums' : 'melody';
     const instrument = INSTRUMENTS[rawTrack.instrument] ? rawTrack.instrument : 'piano';
@@ -86,7 +92,9 @@ async function pipeBytes(bytes, transform) {
 
 export async function encodeShare(song) {
   const packed = await pipeBytes(new TextEncoder().encode(JSON.stringify(compact(song))), new CompressionStream('deflate-raw'));
-  return btoa(String.fromCharCode(...packed)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  let binary = '';
+  for (const byte of packed) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
 export async function decodeShare(code) {
@@ -110,6 +118,7 @@ export function createStore(firstSong) {
   const store = {
     song: saved ? normalizeSong(saved) : firstSong(),
     selectedId: null,
+    selection: null,
     get track() {
       return store.song.tracks.find((track) => track.id === store.selectedId) ?? store.song.tracks[0];
     },

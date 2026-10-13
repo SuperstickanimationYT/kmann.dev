@@ -127,10 +127,10 @@ export function createPlayer(getSong, onStep) {
     get playing() {
       return timer !== 0;
     },
-    start() {
+    start(fromStep = 0) {
       if (timer) return;
       audio();
-      step = 0;
+      step = fromStep;
       shownStep = -1;
       queue.length = 0;
       nextTime = context.currentTime + 0.06;
@@ -159,15 +159,55 @@ export function createPlayer(getSong, onStep) {
   };
 }
 
+const SAMPLE_RATE = 44100;
+const CHUNK_SECONDS = 15;
+const NOTE_TAIL = 2;
+
+function timedNotes(song, loops) {
+  const length = stepSeconds(song);
+  const loopLength = totalSteps(song) * length;
+  const notes = [];
+  for (let loop = 0; loop < loops; loop++) {
+    for (const track of audibleTracks(song)) {
+      for (const note of track.notes) {
+        notes.push({ track, row: note.row, time: loop * loopLength + note.step * length + swingOffset(song, note.step), duration: note.length * length * 0.95 });
+      }
+    }
+  }
+  return notes;
+}
+
+function mixInto(target, source, offset) {
+  for (let channel = 0; channel < target.numberOfChannels; channel++) {
+    const into = target.getChannelData(channel);
+    const from = source.getChannelData(channel);
+    const count = Math.min(from.length, into.length - offset);
+    for (let i = 0; i < count; i++) into[offset + i] += from[i];
+  }
+}
+
+async function renderDry(song, notes, seconds) {
+  const dry = new AudioBuffer({ numberOfChannels: 2, length: Math.ceil(seconds * SAMPLE_RATE), sampleRate: SAMPLE_RATE });
+  for (let start = 0; start < seconds; start += CHUNK_SECONDS) {
+    const chunk = notes.filter((note) => note.time >= start && note.time < start + CHUNK_SECONDS);
+    if (!chunk.length) continue;
+    const end = Math.min(seconds, Math.max(...chunk.map((note) => note.time + note.duration)) + NOTE_TAIL);
+    const context = new OfflineAudioContext(2, Math.ceil((end - start) * SAMPLE_RATE), SAMPLE_RATE);
+    for (const note of chunk) playNote(context, context.destination, song, note.track, note.row, note.time - start, note.duration);
+    mixInto(dry, await context.startRendering(), Math.round(start * SAMPLE_RATE));
+  }
+  return dry;
+}
+
 export async function renderSong(song, loops) {
-  const loopLength = totalSteps(song) * stepSeconds(song);
-  const sampleRate = 44100;
-  const context = new OfflineAudioContext(2, Math.ceil((loopLength * loops + REVERB_TAIL) * sampleRate), sampleRate);
+  const seconds = totalSteps(song) * stepSeconds(song) * loops + REVERB_TAIL;
+  const dry = await renderDry(song, timedNotes(song, loops), seconds);
+  const context = new OfflineAudioContext(2, dry.length, SAMPLE_RATE);
   const mix = createMix(context);
   mix.wet.gain.value = song.reverb;
-  for (let loop = 0; loop < loops; loop++) {
-    for (let step = 0; step < totalSteps(song); step++) playStep(context, mix.input, song, step, loop * loopLength + step * stepSeconds(song));
-  }
+  const source = new AudioBufferSourceNode(context, { buffer: dry });
+  source.connect(mix.input);
+  source.start(0);
   return context.startRendering();
 }
 
