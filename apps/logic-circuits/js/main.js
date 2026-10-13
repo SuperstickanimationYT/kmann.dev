@@ -829,11 +829,16 @@ async function importFile(file) {
     say('That file is not a Logic Circuits export.');
     return;
   }
+  const result = importData(data, file.name.replace(/\.json$/i, '').slice(0, 24));
+  if (result) say(`Imported ${result.added} chip${result.added === 1 ? '' : 's'}${result.opened ? ' and opened the board in a new tab' : ''}.`);
+}
+
+function importData(data, tabName) {
   const incoming = (Array.isArray(data?.chips) ? data.chips : []).filter(isChipDef);
   const board = isCircuit(data?.board) ? data.board : null;
   if (!incoming.length && !board) {
     say('That file is not a Logic Circuits export.');
-    return;
+    return null;
   }
   fileIntoLocalFolders(incoming, Array.isArray(data.folders) ? data.folders : []);
   const added = mergeLibrary(store.chips, incoming, board ? [board] : []);
@@ -841,11 +846,26 @@ async function importFile(file) {
   const opened = Boolean(board?.components.length);
   if (opened) {
     pruneWires(board, store.chips);
-    openTab(makeTab(file.name.replace(/\.json$/i, '').slice(0, 24) || store.nextTabName(), board));
+    openTab(makeTab(tabName || store.nextTabName(), board));
   } else {
     store.emit('structure');
   }
-  say(`Imported ${added} chip${added === 1 ? '' : 's'}${opened ? ' and opened the board in a new tab' : ''}.`);
+  return { added, opened };
+}
+
+async function openComputerExample() {
+  let data;
+  try {
+    const response = await fetch('examples/computer.json');
+    if (!response.ok) throw new Error(response.statusText);
+    data = await response.json();
+  } catch {
+    say('Could not load the example. Check your connection and try again.');
+    return;
+  }
+  if (importData(data, '8-bit computer')) {
+    say('Opened the 8-bit computer in a new tab. Hold Reset until the clock ticks twice, then let go to run the program from the top.', 0);
+  }
 }
 
 function clearBoard() {
@@ -984,6 +1004,7 @@ $('[data-import-file]').addEventListener('change', (event) => {
 });
 $('[data-clear]').addEventListener('click', clearBoard);
 $('[data-new-folder]').addEventListener('click', newFolder);
+$('[data-example-computer]').addEventListener('click', openComputerExample);
 window.addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') save();
