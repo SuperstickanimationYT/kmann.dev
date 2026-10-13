@@ -1,0 +1,720 @@
+import { addBeam, addMotor, addNode, beamMap, cloneDesign, isDesign, motorPivot, nodeMap, removeBeam, removeMotor, removeNode, sharedNode } from './design.js';
+import { PRESETS } from './presets.js';
+import { Simulation } from './sim.js';
+
+const STORAGE_KEY = 'robot-workshop:v1';
+const GOAL_METERS = 10;
+const GRID_METERS = 0.05;
+const MIN_BEAM_METERS = 0.03;
+const HIT_PX = 14;
+const TAP_SLOP_PX = 6;
+const STEP_SECONDS = 1 / 60;
+const MAX_STEPS_PER_FRAME = 4;
+const UNDO_LIMIT = 100;
+const MIN_SCALE = 20;
+const MAX_SCALE = 2000;
+
+const TOOL_HINTS = {
+  beam: 'Drag from one point to another to add a beam. Start or end on a joint to connect to it.',
+  motor: 'Tap the beam the motor should turn.',
+  move: 'Drag a joint to move it. Drag empty space to pan.',
+  erase: 'Tap a joint or a beam to remove it.',
+};
+
+const MOTOR_FIELDS = [
+  { key: 'power', label: 'Power', modes: ['spin'], min: -100, max: 100, step: 5, toSlider: (v) => v * 100, fromSlider: (v) => v / 100, format: (v) => `${Math.round(v * 100)}%` },
+  { key: 'amplitude', label: 'Swing', modes: ['swing'], min: 0, max: 90, step: 1, format: (v) => `±${v}°` },
+  { key: 'frequency', label: 'Swings per second', modes: ['swing'], min: 0.1, max: 3, step: 0.1, format: (v) => v.toFixed(1) },
+  { key: 'phase', label: 'Phase', modes: ['swing'], min: 0, max: 345, step: 15, format: (v) => `${v}°` },
+  { key: 'stallTorque', label: 'Stall torque', min: 5, max: 150, step: 5, format: (v) => `${v} N·m` },
+  { key: 'freeRpm', label: 'Top speed', min: 5, max: 120, step: 5, format: (v) => `${v} rpm` },
+];
+
+const COLORS = {
+  sky: '#050d18',
+  gridMinor: 'rgba(61, 143, 224, 0.08)',
+  gridMajor: 'rgba(61, 143, 224, 0.2)',
+  ground: '#0a1a2c',
+  groundEdge: '#3d8fdd',
+  label: '#6f9dc9',
+  beam: '#9fd0ff',
+  beamShadow: 'rgba(3, 8, 15, 0.7)',
+  joint: '#e2effd',
+  hover: '#5fe3ff',
+  erase: '#ff8a9a',
+  motor: '#ffb454',
+  finish: '#7dffa8',
+};
+
+const $ = (selector) => document.querySelector(selector);
+const canvas = $('[data-stage]');
+const context = canvas.getContext('2d');
+const statusLine = $('[data-status]');
+const runButton = $('[data-run]');
+const undoButton = $('[data-undo]');
+const redoButton = $('[data-redo]');
+const toolButtons = [...document.querySelectorAll('[data-tool]')];
+const motorList = $('[data-motors]');
+const noMotors = $('[data-no-motors]');
+const presetSelect = $('[data-preset]');
+const snapBox = $('[data-snap]');
+const followBox = $('[data-follow]');
+const stats = Object.fromEntries([...document.querySelectorAll('[data-stat]')].map((el) => [el.dataset.stat, el]));
+
+let design = loadDesign();
+let committed = cloneDesign(design);
+const undoStack = [];
+const redoStack = [];
+let tool = 'beam';
+let sim = null;
+let finishTime = null;
+let warnedBackwards = false;
+let bestTime = null;
+let camera = { x: 0, y: 0.6, scale: 300 };
+let view = { width: 0, height: 0 };
+let hover = null;
+let pendingMotorBeam = null;
+let highlightedMotor = null;
+let gesture = null;
+const pointers = new Map();
+let lastFrame = performance.now();
+let accumulator = 0;
+let fittedOnce = false;
+
+function loadDesign() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (isDesign(stored)) return stored;
+  } catch {}
+  return PRESETS.strandbeest.build();
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
+  } catch {}
+}
+
+function say(text) {
+  statusLine.textContent = text;
+}
+
+function commit() {
+  undoStack.push(committed);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  committed = cloneDesign(design);
+  bestTime = null;
+  save();
+  renderControls();
+}
+
+function restore(from, to) {
+  if (sim || !from.length) return;
+  to.push(committed);
+  design = from.pop();
+  committed = cloneDesign(design);
+  pendingMotorBeam = null;
+  bestTime = null;
+  save();
+  renderMotors();
+  renderControls();
+}
+
+function toWorld(point) {
+  return { x: camera.x + (point.x - view.width / 2) / camera.scale, y: camera.y - (point.y - view.height / 2) / camera.scale };
+}
+
+function toScreen(x, y) {
+  return { x: view.width / 2 + (x - camera.x) * camera.scale, y: view.height / 2 - (y - camera.y) * camera.scale };
+}
+
+function snapped(world) {
+  const snap = (v) => (snapBox.checked ? Math.round(v / GRID_METERS) * GRID_METERS : v);
+  return { x: snap(world.x), y: Math.max(0, snap(world.y)) };
+}
+
+function positions() {
+  if (!sim) return nodeMap(design);
+  return new Map(sim.ids.map((id, i) => [id, { x: sim.x[i], y: sim.y[i] }]));
+}
+
+function hitNode(point) {
+  let best = null;
+  let bestDistance = HIT_PX;
+  for (const node of design.nodes) {
+    const s = toScreen(node.x, node.y);
+    const distance = Math.hypot(s.x - point.x, s.y - point.y);
+    if (distance < bestDistance) {
+      best = node;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function distanceToSegment(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared)) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+function hitBeam(point) {
+  const nodes = nodeMap(design);
+  let best = null;
+  let bestDistance = HIT_PX * 0.7;
+  for (const beam of design.beams) {
+    const a = nodes.get(beam.a);
+    const b = nodes.get(beam.b);
+    const distance = distanceToSegment(point, toScreen(a.x, a.y), toScreen(b.x, b.y));
+    if (distance < bestDistance) {
+      best = beam;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function beamEndAt(point) {
+  const node = hitNode(point);
+  return node ? { nodeId: node.id, x: node.x, y: node.y } : snapped(toWorld(point));
+}
+
+function finishBeam({ from, to }) {
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length < MIN_BEAM_METERS) return;
+  const a = from.nodeId ?? addNode(design, from.x, from.y).id;
+  const b = to.nodeId ?? addNode(design, to.x, to.y).id;
+  if (a === b) return;
+  addBeam(design, a, b);
+  commit();
+}
+
+function tapMotor(point) {
+  const beam = hitBeam(point);
+  if (!beam) {
+    pendingMotorBeam = null;
+    say(TOOL_HINTS.motor);
+    return;
+  }
+  if (pendingMotorBeam === null || pendingMotorBeam === beam.id) {
+    pendingMotorBeam = pendingMotorBeam === beam.id ? null : beam.id;
+    say(pendingMotorBeam === null ? TOOL_HINTS.motor : 'Now tap a beam joined to it at the same joint. The motor pushes against that one.');
+    return;
+  }
+  const driven = beamMap(design).get(pendingMotorBeam);
+  pendingMotorBeam = null;
+  if (sharedNode(driven, beam) === null) {
+    say("Those two beams don't meet at a joint. Tap the beam to turn again.");
+    return;
+  }
+  if (design.motors.some((m) => (m.driven === driven.id && m.base === beam.id) || (m.driven === beam.id && m.base === driven.id))) {
+    say('Those two beams already have a motor.');
+    return;
+  }
+  addMotor(design, driven, beam);
+  commit();
+  renderMotors();
+  say('Motor added. Set its power in the panel, then press Run.');
+}
+
+function tapErase(point) {
+  const node = hitNode(point);
+  const beam = node ? null : hitBeam(point);
+  if (node) removeNode(design, node.id);
+  else if (beam) removeBeam(design, beam.id);
+  else return;
+  commit();
+  renderMotors();
+}
+
+function zoomAt(point, factor) {
+  const before = toWorld(point);
+  camera.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, camera.scale * factor));
+  const after = toWorld(point);
+  camera.x += before.x - after.x;
+  camera.y += before.y - after.y;
+}
+
+function pinchState() {
+  const [a, b] = [...pointers.values()];
+  return { center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, spread: Math.hypot(a.x - b.x, a.y - b.y) };
+}
+
+function localPoint(event) {
+  const box = canvas.getBoundingClientRect();
+  return { x: event.clientX - box.left, y: event.clientY - box.top };
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  canvas.setPointerCapture(event.pointerId);
+  const point = localPoint(event);
+  pointers.set(event.pointerId, point);
+  if (pointers.size === 2) {
+    if (gesture?.kind === 'move') commit();
+    gesture = { kind: 'pinch', ...pinchState() };
+    return;
+  }
+  if (pointers.size > 2) return;
+  if (event.button === 1 || event.button === 2 || sim) {
+    gesture = { kind: 'pan', last: point };
+  } else if (tool === 'beam') {
+    const end = beamEndAt(point);
+    gesture = { kind: 'beam', from: end, to: end };
+  } else if (tool === 'move') {
+    const node = hitNode(point);
+    gesture = node ? { kind: 'move', node, moved: false } : { kind: 'pan', last: point };
+  } else {
+    gesture = { kind: 'tap', start: point, last: point };
+  }
+});
+
+canvas.addEventListener('pointermove', (event) => {
+  const point = localPoint(event);
+  if (pointers.has(event.pointerId)) pointers.set(event.pointerId, point);
+  if (!gesture) {
+    hover = sim ? null : hoverAt(point);
+    return;
+  }
+  if (gesture.kind === 'pinch' && pointers.size === 2) {
+    const next = pinchState();
+    camera.x -= (next.center.x - gesture.center.x) / camera.scale;
+    camera.y += (next.center.y - gesture.center.y) / camera.scale;
+    if (gesture.spread > 0) zoomAt(next.center, next.spread / gesture.spread);
+    Object.assign(gesture, next);
+  } else if (gesture.kind === 'pan') {
+    camera.x -= (point.x - gesture.last.x) / camera.scale;
+    camera.y += (point.y - gesture.last.y) / camera.scale;
+    gesture.last = point;
+  } else if (gesture.kind === 'beam') {
+    gesture.to = beamEndAt(point);
+  } else if (gesture.kind === 'move') {
+    Object.assign(gesture.node, snapped(toWorld(point)));
+    gesture.moved = true;
+  } else if (gesture.kind === 'tap' && Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) > TAP_SLOP_PX) {
+    gesture = { kind: 'pan', last: point };
+  }
+});
+
+function endGesture(event) {
+  pointers.delete(event.pointerId);
+  if (!gesture) return;
+  const point = localPoint(event);
+  if (gesture.kind === 'beam') finishBeam(gesture);
+  if (gesture.kind === 'move' && gesture.moved) commit();
+  if (gesture.kind === 'tap' && tool === 'motor') tapMotor(point);
+  if (gesture.kind === 'tap' && tool === 'erase') tapErase(point);
+  if (gesture.kind !== 'pinch' || pointers.size === 0) gesture = null;
+}
+
+canvas.addEventListener('pointerup', endGesture);
+canvas.addEventListener('pointercancel', endGesture);
+canvas.addEventListener('pointerleave', () => {
+  if (!gesture) hover = null;
+});
+canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+canvas.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  zoomAt(localPoint(event), Math.exp(-event.deltaY * 0.0015));
+}, { passive: false });
+
+function hoverAt(point) {
+  if (tool === 'motor') {
+    const beam = hitBeam(point);
+    return beam && { kind: 'beam', id: beam.id };
+  }
+  const node = hitNode(point);
+  if (node) return { kind: 'node', id: node.id };
+  if (tool !== 'erase') return null;
+  const beam = hitBeam(point);
+  return beam && { kind: 'beam', id: beam.id };
+}
+
+function setTool(next) {
+  tool = next;
+  pendingMotorBeam = null;
+  hover = null;
+  say(TOOL_HINTS[tool]);
+  renderControls();
+}
+
+function startRun() {
+  if (!design.nodes.length) {
+    say('Build something first. Drag on the board with the Beam tool.');
+    return;
+  }
+  sim = new Simulation(design);
+  finishTime = null;
+  warnedBackwards = false;
+  accumulator = 0;
+  gesture = null;
+  hover = null;
+  pendingMotorBeam = null;
+  say(design.motors.length ? 'Running. Motor sliders work live.' : 'Running. Without a motor it can only fall over. Add one with the Motor tool.');
+  renderControls();
+  renderMotors();
+}
+
+function stopRun() {
+  sim = null;
+  say(TOOL_HINTS[tool]);
+  renderControls();
+  renderMotors();
+}
+
+function fit() {
+  const points = [...positions().values()];
+  if (!points.length) {
+    camera = { x: 0, y: 0.6, scale: 300 };
+    return;
+  }
+  const xs = points.map((p) => p.x);
+  const ys = [0, ...points.map((p) => p.y)];
+  const width = Math.max(0.5, Math.max(...xs) - Math.min(...xs));
+  const height = Math.max(0.5, Math.max(...ys) - Math.min(...ys));
+  const toolbarRoom = 60;
+  camera.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(view.width / (width * 1.4), (view.height - toolbarRoom) / (height * 1.6))));
+  camera.x = (Math.max(...xs) + Math.min(...xs)) / 2;
+  camera.y = (Math.max(...ys) + Math.min(...ys)) / 2 + toolbarRoom / 2 / camera.scale;
+}
+
+function renderControls() {
+  for (const button of toolButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.tool === tool && !sim));
+    button.disabled = Boolean(sim);
+  }
+  undoButton.disabled = Boolean(sim) || !undoStack.length;
+  redoButton.disabled = Boolean(sim) || !redoStack.length;
+  runButton.textContent = sim ? 'Stop' : 'Run';
+  runButton.setAttribute('aria-pressed', String(Boolean(sim)));
+  stats.mass.textContent = design.nodes.length ? `${new Simulation(design).totalMass.toFixed(1)} kg` : '–';
+}
+
+function slider(motor, field) {
+  const label = document.createElement('label');
+  label.className = 'rw-slider';
+  const name = document.createElement('span');
+  name.textContent = field.label;
+  const output = document.createElement('output');
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = field.min;
+  input.max = field.max;
+  input.step = field.step;
+  input.value = field.toSlider ? field.toSlider(motor[field.key]) : motor[field.key];
+  output.textContent = field.format(motor[field.key]);
+  input.addEventListener('input', () => {
+    motor[field.key] = field.fromSlider ? field.fromSlider(Number(input.value)) : Number(input.value);
+    output.textContent = field.format(motor[field.key]);
+  });
+  input.addEventListener('change', commit);
+  label.append(name, output, input);
+  return label;
+}
+
+function renderMotors() {
+  motorList.replaceChildren(...design.motors.map((motor, index) => {
+    const item = document.createElement('li');
+    item.className = 'rw-motor';
+    item.addEventListener('pointerenter', () => { highlightedMotor = motor.id; });
+    item.addEventListener('pointerleave', () => { highlightedMotor = null; });
+
+    const head = document.createElement('div');
+    head.className = 'rw-motor-head';
+    const title = document.createElement('strong');
+    title.textContent = `Motor ${index + 1}`;
+    const mode = document.createElement('select');
+    mode.setAttribute('aria-label', `Motor ${index + 1} mode`);
+    for (const [value, text] of [['spin', 'Spin'], ['swing', 'Swing back and forth']]) mode.add(new Option(text, value, false, motor.mode === value));
+    mode.addEventListener('change', () => {
+      motor.mode = mode.value;
+      commit();
+      renderMotors();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'rw-remove';
+    remove.textContent = 'Remove';
+    remove.disabled = Boolean(sim);
+    remove.addEventListener('click', () => {
+      removeMotor(design, motor.id);
+      highlightedMotor = null;
+      commit();
+      renderMotors();
+    });
+    head.append(title, mode, remove);
+    item.append(head, ...MOTOR_FIELDS.filter((field) => !field.modes || field.modes.includes(motor.mode)).map((field) => slider(motor, field)));
+    return item;
+  }));
+  noMotors.hidden = design.motors.length > 0;
+}
+
+function renderStats() {
+  stats.distance.textContent = sim ? `${sim.distance().toFixed(2)} m` : '–';
+  stats.time.textContent = sim ? `${sim.time.toFixed(1)} s` : '–';
+  stats.best.textContent = bestTime === null ? '–' : `${bestTime.toFixed(1)} s`;
+}
+
+function advance(seconds) {
+  accumulator += seconds;
+  let steps = 0;
+  while (accumulator >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
+    sim.step(STEP_SECONDS);
+    accumulator -= STEP_SECONDS;
+    steps += 1;
+  }
+  if (steps === MAX_STEPS_PER_FRAME) accumulator = 0;
+
+  if (sim.broken) {
+    stopRun();
+    say('The simulation blew up. Check for joints stacked on top of each other or beams of almost zero length.');
+    return;
+  }
+  const distance = sim.distance();
+  if (finishTime === null && distance >= GOAL_METERS) {
+    finishTime = sim.time;
+    if (bestTime === null || finishTime < bestTime) bestTime = finishTime;
+    say(`Reached ${GOAL_METERS} m in ${finishTime.toFixed(1)} s.`);
+  }
+  if (!warnedBackwards && sim.time > 4 && distance < -0.5) {
+    warnedBackwards = true;
+    say('Walking backwards. Flip the sign of the motor power.');
+  }
+  if (followBox.checked) camera.x += (sim.centerOfMass().x - camera.x) * Math.min(1, seconds * 3);
+}
+
+function drawGrid() {
+  const topLeft = toWorld({ x: 0, y: 0 });
+  const bottomRight = toWorld({ x: view.width, y: view.height });
+  const step = camera.scale > 150 ? 0.1 : 0.5;
+  context.lineWidth = 1;
+  for (let x = Math.floor(topLeft.x / step) * step; x <= bottomRight.x; x += step) {
+    const sx = Math.round(toScreen(x, 0).x) + 0.5;
+    context.strokeStyle = Math.abs(x - Math.round(x)) < 1e-6 ? COLORS.gridMajor : COLORS.gridMinor;
+    context.beginPath();
+    context.moveTo(sx, 0);
+    context.lineTo(sx, view.height);
+    context.stroke();
+  }
+  for (let y = Math.max(0, Math.floor(bottomRight.y / step) * step); y <= topLeft.y; y += step) {
+    const sy = Math.round(toScreen(0, y).y) + 0.5;
+    context.strokeStyle = Math.abs(y - Math.round(y)) < 1e-6 ? COLORS.gridMajor : COLORS.gridMinor;
+    context.beginPath();
+    context.moveTo(0, sy);
+    context.lineTo(view.width, sy);
+    context.stroke();
+  }
+}
+
+function drawGround() {
+  const groundY = toScreen(0, 0).y;
+  if (groundY > view.height) return;
+  context.fillStyle = COLORS.ground;
+  context.fillRect(0, groundY, view.width, view.height - groundY);
+  context.strokeStyle = COLORS.groundEdge;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(0, groundY);
+  context.lineTo(view.width, groundY);
+  context.stroke();
+
+  const origin = sim ? sim.startX : 0;
+  const left = Math.floor(toWorld({ x: 0, y: 0 }).x - origin);
+  const right = Math.ceil(toWorld({ x: view.width, y: 0 }).x - origin);
+  const every = camera.scale < 40 ? 5 : 1;
+  context.font = '12px "Trebuchet MS", system-ui, sans-serif';
+  context.textAlign = 'center';
+  context.fillStyle = COLORS.label;
+  context.strokeStyle = COLORS.label;
+  context.lineWidth = 1;
+  for (let m = Math.ceil(left / every) * every; m <= right; m += every) {
+    const sx = toScreen(origin + m, 0).x;
+    context.beginPath();
+    context.moveTo(sx, groundY);
+    context.lineTo(sx, groundY + 8);
+    context.stroke();
+    context.fillText(`${m} m`, sx, groundY + 22);
+  }
+
+  if (!sim) return;
+  const finishX = toScreen(sim.startX + GOAL_METERS, 0).x;
+  context.strokeStyle = COLORS.finish;
+  context.lineWidth = 3;
+  context.setLineDash([10, 8]);
+  context.beginPath();
+  context.moveTo(finishX, groundY);
+  context.lineTo(finishX, 0);
+  context.stroke();
+  context.setLineDash([]);
+  context.fillStyle = COLORS.finish;
+  context.textAlign = 'left';
+  context.fillText('Finish', finishX + 6, groundY - 8);
+}
+
+function drawSegment(a, b, color, width) {
+  const p = toScreen(a.x, a.y);
+  const q = toScreen(b.x, b.y);
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.beginPath();
+  context.moveTo(p.x, p.y);
+  context.lineTo(q.x, q.y);
+  context.stroke();
+}
+
+function drawMotor(center, motor, live) {
+  const s = toScreen(center.x, center.y);
+  const radius = Math.max(10, camera.scale * 0.045);
+  if (live) {
+    context.fillStyle = `rgba(255, 180, 84, ${Math.min(1, Math.abs(live.torque) / motor.stallTorque) * 0.7})`;
+    context.beginPath();
+    context.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.strokeStyle = COLORS.motor;
+  context.lineWidth = highlightedMotor === motor.id ? 5 : 3;
+  context.beginPath();
+  context.arc(s.x, s.y, radius, 0.25 * Math.PI, 1.75 * Math.PI);
+  context.stroke();
+  const tip = { x: s.x + radius * Math.cos(1.75 * Math.PI), y: s.y + radius * Math.sin(1.75 * Math.PI) };
+  context.fillStyle = COLORS.motor;
+  context.beginPath();
+  context.moveTo(tip.x + 6, tip.y + 1);
+  context.lineTo(tip.x - 3, tip.y - 6);
+  context.lineTo(tip.x - 2, tip.y + 6);
+  context.closePath();
+  context.fill();
+}
+
+function drawRobot() {
+  const nodes = positions();
+  const beams = beamMap(design);
+  const beamWidth = Math.max(3, camera.scale * 0.022);
+  context.lineCap = 'round';
+
+  for (const beam of design.beams) drawSegment(nodes.get(beam.a), nodes.get(beam.b), COLORS.beamShadow, beamWidth + 3);
+  for (const beam of design.beams) drawSegment(nodes.get(beam.a), nodes.get(beam.b), COLORS.beam, beamWidth);
+
+  const marked = new Map();
+  if (pendingMotorBeam !== null) marked.set(pendingMotorBeam, COLORS.motor);
+  const shown = design.motors.find((m) => m.id === highlightedMotor);
+  if (shown) {
+    marked.set(shown.driven, COLORS.motor);
+    marked.set(shown.base, 'rgba(255, 180, 84, 0.45)');
+  }
+  if (hover?.kind === 'beam') marked.set(hover.id, tool === 'erase' ? COLORS.erase : COLORS.hover);
+  for (const [id, color] of marked) {
+    const beam = beams.get(id);
+    if (beam) drawSegment(nodes.get(beam.a), nodes.get(beam.b), color, beamWidth + 2);
+  }
+
+  design.motors.forEach((motor, index) => {
+    const pivot = nodes.get(motorPivot(design, motor));
+    if (pivot) drawMotor(pivot, motor, sim?.motors[index]);
+  });
+
+  const jointRadius = Math.max(3, camera.scale * 0.012);
+  for (const node of design.nodes) {
+    const p = nodes.get(node.id);
+    const s = toScreen(p.x, p.y);
+    const hovered = hover?.kind === 'node' && hover.id === node.id;
+    context.fillStyle = hovered ? (tool === 'erase' ? COLORS.erase : COLORS.hover) : COLORS.joint;
+    context.beginPath();
+    context.arc(s.x, s.y, hovered ? jointRadius + 3 : jointRadius, 0, Math.PI * 2);
+    context.fill();
+  }
+}
+
+function drawBeamPreview() {
+  if (gesture?.kind !== 'beam') return;
+  const { from, to } = gesture;
+  context.setLineDash([8, 6]);
+  drawSegment(from, to, COLORS.hover, Math.max(2, camera.scale * 0.015));
+  context.setLineDash([]);
+  const s = toScreen((from.x + to.x) / 2, (from.y + to.y) / 2);
+  context.fillStyle = COLORS.hover;
+  context.font = '13px "Trebuchet MS", system-ui, sans-serif';
+  context.textAlign = 'center';
+  context.fillText(`${Math.round(Math.hypot(to.x - from.x, to.y - from.y) * 100)} cm`, s.x, s.y - 12);
+}
+
+function draw() {
+  context.fillStyle = COLORS.sky;
+  context.fillRect(0, 0, view.width, view.height);
+  if (!sim) drawGrid();
+  drawGround();
+  drawRobot();
+  drawBeamPreview();
+}
+
+function frame(now) {
+  const seconds = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (sim) advance(seconds);
+  renderStats();
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function resize() {
+  const ratio = window.devicePixelRatio || 1;
+  const box = canvas.getBoundingClientRect();
+  view = { width: box.width, height: box.height };
+  canvas.width = Math.round(box.width * ratio);
+  canvas.height = Math.round(box.height * ratio);
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  if (!fittedOnce && view.width && view.height) {
+    fit();
+    fittedOnce = true;
+  }
+}
+
+for (const button of toolButtons) button.addEventListener('click', () => setTool(button.dataset.tool));
+undoButton.addEventListener('click', () => restore(undoStack, redoStack));
+redoButton.addEventListener('click', () => restore(redoStack, undoStack));
+$('[data-fit]').addEventListener('click', fit);
+runButton.addEventListener('click', () => (sim ? stopRun() : startRun()));
+
+for (const [key, preset] of Object.entries(PRESETS)) presetSelect.add(new Option(preset.name, key));
+$('[data-load]').addEventListener('click', () => {
+  if (sim) stopRun();
+  design = PRESETS[presetSelect.value].build();
+  commit();
+  renderMotors();
+  fit();
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.target.closest('input, select, textarea, button')) return;
+  const key = event.key.toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && key === 'z') {
+    event.preventDefault();
+    if (event.shiftKey) restore(redoStack, undoStack);
+    else restore(undoStack, redoStack);
+  } else if ((event.ctrlKey || event.metaKey) && key === 'y') {
+    event.preventDefault();
+    restore(redoStack, undoStack);
+  } else if (event.ctrlKey || event.metaKey || event.altKey) {
+    return;
+  } else if (key === ' ') {
+    event.preventDefault();
+    if (sim) stopRun();
+    else startRun();
+  } else if (key === 'f') {
+    fit();
+  } else if (key === 'escape') {
+    pendingMotorBeam = null;
+    gesture = null;
+  } else if (!sim && ['1', '2', '3', '4'].includes(key)) {
+    setTool(toolButtons[Number(key) - 1].dataset.tool);
+  }
+});
+
+new ResizeObserver(resize).observe(canvas);
+resize();
+renderMotors();
+renderControls();
+say(TOOL_HINTS[tool]);
+requestAnimationFrame(frame);
