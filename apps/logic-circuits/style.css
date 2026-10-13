@@ -406,6 +406,79 @@
   margin-top: 8px;
 }
 
+.lc-pin-order {
+  margin-top: 4px;
+}
+
+.lc-pin-lists {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-height: 40vh;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.lc-pin-lists h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.lc-pin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lc-pin-list li {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 3px 2px 8px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.lc-pin-list span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lc-pin-list button {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  background: #0c2540;
+  color: var(--link);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lc-pin-list button:hover:not(:disabled) {
+  background: #133659;
+}
+
+.lc-pin-list button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .lc-error {
   min-height: 1em;
   margin: 6px 0 0;

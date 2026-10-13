@@ -92,7 +92,7 @@
       <ul>
         <li><strong>Wire</strong> by dragging from one pin to another. Outputs sit on the right of a part, inputs on the left. An output can feed many inputs; each input takes one wire. While wiring, click empty space to add bends.</li>
         <li><strong>Move</strong> parts by dragging them. Drag empty space to select an area with a mouse, or to move the board on a touch screen. Scroll or pinch to zoom; drag with the right mouse button or hold Space to move the board.</li>
-        <li><strong>Make a chip</strong> by selecting a finished circuit and pressing Make chip. Switches and buttons turn into input pins, lights into output pins, ordered top to bottom as they sit on the board. Their labels become the pin names.</li>
+        <li><strong>Make a chip</strong> by selecting a finished circuit and pressing Make chip. Switches and buttons turn into input pins, lights into output pins. Pins start out ordered column by column, top to bottom, as they sit on the board; move them up or down in the Make chip window, or later with Details under My chips. Their labels become the pin names.</li>
         <li><strong>Tabs</strong> hold separate boards that share your chips. Halfway through a build and need a new chip? Press <strong>+</strong> above the board, build and make the chip there, then switch back. Click the open tab's name to rename it.</li>
         <li><strong>Chips inside chips</strong>: a chip is a part like any other, so you can use it to build bigger chips. Double-click a chip to open it and change it; every copy updates.</li>
         <li><strong>Timing</strong>: each gate reacts one tick after its inputs change, and the board runs ticks until nothing changes. Loops that never settle, like a NOT gate wired to itself, keep flickering.</li>
@@ -123,7 +123,10 @@
     <fieldset class="lc-swatches" data-swatches>
       <legend>Colour</legend>
     </fieldset>
-    <p class="lc-note" data-dialog-pins></p>
+    <div class="lc-pin-order">
+      <p class="lc-note">Pin order on the chip, top to bottom:</p>
+      <div class="lc-pin-lists" data-dialog-pins></div>
+    </div>
     <p class="lc-error" data-dialog-error></p>
     <div class="lc-actions">
       <button type="submit" value="ok" class="lc-primary" data-dialog-ok>Make chip</button>

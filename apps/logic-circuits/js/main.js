@@ -285,7 +285,7 @@ function renderChips() {
     tools.className = 'lc-chip-tools';
     const open = button('Open', () => openChip(def.id));
     open.disabled = editing.includes(def.id);
-    tools.append(open, button('Rename', () => renameChip(def.id)), button('Delete', () => deleteChip(def.id)));
+    tools.append(open, button('Details', () => editChipDetails(def.id)), button('Delete', () => deleteChip(def.id)));
     item.append(place, tools);
     list.append(item);
   }
@@ -428,9 +428,8 @@ function chipDialog({ title, ok, name, color, pins, renaming = null }) {
   $('[data-dialog-title]').textContent = title;
   $('[data-dialog-ok]').textContent = ok;
   $('[data-dialog-error]').textContent = '';
-  $('[data-dialog-pins]').textContent = pins
-    ? `Inputs: ${pins.inputs.map((pin) => pin.name).join(', ') || 'none'}. Outputs: ${pins.outputs.map((pin) => pin.name).join(', ') || 'none'}.`
-    : '';
+  const order = { inputs: [...pins.inputs], outputs: [...pins.outputs] };
+  renderPinOrder(order);
   dialogForm.elements.name.value = name;
   const swatches = $('[data-swatches]');
   swatches.querySelectorAll('label').forEach((label) => label.remove());
@@ -445,26 +444,66 @@ function chipDialog({ title, ok, name, color, pins, renaming = null }) {
   }
 
   return new Promise((resolve) => {
+    const finish = (result) => {
+      dialogForm.removeEventListener('submit', submit);
+      dialog.removeEventListener('close', dismissed);
+      dialog.removeEventListener('cancel', dismissed);
+      resolve(result);
+    };
     const submit = (event) => {
-      if (event.submitter?.value !== 'ok') return;
+      if (event.submitter?.value !== 'ok') {
+        finish(null);
+        return;
+      }
       const chosen = dialogForm.elements.name.value.trim();
       const clash = [...store.chips.values()].some((def) => def.id !== renaming && def.name.toLowerCase() === chosen.toLowerCase());
       if (!chosen || clash) {
         event.preventDefault();
         $('[data-dialog-error]').textContent = chosen ? 'You already have a chip with that name.' : 'Give the chip a name.';
+        return;
       }
+      finish({ name: chosen, color: dialogForm.elements.color.value || color, pins: order });
     };
+    const dismissed = () => finish(null);
     dialogForm.addEventListener('submit', submit);
-    dialog.addEventListener('close', () => {
-      dialogForm.removeEventListener('submit', submit);
-      resolve(dialog.returnValue === 'ok'
-        ? { name: dialogForm.elements.name.value.trim(), color: dialogForm.elements.color.value || color }
-        : null);
-    }, { once: true });
-    dialog.returnValue = '';
+    dialog.addEventListener('close', dismissed);
+    dialog.addEventListener('cancel', dismissed);
     dialog.showModal();
     dialogForm.elements.name.select();
   });
+}
+
+function renderPinOrder(order) {
+  const host = $('[data-dialog-pins]');
+  host.replaceChildren();
+  for (const [side, title] of [['inputs', 'Inputs'], ['outputs', 'Outputs']]) {
+    const pins = order[side];
+    if (!pins.length) continue;
+    const list = document.createElement('ol');
+    list.className = 'lc-pin-list';
+    list.setAttribute('aria-label', `${title}, top to bottom`);
+    pins.forEach((pin, i) => {
+      const move = (step) => {
+        [pins[i], pins[i + step]] = [pins[i + step], pins[i]];
+        renderPinOrder(order);
+        host.querySelector(`[data-pin="${side}:${i + step}:${step < 0 ? 'up' : 'down'}"]:not(:disabled)`)?.focus();
+      };
+      const up = button('↑', () => move(-1));
+      const down = button('↓', () => move(1));
+      up.disabled = i === 0;
+      down.disabled = i === pins.length - 1;
+      up.dataset.pin = `${side}:${i}:up`;
+      down.dataset.pin = `${side}:${i}:down`;
+      up.setAttribute('aria-label', `Move ${pin.name} up`);
+      down.setAttribute('aria-label', `Move ${pin.name} down`);
+      const item = document.createElement('li');
+      item.append(Object.assign(document.createElement('span'), { textContent: pin.name }), up, down);
+      list.append(item);
+    });
+    const group = document.createElement('div');
+    group.append(Object.assign(document.createElement('h3'), { textContent: title }), list);
+    host.append(group);
+  }
 }
 
 function suggestName() {
@@ -499,7 +538,7 @@ async function makeChip() {
     comp.y -= box.top;
   }
   for (const wire of inner.wires) wire.points = wire.points.map(([x, y]) => [x - box.left, y - box.top]);
-  const def = { id: uid(), name: result.name, color: result.color, ...pins, circuit: inner };
+  const def = { id: uid(), name: result.name, color: result.color, ...result.pins, circuit: inner };
   store.chips.set(def.id, def);
 
   store.record();
@@ -547,7 +586,7 @@ function leaveChip() {
 function saveChip() {
   const ws = store.current();
   const def = store.chips.get(ws.chipId);
-  const pins = chipPins(ws.circuit);
+  const pins = chipPins(ws.circuit, def);
   if (!pins.inputs.length && !pins.outputs.length) {
     say('A chip needs at least one switch or light to use as a pin.');
     return;
@@ -567,12 +606,11 @@ function discardChip() {
   leaveChip();
 }
 
-async function renameChip(chipId) {
+async function editChipDetails(chipId) {
   const def = store.chips.get(chipId);
-  const result = await chipDialog({ title: 'Rename chip', ok: 'Save', name: def.name, color: def.color, renaming: chipId });
+  const result = await chipDialog({ title: 'Chip details', ok: 'Save', name: def.name, color: def.color, pins: def, renaming: chipId });
   if (!result) return;
-  def.name = result.name;
-  def.color = result.color;
+  Object.assign(def, { name: result.name, color: result.color, ...result.pins });
   store.emit('structure');
 }
 
