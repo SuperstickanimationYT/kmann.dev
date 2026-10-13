@@ -1,7 +1,8 @@
 {
-  "bytes": 142062,
+  "bytes": 226155,
   "files": [
     "./",
+    "examples/computer.json",
     "index.html",
     "js/editor.js",
     "js/library.js",

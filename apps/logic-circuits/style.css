@@ -621,6 +621,35 @@
   cursor: default;
 }
 
+.lc-isa {
+  margin-top: 12px;
+}
+
+.lc-isa table {
+  width: 100%;
+  margin: 8px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.lc-isa th,
+.lc-isa td {
+  padding: 3px 6px;
+  border-bottom: 1px solid rgba(61, 143, 221, 0.25);
+  text-align: left;
+  vertical-align: top;
+}
+
+.lc-isa th {
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.lc-isa td:first-child {
+  font-variant-numeric: tabular-nums;
+  color: var(--link);
+}
+
 .lc-error {
   min-height: 1em;
   margin: 6px 0 0;

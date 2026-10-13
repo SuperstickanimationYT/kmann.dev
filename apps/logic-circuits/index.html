@@ -80,6 +80,36 @@
     </section>
 
     <section class="lc-section">
+      <h2>Examples</h2>
+      <p class="lc-note">A working 8-bit computer built only from the gates above, one chip inside another: latches, flip-flops, registers, an adder, an ALU, 16 bytes of RAM, a program counter, a control unit and the CPU. Open any chip to see how it works.</p>
+      <div class="lc-actions">
+        <button type="button" class="lc-primary" data-example-computer>Open the 8-bit computer</button>
+      </div>
+      <details class="lc-help lc-isa">
+        <summary>How the computer works</summary>
+        <p>The 16 switches on the left are the program: one 8-bit instruction each, run top to bottom. The left 4 bits are the instruction, the right 4 bits are a RAM address or a number (<em>n</em>). Click bits to change the program. Every clock tick runs one instruction.</p>
+        <table>
+          <thead><tr><th>Code</th><th>Name</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>NOP</td><td>nothing</td></tr>
+            <tr><td>1</td><td>LDA <em>n</em></td><td>A = RAM[<em>n</em>]</td></tr>
+            <tr><td>2</td><td>ADD <em>n</em></td><td>A = A + RAM[<em>n</em>], sets Carry and Zero</td></tr>
+            <tr><td>3</td><td>SUB <em>n</em></td><td>A = A &minus; RAM[<em>n</em>], sets Carry (no borrow) and Zero</td></tr>
+            <tr><td>4</td><td>STA <em>n</em></td><td>RAM[<em>n</em>] = A</td></tr>
+            <tr><td>5</td><td>LDI <em>n</em></td><td>A = <em>n</em> (0 to 15)</td></tr>
+            <tr><td>6</td><td>JMP <em>n</em></td><td>go to instruction <em>n</em></td></tr>
+            <tr><td>7</td><td>JC <em>n</em></td><td>go to <em>n</em> if Carry</td></tr>
+            <tr><td>8</td><td>JZ <em>n</em></td><td>go to <em>n</em> if Zero</td></tr>
+            <tr><td>9</td><td>OUT</td><td>show A on OUT</td></tr>
+            <tr><td>15</td><td>HLT</td><td>stop</td></tr>
+          </tbody>
+        </table>
+        <p>The program it comes with prints the Fibonacci numbers, 0 to 144, then starts again when the next one would not fit in 8 bits. Instruction 6 (ADD 15) is 2 &times; 16 + 15 = 47, bits 0010 1111.</p>
+        <p>It runs one instruction per tick, so the clock speed is the computer's speed. Raise it in the Clock's settings. Hold Reset through a tick to start again from instruction 0.</p>
+      </details>
+    </section>
+
+    <section class="lc-section">
       <h2>Save and share</h2>
       <p class="lc-note">Your tabs and chips are saved in this browser as you go. Export saves the open tab's board with all your chips, to back them up or give them to someone else. Importing opens the file's board in a new tab.</p>
       <div class="lc-actions">
