@@ -2,6 +2,8 @@ export const GRID = 10;
 export const PIN_GAP = 20;
 export const MIN_INPUTS = 2;
 export const MAX_INPUTS = 8;
+export const MAX_BITS = 16;
+export const BIT_CELL = 12;
 
 export const COLORS = {
   stage: '#040b14',
@@ -25,6 +27,8 @@ export const PARTS = [
   { kind: 'clock', name: 'Clock', hint: 'Flips on and off by itself.' },
   { kind: 'light', name: 'Light', hint: 'Shows a signal. Becomes an output pin in a chip.' },
   { kind: 'hex', name: 'Hex display', hint: 'Shows four signals as one digit, 0 to F.' },
+  { kind: 'join', name: 'Bus join', hint: 'Bundles single wires into one bus wire. The top input is bit 0.' },
+  { kind: 'split', name: 'Bus split', hint: 'Opens a bus wire back up into single wires. The top output is bit 0.' },
   { kind: 'and', name: 'AND', hint: 'On when every input is on.' },
   { kind: 'or', name: 'OR', hint: 'On when any input is on.' },
   { kind: 'not', name: 'NOT', hint: 'Flips its input.' },
@@ -43,6 +47,12 @@ export const isGate = (kind) => kind in GATE_OPS;
 export const hasInputCount = (kind) => isGate(kind) && kind !== 'not' && kind !== 'buffer';
 export const isChipInput = (kind) => kind === 'switch' || kind === 'button';
 export const isChipOutput = (kind) => kind === 'light';
+export const hasBits = (kind) => kind === 'switch' || kind === 'light' || kind === 'join' || kind === 'split';
+export const isBusPart = (kind) => kind === 'join' || kind === 'split';
+export const bitsOf = (comp) => comp.bits ?? (isBusPart(comp.kind) ? 8 : 1);
+export const isWord = (comp) => (comp.kind === 'switch' || comp.kind === 'light') && bitsOf(comp) > 1;
+export const switchValue = (comp) => (isWord(comp) ? comp.value ?? 0 : comp.on || comp.pressed ? 1 : 0);
+export const pinWidth = (pin) => pin.width ?? 1;
 export const hasLabel = (kind) => kind === 'switch' || kind === 'button' || kind === 'clock' || kind === 'light' || kind === 'hex';
 
 export const CLOCK_RATES = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
@@ -68,11 +78,15 @@ const MISSING = { w: 80, h: 40, inputs: [], outputs: [], missing: true };
 export function layout(comp, chips) {
   switch (comp.kind) {
     case 'switch':
+      return isWord(comp) ? wordLayout(bitsOf(comp), 'out') : SOURCE;
     case 'button':
     case 'clock':
       return SOURCE;
     case 'light':
-      return LIGHT;
+      return isWord(comp) ? wordLayout(bitsOf(comp), 'in') : LIGHT;
+    case 'join':
+    case 'split':
+      return busLayout(comp.kind, bitsOf(comp));
     case 'hex':
       return HEX;
     case 'chip': {
@@ -82,6 +96,42 @@ export function layout(comp, chips) {
     default:
       return gateLayout(inputCount(comp));
   }
+}
+
+const wordLayouts = new Map();
+
+function wordLayout(bits, key) {
+  const id = `${key}${bits}`;
+  if (!wordLayouts.has(id)) {
+    const w = Math.ceil((bits * BIT_CELL + 16) / PIN_GAP) * PIN_GAP;
+    const pin = { key, x: key === 'out' ? w : 0, y: 20, width: bits };
+    wordLayouts.set(id, { w, h: 40, inputs: key === 'in' ? [pin] : [], outputs: key === 'out' ? [pin] : [] });
+  }
+  return wordLayouts.get(id);
+}
+
+export function bitCellsLeft(comp, box) {
+  return (box.w - bitsOf(comp) * BIT_CELL) / 2;
+}
+
+export function bitAt(comp, box, localX) {
+  const column = Math.floor((localX - bitCellsLeft(comp, box)) / BIT_CELL);
+  const bits = bitsOf(comp);
+  return column >= 0 && column < bits ? bits - 1 - column : -1;
+}
+
+const busLayouts = new Map();
+
+function busLayout(kind, bits) {
+  const id = `${kind}${bits}`;
+  if (!busLayouts.has(id)) {
+    const h = bits * PIN_GAP;
+    const singles = (key, x) => Array.from({ length: bits }, (_, i) => ({ key: `${key}${i}`, name: String(i), x, y: PIN_GAP / 2 + i * PIN_GAP }));
+    busLayouts.set(id, kind === 'join'
+      ? { w: 30, h, inputs: singles('in', 0), outputs: [{ key: 'out', x: 30, y: h / 2, width: bits }] }
+      : { w: 30, h, inputs: [{ key: 'in', x: 0, y: h / 2, width: bits }], outputs: singles('out', 30) });
+  }
+  return busLayouts.get(id);
 }
 
 function gateLayout(count) {
@@ -95,7 +145,8 @@ function gateLayout(count) {
 const chipLayouts = new WeakMap();
 
 export function chipLayout(def) {
-  const signature = `${def.name}|${def.inputs.map((pin) => pin.name).join(',')}|${def.outputs.map((pin) => pin.name).join(',')}`;
+  const describe = (pins) => pins.map((pin) => `${pin.name}/${pinWidth(pin)}`).join(',');
+  const signature = `${def.name}|${describe(def.inputs)}|${describe(def.outputs)}`;
   const cached = chipLayouts.get(def);
   if (cached?.signature === signature) return cached;
 
@@ -106,7 +157,7 @@ export function chipLayout(def) {
   const w = Math.ceil(Math.max(80, raw) / PIN_GAP) * PIN_GAP;
   const side = (pins, x) => {
     const top = (h - pins.length * PIN_GAP) / 2 + PIN_GAP / 2;
-    return pins.map((pin, i) => ({ key: pin.id, name: pin.name, x, y: top + i * PIN_GAP }));
+    return pins.map((pin, i) => ({ key: pin.id, name: pin.name, x, y: top + i * PIN_GAP, width: pinWidth(pin) }));
   };
   const result = { w, h, inputs: side(def.inputs, 0), outputs: side(def.outputs, w), signature };
   chipLayouts.set(def, result);
@@ -115,8 +166,8 @@ export function chipLayout(def) {
 
 export function pinPosition(comp, key, chips) {
   const box = layout(comp, chips);
-  for (const pin of box.inputs) if (pin.key === key) return { x: comp.x + pin.x, y: comp.y + pin.y, dir: 'in' };
-  for (const pin of box.outputs) if (pin.key === key) return { x: comp.x + pin.x, y: comp.y + pin.y, dir: 'out' };
+  for (const pin of box.inputs) if (pin.key === key) return { x: comp.x + pin.x, y: comp.y + pin.y, dir: 'in', width: pinWidth(pin) };
+  for (const pin of box.outputs) if (pin.key === key) return { x: comp.x + pin.x, y: comp.y + pin.y, dir: 'out', width: pinWidth(pin) };
   return null;
 }
 

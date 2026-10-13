@@ -1,4 +1,4 @@
-import { hasLabel, isChipInput, isChipOutput, layout, pinPosition, snap, wirePoints } from './parts.js';
+import { bitAt, hasLabel, isChipInput, isChipOutput, isWord, layout, pinPosition, pinWidth, snap, wirePoints } from './parts.js';
 import { bounds, extract, relabel, uid } from './library.js';
 
 const TAP_SLOP = 6;
@@ -79,8 +79,8 @@ export class Editor {
   pins(comp) {
     const box = layout(comp, this.chips);
     return [
-      ...box.inputs.map((pin) => ({ comp, key: pin.key, dir: 'in', x: comp.x + pin.x, y: comp.y + pin.y })),
-      ...box.outputs.map((pin) => ({ comp, key: pin.key, dir: 'out', x: comp.x + pin.x, y: comp.y + pin.y })),
+      ...box.inputs.map((pin) => ({ comp, key: pin.key, dir: 'in', width: pinWidth(pin), x: comp.x + pin.x, y: comp.y + pin.y })),
+      ...box.outputs.map((pin) => ({ comp, key: pin.key, dir: 'out', width: pinWidth(pin), x: comp.x + pin.x, y: comp.y + pin.y })),
     ];
   }
 
@@ -128,14 +128,15 @@ export class Editor {
     return a && b ? wirePoints(a, b, wire.points) : null;
   }
 
-  pinNear(world, dir) {
+  pinNear(world, anchor, anyWidth = false) {
+    const dir = anchor.dir === 'out' ? 'in' : 'out';
     const reach = Math.max(12, 16 / this.view.zoom);
     const nearest = (pins, limit) => {
       let best = null;
       let bestDistance = limit;
       for (const pin of pins) {
         const d = distance(world, pin);
-        if (pin.dir === dir && d < bestDistance) {
+        if (pin.dir === dir && (anyWidth || pin.width === anchor.width) && d < bestDistance) {
           bestDistance = d;
           best = pin;
         }
@@ -176,7 +177,7 @@ export class Editor {
     const target = this.hit(world);
     const additive = event.shiftKey || event.ctrlKey || event.metaKey || this.boxMode;
     if (target?.type === 'pin') {
-      this.draft = { anchor: { c: target.comp.id, p: target.key, dir: target.dir }, points: [], cursor: world };
+      this.draft = { anchor: { c: target.comp.id, p: target.key, dir: target.dir, width: target.width }, points: [], cursor: world };
       this.gesture = { type: 'wire', start: screen, moved: false };
       this.hooks.status('Let go on another pin to connect. Click empty space while wiring to add a bend.');
       return;
@@ -270,9 +271,9 @@ export class Editor {
 
     switch (gesture.type) {
       case 'wire': {
-        const target = this.pinNear(world, this.draft.anchor.dir === 'out' ? 'in' : 'out');
+        const target = this.pinNear(world, this.draft.anchor);
         if (target) this.finishDraft(target);
-        else if (gesture.moved) this.cancelDraft();
+        else if (gesture.moved) this.refuseDraft(world);
         else this.hooks.status('Wiring: tap another pin to connect, tap empty space to add a bend, tap the first pin or press Esc to stop.');
         break;
       }
@@ -283,15 +284,16 @@ export class Editor {
           this.cancelDraft();
           break;
         }
-        const target = this.pinNear(world, anchor.dir === 'out' ? 'in' : 'out');
+        const target = this.pinNear(world, anchor);
         if (target) this.finishDraft(target);
+        else if (this.pinNear(world, anchor, true)) this.refuseDraft(world);
         else this.draft.points.push([snap(world.x), snap(world.y)]);
         break;
       }
       case 'move':
         if (gesture.comp.kind === 'button') this.press(gesture.comp, false);
         if (gesture.moved) this.hooks.changed('layout');
-        else if (gesture.comp.kind === 'switch' && !gesture.additive) this.flip(gesture.comp);
+        else if (gesture.comp.kind === 'switch' && !gesture.additive) this.flip(gesture.comp, world);
         break;
       case 'pan':
         if (gesture.clears && !gesture.moved) this.clearSelection();
@@ -494,8 +496,14 @@ export class Editor {
     for (const { wire, points } of gesture.bends) wire.points = points.map(([x, y]) => [x + dx, y + dy]);
   }
 
-  flip(comp) {
-    comp.on = !comp.on;
+  flip(comp, world) {
+    if (isWord(comp)) {
+      const bit = bitAt(comp, layout(comp, this.chips), world.x - comp.x);
+      if (bit < 0) return;
+      comp.value = (comp.value ?? 0) ^ (1 << bit);
+    } else {
+      comp.on = !comp.on;
+    }
     this.hooks.input(comp);
   }
 
@@ -516,6 +524,16 @@ export class Editor {
     this.circuit.wires.push({ id: uid(), from: { c: out.c, p: out.p }, to: { c: into.c, p: into.p }, points });
     this.hooks.status('');
     this.hooks.changed('structure');
+  }
+
+  refuseDraft(world) {
+    const mismatch = this.pinNear(world, this.draft.anchor, true);
+    const width = this.draft.anchor.width;
+    this.cancelDraft();
+    if (mismatch) {
+      const describe = (bits) => (bits > 1 ? `${bits === 8 || bits === 11 ? 'an' : 'a'} ${bits}-bit bus` : 'a single wire');
+      this.hooks.status(`That pin takes ${describe(mismatch.width)}, but this is ${describe(width)}. Use a Bus join or Bus split in between.`, true);
+    }
   }
 
   cancelDraft() {

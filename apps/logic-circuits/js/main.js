@@ -1,4 +1,4 @@
-import { CHIP_COLORS, CLOCK_RATES, MAX_INPUTS, MIN_INPUTS, PART_NAMES, PARTS, hasInputCount, hasLabel, inputCount, isChipInput, isChipOutput, layout } from './parts.js';
+import { CHIP_COLORS, CLOCK_RATES, MAX_BITS, MAX_INPUTS, MIN_INPUTS, PART_NAMES, PARTS, bitsOf, hasBits, hasInputCount, hasLabel, inputCount, isBusPart, isChipInput, isChipOutput, isWord, layout, pinWidth, switchValue } from './parts.js';
 import { bounds, chipPins, cloneCircuit, emptyCircuit, extract, forbiddenChips, isChipDef, isCircuit, mergeLibrary, pruneWires, uid, usages } from './library.js';
 import { makeTab, store } from './store.js';
 import { compile } from './sim.js';
@@ -26,10 +26,11 @@ const editor = new Editor(canvas, store, {
     renderSelection();
     renderToolbar();
   },
-  status: (text) => say(text, 0),
+  status: (text, brief = false) => say(text, brief ? STATUS_MS : 0),
   input: (comp) => {
-    sim.setSwitch(comp.id, comp.on || comp.pressed);
+    sim.setSwitch(comp.id, switchValue(comp));
     scheduleSave();
+    if (editor.selection.has(comp.id)) renderSelection();
   },
   openChip,
   editLabel: () => $('[data-label]')?.select(),
@@ -60,7 +61,7 @@ function rebuild(keepState) {
   sim = compile(ws.circuit, store.chips, keepState ? sim : ws.sim);
   ws.sim = sim;
   for (const comp of ws.circuit.components) {
-    if (isChipInput(comp.kind)) sim.setSwitch(comp.id, comp.on || comp.pressed);
+    if (isChipInput(comp.kind)) sim.setSwitch(comp.id, switchValue(comp));
   }
 }
 
@@ -256,6 +257,10 @@ function button(label, onClick, className = '') {
   return element;
 }
 
+function pinLabel(pin) {
+  return pinWidth(pin) > 1 ? `${pin.name} (${pinWidth(pin)} bits)` : pin.name;
+}
+
 function pinSummary(def) {
   return `${def.inputs.length} in, ${def.outputs.length} out`;
 }
@@ -372,6 +377,32 @@ function singlePartControls(comp) {
     nodes.push(field('Inputs', select));
   }
 
+  if (hasBits(comp.kind)) {
+    const select = document.createElement('select');
+    const fewest = isBusPart(comp.kind) ? 2 : 1;
+    for (let n = fewest; n <= MAX_BITS; n++) select.append(new Option(n === 1 ? '1 (single wire)' : `${n} (bus)`, String(n), false, n === bitsOf(comp)));
+    select.addEventListener('change', () => {
+      store.record();
+      comp.bits = Number(select.value);
+      if (comp.kind === 'switch') comp.value = (comp.value ?? (comp.on ? 1 : 0)) & ((1 << comp.bits) - 1);
+      pruneWires(editor.circuit, store.chips);
+      store.emit('structure');
+    });
+    nodes.push(field('Bits', select));
+  }
+
+  if (comp.kind === 'switch' && isWord(comp)) {
+    const max = 2 ** bitsOf(comp) - 1;
+    const input = Object.assign(document.createElement('input'), { type: 'number', min: 0, max, step: 1, value: comp.value ?? 0 });
+    input.addEventListener('change', () => {
+      comp.value = Math.min(max, Math.max(0, Math.round(Number(input.value) || 0)));
+      input.value = comp.value;
+      sim.setSwitch(comp.id, comp.value);
+      scheduleSave();
+    });
+    nodes.push(field(`Value (0 to ${max}); click a bit on the board to flip it`, input));
+  }
+
   if (comp.kind === 'clock') {
     const select = document.createElement('select');
     for (const hz of CLOCK_RATES) select.append(new Option(`${hz} Hz`, String(hz), false, hz === (comp.hz ?? 1)));
@@ -384,7 +415,7 @@ function singlePartControls(comp) {
   }
 
   if (def) {
-    nodes.push(note(`Inputs: ${def.inputs.map((pin) => pin.name).join(', ') || 'none'}. Outputs: ${def.outputs.map((pin) => pin.name).join(', ') || 'none'}.`));
+    nodes.push(note(`Inputs: ${def.inputs.map(pinLabel).join(', ') || 'none'}. Outputs: ${def.outputs.map(pinLabel).join(', ') || 'none'}.`));
   }
 
   const actions = document.createElement('div');
@@ -497,7 +528,7 @@ function renderPinOrder(order) {
       up.setAttribute('aria-label', `Move ${pin.name} up`);
       down.setAttribute('aria-label', `Move ${pin.name} down`);
       const item = document.createElement('li');
-      item.append(Object.assign(document.createElement('span'), { textContent: pin.name }), up, down);
+      item.append(Object.assign(document.createElement('span'), { textContent: pinLabel(pin) }), up, down);
       list.append(item);
     });
     const group = document.createElement('div');
