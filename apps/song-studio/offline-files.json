@@ -1,5 +1,5 @@
 {
-  "bytes": 80810,
+  "bytes": 94904,
   "files": [
     "./",
     "index.html",
@@ -13,8 +13,8 @@
     "js/main.js",
     "js/music.js",
     "js/song.js",
-    "style.css",
     "manifest.webmanifest",
+    "style.css",
     "../../assets/img/mark.svg",
     "../../assets/css/site.css",
     "../../assets/css/app.css",

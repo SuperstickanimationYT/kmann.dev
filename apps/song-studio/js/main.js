@@ -1,19 +1,23 @@
-import { setBars, setBeatsPerBar, setScale, setStepsPerBeat, surprise } from './arrange.js';
+import { copyBars, deleteBars, emptyBars, insertBars, pasteBars, setBars, setBeatsPerBar, setScale, setStepsPerBeat, surprise } from './arrange.js';
 import { el, find } from './dom.js';
 import { DEMOS } from './demos.js';
 import { createPlayer, renderSong, wavBlob } from './engine.js';
 import { createGrid, noteAt } from './grid.js';
 import { INSTRUMENTS } from './instruments.js';
 import { NOTE_NAMES, SCALES } from './music.js';
-import { BAR_CHOICES, MAX_TRACKS, blankSong, createStore, decodeShare, encodeShare, hasNotes, newTrack, stepSeconds, totalSteps, trackRows } from './song.js';
+import { MAX_SECONDS, MAX_TRACKS, barSteps, blankSong, createStore, decodeShare, encodeShare, hasNotes, maxBars, minTempo, newTrack, songSeconds, trackRows } from './song.js';
 
 const LIVE_KEYS = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'BracketLeft', 'BracketRight'];
 
 const store = createStore(DEMOS[0].build);
 const player = createPlayer(() => store.song, (step) => grid.setPlayStep(step));
-const grid = createGrid({ labels: find('[data-labels]'), canvas: find('[data-grid]'), scroller: find('[data-scroller]') }, store, {
+const grid = createGrid({ labels: find('[data-labels]'), ruler: find('[data-ruler]'), canvas: find('[data-grid]'), lane: find('[data-lane]'), scroller: find('[data-scroller]') }, store, {
   onPreview: (track, row) => player.preview(track, row),
   onPlayRow: playLive,
+  onPickBars: (selection) => {
+    store.selection = selection;
+    render();
+  },
 });
 
 const controls = {
@@ -28,6 +32,7 @@ const controls = {
   key: find('[data-key]'),
   scale: find('[data-scale]'),
   bars: find('[data-bars]'),
+  length: find('[data-length]'),
   beats: find('[data-beats]'),
   steps: find('[data-steps]'),
   swing: find('[data-swing]'),
@@ -40,16 +45,22 @@ const controls = {
   octaveValue: find('[data-octave-value]'),
   chords: find('[data-chords]'),
   wav: find('[data-wav]'),
+  sectionLabel: find('[data-section-label]'),
+  copy: find('[data-copy]'),
+  paste: find('[data-paste]'),
+  insert: find('[data-insert]'),
+  empty: find('[data-empty]'),
+  deleteBars: find('[data-delete-bars]'),
   status: find('[data-status]'),
 };
 
 controls.key.append(...NOTE_NAMES.map((name, index) => el('option', { value: index }, name)));
 controls.scale.append(...Object.entries(SCALES).map(([id, scale]) => el('option', { value: id }, scale.label)));
-controls.bars.append(...BAR_CHOICES.map((bars) => el('option', { value: bars }, String(bars))));
 controls.instrument.append(...Object.entries(INSTRUMENTS).map(([id, instrument]) => el('option', { value: id }, instrument.label)));
 
 let recording = false;
 let statusTimer = 0;
+let clip = null;
 
 function say(message) {
   controls.status.textContent = message;
@@ -95,8 +106,37 @@ function select(id) {
   render();
 }
 
+function clock(seconds) {
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+const barRange = ({ start, end }) => (end - start === 1 ? `Bar ${start + 1}` : `Bars ${start + 1}–${end}`);
+const barCount = (bars) => `${bars} bar${bars === 1 ? '' : 's'}`;
+
+function renderLength() {
+  const { song } = store;
+  controls.length.textContent = `${clock(songSeconds(song))} of ${clock(MAX_SECONDS)}`;
+  controls.bars.max = maxBars(song);
+  controls.tempo.min = minTempo(song);
+}
+
+function renderSection() {
+  const { song, selection } = store;
+  const label = selection
+    ? [el('strong', {}, barRange(selection)), ' picked, on every track.']
+    : ['Pick bars with the numbers above the grid to copy, paste or insert them.'];
+  if (clip) label.push(` ${barCount(clip.bars)} copied.`);
+  controls.sectionLabel.replaceChildren(...label);
+  controls.copy.disabled = controls.empty.disabled = !selection;
+  controls.paste.disabled = controls.insert.disabled = !selection || !clip;
+  controls.deleteBars.disabled = !selection || selection.end - selection.start >= song.bars;
+}
+
 function render() {
   const { song, track } = store;
+  if (store.selection?.start >= song.bars) store.selection = null;
+  else if (store.selection) store.selection.end = Math.min(store.selection.end, song.bars);
   controls.tempo.value = song.tempo;
   controls.tempoValue.textContent = song.tempo;
   if (document.activeElement !== controls.name) controls.name.value = song.name;
@@ -109,6 +149,8 @@ function render() {
   controls.steps.value = song.stepsPerBeat;
   controls.swing.value = song.swing;
   controls.reverb.value = song.reverb;
+  renderLength();
+  renderSection();
   controls.tracks.replaceChildren(...song.tracks.map(trackCard));
   controls.addMelody.disabled = controls.addDrums.disabled = song.tracks.length >= MAX_TRACKS;
   if (document.activeElement !== controls.trackName) controls.trackName.value = track.name;
@@ -121,7 +163,7 @@ function render() {
 
 function togglePlay() {
   if (player.playing) player.stop();
-  else player.start();
+  else player.start(store.selection ? store.selection.start * barSteps(store.song) : 0);
   controls.play.setAttribute('aria-pressed', String(player.playing));
   controls.playLabel.textContent = player.playing ? 'Stop' : 'Play';
 }
@@ -140,6 +182,7 @@ controls.tempo.addEventListener('pointerdown', () => store.checkpoint());
 controls.tempo.addEventListener('input', () => {
   store.song.tempo = Number(controls.tempo.value);
   controls.tempoValue.textContent = store.song.tempo;
+  renderLength();
   store.save();
 });
 for (const slider of [controls.swing, controls.reverb]) {
@@ -157,7 +200,17 @@ controls.undo.addEventListener('click', () => store.undo());
 controls.redo.addEventListener('click', () => store.redo());
 controls.key.addEventListener('change', editSong((song, value) => (song.key = Number(value))));
 controls.scale.addEventListener('change', editSong((song, value) => setScale(song, value)));
-controls.bars.addEventListener('change', editSong((song, value) => setBars(song, Number(value))));
+controls.bars.addEventListener('change', () => {
+  const song = store.song;
+  const wanted = Math.round(Number(controls.bars.value));
+  const bars = Math.min(wanted, maxBars(song));
+  if (!(bars >= 1) || bars === song.bars) {
+    render();
+    return;
+  }
+  if (wanted > bars) say(`At this tempo, ${bars} bars is 10 minutes, the longest a song can be.`);
+  store.edit(() => setBars(song, bars));
+});
 controls.beats.addEventListener('change', editSong((song, value) => setBeatsPerBar(song, Number(value))));
 controls.steps.addEventListener('change', editSong((song, value) => setStepsPerBeat(song, Number(value))));
 
@@ -217,6 +270,51 @@ find('[data-share]').addEventListener('click', async () => {
   }
 });
 
+function gridMismatch() {
+  if (clip.barSteps === barSteps(store.song)) return false;
+  say('The beats or grid changed since you copied. Copy the bars again.');
+  return true;
+}
+
+function copySection() {
+  const { start, end } = store.selection;
+  clip = copyBars(store.song, start, end);
+  renderSection();
+  say(`Copied ${barCount(clip.bars)}.`);
+}
+
+function pasteSection() {
+  if (gridMismatch()) return;
+  const start = store.selection.start;
+  if (start + clip.bars > maxBars(store.song)) {
+    say('That would make the song longer than 10 minutes.');
+    return;
+  }
+  store.selection = { start, end: start + clip.bars };
+  store.edit((song) => pasteBars(song, clip, start));
+}
+
+function insertSection() {
+  if (gridMismatch()) return;
+  const start = store.selection.start;
+  if (store.song.bars + clip.bars > maxBars(store.song)) {
+    say('That would make the song longer than 10 minutes.');
+    return;
+  }
+  store.selection = { start, end: start + clip.bars };
+  store.edit((song) => insertBars(song, clip, start));
+}
+
+controls.copy.addEventListener('click', copySection);
+controls.paste.addEventListener('click', pasteSection);
+controls.insert.addEventListener('click', insertSection);
+controls.empty.addEventListener('click', () => store.edit((song) => emptyBars(song, store.selection.start, store.selection.end)));
+controls.deleteBars.addEventListener('click', () => {
+  const { start, end } = store.selection;
+  store.selection = { start, end: start + 1 };
+  store.edit((song) => deleteBars(song, start, end));
+});
+
 function fileSafe(name) {
   return (name.trim() || 'song').replace(/[^\w\- ]+/g, '').replace(/\s+/g, '-').toLowerCase();
 }
@@ -228,9 +326,9 @@ controls.wav.addEventListener('click', async () => {
     return;
   }
   controls.wav.disabled = true;
-  say('Rendering…');
+  controls.wav.textContent = 'Rendering…';
   try {
-    const loopSeconds = totalSteps(song) * stepSeconds(song);
+    const loopSeconds = songSeconds(song);
     const loops = Math.min(8, Math.max(1, Math.ceil(15 / loopSeconds)));
     const link = el('a', { href: URL.createObjectURL(wavBlob(await renderSong(song, loops))), download: `${fileSafe(song.name)}.wav` });
     link.click();
@@ -240,6 +338,7 @@ controls.wav.addEventListener('click', async () => {
     say('Could not render the song in this browser.');
   } finally {
     controls.wav.disabled = false;
+    controls.wav.textContent = 'Save as WAV';
   }
 });
 
@@ -258,11 +357,18 @@ document.addEventListener('keydown', (event) => {
     if (typing(event.target)) return;
     if (key === 'z' && !event.shiftKey) store.undo();
     else if (key === 'y' || (key === 'z' && event.shiftKey)) store.redo();
+    else if (key === 'c' && store.selection) copySection();
+    else if (key === 'v' && store.selection && clip) pasteSection();
     else return;
     event.preventDefault();
     return;
   }
   if (event.altKey || typing(event.target)) return;
+  if (event.key === 'Escape' && store.selection) {
+    store.selection = null;
+    render();
+    return;
+  }
   if (event.code === 'Space') {
     event.preventDefault();
     if (!event.repeat) togglePlay();

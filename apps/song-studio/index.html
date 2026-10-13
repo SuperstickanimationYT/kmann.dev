@@ -74,8 +74,12 @@
       </label>
       <label class="ss-field">
         <span>Bars</span>
-        <select class="ss-input" data-bars></select>
+        <input class="ss-input ss-bars" type="number" min="1" step="1" inputmode="numeric" data-bars>
       </label>
+      <div class="ss-field">
+        <span>Length</span>
+        <output class="ss-length" data-length></output>
+      </div>
       <label class="ss-field">
         <span>Beats per bar</span>
         <select class="ss-input" data-beats>
@@ -136,20 +140,35 @@
           <button class="ss-button" type="button" data-clear>Clear track</button>
         </div>
       </div>
+      <div class="ss-section-bar">
+        <span class="ss-section-label" data-section-label></span>
+        <div class="ss-group">
+          <button class="ss-button" type="button" data-copy title="Copy these bars from every track (Ctrl+C)">Copy</button>
+          <button class="ss-button" type="button" data-paste title="Write the copied bars over the picked bars (Ctrl+V)">Paste over</button>
+          <button class="ss-button" type="button" data-insert title="Push the picked bars later and put the copied bars in front of them">Insert copy</button>
+          <button class="ss-button" type="button" data-empty title="Remove every note in the picked bars">Empty</button>
+          <button class="ss-button" type="button" data-delete-bars title="Cut the picked bars out and close the gap">Delete bars</button>
+        </div>
+      </div>
       <div class="ss-grid">
         <canvas class="ss-labels" data-labels></canvas>
         <div class="ss-scroll" data-scroller>
-          <canvas class="ss-canvas" data-grid></canvas>
+          <div class="ss-lane" data-lane>
+            <canvas class="ss-ruler" data-ruler></canvas>
+            <canvas class="ss-canvas" data-grid></canvas>
+          </div>
         </div>
       </div>
       <p class="ss-hint">
         <span class="ss-hint-mouse">
           Click a square to add a note, drag right to hold it longer, click a note to remove it.
           Play live with <kbd>A</kbd>&ndash;<kbd>'</kbd> and <kbd>Q</kbd>&ndash;<kbd>]</kbd>. <kbd>Space</kbd> plays and stops.
+          Click or drag the bar numbers to pick a section; <kbd>Shift</kbd>-click stretches it. Play starts from the first picked bar.
         </span>
         <span class="ss-hint-touch">
           Tap a square to add or remove a note. Hold a note, then slide right to make it longer.
           Tap the note names on the left to play live; with Record on, they go into the grid.
+          Tap or drag the bar numbers to pick a section to copy and paste.
         </span>
         <span class="ss-status" data-status role="status"></span>
       </p>

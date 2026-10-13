@@ -310,6 +310,34 @@
   border-bottom: 1px solid var(--edge);
 }
 
+.ss-bars {
+  width: 84px;
+}
+
+.ss-length {
+  padding-block: 8px;
+  white-space: nowrap;
+}
+
+.ss-section-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.ss-section-label {
+  flex: 1 1 220px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.ss-section-label strong {
+  color: #fcc419;
+}
+
 .ss-track-name {
   flex: 0 1 180px;
 }
@@ -359,6 +387,20 @@
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+}
+
+.ss-ruler,
+.ss-canvas {
+  position: sticky;
+  left: 0;
+}
+
+.ss-ruler {
+  display: block;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ss-canvas {
@@ -428,7 +470,8 @@
   }
 
   .ss-bar,
-  .ss-editor-bar {
+  .ss-editor-bar,
+  .ss-section-bar {
     padding-inline: 12px;
   }
 
