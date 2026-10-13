@@ -56,6 +56,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Logic Circuits',
+    href: 'apps/logic-circuits/',
+    poster: 'assets/img/posters/logic-circuits.webp',
+    blurb: 'Wire logic gates on an endless board, pack circuits into chips, and build chips from chips up to a computer.',
+    status: 'live',
+  },
+  {
     title: 'Markov Pictures',
     href: 'apps/planet-markov/',
     poster: 'assets/img/posters/planet-markov.webp',

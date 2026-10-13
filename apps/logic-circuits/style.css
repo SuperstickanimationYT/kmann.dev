@@ -1,0 +1,413 @@
+.studio-stage canvas {
+  touch-action: none;
+  user-select: none;
+}
+
+.studio-stage [hidden],
+.studio-panel [hidden] {
+  display: none !important;
+}
+
+.lc-dragging,
+.lc-dragging * {
+  cursor: grabbing !important;
+}
+
+.lc-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.lc-toolbar,
+.lc-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.lc-crumbs {
+  padding: 5px 6px 5px 12px;
+  border: 1px solid #8b5cf6;
+  border-radius: 10px;
+  background: rgba(27, 16, 56, 0.9);
+  backdrop-filter: blur(6px);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.lc-toolbar button,
+.lc-crumbs button {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: rgba(12, 37, 64, 0.88);
+  backdrop-filter: blur(6px);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lc-toolbar button:hover:not(:disabled),
+.lc-crumbs button:hover:not(:disabled) {
+  background: #133659;
+}
+
+.lc-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lc-toolbar .lc-primary,
+.lc-crumbs .lc-primary,
+.lc-actions .lc-primary {
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.lc-toolbar button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--link);
+}
+
+.lc-group {
+  display: flex;
+}
+
+.lc-group button {
+  border-radius: 0;
+}
+
+.lc-group button + button {
+  border-left: 0;
+}
+
+.lc-group > :first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.lc-group > :last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.lc-group [data-zoom] {
+  width: 34px;
+  padding-inline: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-box-mode] {
+    display: none;
+  }
+}
+
+.lc-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(3, 8, 15, 0.85);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-strong);
+  pointer-events: none;
+}
+
+.lc-section {
+  margin: 0 0 18px;
+}
+
+.lc-section h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.lc-parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.lc-part {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px 7px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: rgba(4, 11, 20, 0.6);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: grab;
+}
+
+.lc-part:hover {
+  border-color: var(--edge-bright);
+  background: #0f2a47;
+}
+
+.lc-part-icon {
+  width: 64px;
+  height: 44px;
+  pointer-events: none;
+}
+
+.lc-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.lc-chips li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lc-chip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 2px solid var(--chip);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chip) 30%, #0d2640);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: grab;
+}
+
+.lc-chip small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.lc-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lc-chip-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.lc-chip-tools button {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lc-chip-tools button:hover:not(:disabled) {
+  background: #0f2a47;
+}
+
+.lc-chip-tools button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lc-picked {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.lc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.lc-field input,
+.lc-field select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+}
+
+.lc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.lc-actions button {
+  flex: 1 1 auto;
+  padding: 9px 14px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lc-actions button:hover:not(:disabled) {
+  background: #133659;
+}
+
+.lc-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lc-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.lc-actions + .lc-note {
+  margin-top: 8px;
+}
+
+.lc-error {
+  min-height: 1em;
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #ff8a9a;
+}
+
+.lc-help {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.lc-help summary {
+  font-weight: 700;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.lc-help p {
+  margin: 10px 0 4px;
+}
+
+.lc-help ul,
+.lc-help ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.lc-help li + li {
+  margin-top: 5px;
+}
+
+.lc-dialog {
+  width: min(360px, calc(100% - 32px));
+  padding: 18px 18px 16px;
+  border: 1px solid var(--edge-bright);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.lc-dialog::backdrop {
+  background: rgba(3, 8, 15, 0.6);
+}
+
+.lc-dialog h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: var(--text-strong);
+}
+
+.lc-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
+}
+
+.lc-swatches legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.lc-swatch {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--chip);
+  cursor: pointer;
+}
+
+.lc-swatch:has(input:checked) {
+  border-color: var(--text-strong);
+  box-shadow: 0 0 0 2px var(--chip);
+}
+
+.lc-swatch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lc-swatch:has(input:focus-visible) {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.studio-panel :focus-visible,
+.studio-stage :focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
