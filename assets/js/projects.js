@@ -98,6 +98,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Robot Workshop',
+    href: 'apps/robot-workshop/',
+    poster: 'assets/img/posters/robot-workshop.webp',
+    blurb: 'Build robots from beams, joints and electric motors, from Strandbeests to crawlers, then see how far they walk.',
+    status: 'live',
+  },
+  {
     title: 'Song Studio',
     href: 'apps/song-studio/',
     poster: 'assets/img/posters/song-studio.webp',
