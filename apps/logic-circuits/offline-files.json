@@ -1,0 +1,21 @@
+{
+  "bytes": 110222,
+  "files": [
+    "./",
+    "index.html",
+    "js/editor.js",
+    "js/library.js",
+    "js/main.js",
+    "js/parts.js",
+    "js/render.js",
+    "js/sim.js",
+    "js/store.js",
+    "manifest.webmanifest",
+    "style.css",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}

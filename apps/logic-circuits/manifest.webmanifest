@@ -1,0 +1,18 @@
+{
+  "name": "Logic Circuits",
+  "short_name": "Logic Circuits",
+  "description": "Wire logic gates together on an endless board, pack any circuit into a chip of your own, and build chips from chips all the way up to a computer. Free, in the browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logic Circuits &mdash; kmann314</title>
+<meta name="description" content="Wire logic gates together on an endless board, pack any circuit into a chip of your own, and build chips from chips all the way up to a computer. Free, in the browser.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Logic Circuits</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-board aria-label="Circuit board. Drag parts in from the panel, drag from one pin to another to connect them, and click switches to flip them."></canvas>
+  <div class="lc-overlay">
+    <div class="lc-crumbs" data-crumbs hidden>
+      <span data-crumb-path></span>
+      <button type="button" class="lc-primary" data-chip-save>Save chip</button>
+      <button type="button" data-chip-cancel>Discard changes</button>
+    </div>
+    <div class="lc-toolbar" role="toolbar" aria-label="Edit">
+      <button type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" data-redo title="Redo (Ctrl+Y)">Redo</button>
+      <button type="button" data-duplicate title="Duplicate (Ctrl+D)">Duplicate</button>
+      <button type="button" data-delete title="Delete (Del)">Delete</button>
+      <button type="button" class="lc-primary" data-make-chip title="Pack the selected parts into a chip">Make chip</button>
+      <button type="button" data-box-mode aria-pressed="false" title="Drag on empty space to select parts instead of moving the board">Select area</button>
+      <div class="lc-group" role="group" aria-label="Zoom">
+        <button type="button" data-zoom="0.8" aria-label="Zoom out">&minus;</button>
+        <button type="button" data-fit title="Show everything (F)">Fit</button>
+        <button type="button" data-zoom="1.25" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+  </div>
+  <p class="lc-status" data-status></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Parts and settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Parts</button>
+  <div class="studio-panel-body">
+    <section class="lc-section">
+      <h2>Parts</h2>
+      <p class="lc-note" data-place-hint>Drag a part onto the board, or click it to drop it in the middle.</p>
+      <div class="lc-parts" data-parts></div>
+    </section>
+
+    <section class="lc-section">
+      <h2>My chips</h2>
+      <ul class="lc-chips" data-chips></ul>
+      <p class="lc-note" data-no-chips>No chips yet. Put switches, gates and lights together, select them and press <strong>Make chip</strong>. The switches become the chip's inputs and the lights its outputs.</p>
+    </section>
+
+    <section class="lc-section" data-selection-section>
+      <h2>Selected</h2>
+      <div data-selection></div>
+    </section>
+
+    <section class="lc-section">
+      <h2>Simulation</h2>
+      <div class="lc-actions">
+        <button type="button" data-run>Pause</button>
+        <button type="button" data-step disabled>Step one gate delay</button>
+        <button type="button" data-reset>Reset memory</button>
+      </div>
+      <p class="lc-note">Every gate takes one tick to react, so feedback loops can store bits. Reset memory sets every gate back to off.</p>
+    </section>
+
+    <section class="lc-section">
+      <h2>Save and share</h2>
+      <p class="lc-note">Your board and chips are saved in this browser as you go. Export a file to back them up or to give your chips to someone else.</p>
+      <div class="lc-actions">
+        <button type="button" data-export>Export file</button>
+        <button type="button" data-import>Import file</button>
+        <button type="button" data-clear>Clear board</button>
+      </div>
+      <input type="file" accept=".json,application/json" data-import-file hidden>
+    </section>
+
+    <details class="lc-section lc-help">
+      <summary>How it works</summary>
+      <ul>
+        <li><strong>Wire</strong> by dragging from one pin to another. Outputs sit on the right of a part, inputs on the left. An output can feed many inputs; each input takes one wire. While wiring, click empty space to add bends.</li>
+        <li><strong>Move</strong> parts by dragging them. Drag empty space to select an area with a mouse, or to move the board on a touch screen. Scroll or pinch to zoom; drag with the right mouse button or hold Space to move the board.</li>
+        <li><strong>Make a chip</strong> by selecting a finished circuit and pressing Make chip. Switches and buttons turn into input pins, lights into output pins, ordered top to bottom as they sit on the board. Their labels become the pin names.</li>
+        <li><strong>Chips inside chips</strong>: a chip is a part like any other, so you can use it to build bigger chips. Double-click a chip to open it and change it; every copy updates.</li>
+        <li><strong>Timing</strong>: each gate reacts one tick after its inputs change, and the board runs ticks until nothing changes. Loops that never settle, like a NOT gate wired to itself, keep flickering.</li>
+      </ul>
+      <p>A path to a computer:</p>
+      <ol>
+        <li>Build NOT, AND and OR out of NAND gates alone.</li>
+        <li>Half adder (XOR and AND), then a full adder from two half adders, then a 4-bit adder.</li>
+        <li>An SR latch from two NOR gates, then a D latch and a D flip-flop that changes on the clock.</li>
+        <li>A 4-bit register and a counter, with a Hex display to watch it count.</li>
+        <li>Multiplexers, an ALU, memory, and a program counter: that is a CPU.</li>
+      </ol>
+      <p>Shortcuts: Ctrl+Z undo, Ctrl+Y redo, Ctrl+C / Ctrl+V copy and paste, Ctrl+D duplicate, Ctrl+A select all, Del delete, F fit, Esc cancel.</p>
+    </details>
+
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<dialog class="lc-dialog" data-chip-dialog>
+  <form method="dialog" data-chip-form>
+    <h2 data-dialog-title>Make chip</h2>
+    <label class="lc-field">
+      <span>Name</span>
+      <input name="name" maxlength="24" required autocomplete="off" spellcheck="false">
+    </label>
+    <fieldset class="lc-swatches" data-swatches>
+      <legend>Colour</legend>
+    </fieldset>
+    <p class="lc-note" data-dialog-pins></p>
+    <p class="lc-error" data-dialog-error></p>
+    <div class="lc-actions">
+      <button type="submit" value="ok" class="lc-primary" data-dialog-ok>Make chip</button>
+      <button type="submit" value="cancel" formnovalidate>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
