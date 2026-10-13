@@ -96,7 +96,11 @@ function load() {
   } catch {
     saved = null;
   }
+  for (const folder of saved?.folders ?? []) {
+    if (typeof folder?.id === 'string' && typeof folder.name === 'string') store.folders.push({ id: folder.id, name: folder.name, open: folder.open !== false });
+  }
   for (const def of saved?.chips ?? []) if (isChipDef(def)) store.chips.set(def.id, def);
+  dropMissingFolders();
   for (const entry of savedTabs(saved)) {
     store.addTab(makeTab(String(entry.name || store.nextTabName()), entry.board, entry.view ?? null));
     for (const draft of entry.stack ?? []) {
@@ -121,6 +125,7 @@ function save() {
   const state = {
     version: 2,
     chips: [...store.chips.values()],
+    folders: store.folders,
     tabs: store.tabs.map((tab) => ({
       name: tab.name,
       board: tab.root.circuit,
@@ -220,8 +225,16 @@ window.addEventListener('pointermove', (event) => {
     paletteDrag.active = true;
     document.body.classList.add('lc-dragging');
   }
-  if (paletteDrag.active) editor.ghostAt(paletteDrag.spec, overCanvas(event) ? editor.screenPoint(event) : null);
+  if (!paletteDrag.active) return;
+  editor.ghostAt(paletteDrag.spec, overCanvas(event) ? editor.screenPoint(event) : null);
+  const target = paletteDrag.spec.kind === 'chip' ? folderDropAt(event) : null;
+  document.querySelectorAll('.lc-drop-target').forEach((element) => element !== target && element.classList.remove('lc-drop-target'));
+  target?.classList.add('lc-drop-target');
 });
+
+function folderDropAt(event) {
+  return document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-folder-drop]') ?? null;
+}
 
 window.addEventListener('pointerup', (event) => {
   if (!paletteDrag) return;
@@ -229,10 +242,13 @@ window.addEventListener('pointerup', (event) => {
   paletteDrag = null;
   editor.ghost = null;
   document.body.classList.remove('lc-dragging');
+  document.querySelectorAll('.lc-drop-target').forEach((element) => element.classList.remove('lc-drop-target'));
   if (!drag.active) return;
   swallowClick = true;
   setTimeout(() => { swallowClick = false; });
-  if (overCanvas(event)) editor.place(drag.spec, editor.screenPoint(event));
+  const folder = drag.spec.kind === 'chip' ? folderDropAt(event) : null;
+  if (folder) moveChip(drag.spec.chip, folder.dataset.folderDrop);
+  else if (overCanvas(event)) editor.place(drag.spec, editor.screenPoint(event));
 });
 
 function renderParts() {
@@ -265,35 +281,139 @@ function pinSummary(def) {
   return `${def.inputs.length} in, ${def.outputs.length} out`;
 }
 
+function chipItem(def, editing, forbidden) {
+  const item = document.createElement('li');
+  const place = document.createElement('button');
+  place.type = 'button';
+  place.className = 'lc-chip';
+  place.style.setProperty('--chip', def.color);
+  place.append(def.name, Object.assign(document.createElement('small'), { textContent: pinSummary(def) }));
+  if (forbidden.has(def.id)) {
+    place.disabled = true;
+    place.title = editing.includes(def.id) ? 'You are editing this chip' : 'This chip is built from the one you are editing, so it cannot go inside it';
+  } else {
+    place.title = store.folders.length
+      ? 'Drag onto the board or into a folder, or click to drop it in the middle'
+      : 'Drag onto the board, or click to drop it in the middle';
+    makePlacer(place, { kind: 'chip', chip: def.id });
+  }
+  const tools = document.createElement('div');
+  tools.className = 'lc-chip-tools';
+  const open = button('Open', () => openChip(def.id));
+  open.disabled = editing.includes(def.id);
+  tools.append(open, button('Details', () => editChipDetails(def.id)), button('Delete', () => deleteChip(def.id)));
+  item.append(place, tools);
+  return item;
+}
+
+function chipList(defs, editing, forbidden) {
+  const list = document.createElement('ul');
+  list.className = 'lc-chips';
+  for (const def of defs) list.append(chipItem(def, editing, forbidden));
+  return list;
+}
+
+function folderSection(folder, defs, editing, forbidden) {
+  const section = document.createElement('section');
+  section.className = 'lc-folder';
+  section.dataset.folderDrop = folder.id;
+  const head = document.createElement('div');
+  head.className = 'lc-folder-head';
+  const toggle = button('', () => {
+    folder.open = !folder.open;
+    renderChips();
+    scheduleSave();
+  }, 'lc-folder-toggle');
+  toggle.setAttribute('aria-expanded', String(folder.open));
+  toggle.append(
+    Object.assign(document.createElement('span'), { className: 'lc-folder-name', textContent: folder.name }),
+    Object.assign(document.createElement('small'), { textContent: String(defs.length) }),
+  );
+  head.append(toggle, button('Rename', () => renameFolder(folder, toggle)), button('Delete', () => deleteFolder(folder)));
+  section.append(head);
+  if (folder.open) {
+    section.append(defs.length
+      ? chipList(defs, editing, forbidden)
+      : Object.assign(document.createElement('p'), { className: 'lc-note lc-folder-empty', textContent: 'Empty. Drag a chip here, or pick this folder in a chip’s Details.' }));
+  }
+  return section;
+}
+
 function renderChips() {
-  const list = $('[data-chips]');
-  list.replaceChildren();
+  const host = $('[data-chips]');
+  host.replaceChildren();
   const editing = store.editingIds();
   const forbidden = forbiddenChips(editing, store.chips);
   const defs = [...store.chips.values()].sort((a, b) => a.name.localeCompare(b.name));
   $('[data-no-chips]').hidden = defs.length > 0;
-  for (const def of defs) {
-    const item = document.createElement('li');
-    const place = document.createElement('button');
-    place.type = 'button';
-    place.className = 'lc-chip';
-    place.style.setProperty('--chip', def.color);
-    place.append(def.name, Object.assign(document.createElement('small'), { textContent: pinSummary(def) }));
-    if (forbidden.has(def.id)) {
-      place.disabled = true;
-      place.title = editing.includes(def.id) ? 'You are editing this chip' : 'This chip is built from the one you are editing, so it cannot go inside it';
-    } else {
-      place.title = 'Drag onto the board, or click to drop it in the middle';
-      makePlacer(place, { kind: 'chip', chip: def.id });
-    }
-    const tools = document.createElement('div');
-    tools.className = 'lc-chip-tools';
-    const open = button('Open', () => openChip(def.id));
-    open.disabled = editing.includes(def.id);
-    tools.append(open, button('Details', () => editChipDetails(def.id)), button('Delete', () => deleteChip(def.id)));
-    item.append(place, tools);
-    list.append(item);
-  }
+  const folders = [...store.folders].sort((a, b) => a.name.localeCompare(b.name));
+  for (const folder of folders) host.append(folderSection(folder, defs.filter((def) => def.folder === folder.id), editing, forbidden));
+  const loose = document.createElement('div');
+  loose.className = 'lc-unfiled';
+  loose.dataset.folderDrop = '';
+  const unfiled = defs.filter((def) => !def.folder);
+  if (unfiled.length) loose.append(chipList(unfiled, editing, forbidden));
+  if (folders.length) loose.append(Object.assign(document.createElement('p'), { className: 'lc-note lc-unfiled-hint', textContent: 'Drop here to take a chip out of its folder.' }));
+  host.append(loose);
+}
+
+function dropMissingFolders() {
+  const ids = new Set(store.folders.map((folder) => folder.id));
+  for (const def of store.chips.values()) if (def.folder && !ids.has(def.folder)) delete def.folder;
+}
+
+function nextFolderName() {
+  const names = new Set(store.folders.map((folder) => folder.name));
+  for (let n = 1; ; n++) if (!names.has(`Folder ${n}`)) return `Folder ${n}`;
+}
+
+function newFolder() {
+  const folder = { id: uid(), name: nextFolderName(), open: true };
+  store.folders.push(folder);
+  renderChips();
+  scheduleSave();
+  const section = [...document.querySelectorAll('.lc-folder')].find((entry) => entry.dataset.folderDrop === folder.id);
+  renameFolder(folder, section.querySelector('.lc-folder-toggle'));
+}
+
+function renameFolder(folder, toggle) {
+  const input = Object.assign(document.createElement('input'), { value: folder.name, maxLength: 24, spellcheck: false, className: 'lc-folder-input' });
+  input.setAttribute('aria-label', 'Folder name');
+  toggle.replaceWith(input);
+  input.select();
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (keep && input.value.trim()) folder.name = input.value.trim();
+    renderChips();
+    scheduleSave();
+  };
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') finish(true);
+    if (event.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+function deleteFolder(folder) {
+  store.folders = store.folders.filter((entry) => entry !== folder);
+  dropMissingFolders();
+  renderChips();
+  scheduleSave();
+  say(`Deleted the ${folder.name} folder. Its chips are still in My chips.`);
+}
+
+function moveChip(chipId, folderId) {
+  const def = store.chips.get(chipId);
+  if (!def || (def.folder ?? '') === folderId) return;
+  if (folderId) def.folder = folderId;
+  else delete def.folder;
+  const folder = store.folders.find((entry) => entry.id === folderId);
+  if (folder) folder.open = true;
+  renderChips();
+  scheduleSave();
+  say(folder ? `Moved ${def.name} into ${folder.name}.` : `Took ${def.name} out of its folder.`);
 }
 
 function field(labelText, control) {
@@ -455,13 +575,19 @@ function renderAll() {
 const dialog = $('[data-chip-dialog]');
 const dialogForm = $('[data-chip-form]');
 
-function chipDialog({ title, ok, name, color, pins, renaming = null }) {
+function chipDialog({ title, ok, name, color, pins, folder = '', renaming = null }) {
   $('[data-dialog-title]').textContent = title;
   $('[data-dialog-ok]').textContent = ok;
   $('[data-dialog-error]').textContent = '';
   const order = { inputs: [...pins.inputs], outputs: [...pins.outputs] };
   renderPinOrder(order);
   dialogForm.elements.name.value = name;
+  const folderSelect = dialogForm.elements.folder;
+  folderSelect.replaceChildren(new Option('None', ''), ...[...store.folders]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((entry) => new Option(entry.name, entry.id)));
+  folderSelect.value = store.folders.some((entry) => entry.id === folder) ? folder : '';
+  $('[data-dialog-folder]').hidden = !store.folders.length;
   const swatches = $('[data-swatches]');
   swatches.querySelectorAll('label').forEach((label) => label.remove());
   for (const choice of CHIP_COLORS) {
@@ -493,7 +619,7 @@ function chipDialog({ title, ok, name, color, pins, renaming = null }) {
         $('[data-dialog-error]').textContent = chosen ? 'You already have a chip with that name.' : 'Give the chip a name.';
         return;
       }
-      finish({ name: chosen, color: dialogForm.elements.color.value || color, pins: order });
+      finish({ name: chosen, color: dialogForm.elements.color.value || color, pins: order, folder: folderSelect.value });
     };
     const dismissed = () => finish(null);
     dialogForm.addEventListener('submit', submit);
@@ -542,6 +668,8 @@ function suggestName() {
   for (let n = 1; ; n++) if (!names.has(`Chip ${n}`)) return `Chip ${n}`;
 }
 
+let lastFolder = '';
+
 async function makeChip() {
   const circuit = editor.circuit;
   const chosen = editor.selection.size ? editor.selectedComponents() : circuit.components;
@@ -560,8 +688,10 @@ async function makeChip() {
     name: suggestName(),
     color: CHIP_COLORS[store.chips.size % CHIP_COLORS.length],
     pins,
+    folder: lastFolder,
   });
   if (!result) return;
+  lastFolder = result.folder;
 
   const box = bounds(inner.components, store.chips);
   for (const comp of inner.components) {
@@ -569,7 +699,7 @@ async function makeChip() {
     comp.y -= box.top;
   }
   for (const wire of inner.wires) wire.points = wire.points.map(([x, y]) => [x - box.left, y - box.top]);
-  const def = { id: uid(), name: result.name, color: result.color, ...result.pins, circuit: inner };
+  const def = { id: uid(), name: result.name, color: result.color, ...result.pins, circuit: inner, ...(result.folder && { folder: result.folder }) };
   store.chips.set(def.id, def);
 
   store.record();
@@ -639,9 +769,11 @@ function discardChip() {
 
 async function editChipDetails(chipId) {
   const def = store.chips.get(chipId);
-  const result = await chipDialog({ title: 'Chip details', ok: 'Save', name: def.name, color: def.color, pins: def, renaming: chipId });
+  const result = await chipDialog({ title: 'Chip details', ok: 'Save', name: def.name, color: def.color, pins: def, folder: def.folder, renaming: chipId });
   if (!result) return;
   Object.assign(def, { name: result.name, color: result.color, ...result.pins });
+  if (result.folder) def.folder = result.folder;
+  else delete def.folder;
   store.emit('structure');
 }
 
@@ -664,12 +796,29 @@ function deleteChip(chipId) {
 }
 
 function exportFile() {
-  const data = { app: 'logic-circuits', version: 1, board: store.root.circuit, chips: [...store.chips.values()] };
+  const data = { app: 'logic-circuits', version: 1, board: store.root.circuit, chips: [...store.chips.values()], folders: store.folders.map(({ id, name }) => ({ id, name })) };
   const blob = new Blob([JSON.stringify(data, (key, value) => (key === 'pressed' ? undefined : value))], { type: 'application/json' });
   const fileName = `${store.activeTab.name.replace(/[^\w -]+/g, '').trim() || 'logic-circuits'}.json`;
   const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: fileName });
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function fileIntoLocalFolders(defs, folders) {
+  const names = new Map(folders.filter((folder) => typeof folder?.name === 'string').map((folder) => [folder.id, folder.name]));
+  for (const def of defs) {
+    const name = names.get(def.folder);
+    if (!name) {
+      delete def.folder;
+      continue;
+    }
+    let local = store.folders.find((folder) => folder.name.toLowerCase() === name.toLowerCase());
+    if (!local) {
+      local = { id: uid(), name, open: true };
+      store.folders.push(local);
+    }
+    def.folder = local.id;
+  }
 }
 
 async function importFile(file) {
@@ -686,6 +835,7 @@ async function importFile(file) {
     say('That file is not a Logic Circuits export.');
     return;
   }
+  fileIntoLocalFolders(incoming, Array.isArray(data.folders) ? data.folders : []);
   const added = mergeLibrary(store.chips, incoming, board ? [board] : []);
   pruneEverywhere();
   const opened = Boolean(board?.components.length);
@@ -833,6 +983,7 @@ $('[data-import-file]').addEventListener('change', (event) => {
   if (file) importFile(file);
 });
 $('[data-clear]').addEventListener('click', clearBoard);
+$('[data-new-folder]').addEventListener('click', newFolder);
 window.addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') save();
