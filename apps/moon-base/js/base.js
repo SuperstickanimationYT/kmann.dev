@@ -14,6 +14,8 @@ const BREATH_RATE = 0.3;
 const AIR_RATE_PER_LEVEL = 0.15;
 const AIR_DRAIN_PER_LEVEL = 0.125;
 const AIR_WATER_PER_LEVEL = 1 / 240;
+const SCRUB_RATE = 0.6;
+const SCRUB_DRAIN = 0.1;
 const SOLAR_CHARGE_RATE = 1;
 const MAX_AIR_LEVEL = 4;
 const WALK_SPEED = 90;
@@ -332,21 +334,27 @@ function updateBuildings(game, dt) {
   }
 }
 
-export function airGeneratorRunning(b) {
+export function scrubbing(b) {
+  return b.battery > 0;
+}
+
+export function makingOxygen(b) {
   return b.level > 0 && b.battery > 0 && (b.water > 0 || b.waterUse > 0);
 }
 
 function updateAirGenerator(game, b, dt) {
+  if (!scrubbing(b)) return;
+  game.vitals.co2 = Math.max(0, game.vitals.co2 - SCRUB_RATE * dt);
+  b.battery = Math.max(0, b.battery - SCRUB_DRAIN * dt);
+  game.milestones.add('air');
   if (b.waterUse <= 0 && b.water > 0 && b.level > 0) {
     b.water -= 1;
     b.waterUse = 1;
   }
-  if (!airGeneratorRunning(b)) return;
+  if (!makingOxygen(b)) return;
   game.vitals.o2 += AIR_RATE_PER_LEVEL * b.level * dt;
-  game.vitals.co2 = Math.max(0, game.vitals.co2 - AIR_RATE_PER_LEVEL * b.level * dt);
   b.battery = Math.max(0, b.battery - AIR_DRAIN_PER_LEVEL * b.level * dt);
   b.waterUse -= AIR_WATER_PER_LEVEL * b.level * dt;
-  game.milestones.add('air');
 }
 
 export function processBlocked(b) {

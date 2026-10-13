@@ -227,7 +227,7 @@ function frameBase(dt) {
 function deathText(cause) {
   if (cause === 'Hypercapnia') return 'Carbon dioxide built up past 10. Keep the Air Generator running with a charged battery and water.';
   if (cause === 'Hypoxia') return 'Oxygen fell below 80. Leaks from the vacuum and breathing both use it up.';
-  return 'Oxygen rose past 120. Turn the Air Generator down to 2 once the CO₂ is cleared.';
+  return 'Oxygen rose past 120. Turn the Air Generator output below 2 to let it fall; CO₂ stays scrubbed either way.';
 }
 
 function frame(now) {
