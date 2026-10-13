@@ -56,6 +56,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Moon Base',
+    href: 'apps/moon-base/',
+    poster: 'assets/img/posters/moon-base.webp',
+    blurb: 'Crash-land on the Moon, keep your air breathable, build up to a rocket and fly it home through real Earth-Moon gravity.',
+    status: 'live',
+  },
+  {
     title: 'PangPlanet',
     href: 'apps/pangplanet/',
     poster: 'assets/img/posters/pangplanet.webp',

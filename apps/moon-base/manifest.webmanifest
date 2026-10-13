@@ -1,0 +1,18 @@
+{
+  "name": "Moon Base",
+  "short_name": "Moon Base",
+  "description": "Crash-land on the Moon with a lander and a few machines. Keep your air breathable, mine ice and regolith, work up to a rocket, and fly it home through real Earth-Moon gravity.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

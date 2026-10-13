@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moon Base &mdash; kmann314</title>
+<meta name="description" content="Crash-land on the Moon with a lander and a few machines. Keep your air breathable, mine ice and regolith, work up to a rocket, and fly it home through real Earth-Moon gravity.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">Moon Base</h2>
+    </div>
+  </div>
+
+  <div class="shell mb-layout">
+    <div class="app-stage mb-stage">
+      <canvas data-base aria-label="Your Moon base seen from above. Walk with WASD or click the ground; click machines to use them."></canvas>
+      <canvas data-flight hidden aria-label="The Earth and the Moon to scale, with your rocket and its predicted path."></canvas>
+
+      <section class="mb-card" data-menu hidden>
+        <header>
+          <strong data-menu-title></strong>
+          <button type="button" data-menu-close aria-label="Close">&times;</button>
+        </header>
+        <div data-menu-body></div>
+      </section>
+
+      <div class="mb-flight-hud" data-flight-hud hidden>
+        <p class="mb-flight-tag" data-flight-tag></p>
+        <dl data-flight-readout></dl>
+        <p class="mb-flight-forecast" data-forecast></p>
+      </div>
+
+      <div class="mb-flight-controls" data-flight-controls hidden>
+        <div class="mb-group" role="group" aria-label="Steering">
+          <button type="button" data-turn="1" title="Turn left (A)">&#8634;</button>
+          <button type="button" data-turn="-1" title="Turn right (D)">&#8635;</button>
+        </div>
+        <div class="mb-group" role="group" aria-label="Hold">
+          <button type="button" data-hold="off" title="Free steering">Free</button>
+          <button type="button" data-hold="prograde" title="Point along your motion (P)">Pro</button>
+          <button type="button" data-hold="retrograde" title="Point against your motion (R)">Retro</button>
+        </div>
+        <div class="mb-group" role="group" aria-label="Throttle">
+          <button type="button" data-throttle="0" title="Cut engine (X)">Cut</button>
+          <button type="button" data-throttle-step="-0.1" title="Less throttle (S)">&minus;</button>
+          <output data-throttle-label></output>
+          <button type="button" data-throttle-step="0.1" title="More throttle (W)">+</button>
+          <button type="button" data-throttle="1" title="Full throttle (Z)">Full</button>
+        </div>
+        <div class="mb-group" role="group" aria-label="Time warp">
+          <button type="button" data-warp-step="-1" title="Slower time (,)">&laquo;</button>
+          <output data-warp-label></output>
+          <button type="button" data-warp-step="1" title="Faster time (.)">&raquo;</button>
+        </div>
+        <div class="mb-group" role="group" aria-label="View">
+          <button type="button" data-zoom="0.5" title="Zoom in (+)">+</button>
+          <button type="button" data-zoom="2" title="Zoom out (&minus;)">&minus;</button>
+          <select data-focus aria-label="Centre the view on">
+            <option value="rocket">Rocket</option>
+            <option value="moon">Moon</option>
+            <option value="earth">Earth</option>
+          </select>
+        </div>
+        <button type="button" class="mb-quit" data-quit></button>
+      </div>
+
+      <div class="mb-dialog" data-dialog hidden>
+        <p class="mb-dialog-title" data-dialog-title></p>
+        <p data-dialog-text></p>
+        <div class="mb-actions" data-dialog-actions></div>
+      </div>
+    </div>
+
+    <aside class="mb-panel">
+      <fieldset>
+        <legend>Way home</legend>
+        <ol class="mb-goals" data-goals></ol>
+      </fieldset>
+
+      <fieldset>
+        <legend>Inventory</legend>
+        <div data-inventory></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Controls</legend>
+        <ul class="mb-keys">
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, or click the ground</li>
+          <li><kbd>Space</kbd> or click the Mode sign: Play, Build, Place</li>
+          <li><b>Play</b>: click machines to use them, ice and regolith to mine, the lander to build</li>
+          <li><b>Build</b>: click a tile to cycle wall pieces. Vacuum leaks drain your oxygen until walls close you in with no gaps.</li>
+          <li><b>Place</b>: click a tile to cycle the machines you carry</li>
+          <li><kbd>I</kbd> hide or show the air readout</li>
+        </ul>
+      </fieldset>
+
+      <fieldset>
+        <legend>Flight simulator</legend>
+        <p class="mb-note">Practise the trip home any time with a two-tank rocket. The base waits while you fly.</p>
+        <div class="mb-actions">
+          <button type="button" data-practice>Practise a flight</button>
+        </div>
+      </fieldset>
+
+      <details class="mb-help">
+        <summary>Flying home</summary>
+        <p>The flight uses the real Earth and Moon: their masses, sizes and the 384,400&nbsp;km between them, with the Moon going around the Earth every 27.3 days. Only the third dimension is gone.</p>
+        <ul>
+          <li><kbd>A</kbd><kbd>D</kbd> turn, <kbd>W</kbd><kbd>S</kbd> throttle, <kbd>Z</kbd> full, <kbd>X</kbd> cut.</li>
+          <li><kbd>P</kbd> holds the nose along your motion, <kbd>R</kbd> against it.</li>
+          <li><kbd>,</kbd><kbd>.</kbd> change time warp. While the engine burns, warp stops at 10&times;.</li>
+          <li>Mouse wheel or <kbd>+</kbd><kbd>&minus;</kbd> zoom.</li>
+        </ul>
+        <p>The blue line is where you will coast if you stop burning. Near the Moon it is drawn around the Moon; farther out, around the Earth.</p>
+        <p><strong>A route that works:</strong> burn straight up for a few seconds, tip over toward the horizon, and keep burning sideways until the far side of your path stays above the ground: you are in orbit at about 1.7&nbsp;km/s. Then, on the side of the Moon facing away from its motion around the Earth, burn prograde until the line leaves the Moon and falls toward the Earth. Warp ahead and nudge the burn until the path ends in a green cross.</p>
+        <p>To survive, the capsule has to hit the top of the atmosphere, 120&nbsp;km up, between 5&deg; and 8&deg; below horizontal. Shallower and it skips back into space; steeper and it burns up. That window is the real one Apollo flew.</p>
+      </details>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+      <button type="button" class="save-offline" data-save-offline hidden></button>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
