@@ -1,6 +1,6 @@
 import { BUILDINGS } from './items.js';
 import {
-  CHUNKS, COLS, ROWS, TILE_SIZE, airGeneratorRunning, currentGrid, exposed, processBlocked, tileAt, tileCenter,
+  CHUNKS, COLS, ROWS, TILE_SIZE, currentGrid, exposed, processBlocked, scrubbing, tileAt, tileCenter,
 } from './base.js';
 import { drawCostume } from './sprites.js';
 
@@ -25,7 +25,7 @@ function drawTiles(context, game) {
 }
 
 function isWorking(b) {
-  if (b.type === 'Air Generator') return airGeneratorRunning(b);
+  if (b.type === 'Air Generator') return scrubbing(b);
   if (b.type === 'Solar Panel') return b.battery != null && b.battery < 100;
   if (BUILDINGS[b.type].process) return !processBlocked(b);
   return null;

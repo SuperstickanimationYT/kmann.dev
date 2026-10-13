@@ -2,8 +2,8 @@ import {
   AIR_WATER_CAPACITY, BARREL_CAPACITY, BLURBS, BUILDINGS, CARRY_LIMIT, HOPPER_CAPACITY, MAX_TANKS, RECIPES, RESOURCES,
 } from './items.js';
 import {
-  airGeneratorRunning, canAfford, carried, collectOutput, count, craft, drainRocket, fillAirWater, fuelRocket, insertBattery,
-  installPart, loadHopper, processBlocked, removePart, setAirLevel, storeInBarrel, storedTotal, takeBattery, takeFromBarrel,
+  canAfford, carried, collectOutput, count, craft, drainRocket, fillAirWater, fuelRocket, insertBattery,
+  installPart, loadHopper, makingOxygen, processBlocked, removePart, scrubbing, setAirLevel, storeInBarrel, storedTotal, takeBattery, takeFromBarrel,
 } from './base.js';
 import {
   DELTA_V_NEEDED, PROPELLANT_UNIT, dryMass, isFlyable, propellantCapacity, rocketDeltaV,
@@ -35,7 +35,8 @@ function airGeneratorMenu(game, b) {
     ${batteryRow(game, b)}
     <div class="mb-row"><span>Water ${water.toFixed(1)} / ${AIR_WATER_CAPACITY}</span>${bar(water / AIR_WATER_CAPACITY, 'water')}${button('fill-water', 'Fill', count(game, 'Water') > 0 && b.water < AIR_WATER_CAPACITY)}</div>
     <div class="mb-row"><span>Output</span>${button('air-down', '&minus;', b.level > 0)}<output>${b.level}</output>${button('air-up', '+', b.level < 4)}</div>
-    <p class="mb-note">${airGeneratorRunning(b) ? `Running: O₂ +${rate}/s, CO₂ −${rate}/s.` : 'Stopped.'} Breathing uses 0.30/s, so output 2 holds you steady. Keep O₂ between 80 and 120 and CO₂ under 10.</p>`;
+    <p class="mb-note">${scrubbing(b) ? 'Scrubbing CO₂.' : '<strong>No power: CO₂ is building up.</strong>'} ${makingOxygen(b) ? `Making O₂ +${rate}/s.` : 'Not making O₂.'}</p>
+    <p class="mb-note">Any charged battery keeps CO₂ scrubbed. Output sets only O₂: breathing uses 0.30/s, so 2 holds steady, 3–4 raise it, 0–1 let it fall. Keep O₂ between 80 and 120.</p>`;
 }
 
 function solarMenu(game, b) {
