@@ -52,8 +52,12 @@ function refreshPanel() {
   find('[data-stat="tick"]').textContent = `${world.tick.toLocaleString()} ticks`;
   find('[data-stat="count"]').textContent = cells.length.toLocaleString();
   find('[data-stat="generation"]').textContent = cells.reduce((most, cell) => Math.max(most, cell.generation), 0).toLocaleString();
+  const bodySizes = world.bodies().map((body) => body.length);
+  const bodied = bodySizes.filter((size) => size > 1).reduce((sum, size) => sum + size, 0);
+  find('[data-stat="bodied"]').textContent = `${Math.round((100 * bodied) / Math.max(1, cells.length))}%`;
+  find('[data-stat="largest"]').textContent = cellCount(Math.max(0, ...bodySizes));
   for (const { trait, fill } of traitRows) {
-    const mean = cells.reduce((sum, cell) => sum + cell.genome[trait.key], 0) / Math.max(1, cells.length);
+    const mean = cells.reduce((sum, cell) => sum + cell.type[trait.key], 0) / Math.max(1, cells.length);
     if (trait.min < 0) {
       fill.style.left = `${50 + Math.min(0, mean) * 50}%`;
       fill.style.width = `${Math.abs(mean) * 50}%`;
@@ -65,6 +69,8 @@ function refreshPanel() {
   chart.draw();
   refreshCellCard();
 }
+
+const cellCount = (count) => `${count} ${count === 1 ? 'cell' : 'cells'}`;
 
 function fact(label, value) {
   return `<dt>${label}</dt><dd>${value}</dd>`;
@@ -78,15 +84,21 @@ function refreshCellCard() {
     name.textContent = `Cell ${state.selectedId} has died`;
     return;
   }
-  const { genome } = cell;
+  const { genome, type } = cell;
   name.textContent = `Cell ${cell.id}`;
   const signed = (value) => (value >= 0 ? '+' : '') + value.toFixed(2);
+  const degrees = (radians) => `${Math.round((radians * 180) / Math.PI)}°`;
   find('[data-cell-facts]').innerHTML = [
+    fact('Body', cellCount(state.world.bodyOf(cell).length)),
+    fact('Cell type', `${cell.typeIndex + 1} of ${genome.types.length}`),
     fact('Generation', cell.generation),
     fact('Age', `${cell.age} / ${Math.round(cell.maxAge)} ticks`),
-    fact('Size', `${cell.mass.toFixed(2)} / ${divisionMassOf(genome).toFixed(1)}`),
+    fact('Size', `${cell.mass.toFixed(2)} / ${divisionMassOf(type).toFixed(1)}`),
     fact('Energy', cell.energy.toFixed(2)),
-    ...TRAITS.filter((trait) => trait.key !== 'divisionSize' && trait.key !== 'lifespan').map((trait) => fact(trait.label, trait.min < 0 ? signed(genome[trait.key]) : genome[trait.key].toFixed(2))),
+    ...TRAITS.filter((trait) => trait.key !== 'divisionSize' && trait.key !== 'lifespan').map((trait) => fact(trait.label, trait.min < 0 ? signed(type[trait.key]) : type[trait.key].toFixed(2))),
+    fact('Child type', type.childType + 1),
+    fact('Becomes after dividing', `type ${type.parentBecomes + 1}`),
+    fact('Child angle', degrees(type.splitAngle)),
     fact('Mutation rate', genome.mutationRate.toFixed(3)),
   ].join('');
 }
