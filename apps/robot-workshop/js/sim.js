@@ -72,6 +72,11 @@ export class Simulation {
     this.sensors = (design.sensors ?? []).map((id) => index.get(id));
     this.gyros = (design.gyros ?? []).map((beamId) => gyroOn(beamId, WORLD.sensorKg));
     this.angleSensors = (design.angles ?? []).map(({ driven, base }) => jointOf(driven, base));
+    this.pens = (design.pens ?? []).map((pen) => {
+      if (pen.node !== undefined) return { a: index.get(pen.node), b: index.get(pen.node), down: 1 };
+      const beam = beams.get(pen.beam);
+      return { a: index.get(beam.a), b: index.get(beam.b), down: 1 };
+    });
     for (const joint of this.angleSensors) mass[joint.pivot] += WORLD.sensorKg;
     if (design.cpu) {
       this.cpuGyro = gyroOn(design.cpu.beam, WORLD.cpuKg);
@@ -110,6 +115,10 @@ export class Simulation {
     const driven = Math.atan2(this.y[drivenEnd] - this.y[pivot], this.x[drivenEnd] - this.x[pivot]);
     const base = Math.atan2(this.y[baseEnd] - this.y[pivot], this.x[baseEnd] - this.x[pivot]);
     return driven - base;
+  }
+
+  penPoint({ a, b }) {
+    return { x: (this.x[a] + this.x[b]) / 2, y: (this.y[a] + this.y[b]) / 2 };
   }
 
   beamAngle({ a, b }) {
@@ -155,12 +164,14 @@ export class Simulation {
       case 'gyro-spin': return toDegrees(this.beamSpin(gyro));
       case 'angle-angle': return toDegrees(joint.turned);
       case 'angle-speed': return this.jointSpeed(joint) * radPerSecondToRpm;
+      case 'pen-down': return this.pens[port.index].down;
       default: return 0;
     }
   }
 
   write(port, value) {
     if (port.kind === 'motor-power') this.motors[port.index].cpuPower = Math.max(-1, Math.min(1, value));
+    if (port.kind === 'pen-down') this.pens[port.index].down = value === 0 ? 0 : 1;
   }
 
   throttle(motor) {

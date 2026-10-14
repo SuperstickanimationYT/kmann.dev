@@ -9,7 +9,7 @@ export const MOTOR_DEFAULTS = {
 };
 
 export function emptyDesign() {
-  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], sensors: [], gyros: [], angles: [], cpu: null, program: '', nextId: 1 };
+  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], sensors: [], gyros: [], angles: [], pens: [], cpu: null, program: '', nextId: 1 };
 }
 
 export const CPU_CLOCKS = [1000, 2000, 5000, 10000, 20000, 50000];
@@ -20,6 +20,7 @@ export function withDefaults(design) {
   design.sensors ??= [];
   design.gyros ??= [];
   design.angles ??= [];
+  design.pens ??= [];
   design.cpu ??= null;
   design.program ??= '';
   return design;
@@ -30,6 +31,15 @@ export function toggleSensor(design, nodeId) {
   design.sensors = design.sensors.filter((id) => id !== nodeId);
   if (design.sensors.length === before) design.sensors.push(nodeId);
   return design.sensors.length > before;
+}
+
+export const PEN_COLORS = ['#ff6b6b', '#ffd36e', '#7dffa8', '#5fe3ff', '#c4a8ff', '#ff9fc6'];
+
+export function togglePen(design, target) {
+  const before = design.pens.length;
+  design.pens = design.pens.filter((pen) => pen.node !== target.node || pen.beam !== target.beam);
+  if (design.pens.length === before) design.pens.push({ ...target, color: PEN_COLORS[before % PEN_COLORS.length] });
+  return design.pens.length > before;
 }
 
 export function toggleGyro(design, beamId) {
@@ -123,12 +133,14 @@ export function removeBeam(design, beamId) {
   const used = new Set(design.beams.flatMap((beam) => [beam.a, beam.b]));
   design.nodes = design.nodes.filter((node) => used.has(node.id));
   design.sensors = design.sensors.filter((id) => used.has(id));
+  design.pens = design.pens.filter((pen) => pen.beam !== beamId && (pen.node === undefined || used.has(pen.node)));
 }
 
 export function removeNode(design, nodeId) {
   for (const beam of design.beams.filter((b) => b.a === nodeId || b.b === nodeId)) removeBeam(design, beam.id);
   design.nodes = design.nodes.filter((node) => node.id !== nodeId);
   design.sensors = design.sensors.filter((id) => id !== nodeId);
+  design.pens = design.pens.filter((pen) => pen.node !== nodeId);
 }
 
 export function removeMotor(design, motorId) {
