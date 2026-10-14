@@ -1,5 +1,5 @@
-import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, toggleSensor, withDefaults } from './design.js';
-import { BUILTINS, CPU_READINGS, MOTOR_PORTS, compile } from './cpu.js';
+import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, toggleAngleSensor, toggleGyro, toggleSensor, withDefaults } from './design.js';
+import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
 import { PRESETS } from './presets.js';
 import { Simulation, WORLD } from './sim.js';
 
@@ -9,6 +9,12 @@ const NEW_PROGRAM_INTRO = `# This program runs over and over while the robot mov
 
 `;
 const WATCH_INTERVAL_MS = 150;
+
+const SENSOR_HINTS = {
+  touch: 'Tap a joint to give it a touch sensor. It reads 1 while that joint touches the ground.',
+  gyro: 'Tap a beam to give it a gyro. It reads that beam\'s tilt and spin against the world.',
+  angle: 'Tap a beam, then a beam joined to it. The angle sensor reads how far the first turns against the second.',
+};
 
 const STORAGE_KEY = 'robot-workshop:v1';
 const GOAL_METERS = 10;
@@ -25,7 +31,7 @@ const MAX_SCALE = 2000;
 const TOOL_HINTS = {
   beam: 'Drag from one point to another to add a beam. Start or end on a joint to connect to it.',
   motor: 'Tap the beam the motor should turn.',
-  sensor: 'Tap a joint to give it a touch sensor, or tap a sensor to remove it.',
+  sensor: 'Pick a sensor kind above the board, then tap to add it. Tap it again to remove it.',
   cpu: 'Tap a beam to mount the CPU on it. Its tilt sensor measures that beam.',
   move: 'Drag a joint to move it. Drag empty space to pan.',
   erase: 'Tap a joint or a beam to remove it.',
@@ -71,6 +77,8 @@ const undoButton = $('[data-undo]');
 const redoButton = $('[data-redo]');
 const toolButtons = [...document.querySelectorAll('[data-tool]')];
 const layerBar = $('[data-layers]');
+const sensorKindBar = $('[data-sensor-kinds]');
+const sensorKindButtons = [...document.querySelectorAll('[data-sensor-kind]')];
 const motorList = $('[data-motors]');
 const noMotors = $('[data-no-motors]');
 const presetSelect = $('[data-preset]');
@@ -91,6 +99,7 @@ let committed = cloneDesign(design);
 const undoStack = [];
 const redoStack = [];
 let tool = 'beam';
+let sensorKind = 'touch';
 let activeLayer = 0;
 let focused = false;
 let sim = null;
@@ -100,7 +109,7 @@ let bestTime = null;
 let camera = { x: 0, y: 0.6, scale: 300 };
 let view = { width: 0, height: 0 };
 let hover = null;
-let pendingMotorBeam = null;
+let pendingBeam = null;
 let highlightedMotor = null;
 let gesture = null;
 const pointers = new Map();
@@ -145,7 +154,7 @@ function restore(from, to) {
   to.push(committed);
   design = from.pop();
   committed = cloneDesign(design);
-  pendingMotorBeam = null;
+  pendingBeam = null;
   bestTime = null;
   activeLayer = Math.min(activeLayer, design.layers.length - 1);
   save();
@@ -162,7 +171,7 @@ function layerColor(layer) {
 
 function beamEditable(beam) {
   if (!focused || beam.layer === activeLayer) return true;
-  const pending = tool === 'motor' && pendingMotorBeam !== null && beamMap(design).get(pendingMotorBeam);
+  const pending = pendingBeam !== null && beamMap(design).get(pendingBeam);
   return Boolean(pending) && sharedNode(pending, beam) !== null;
 }
 
@@ -247,17 +256,17 @@ function finishBeam({ from, to }) {
 function tapMotor(point) {
   const beam = hitBeam(point);
   if (!beam) {
-    pendingMotorBeam = null;
+    pendingBeam = null;
     say(TOOL_HINTS.motor);
     return;
   }
-  if (pendingMotorBeam === null || pendingMotorBeam === beam.id) {
-    pendingMotorBeam = pendingMotorBeam === beam.id ? null : beam.id;
-    say(pendingMotorBeam === null ? TOOL_HINTS.motor : 'Now tap a beam joined to it at the same joint. The motor pushes against that one.');
+  if (pendingBeam === null || pendingBeam === beam.id) {
+    pendingBeam = pendingBeam === beam.id ? null : beam.id;
+    say(pendingBeam === null ? TOOL_HINTS.motor : 'Now tap a beam joined to it at the same joint. The motor pushes against that one.');
     return;
   }
-  const driven = beamMap(design).get(pendingMotorBeam);
-  pendingMotorBeam = null;
+  const driven = beamMap(design).get(pendingBeam);
+  pendingBeam = null;
   if (sharedNode(driven, beam) === null) {
     say("Those two beams don't meet at a joint. Tap the beam to turn again.");
     return;
@@ -285,12 +294,47 @@ function tapErase(point) {
 }
 
 function tapSensor(point) {
-  const node = hitNode(point);
-  if (!node) return;
-  const added = toggleSensor(design, node.id);
+  if (sensorKind === 'touch') {
+    const node = hitNode(point);
+    if (!node) return;
+    const added = toggleSensor(design, node.id);
+    commit();
+    renderCpu();
+    say(added ? `Touch sensor touch${design.sensors.length} added. It reads 1 while the joint touches the ground.` : 'Touch sensor removed. The ones after it moved up a number.');
+    return;
+  }
+  const beam = hitBeam(point);
+  if (sensorKind === 'gyro') {
+    if (!beam) return;
+    const added = toggleGyro(design, beam.id);
+    commit();
+    renderCpu();
+    say(added ? `gyro${design.gyros.length} added. It reads this beam's tilt and spin.` : 'Gyro removed. The ones after it moved up a number.');
+    return;
+  }
+  if (!beam || pendingBeam === null || pendingBeam === beam.id) {
+    pendingBeam = beam && pendingBeam !== beam.id ? beam.id : null;
+    say(pendingBeam === null ? SENSOR_HINTS.angle : 'Now tap a beam joined to it at the same joint.');
+    return;
+  }
+  const measured = beamMap(design).get(pendingBeam);
+  pendingBeam = null;
+  if (sharedNode(measured, beam) === null) {
+    say("Those two beams don't meet at a joint. Tap the first beam again.");
+    return;
+  }
+  const added = toggleAngleSensor(design, measured, beam);
   commit();
   renderCpu();
-  say(added ? `Touch sensor touch${design.sensors.length} added. It reads 1 while the joint touches the ground.` : 'Touch sensor removed. The ones after it moved up a number.');
+  say(added ? `angle${design.angles.length} added. It reads how far the first beam turns against the second.` : 'Angle sensor removed. The ones after it moved up a number.');
+}
+
+function setSensorKind(kind) {
+  sensorKind = kind;
+  pendingBeam = null;
+  hover = null;
+  say(SENSOR_HINTS[kind]);
+  renderControls();
 }
 
 function tapCpu(point) {
@@ -396,7 +440,7 @@ canvas.addEventListener('wheel', (event) => {
 }, { passive: false });
 
 function hoverAt(point) {
-  if (tool === 'motor' || tool === 'cpu') {
+  if (tool === 'motor' || tool === 'cpu' || (tool === 'sensor' && sensorKind !== 'touch')) {
     const beam = hitBeam(point);
     return beam && { kind: 'beam', id: beam.id };
   }
@@ -409,9 +453,9 @@ function hoverAt(point) {
 
 function setTool(next) {
   tool = next;
-  pendingMotorBeam = null;
+  pendingBeam = null;
   hover = null;
-  say(TOOL_HINTS[tool]);
+  say(tool === 'sensor' ? SENSOR_HINTS[sensorKind] : TOOL_HINTS[tool]);
   renderControls();
 }
 
@@ -427,7 +471,7 @@ function startRun() {
   accumulator = 0;
   gesture = null;
   hover = null;
-  pendingMotorBeam = null;
+  pendingBeam = null;
   if (design.cpu && !compiled.ok) say(`Running with the CPU off, because line ${compiled.error.line} of the program has an error.`);
   else say(design.motors.length ? 'Running. Motor sliders work live.' : 'Running. Without a motor it can only fall over. Add one with the Motor tool.');
   renderControls();
@@ -444,7 +488,7 @@ function stopRun() {
 }
 
 function hardware() {
-  return { motors: design.motors.length, sensors: design.sensors.length };
+  return { motor: design.motors.length, touch: design.sensors.length, gyro: design.gyros.length, angle: design.angles.length };
 }
 
 function drivenByProgram() {
@@ -473,9 +517,12 @@ function referenceRow(name, help) {
 
 function renderReference() {
   const rows = [];
-  design.motors.forEach((_, i) => {
-    for (const [port, spec] of Object.entries(MOTOR_PORTS)) rows.push(referenceRow(`motor${i + 1}.${port}`, spec.help));
-  });
+  const counts = hardware();
+  for (const [kind, device] of Object.entries(DEVICES)) {
+    for (let i = 1; i <= counts[kind]; i += 1) {
+      for (const [port, spec] of Object.entries(device.ports)) rows.push(referenceRow(`${kind}${i}.${port}`, spec.help));
+    }
+  }
   design.sensors.forEach((_, i) => rows.push(referenceRow(`touch${i + 1}`, '1 while this joint touches the ground, otherwise 0')));
   for (const [name, help] of Object.entries(CPU_READINGS)) rows.push(referenceRow(name, help));
   for (const builtin of Object.values(BUILTINS)) {
@@ -528,7 +575,7 @@ function fit() {
 function showLayer(layer) {
   focused = layer !== null;
   if (focused) activeLayer = layer;
-  pendingMotorBeam = null;
+  pendingBeam = null;
   hover = null;
   const name = design.layers[activeLayer];
   say(focused ? `Layer ${activeLayer + 1}: ${name}. Other layers are faded and locked. Rings mark joints shared with another layer.` : `All layers. New beams go on layer ${activeLayer + 1}: ${name}.`);
@@ -569,6 +616,8 @@ function renderControls() {
   redoButton.disabled = Boolean(sim) || !redoStack.length;
   runButton.textContent = sim ? 'Stop' : 'Run';
   runButton.setAttribute('aria-pressed', String(Boolean(sim)));
+  sensorKindBar.hidden = tool !== 'sensor' || Boolean(sim);
+  for (const button of sensorKindButtons) button.setAttribute('aria-pressed', String(button.dataset.sensorKind === sensorKind));
   renderLayers();
   stats.mass.textContent = design.nodes.length ? `${new Simulation(design).totalMass.toFixed(1)} kg` : '–';
 }
@@ -793,7 +842,7 @@ function drawRobot() {
   for (const beam of inFront) segment(beam, layerColor(beam.layer), beamWidth);
 
   const marked = new Map();
-  if (pendingMotorBeam !== null) marked.set(pendingMotorBeam, COLORS.motor);
+  if (pendingBeam !== null) marked.set(pendingBeam, COLORS.motor);
   const shown = design.motors.find((m) => m.id === highlightedMotor);
   if (shown) {
     marked.set(shown.driven, COLORS.motor);
@@ -867,6 +916,62 @@ function drawCpu(nodes) {
   context.restore();
 }
 
+function drawLabel(text, x, y) {
+  if (camera.scale < 120) return;
+  context.fillStyle = COLORS.sensor;
+  context.font = '12px "Trebuchet MS", system-ui, sans-serif';
+  context.textAlign = 'left';
+  context.textBaseline = 'alphabetic';
+  context.fillText(text, x, y);
+}
+
+function drawMotionSensors(nodes) {
+  const beams = beamMap(design);
+  const radius = Math.max(6, camera.scale * 0.02);
+  context.strokeStyle = COLORS.sensor;
+  context.lineWidth = 2;
+  design.gyros.forEach((beamId, i) => {
+    const beam = beams.get(beamId);
+    if (!beam) return;
+    const a = nodes.get(beam.a);
+    const b = nodes.get(beam.b);
+    const s = toScreen(a.x + (b.x - a.x) * 0.3, a.y + (b.y - a.y) * 0.3);
+    context.fillStyle = COLORS.sky;
+    context.beginPath();
+    context.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.beginPath();
+    context.moveTo(s.x - radius, s.y);
+    context.lineTo(s.x + radius, s.y);
+    context.moveTo(s.x, s.y - radius);
+    context.lineTo(s.x, s.y + radius);
+    context.stroke();
+    drawLabel(`gyro${i + 1}`, s.x + radius + 4, s.y - radius);
+  });
+  design.angles.forEach((pair, i) => {
+    const measured = beams.get(pair.driven);
+    const base = beams.get(pair.base);
+    const pivotId = measured && base && sharedNode(measured, base);
+    if (pivotId === null || pivotId === undefined) return;
+    const p = nodes.get(pivotId);
+    const s = toScreen(p.x, p.y);
+    const end = (beam) => nodes.get(beam.a === pivotId ? beam.b : beam.a);
+    const angleTo = (q) => Math.atan2(-(q.y - p.y), q.x - p.x);
+    const from = angleTo(end(base));
+    const to = angleTo(end(measured));
+    context.strokeStyle = COLORS.sensor;
+    context.beginPath();
+    context.arc(s.x, s.y, radius * 3.4, from, to, wrapToSigned(to - from) < 0);
+    context.stroke();
+    drawLabel(`angle${i + 1}`, s.x + radius * 3.4 + 4, s.y + radius * 3.4);
+  });
+}
+
+function wrapToSigned(angle) {
+  return angle - Math.PI * 2 * Math.round(angle / (Math.PI * 2));
+}
+
 function drawSensors(nodes) {
   const size = Math.max(6, camera.scale * 0.02);
   const touching = new Set(sim ? sim.sensors.filter((i) => sim.y[i] < WORLD.touchMeters).map((i) => sim.ids[i]) : []);
@@ -885,12 +990,7 @@ function drawSensors(nodes) {
     context.closePath();
     context.fill();
     context.stroke();
-    if (camera.scale < 120) return;
-    context.fillStyle = COLORS.sensor;
-    context.font = '12px "Trebuchet MS", system-ui, sans-serif';
-    context.textAlign = 'left';
-    context.textBaseline = 'alphabetic';
-    context.fillText(`touch${i + 1}`, s.x + size + 4, s.y - size);
+    drawLabel(`touch${i + 1}`, s.x + size + 4, s.y - size);
   });
 }
 
@@ -916,6 +1016,7 @@ function draw() {
   const nodes = positions();
   drawCpu(nodes);
   drawSensors(nodes);
+  drawMotionSensors(nodes);
   drawBeamPreview();
 }
 
@@ -943,6 +1044,7 @@ function resize() {
 }
 
 for (const button of toolButtons) button.addEventListener('click', () => setTool(button.dataset.tool));
+for (const button of sensorKindButtons) button.addEventListener('click', () => setSensorKind(button.dataset.sensorKind));
 undoButton.addEventListener('click', () => restore(undoStack, redoStack));
 redoButton.addEventListener('click', () => restore(redoStack, undoStack));
 $('[data-fit]').addEventListener('click', fit);
@@ -980,7 +1082,7 @@ window.addEventListener('keydown', (event) => {
   } else if (key === 'f') {
     fit();
   } else if (key === 'escape') {
-    pendingMotorBeam = null;
+    pendingBeam = null;
     gesture = null;
   } else if (!sim && key >= '1' && key <= String(toolButtons.length)) {
     setTool(toolButtons[Number(key) - 1].dataset.tool);
