@@ -5,7 +5,8 @@ import { LIBRARY } from './programs.js';
 import { rocketFromText, rocketToText } from './share.js';
 import { predictPath } from './orbit.js';
 import { paintSprites, spriteFor } from './looks.js';
-import { AIRY_BODIES, BODIES, EARTH, SUN, bodyState, dominantBody } from './planets.js';
+import { Exhaust } from './exhaust.js';
+import { AIRY_BODIES, BODIES, EARTH, SUN, airAround, bodyState, dominantBody } from './planets.js';
 import { ENGINE_FIRING, Simulation, TANK, WORLD } from './sim.js';
 
 const NEW_PROGRAM_INTRO = `# This program runs over and over while the rocket flies.
@@ -27,6 +28,11 @@ const STAR_COUNT = 260;
 const SPRITE_LIMIT_PX = 8000;
 const LINEAR_AIR_ABOVE_PX = 20000;
 const SATURN_RINGS = { inner: 1.24, outer: 2.27, tilt: 0.28, color: 'rgba(226, 205, 160, 0.55)' };
+const METAL = { dark: '#4a5663', mid: '#a7b3bf', light: '#eef3f8' };
+const TANK_SHADES = { dark: '#6c7988', mid: '#d3dce6', light: '#ffffff' };
+const BELL_SHADES = { dark: '#20262d', mid: '#5f6a76', light: '#b4bec8' };
+const TANK_RIB_METERS = 2.5;
+const WHEEL_LOOK_TURNS_PER_SECOND = 3;
 
 const SENSOR_HINTS = {
   touch: 'Tap a joint to give it a touch sensor. It reads 1 while that joint touches the ground.',
@@ -102,6 +108,13 @@ const COLORS = {
   erase: '#ff8a9a',
   motor: '#ffb454',
   pad: '#4b5a6a',
+  padEdge: '#8d99a6',
+  tankBand: '#2b3644',
+  tankRib: 'rgba(43, 54, 68, 0.35)',
+  fuelTrack: 'rgba(20, 28, 38, 0.55)',
+  hazard: '#1b1f24',
+  rivet: '#2b3440',
+  smoke: [214, 220, 228],
   tank: '#d5dee8',
   fuel: '#ff9f43',
   engine: '#9aa5b1',
@@ -184,6 +197,10 @@ let compiled = null;
 let trails = [];
 let prediction = null;
 let lastPrediction = 0;
+let exhaust = new Exhaust();
+let smokeClock = 0;
+let wheelTurns = [];
+let sunlight = { x: 0, y: -1 };
 let drivenKey = '';
 let lastWatch = 0;
 
@@ -655,6 +672,9 @@ function startRun() {
   sim = new Simulation(design, program);
   trails = sim.pens.map(() => [[]]);
   prediction = null;
+  exhaust = new Exhaust();
+  smokeClock = sim.time;
+  wheelTurns = sim.wheels.map(() => 0);
   setThrottle(0);
   pilot.left = false;
   pilot.right = false;
@@ -674,6 +694,7 @@ function startRun() {
 
 function stopRun() {
   sim = null;
+  prediction = null;
   camera.rotation = 0;
   say(TOOL_HINTS[tool]);
   fit();
@@ -1270,16 +1291,19 @@ function drawBodies() {
   const earthAtLaunch = bodyState(EARTH, 0);
   const shiftX = earthNow.x - earthAtLaunch.x;
   const shiftY = earthNow.y - earthAtLaunch.y;
-  const a = toScreen(shiftX - 6, shiftY - 0.6);
-  const b = toScreen(shiftX + 6, shiftY);
-  if (camera.scale > 0.5) {
-    context.strokeStyle = COLORS.pad;
-    context.lineWidth = px(0.6, 2);
-    context.beginPath();
-    context.moveTo(a.x, (a.y + b.y) / 2);
-    context.lineTo(b.x, (a.y + b.y) / 2);
-    context.stroke();
-  }
+  if (camera.scale <= 0.5) return;
+  const corners = [[-6, -0.6], [6, -0.6], [6, 0], [-6, 0]].map(([x, y]) => toScreen(shiftX + x, shiftY + y));
+  context.fillStyle = COLORS.pad;
+  context.beginPath();
+  corners.forEach((corner) => context.lineTo(corner.x, corner.y));
+  context.closePath();
+  context.fill();
+  context.strokeStyle = COLORS.padEdge;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(corners[2].x, corners[2].y);
+  context.lineTo(corners[3].x, corners[3].y);
+  context.stroke();
 }
 
 function drawSegment(a, b, color, width) {
@@ -1291,6 +1315,47 @@ function drawSegment(a, b, color, width) {
   context.moveTo(p.x, p.y);
   context.lineTo(q.x, q.y);
   context.stroke();
+}
+
+function aimSunlight() {
+  const sun = bodyState(SUN, sim?.time ?? 0);
+  const toward = toScreen(sun.x, sun.y);
+  const dx = toward.x - view.width / 2;
+  const dy = toward.y - view.height / 2;
+  const length = Math.hypot(dx, dy) || 1;
+  sunlight = { x: dx / length, y: dy / length };
+}
+
+function litSide(p, q) {
+  const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+  const nx = (p.y - q.y) / length;
+  const ny = (q.x - p.x) / length;
+  return nx * sunlight.x + ny * sunlight.y < 0 ? { x: -nx, y: -ny } : { x: nx, y: ny };
+}
+
+function acrossShading(center, side, width, shades) {
+  const half = width / 2;
+  const shine = context.createLinearGradient(center.x - side.x * half, center.y - side.y * half, center.x + side.x * half, center.y + side.y * half);
+  shine.addColorStop(0, shades.dark);
+  shine.addColorStop(0.5, shades.mid);
+  shine.addColorStop(0.8, shades.light);
+  shine.addColorStop(1, shades.mid);
+  return shine;
+}
+
+function drawShaded(a, b, width, shades) {
+  const p = toScreen(a.x, a.y);
+  const q = toScreen(b.x, b.y);
+  context.strokeStyle = acrossShading({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, litSide(p, q), width, shades);
+  context.lineWidth = width;
+  context.beginPath();
+  context.moveTo(p.x, p.y);
+  context.lineTo(q.x, q.y);
+  context.stroke();
+}
+
+function pointAlong(a, b, share) {
+  return { x: a.x + (b.x - a.x) * share, y: a.y + (b.y - a.y) * share };
 }
 
 function drawMotor(center, motor, live) {
@@ -1330,7 +1395,10 @@ function drawStructure() {
   const inFront = present.filter((beam) => (!focused || beam.layer === activeLayer) && !tankIds.has(beam.id));
   if (focused) for (const beam of present) if (beam.layer !== activeLayer) segment(beam, COLORS.ghost, beamWidth * 0.6);
   for (const beam of inFront) segment(beam, COLORS.beamShadow, beamWidth + 3);
-  for (const beam of inFront) segment(beam, layerColor(beam.layer), beamWidth);
+  for (const beam of inFront) {
+    if (sim) drawShaded(nodes.get(beam.a), nodes.get(beam.b), beamWidth, METAL);
+    else segment(beam, layerColor(beam.layer), beamWidth);
+  }
 
   const marked = new Map();
   if (pendingBeam !== null) marked.set(pendingBeam, COLORS.motor);
@@ -1353,6 +1421,10 @@ function drawStructure() {
     context.globalAlpha = 1;
   });
 
+  if (sim) {
+    drawRivets(nodes);
+    return;
+  }
   const jointRadius = px(0.15, 3);
   const layers = nodeLayers(design);
   for (const node of design.nodes) {
@@ -1377,6 +1449,18 @@ function drawStructure() {
       context.arc(s.x, s.y, radius, 0, Math.PI * 2);
       context.fill();
     }
+  }
+}
+
+function drawRivets(nodes) {
+  const radius = px(0.08, 1.5);
+  context.fillStyle = COLORS.rivet;
+  for (const node of design.nodes) {
+    const p = nodes.get(node.id);
+    const s = toScreen(p.x, p.y);
+    context.beginPath();
+    context.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    context.fill();
   }
 }
 
@@ -1595,14 +1679,104 @@ function drawTanks(nodes) {
     if (!tankIds.has(beam.id) || beamGone(index)) return;
     const a = nodes.get(beam.a);
     const b = nodes.get(beam.b);
+    const meters = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     drawSegment(a, b, COLORS.beamShadow, width + 3);
-    drawSegment(a, b, COLORS.tank, width);
+    drawShaded(a, b, width, TANK_SHADES);
+    const band = Math.min(0.3, meters / 6) / meters;
+    drawSegment(a, pointAlong(a, b, band), COLORS.tankBand, width);
+    drawSegment(pointAlong(a, b, 1 - band), b, COLORS.tankBand, width);
+    const ribs = Math.floor(meters / TANK_RIB_METERS);
+    if (ribs > 1 && camera.scale * TANK_RIB_METERS > 12) {
+      const rib = 0.06 / meters;
+      for (let k = 1; k < ribs; k += 1) drawSegment(pointAlong(a, b, k / ribs - rib), pointAlong(a, b, k / ribs + rib), COLORS.tankRib, width);
+    }
     const tank = sim?.tanks[design.tanks.indexOf(beam.id)];
     const full = tank ? tank.fuel / tank.capacity : 1;
-    if (full <= 0) return;
-    drawSegment(a, { x: a.x + (b.x - a.x) * full, y: a.y + (b.y - a.y) * full }, COLORS.fuel, width * 0.55);
+    const gaugeStart = pointAlong(a, b, band * 2);
+    const gaugeEnd = pointAlong(a, b, 1 - band * 2);
+    drawSegment(gaugeStart, gaugeEnd, COLORS.fuelTrack, width * 0.16);
+    if (full > 0) drawSegment(gaugeStart, pointAlong(gaugeStart, gaugeEnd, full), COLORS.fuel, width * 0.16);
   });
   context.lineCap = 'round';
+}
+
+function exhaustOutward(nozzle, back, swing) {
+  const ax = nozzle.x - back.x;
+  const ay = nozzle.y - back.y;
+  const length = Math.hypot(ax, ay) || 1;
+  return { x: (ax * Math.cos(swing) - ay * Math.sin(swing)) / length, y: (ax * Math.sin(swing) + ay * Math.cos(swing)) / length };
+}
+
+function engineSwing(live) {
+  return live ? (live.settings.gimbal * live.tilt * Math.PI) / 180 : 0;
+}
+
+function plumePath(mouth, u, v, reach, base, spread) {
+  const tip = { x: mouth.x + u.x * reach, y: mouth.y + u.y * reach };
+  const bulge = { x: mouth.x + u.x * reach * 0.35, y: mouth.y + u.y * reach * 0.35 };
+  context.beginPath();
+  context.moveTo(mouth.x + v.x * base, mouth.y + v.y * base);
+  context.quadraticCurveTo(bulge.x + v.x * spread, bulge.y + v.y * spread, tip.x, tip.y);
+  context.quadraticCurveTo(bulge.x - v.x * spread, bulge.y - v.y * spread, mouth.x - v.x * base, mouth.y - v.y * base);
+  context.closePath();
+  return tip;
+}
+
+function fadeAlong(from, to, stops) {
+  const fade = context.createLinearGradient(from.x, from.y, to.x, to.y);
+  for (const [at, color] of stops) fade.addColorStop(at, color);
+  return fade;
+}
+
+function drawFlame(mouth, u, v, bell, firing, thickness) {
+  const widening = 1 + 1.8 * (1 - Math.min(1, thickness));
+  const length = bell * (3 + 6 * firing) * (0.92 + 0.16 * Math.random());
+  context.save();
+  context.globalCompositeOperation = 'lighter';
+  const glow = context.createRadialGradient(mouth.x, mouth.y, 0, mouth.x, mouth.y, bell * 4);
+  glow.addColorStop(0, `rgba(255, 170, 80, ${0.35 * firing})`);
+  glow.addColorStop(1, 'rgba(255, 170, 80, 0)');
+  context.fillStyle = glow;
+  context.fillRect(mouth.x - bell * 4, mouth.y - bell * 4, bell * 8, bell * 8);
+  let tip = plumePath(mouth, u, v, length, bell * 0.85, bell * 0.95 * widening);
+  context.fillStyle = fadeAlong(mouth, tip, [[0, 'rgba(255, 236, 190, 0.95)'], [0.3, 'rgba(255, 176, 72, 0.8)'], [0.75, 'rgba(255, 104, 36, 0.3)'], [1, 'rgba(255, 80, 30, 0)']]);
+  context.fill();
+  tip = plumePath(mouth, u, v, length * 0.45, bell * 0.5, bell * 0.4 * widening);
+  context.fillStyle = fadeAlong(mouth, tip, [[0, 'rgba(255, 255, 255, 0.95)'], [1, 'rgba(255, 230, 160, 0)']]);
+  context.fill();
+  context.restore();
+}
+
+function bellPath(nozzle, mouth, u, v, bell) {
+  const throat = bell * 0.4;
+  const flare = { x: nozzle.x + (mouth.x - nozzle.x) * 0.75, y: nozzle.y + (mouth.y - nozzle.y) * 0.75 };
+  context.beginPath();
+  context.moveTo(nozzle.x + v.x * throat, nozzle.y + v.y * throat);
+  context.quadraticCurveTo(flare.x + v.x * throat * 1.2, flare.y + v.y * throat * 1.2, mouth.x + v.x * bell, mouth.y + v.y * bell);
+  context.lineTo(mouth.x - v.x * bell, mouth.y - v.y * bell);
+  context.quadraticCurveTo(flare.x - v.x * throat * 1.2, flare.y - v.y * throat * 1.2, nozzle.x - v.x * throat, nozzle.y - v.y * throat);
+  context.closePath();
+}
+
+function drawBell(nozzle, mouth, u, v, bell, firing) {
+  const side = v.x * sunlight.x + v.y * sunlight.y < 0 ? { x: -v.x, y: -v.y } : v;
+  bellPath(nozzle, mouth, u, v, bell);
+  context.fillStyle = acrossShading({ x: (nozzle.x + mouth.x) / 2, y: (nozzle.y + mouth.y) / 2 }, side, bell * 2, BELL_SHADES);
+  context.fill();
+  context.strokeStyle = COLORS.beamShadow;
+  context.lineWidth = 1.5;
+  context.stroke();
+  if (firing > 0) {
+    bellPath(nozzle, mouth, u, v, bell);
+    context.fillStyle = fadeAlong(nozzle, mouth, [[0, `rgba(255, 120, 40, ${0.6 * firing})`], [1, 'rgba(255, 120, 40, 0)']]);
+    context.fill();
+  }
+  const throat = bell * 0.4;
+  context.fillStyle = BELL_SHADES.mid;
+  context.beginPath();
+  context.arc(nozzle.x - u.x * throat * 0.3, nozzle.y - u.y * throat * 0.3, throat * 1.1, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
 }
 
 function drawEngines(nodes) {
@@ -1610,38 +1784,52 @@ function drawEngines(nodes) {
   design.engines.forEach((engine, i) => {
     const beam = beams.get(engine.beam);
     if (!beam) return;
-    const nozzle = toScreen(nodes.get(engine.nozzle).x, nodes.get(engine.nozzle).y);
-    const backNode = nodes.get(beam.a === engine.nozzle ? beam.b : beam.a);
-    const back = toScreen(backNode.x, backNode.y);
-    const length = Math.hypot(back.x - nozzle.x, back.y - nozzle.y) || 1;
-    const ux = (nozzle.x - back.x) / length;
-    const uy = (nozzle.y - back.y) / length;
+    const live = sim?.engines[i];
+    const nozzleAt = nodes.get(engine.nozzle);
+    const outward = exhaustOutward(nozzleAt, nodes.get(beam.a === engine.nozzle ? beam.b : beam.a), engineSwing(live));
+    const nozzle = toScreen(nozzleAt.x, nozzleAt.y);
+    const ahead = toScreen(nozzleAt.x + outward.x, nozzleAt.y + outward.y);
+    const reach = Math.hypot(ahead.x - nozzle.x, ahead.y - nozzle.y) || 1;
+    const u = { x: (ahead.x - nozzle.x) / reach, y: (ahead.y - nozzle.y) / reach };
+    const v = { x: -u.y, y: u.x };
     const bell = px(0.9, 7);
-    const throat = bell * 0.45;
-    const firing = sim?.engines[i].firing ?? 0;
-    if (firing > 0) {
-      const flame = bell * (2 + 4 * firing) * (0.9 + 0.2 * Math.random());
-      context.fillStyle = COLORS.flame;
-      context.beginPath();
-      context.moveTo(nozzle.x + uy * bell * 0.8 + ux * bell, nozzle.y - ux * bell * 0.8 + uy * bell);
-      context.lineTo(nozzle.x - uy * bell * 0.8 + ux * bell, nozzle.y + ux * bell * 0.8 + uy * bell);
-      context.lineTo(nozzle.x + ux * (bell + flame), nozzle.y + uy * (bell + flame));
-      context.closePath();
-      context.fill();
-    }
-    context.fillStyle = COLORS.engine;
-    context.strokeStyle = COLORS.beamShadow;
-    context.lineWidth = 2;
-    context.beginPath();
-    context.moveTo(nozzle.x + uy * throat, nozzle.y - ux * throat);
-    context.lineTo(nozzle.x - uy * throat, nozzle.y + ux * throat);
-    context.lineTo(nozzle.x - uy * bell + ux * bell, nozzle.y + ux * bell + uy * bell);
-    context.lineTo(nozzle.x + uy * bell + ux * bell, nozzle.y - ux * bell + uy * bell);
-    context.closePath();
-    context.fill();
-    context.stroke();
+    const mouth = { x: nozzle.x + u.x * bell * 1.3, y: nozzle.y + u.y * bell * 1.3 };
+    const firing = live?.firing ?? 0;
+    if (firing > 0) drawFlame(mouth, u, v, bell, firing, airAround(nozzleAt.x, nozzleAt.y, sim.time)?.thickness ?? 0);
+    drawBell(nozzle, mouth, u, v, bell, firing);
     if (camera.scale >= LABEL_MIN_SCALE) drawLabel(`engine${i + 1}`, nozzle.x + bell + 4, nozzle.y, COLORS.engine);
   });
+}
+
+function drawSmoke() {
+  if (!sim) return;
+  for (const puff of exhaust.visible(sim.time)) {
+    const radius = puff.radius * camera.scale;
+    const s = toScreen(puff.x, puff.y);
+    if (radius < 0.5 || !onScreen(s, radius)) continue;
+    const soft = context.createRadialGradient(s.x, s.y, 0, s.x, s.y, radius);
+    soft.addColorStop(0, `rgba(${COLORS.smoke.join(', ')}, ${puff.alpha})`);
+    soft.addColorStop(1, `rgba(${COLORS.smoke.join(', ')}, 0)`);
+    context.fillStyle = soft;
+    context.beginPath();
+    context.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+}
+
+function updateExhaust(seconds) {
+  const elapsed = sim.time - smokeClock;
+  smokeClock = sim.time;
+  wheelTurns = wheelTurns.map((turn, i) => turn + sim.wheelFill(sim.wheels[i]) * WHEEL_LOOK_TURNS_PER_SECOND * Math.PI * 2 * seconds);
+  if (elapsed <= 0) return;
+  exhaust.advance(elapsed);
+  for (const engine of sim.engines) {
+    if (!engine.firing) continue;
+    const nozzle = { x: sim.x[engine.nozzle], y: sim.y[engine.nozzle] };
+    const back = { x: sim.x[engine.back], y: sim.y[engine.back] };
+    const velocity = { x: sim.vx[engine.nozzle], y: sim.vy[engine.nozzle] };
+    exhaust.emit(nozzle, velocity, exhaustOutward(nozzle, back, engineSwing(engine)), engine.firing, sim.time, elapsed);
+  }
 }
 
 function drawWheels(nodes) {
@@ -1655,20 +1843,31 @@ function drawWheels(nodes) {
     const s = toScreen((a.x + b.x) / 2, (a.y + b.y) / 2);
     const live = sim?.wheels[i];
     const fill = live ? Math.max(-1, Math.min(1, sim.wheelFill(live))) : 0;
-    context.fillStyle = COLORS.beamShadow;
-    context.strokeStyle = COLORS.wheel;
+    const disc = context.createRadialGradient(s.x + sunlight.x * radius * 0.4, s.y + sunlight.y * radius * 0.4, radius * 0.1, s.x, s.y, radius);
+    disc.addColorStop(0, METAL.light);
+    disc.addColorStop(1, METAL.dark);
+    context.fillStyle = disc;
+    context.strokeStyle = COLORS.beamShadow;
     context.lineWidth = 2;
     context.beginPath();
     context.arc(s.x, s.y, radius, 0, Math.PI * 2);
     context.fill();
     context.stroke();
-    if (fill !== 0) {
-      context.fillStyle = COLORS.wheel;
-      context.beginPath();
+    context.strokeStyle = COLORS.rivet;
+    context.lineWidth = Math.max(1.5, radius * 0.14);
+    context.beginPath();
+    for (let k = 0; k < 3; k += 1) {
+      const angle = (wheelTurns[i] ?? 0) + (k * Math.PI * 2) / 3;
       context.moveTo(s.x, s.y);
-      context.arc(s.x, s.y, radius * 0.75, -Math.PI / 2, -Math.PI / 2 - fill * Math.PI * 2, fill > 0);
-      context.closePath();
-      context.fill();
+      context.lineTo(s.x + Math.cos(angle) * radius * 0.8, s.y + Math.sin(angle) * radius * 0.8);
+    }
+    context.stroke();
+    if (fill !== 0) {
+      context.strokeStyle = COLORS.wheel;
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(s.x, s.y, radius + 3, -Math.PI / 2, -Math.PI / 2 - fill * Math.PI * 2, fill > 0);
+      context.stroke();
     }
     drawLabel(`wheel${i + 1}`, s.x + radius + 4, s.y - radius, COLORS.wheel);
   });
@@ -1677,17 +1876,21 @@ function drawWheels(nodes) {
 function drawSeparators(nodes) {
   const index = new Map(design.beams.map((beam, i) => [beam.id, i]));
   const beams = beamMap(design);
-  context.setLineDash([6, 5]);
+  const width = px(0.35, 4);
+  context.lineCap = 'butt';
   for (const { beam: beamId, group } of design.separators) {
     const beam = beams.get(beamId);
     if (!beam || beamGone(index.get(beamId))) continue;
     const a = nodes.get(beam.a);
     const b = nodes.get(beam.b);
-    drawSegment(a, b, COLORS.separator, px(0.35, 4));
+    drawSegment(a, b, COLORS.hazard, width + 2);
+    context.setLineDash([width, width]);
+    drawSegment(a, b, COLORS.separator, width);
+    context.setLineDash([]);
     const mid = toScreen((a.x + b.x) / 2, (a.y + b.y) / 2);
     drawLabel(`sep${group}`, mid.x + 6, mid.y - 6, COLORS.separator);
   }
-  context.setLineDash([]);
+  context.lineCap = 'round';
 }
 
 function drawRanges(nodes) {
@@ -1746,6 +1949,8 @@ function draw() {
     drawMapMarker();
     return;
   }
+  aimSunlight();
+  drawSmoke();
   const nodes = positions();
   drawTanks(nodes);
   drawStructure();
@@ -1775,6 +1980,7 @@ function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
   if (sim) advance(seconds);
+  if (sim) updateExhaust(seconds);
   if (sim) updatePrediction(now);
   renderStats();
   renderWatch(now);

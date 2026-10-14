@@ -109,7 +109,7 @@ export function airAround(x, y, time) {
   for (const target of AIRY_BODIES) {
     const state = bodyState(target, time);
     const altitude = Math.hypot(x - state.x, y - state.y) - target.radius;
-    if (altitude < target.atmosphere.top) return { body: target, altitude };
+    if (altitude < target.atmosphere.top) return { body: target, altitude, thickness: airDensity(target, altitude) / target.atmosphere.seaLevelDensity };
   }
   return null;
 }
