@@ -297,9 +297,7 @@ function tapCpu(point) {
   const beam = hitBeam(point);
   if (!beam) return;
   mountCpu(design, beam.id);
-  if (!design.program.trim()) design.program = NEW_PROGRAM_INTRO + (design.motors.length ? 'motor1.power = 1
-' : '# Add a motor, then drive it here with motor1.power = 1
-');
+  if (!design.program.trim()) design.program = NEW_PROGRAM_INTRO + (design.motors.length ? 'motor1.power = 1\n' : '# Add a motor, then drive it here with motor1.power = 1\n');
   commit();
   renderCpu();
   say('CPU mounted. Write its program in the panel.');
