@@ -36,11 +36,15 @@ can be lifted out later without untangling the rest.
    {
      title: 'Wave Tank',
      href: 'apps/wave-tank/',
+     category: 'simulations',
      poster: 'assets/img/posters/wave-tank.webp',
      blurb: 'One line, shown on hover.',
      status: 'live',
    }
    ```
+
+`category` is the `id` of one of the `CATEGORIES` at the top of the same file; the home
+page groups cards under those headings, and its search bar matches titles and blurbs.
 
 `status: 'planned'` renders a dashed placeholder card and ignores `href`.
 
