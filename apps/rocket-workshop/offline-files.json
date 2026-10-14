@@ -1,0 +1,21 @@
+{
+  "bytes": 153970,
+  "files": [
+    "./",
+    "index.html",
+    "js/cpu.js",
+    "js/design.js",
+    "js/main.js",
+    "js/planets.js",
+    "js/presets.js",
+    "js/share.js",
+    "js/sim.js",
+    "manifest.webmanifest",
+    "style.css",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rocket Workshop &mdash; kmann314</title>
+<meta name="description" content="Build rockets from beams, joints, engines, fuel tanks and separators, program their flight computer, and fly them around a 1/20 scale Earth and Moon. Prototype.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Rocket Workshop</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-stage aria-label="Launch pad. Drag between points to add beams, add engines, tanks and a CPU, then press Run to fly."></canvas>
+  <div class="rw-overlay">
+    <div class="rw-toolbar" role="toolbar" aria-label="Tools">
+      <div class="rw-group" role="group" aria-label="Tool" data-tools>
+        <button type="button" data-tool="beam" title="Drag between two points to add a beam (1)">Beam</button>
+        <button type="button" data-tool="engine" title="Tap a beam near the nozzle end to add an engine (2)">Engine</button>
+        <button type="button" data-tool="tank" title="Tap a beam to make it a fuel tank (3)">Tank</button>
+        <button type="button" data-tool="separator" title="Tap beams that hold stages together (4)">Separator</button>
+        <button type="button" data-tool="motor" title="Tap the beam to turn, then the beam it pushes against (5)">Motor</button>
+        <button type="button" data-tool="sensor" title="Add touch sensors, gyros, angle sensors and rangefinders (6)">Sensor</button>
+        <button type="button" data-tool="cpu" title="Tap a beam to mount the CPU on it (7)">CPU</button>
+        <button type="button" data-tool="pen" title="Tap a joint or beam to add a pen that draws its path (8)">Pen</button>
+        <button type="button" data-tool="move" title="Drag joints to move them (9)">Move</button>
+        <button type="button" data-tool="erase" title="Tap a joint or beam to remove it">Erase</button>
+      </div>
+      <button type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" data-redo title="Redo (Ctrl+Y)">Redo</button>
+      <button type="button" data-fit title="Show the whole rocket (F)">Fit</button>
+      <button type="button" class="rw-primary" data-run title="Launch or stop (Space)">Run</button>
+    </div>
+    <div class="rw-layers" role="toolbar" aria-label="Layers" data-layers></div>
+    <div class="rw-layers" role="group" aria-label="Sensor kind" data-sensor-kinds hidden>
+      <button type="button" data-sensor-kind="touch" title="Tap a joint: reads 1 while it touches the ground">Touch</button>
+      <button type="button" data-sensor-kind="gyro" title="Tap a beam: reads its tilt and spin">Gyro</button>
+      <button type="button" data-sensor-kind="angle" title="Tap two beams that share a joint: reads the angle between them">Angle</button>
+      <button type="button" data-sensor-kind="range" title="Tap a beam near one end: reads the distance to the ground outward from that end">Range</button>
+    </div>
+    <div class="rw-layers" role="group" aria-label="Separator group" data-separator-groups hidden>
+      <button type="button" data-separator-group="1">Group 1</button>
+      <button type="button" data-separator-group="2">Group 2</button>
+      <button type="button" data-separator-group="3">Group 3</button>
+      <button type="button" data-separator-group="4">Group 4</button>
+    </div>
+  </div>
+  <p class="rw-hud" data-hud hidden></p>
+  <p class="rw-status" data-status></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Rocket">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Rocket</button>
+  <div class="studio-panel-body">
+    <section class="rw-section">
+      <h2>Flight</h2>
+      <dl class="rw-stats">
+        <div><dt>Altitude</dt><dd data-stat="altitude">&ndash;</dd></div>
+        <div><dt>Speed</dt><dd data-stat="speed">&ndash;</dd></div>
+        <div><dt>Climb</dt><dd data-stat="vspeed">&ndash;</dd></div>
+        <div><dt>Fuel</dt><dd data-stat="fuel">&ndash;</dd></div>
+        <div><dt>Mass</dt><dd data-stat="mass">&ndash;</dd></div>
+        <div><dt>Time</dt><dd data-stat="time">&ndash;</dd></div>
+      </dl>
+      <label class="rw-check"><input type="checkbox" data-follow checked> Camera follows the rocket</label>
+      <label class="rw-field">
+        <span>Time</span>
+        <select data-warp></select>
+      </label>
+      <div class="rw-row rw-stages" data-stages hidden></div>
+      <div class="rw-row">
+        <button type="button" data-clear-trails>Clear pen lines</button>
+      </div>
+    </section>
+
+    <section class="rw-section">
+      <h2>Engines</h2>
+      <ul class="rw-motors" data-engines></ul>
+      <p class="rw-note" data-no-engines>No engines yet. Pick the <strong>Engine</strong> tool and tap a beam near the end where the nozzle goes. The engine pushes toward the other end, and burns fuel from the nearest tank still attached to it.</p>
+    </section>
+
+    <section class="rw-section">
+      <h2>Motors</h2>
+      <ul class="rw-motors" data-motors></ul>
+      <p class="rw-note" data-no-motors>No motors yet. Pick the <strong>Motor</strong> tool, tap the beam that should turn, then tap a beam joined to it at the same joint. A motor between an engine and its tank steers the thrust.</p>
+    </section>
+
+    <section class="rw-section">
+      <h2>CPU</h2>
+      <p class="rw-note" data-no-cpu>No CPU yet. Pick the <strong>CPU</strong> tool and tap a beam to mount one. Then write a program here that reads sensors and drives engines and motors.</p>
+      <div data-cpu-body hidden>
+        <label class="rw-field">
+          <span>Clock</span>
+          <select data-clock></select>
+        </label>
+        <div class="rw-field rw-code-field">
+          <div class="rw-code-head">
+            <span id="rw-program-label">Program</span>
+            <button type="button" data-code-open>Full screen</button>
+          </div>
+          <textarea class="rw-code" data-code rows="14" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-labelledby="rw-program-label"></textarea>
+        </div>
+        <p class="rw-error" data-code-error role="status"></p>
+        <p class="rw-note" data-cpu-usage></p>
+        <dl class="rw-watch" data-watch hidden></dl>
+        <details class="rw-help">
+          <summary>How the language works</summary>
+          <pre class="rw-example"># Lines starting with # are notes.
+keep target = 100       # keep: set once, then remember
+error = target - altitude
+
+if error &gt; 0 and fuel &gt; 0 then
+  engine1.throttle = clamp(error * 0.01, 0, 1)
+elseif vspeed &lt; -5 then
+  engine1.throttle = 0.6
+else
+  engine1.throttle = 0
+end
+
+if fuel &lt; 1 then sep1.fire = 1 end</pre>
+          <p class="rw-note">Math: + - * / % ^ and brackets. Compare with == != &lt; &lt;= &gt; &gt;=, combine with and, or, not. true is 1 and false is 0. Angles are in degrees.</p>
+        </details>
+        <details class="rw-help">
+          <summary>What the program can use</summary>
+          <dl class="rw-reference" data-reference></dl>
+        </details>
+        <div class="rw-row">
+          <button type="button" data-remove-cpu>Remove CPU</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="rw-section">
+      <h2>Rockets</h2>
+      <div class="rw-row">
+        <select data-preset aria-label="Example rocket"></select>
+        <button type="button" data-load>Load</button>
+      </div>
+      <div class="rw-row">
+        <button type="button" data-copy-rocket>Copy rocket</button>
+        <button type="button" data-paste-rocket>Paste rocket</button>
+      </div>
+      <p class="rw-note">Loading or pasting replaces the rocket on the pad. Undo brings it back. Copy rocket turns the whole rocket, program included, into text you can save anywhere or send to someone.</p>
+    </section>
+
+    <section class="rw-section">
+      <h2>Building</h2>
+      <label class="rw-check"><input type="checkbox" data-snap checked> Snap joints to a 50 cm grid</label>
+      <p class="rw-note">Earth and the Moon are 1/20 of their real size, with real surface gravity, so low orbit takes about 1.8 km/s and one lap about 19 minutes. Beams are rigid and pass through each other, and only joints touch the ground. Air thins out above the launch pad and is gone at 35 km. Layers only organise the build. Drag with the right mouse button or two fingers to pan, and scroll or pinch to zoom all the way out to the Moon.</p>
+    </section>
+
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<dialog class="rw-code-dialog" data-code-dialog aria-label="CPU program">
+  <div class="rw-code-bar">
+    <h2>CPU program</h2>
+    <button type="button" data-code-close>Close</button>
+  </div>
+  <div class="rw-code-slot" data-code-slot></div>
+</dialog>
+
+<dialog class="rw-share-dialog" data-share-dialog aria-labelledby="rw-share-title">
+  <h2 id="rw-share-title" data-share-title>Paste a rocket</h2>
+  <p class="rw-note" data-share-note></p>
+  <textarea class="rw-code" data-share-text rows="8" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Rocket text"></textarea>
+  <p class="rw-error" data-share-error role="status"></p>
+  <div class="rw-row">
+    <button type="button" class="rw-primary" data-share-load>Load rocket</button>
+    <button type="button" data-share-close>Close</button>
+  </div>
+</dialog>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
