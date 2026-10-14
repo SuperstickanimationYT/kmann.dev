@@ -28,6 +28,8 @@ export const CPU_READINGS = {
   spin: 'how fast the CPU beam turns, degrees per second',
   mass: 'kilograms of everything still attached to the CPU',
   fuel: 'kilograms of fuel in tanks still attached to the CPU',
+  steer: 'the pilot\'s steering, from -1 (A or left arrow, counterclockwise) to 1 (D or right arrow, clockwise)',
+  throttle: 'the pilot\'s throttle lever, from 0 to 1',
   time: 'seconds since Run',
   dt: 'seconds since the previous pass began',
 };

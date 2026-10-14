@@ -638,3 +638,52 @@
   opacity: 0.4;
   cursor: default;
 }
+
+.rw-flight {
+  position: absolute;
+  bottom: 76px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: rgba(3, 8, 15, 0.85);
+  transform: translateX(-50%);
+  touch-action: none;
+  user-select: none;
+}
+
+.rw-flight button {
+  width: 48px;
+  height: 44px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.rw-flight button:active {
+  background: var(--accent);
+}
+
+.rw-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: min(220px, 40vw);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.rw-lever output {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.rw-lever input {
+  width: 100%;
+}

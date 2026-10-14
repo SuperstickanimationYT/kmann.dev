@@ -2,7 +2,7 @@ import { CPU_CLOCKS, ENGINE_DEFAULTS, MOTOR_DEFAULTS, PEN_COLORS, sharedNode } f
 
 const FORMAT = 'rocket-workshop';
 const VERSION = 1;
-const MOTOR_MODES = ['spin', 'swing'];
+const MOTOR_MODES = ['spin', 'swing', 'steer'];
 
 class RocketTextError extends Error {}
 
@@ -70,7 +70,7 @@ function parseRocket(text) {
     driven: motor.driven,
     base: motor.base,
     mode: MOTOR_MODES.includes(motor.mode) ? motor.mode : MOTOR_DEFAULTS.mode,
-    ...Object.fromEntries(['power', 'amplitude', 'frequency', 'phase', 'stallTorque', 'freeRpm'].map((key) => [key, finite(motor[key], MOTOR_DEFAULTS[key])])),
+    ...Object.fromEntries(['power', 'amplitude', 'frequency', 'phase', 'stallTorque', 'freeRpm', 'steerRange'].map((key) => [key, finite(motor[key], MOTOR_DEFAULTS[key])])),
   }));
 
   const endOf = (beamId, nodeId) => beamIds.has(beamId) && (beamById.get(beamId).a === nodeId || beamById.get(beamId).b === nodeId);
@@ -98,7 +98,7 @@ function parseRocket(text) {
       beam: engine.beam,
       nozzle: engine.nozzle,
       thrust: clamp(engine.thrust, 1, 1000, ENGINE_DEFAULTS.thrust),
-      throttle: clamp(engine.throttle, 0, 1, ENGINE_DEFAULTS.throttle),
+      limit: clamp(engine.limit, 0, 1, ENGINE_DEFAULTS.limit),
     })),
     tanks: [...new Set(list(data.tanks, 'tanks').filter((id) => beamIds.has(id)))],
     separators: onePerBeam(list(data.separators, 'separators').filter((separator) => beamIds.has(separator?.beam) && Number.isInteger(separator.group) && separator.group >= 1 && separator.group <= 9)).map(({ beam, group }) => ({ beam, group })),
