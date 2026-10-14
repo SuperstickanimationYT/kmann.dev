@@ -1,5 +1,5 @@
 {
-  "bytes": 111051,
+  "bytes": 118662,
   "files": [
     "./",
     "index.html",
@@ -7,6 +7,7 @@
     "js/design.js",
     "js/main.js",
     "js/presets.js",
+    "js/share.js",
     "js/sim.js",
     "manifest.webmanifest",
     "style.css",

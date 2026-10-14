@@ -1,6 +1,7 @@
 import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, toggleAngleSensor, toggleGyro, toggleSensor, withDefaults } from './design.js';
 import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
 import { PRESETS } from './presets.js';
+import { robotFromText, robotToText } from './share.js';
 import { Simulation, WORLD } from './sim.js';
 
 const NEW_PROGRAM_INTRO = `# This program runs over and over while the robot moves.
@@ -1051,16 +1052,61 @@ $('[data-fit]').addEventListener('click', fit);
 runButton.addEventListener('click', () => (sim ? stopRun() : startRun()));
 
 for (const [key, preset] of Object.entries(PRESETS)) presetSelect.add(new Option(preset.name, key));
-$('[data-load]').addEventListener('click', () => {
+function replaceDesign(next) {
   if (sim) stopRun();
-  design = PRESETS[presetSelect.value].build();
+  design = next;
   activeLayer = 0;
   focused = false;
+  pendingBeam = null;
   commit();
   renderLayers();
   renderCpu();
   renderMotors();
   fit();
+}
+
+$('[data-load]').addEventListener('click', () => replaceDesign(PRESETS[presetSelect.value].build()));
+
+const shareDialog = $('[data-share-dialog]');
+const shareText = $('[data-share-text]');
+const shareError = $('[data-share-error]');
+const SHARE_MODES = {
+  copy: { title: 'Copy this robot', note: "Your browser didn't allow copying, so select all of this text and copy it yourself." },
+  paste: { title: 'Paste a robot', note: 'Paste text made with Copy robot. It replaces the robot on the board, and Undo brings the old one back.' },
+};
+
+function openShare(mode, text) {
+  $('[data-share-title]').textContent = SHARE_MODES[mode].title;
+  $('[data-share-note]').textContent = SHARE_MODES[mode].note;
+  $('[data-share-load]').hidden = mode !== 'paste';
+  shareText.readOnly = mode !== 'paste';
+  shareText.value = text;
+  shareError.textContent = '';
+  shareDialog.showModal();
+  shareText.focus();
+  shareText.select();
+}
+
+$('[data-copy-robot]').addEventListener('click', async () => {
+  const text = robotToText(design);
+  try {
+    await navigator.clipboard.writeText(text);
+    say('Robot copied as text. Paste it anywhere to keep it, and use Paste robot to load it again.');
+  } catch {
+    openShare('copy', text);
+  }
+});
+$('[data-paste-robot]').addEventListener('click', () => openShare('paste', ''));
+$('[data-share-close]').addEventListener('click', () => shareDialog.close());
+$('[data-share-load]').addEventListener('click', () => {
+  const result = robotFromText(shareText.value);
+  if (result.error) {
+    shareError.textContent = result.error;
+    return;
+  }
+  shareDialog.close();
+  replaceDesign(result.design);
+  say('Robot loaded. Undo brings back the one you had before.');
 });
 
 window.addEventListener('keydown', (event) => {

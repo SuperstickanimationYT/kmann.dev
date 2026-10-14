@@ -116,12 +116,16 @@ end</pre>
     </section>
 
     <section class="rw-section">
-      <h2>Start from</h2>
+      <h2>Robots</h2>
       <div class="rw-row">
         <select data-preset aria-label="Example robot"></select>
         <button type="button" data-load>Load</button>
       </div>
-      <p class="rw-note">Loading replaces the robot on the board. Undo brings it back.</p>
+      <div class="rw-row">
+        <button type="button" data-copy-robot>Copy robot</button>
+        <button type="button" data-paste-robot>Paste robot</button>
+      </div>
+      <p class="rw-note">Loading or pasting replaces the robot on the board. Undo brings it back. Copy robot turns the whole robot, program included, into text you can save anywhere or send to someone.</p>
     </section>
 
     <section class="rw-section">
@@ -141,6 +145,17 @@ end</pre>
     <button type="button" data-code-close>Close</button>
   </div>
   <div class="rw-code-slot" data-code-slot></div>
+</dialog>
+
+<dialog class="rw-share-dialog" data-share-dialog aria-labelledby="rw-share-title">
+  <h2 id="rw-share-title" data-share-title>Paste a robot</h2>
+  <p class="rw-note" data-share-note></p>
+  <textarea class="rw-code" data-share-text rows="8" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Robot text"></textarea>
+  <p class="rw-error" data-share-error role="status"></p>
+  <div class="rw-row">
+    <button type="button" class="rw-primary" data-share-load>Load robot</button>
+    <button type="button" data-share-close>Close</button>
+  </div>
 </dialog>
 
 <script type="module" src="js/main.js"></script>
