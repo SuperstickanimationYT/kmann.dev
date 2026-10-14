@@ -4,7 +4,8 @@ import { PRESETS } from './presets.js';
 import { LIBRARY } from './programs.js';
 import { rocketFromText, rocketToText } from './share.js';
 import { predictPath } from './orbit.js';
-import { BODIES, EARTH, SUN, airAround, bodyState, dominantBody } from './planets.js';
+import { paintSprites, spriteFor } from './looks.js';
+import { AIRY_BODIES, BODIES, EARTH, SUN, bodyState, dominantBody } from './planets.js';
 import { ENGINE_FIRING, Simulation, TANK, WORLD } from './sim.js';
 
 const NEW_PROGRAM_INTRO = `# This program runs over and over while the rocket flies.
@@ -21,7 +22,11 @@ const FULL_PHYSICS_WARP = 10;
 const PREDICT_INTERVAL_MS = 200;
 const PATH_MIN_SPEED = 2;
 const SEPARATOR_GROUPS = 4;
-const SKY_SPACE = [5, 13, 24];
+const SPACE = '#000000';
+const STAR_COUNT = 260;
+const SPRITE_LIMIT_PX = 8000;
+const LINEAR_AIR_ABOVE_PX = 20000;
+const SATURN_RINGS = { inner: 1.24, outer: 2.27, tilt: 0.28, color: 'rgba(226, 205, 160, 0.55)' };
 
 const SENSOR_HINTS = {
   touch: 'Tap a joint to give it a touch sensor. It reads 1 while that joint touches the ground.',
@@ -1102,12 +1107,86 @@ function drawGrid() {
   }
 }
 
-function skyColor() {
-  const air = airAround(camera.x, camera.y, sim?.time ?? 0);
-  if (!air) return `rgb(${SKY_SPACE.join(', ')})`;
-  const t = Math.max(0, Math.min(1, air.altitude / air.body.atmosphere.top));
-  const mix = air.body.atmosphere.sky.map((ground, i) => Math.round(ground + (SKY_SPACE[i] - ground) * t));
-  return `rgb(${mix.join(', ')})`;
+const STARS = Array.from({ length: STAR_COUNT }, (_, i) => {
+  const hash = (n) => {
+    const x = Math.sin(n * 127.1 + i * 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  return { x: hash(1), y: hash(2), size: hash(3) < 0.9 ? 1 : 2, alpha: 0.25 + hash(4) * 0.6 };
+});
+
+function drawStars() {
+  for (const star of STARS) {
+    context.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
+    context.fillRect(star.x * view.width, star.y * view.height, star.size, star.size);
+  }
+}
+
+function airColor(rgb, alpha) {
+  return `rgba(${rgb.join(', ')}, ${alpha})`;
+}
+
+function drawAir(body, time) {
+  const center = bodyState(body, time);
+  const { top, sky } = body.atmosphere;
+  const surfaceRadius = body.radius * camera.scale;
+  const edgeRadius = (body.radius + top) * camera.scale;
+  const s = toScreen(center.x, center.y);
+  if (edgeRadius - surfaceRadius < 1 || !onScreen(s, edgeRadius)) return;
+  if (surfaceRadius < LINEAR_AIR_ABOVE_PX) {
+    const glow = context.createRadialGradient(s.x, s.y, surfaceRadius, s.x, s.y, edgeRadius);
+    glow.addColorStop(0, airColor(sky, 1));
+    glow.addColorStop(1, airColor(sky, 0));
+    context.fillStyle = glow;
+    context.beginPath();
+    context.arc(s.x, s.y, edgeRadius, 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+  const away = Math.hypot(camera.x - center.x, camera.y - center.y);
+  const ux = (camera.x - center.x) / away;
+  const uy = (camera.y - center.y) / away;
+  const ground = toScreen(center.x + ux * body.radius, center.y + uy * body.radius);
+  const edge = toScreen(center.x + ux * (body.radius + top), center.y + uy * (body.radius + top));
+  const fade = context.createLinearGradient(ground.x, ground.y, edge.x, edge.y);
+  fade.addColorStop(0, airColor(sky, 1));
+  fade.addColorStop(1, airColor(sky, 0));
+  context.fillStyle = fade;
+  context.fillRect(0, 0, view.width, view.height);
+}
+
+function drawSunGlow(s, screenRadius) {
+  const glow = context.createRadialGradient(s.x, s.y, screenRadius * 0.6, s.x, s.y, screenRadius * 3 + 24);
+  glow.addColorStop(0, 'rgba(255, 236, 170, 0.9)');
+  glow.addColorStop(0.35, 'rgba(255, 190, 90, 0.25)');
+  glow.addColorStop(1, 'rgba(255, 170, 60, 0)');
+  context.fillStyle = glow;
+  context.beginPath();
+  context.arc(s.x, s.y, screenRadius * 3 + 24, 0, Math.PI * 2);
+  context.fill();
+}
+
+function drawRings(s, screenRadius, half) {
+  context.save();
+  context.translate(s.x, s.y);
+  context.rotate(-camera.rotation);
+  context.scale(1, SATURN_RINGS.tilt);
+  context.strokeStyle = SATURN_RINGS.color;
+  context.lineWidth = (SATURN_RINGS.outer - SATURN_RINGS.inner) * screenRadius;
+  context.beginPath();
+  const middle = ((SATURN_RINGS.inner + SATURN_RINGS.outer) / 2) * screenRadius;
+  if (half === 'back') context.arc(0, 0, middle, Math.PI, Math.PI * 2);
+  else context.arc(0, 0, middle, 0, Math.PI);
+  context.stroke();
+  context.restore();
+}
+
+function drawSprite(sprite, s, screenRadius) {
+  context.save();
+  context.translate(s.x, s.y);
+  context.rotate(-camera.rotation);
+  context.drawImage(sprite.image, -screenRadius, -screenRadius, screenRadius * 2, screenRadius * 2);
+  context.restore();
 }
 
 function onScreen(s, margin) {
@@ -1144,18 +1223,21 @@ function drawBody(body, time) {
   const screenRadius = body.radius * camera.scale;
   if (!onScreen(s, screenRadius + 80)) return;
   drawBodyName(body, s);
+  const sprite = spriteFor(body);
+  if (body === SUN) drawSunGlow(s, screenRadius);
   if (screenRadius < BODY_DOT_PX) {
-    context.fillStyle = body.color;
+    context.fillStyle = sprite?.color ?? body.color;
     context.beginPath();
     context.arc(s.x, s.y, BODY_DOT_PX, 0, Math.PI * 2);
     context.fill();
     return;
   }
-  if (body === SUN) {
-    context.fillStyle = 'rgba(255, 210, 122, 0.18)';
-    context.beginPath();
-    context.arc(s.x, s.y, screenRadius * 1.4 + 8, 0, Math.PI * 2);
-    context.fill();
+  const ringed = body.name === 'Saturn';
+  if (ringed) drawRings(s, screenRadius, 'back');
+  if (sprite && screenRadius < SPRITE_LIMIT_PX) {
+    drawSprite(sprite, s, screenRadius);
+    if (ringed) drawRings(s, screenRadius, 'front');
+    return;
   }
   const toCamera = Math.atan2(camera.y - center.y, camera.x - center.x);
   const span = Math.min(Math.PI, (diagonal / body.radius) * 1.5 + 0.001);
@@ -1176,11 +1258,13 @@ function drawBody(body, time) {
   context.closePath();
   context.fillStyle = body.color;
   context.fill();
+  if (ringed) drawRings(s, screenRadius, 'front');
 }
 
 function drawBodies() {
   const time = sim?.time ?? 0;
   for (const body of BODIES) drawOrbitLine(body, time);
+  for (const body of AIRY_BODIES) drawAir(body, time);
   for (const body of BODIES) drawBody(body, time);
   const earthNow = bodyState(EARTH, time);
   const earthAtLaunch = bodyState(EARTH, 0);
@@ -1651,10 +1735,11 @@ function drawBeamPreview() {
 }
 
 function draw() {
-  context.fillStyle = skyColor();
+  context.fillStyle = SPACE;
   context.fillRect(0, 0, view.width, view.height);
-  if (!sim && camera.scale >= GRID_MIN_SCALE) drawGrid();
+  drawStars();
   drawBodies();
+  if (!sim && camera.scale >= GRID_MIN_SCALE) drawGrid();
   drawTrails();
   drawPrediction();
   if (camera.scale < MAP_SCALE) {
@@ -1911,6 +1996,7 @@ $('[data-remove-cpu]').addEventListener('click', () => {
   renderCpu();
 });
 
+paintSprites(BODIES);
 new ResizeObserver(resize).observe(canvas);
 resize();
 refreshProgram();
