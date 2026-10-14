@@ -18,6 +18,8 @@ const HOLD_WITH_GIMBAL = `# Hold attitude by swinging the engine (a gimbal).
 # steers while the engine burns. A and D move the aim.
 # Needs: engine1, and motor1 between engine1's beam and the rocket.
 # Give motor1 a lot of torque (around 30000 N·m) or air drag swings it.
+# This builds the gimbal from a hinge. Engines also have a built-in
+# gimbal range, which A and D or engine1.gimbal tilt with no motor.
 
 keep aim = 0                # degrees from straight up, counterclockwise positive
 keep turnRate = 20          # degrees per second while A or D is held
@@ -76,8 +78,9 @@ const LAUNCH_TO_ORBIT = `# Launch to orbit with no input.
 # 3. Cut the engine once the highest point of the path is high enough.
 # 4. Coast up. Near the top, point sideways and burn until the lowest
 #    point is above the air. That is an orbit.
-# Needs: engine1 and wheel1. To steer with a gimbal instead, swap the
-# steering line for the two gimbal lines from "Hold attitude by gimbal".
+# Needs: engine1 and wheel1. To steer with the engine's built-in gimbal
+# instead, change the last line to:
+#   engine1.gimbal = -clamp(stiffness * (aim - pitch) - damping * spin, -1, 1)
 
 keep targetApoapsis = 60000 # meters, how high the top of the orbit should be
 keep safePeriapsis = 40000  # meters, done once the lowest point is this high (air ends at 35 km)

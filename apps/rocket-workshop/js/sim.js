@@ -26,7 +26,8 @@ export const ENGINE_FIRING = 'an engine is firing';
 
 export const RAILS = { shortestStep: 1, longestStep: 10, stepsPerCall: 400, cpuOpsPerStep: 600, restingSpeed: 1 };
 
-export const WHEEL = { kg: 200, storeSeconds: 30, fullTorqueSpin: 0.2 };
+export const WHEEL = { kg: 200, storeSeconds: 30 };
+export const ASSIST = { fullTurnRadians: 0.1, fullSpinRadPerSecond: 0.2 };
 
 const TAU = Math.PI * 2;
 
@@ -65,7 +66,7 @@ export class Simulation {
     this.vx = new Float64Array(count);
     this.vy = new Float64Array(count);
     this.time = 0;
-    this.input = { steer: 0, throttle: 0 };
+    this.input = { steer: 0, throttle: 0, assist: true };
     const mass = new Float64Array(count).fill(WORLD.pinKg);
     const beams = beamMap(design);
     const beamIndex = new Map(design.beams.map((beam, i) => [beam.id, i]));
@@ -125,7 +126,7 @@ export class Simulation {
       const b = index.get(beam.b);
       mass[a] += WHEEL.kg / 2;
       mass[b] += WHEEL.kg / 2;
-      return { settings, a, b, stored: 0, applied: 0, cpuTorque: 0, cpuControlled: false };
+      return { settings, a, b, stored: 0, applied: 0, cpuTorque: 0, cpuControlled: false, holdAngle: null };
     });
 
     this.tanks = (design.tanks ?? []).map((beamId) => {
@@ -138,7 +139,7 @@ export class Simulation {
       mass[nozzle] += ENGINE.kg;
       const back = otherEndOf(settings.beam, settings.nozzle);
       const byDistance = [...this.tanks].sort((p, q) => this.distanceTo(nozzle, p) - this.distanceTo(nozzle, q));
-      return { settings, nozzle, back, tanksNearestFirst: byDistance, cpuThrottle: 0, cpuControlled: false, firing: 0 };
+      return { settings, nozzle, back, tanksNearestFirst: byDistance, cpuThrottle: 0, cpuControlled: false, cpuGimbal: 0, cpuSteers: false, firing: 0, tilt: 0, holdAngle: null };
     });
     this.separatorGroups = new Map();
     for (const { beam, group } of design.separators ?? []) {
@@ -163,7 +164,10 @@ export class Simulation {
     });
     this.engines.forEach((engine, i) => {
       engine.cpuControlled = Boolean(this.processor?.program.drives.engine.has(i));
+      engine.cpuSteers = Boolean(this.processor?.program.drives.gimbal.has(i));
     });
+    const drives = this.processor?.program.drives;
+    this.programSteers = Boolean(drives && (drives.motor.size || drives.wheel.size || drives.gimbal.size));
     this.wheels.forEach((wheel, i) => {
       wheel.cpuControlled = Boolean(this.processor?.program.drives.wheel.has(i));
     });
@@ -357,6 +361,7 @@ export class Simulation {
       case 'pen-down': return this.pens[port.index].down;
       case 'engine-throttle': return this.engines[port.index].cpuThrottle;
       case 'engine-thrust': return this.engines[port.index].settings.thrust * 1000;
+      case 'engine-gimbal': return this.engines[port.index].cpuGimbal;
       case 'sep-fire': return this.separatorGroups.get(port.index + 1)?.fired ? 1 : 0;
       case 'range-distance': return this.measureRange(this.ranges[port.index]);
       case 'wheel-torque': return this.wheels[port.index].cpuTorque;
@@ -370,6 +375,7 @@ export class Simulation {
     if (port.kind === 'pen-down') this.pens[port.index].down = value === 0 ? 0 : 1;
     if (port.kind === 'engine-throttle') this.engines[port.index].cpuThrottle = Math.max(0, Math.min(1, value));
     if (port.kind === 'sep-fire' && value !== 0) this.fireSeparators(port.index + 1);
+    if (port.kind === 'engine-gimbal') this.engines[port.index].cpuGimbal = Math.max(-1, Math.min(1, value));
     if (port.kind === 'wheel-torque') this.wheels[port.index].cpuTorque = Math.max(-1, Math.min(1, value));
   }
 
@@ -401,22 +407,28 @@ export class Simulation {
     for (const engine of this.engines) {
       const throttle = this.engineThrottle(engine);
       engine.firing = 0;
-      if (throttle <= 0) continue;
       const piece = this.pieceOf(engine.nozzle);
-      const tank = engine.tanksNearestFirst.find((t) => t.fuel > 0 && this.piece[t.a] === piece);
-      if (!tank) continue;
+      const tank = throttle > 0 && engine.tanksNearestFirst.find((t) => t.fuel > 0 && this.piece[t.a] === piece);
+      if (!tank) {
+        engine.holdAngle = null;
+        continue;
+      }
       const thrust = engine.settings.thrust * 1000 * throttle;
       const fuelUsed = Math.min(tank.fuel, (thrust / (ENGINE.isp * WORLD.standardGravity)) * h);
       tank.fuel -= fuelUsed;
       burned = true;
       engine.firing = throttle;
-      const dx = this.x[engine.back] - this.x[engine.nozzle];
-      const dy = this.y[engine.back] - this.y[engine.nozzle];
-      const length = Math.hypot(dx, dy);
+      engine.tilt = engine.cpuSteers ? engine.cpuGimbal : -this.turnCommand(engine, { a: engine.nozzle, b: engine.back });
+      const swing = (engine.settings.gimbal * engine.tilt * Math.PI) / 180;
+      const ax = this.x[engine.back] - this.x[engine.nozzle];
+      const ay = this.y[engine.back] - this.y[engine.nozzle];
+      const length = Math.hypot(ax, ay);
+      const dx = (ax * Math.cos(swing) - ay * Math.sin(swing)) / length;
+      const dy = (ax * Math.sin(swing) + ay * Math.cos(swing)) / length;
       const impulse = (thrust * h) / 2;
       for (const node of [engine.nozzle, engine.back]) {
-        this.vx[node] += (dx / length) * impulse * this.inverseMass[node];
-        this.vy[node] += (dy / length) * impulse * this.inverseMass[node];
+        this.vx[node] += dx * impulse * this.inverseMass[node];
+        this.vy[node] += dy * impulse * this.inverseMass[node];
       }
     }
     if (burned) this.updateMass();
@@ -426,10 +438,20 @@ export class Simulation {
     return wheel.stored / (wheel.settings.torque * 1000 * WHEEL.storeSeconds);
   }
 
+  turnCommand(actuator, beam) {
+    if (this.input.steer !== 0 || !this.input.assist || this.programSteers) {
+      actuator.holdAngle = null;
+      return -this.input.steer;
+    }
+    const angle = this.beamAngle(beam);
+    actuator.holdAngle ??= angle;
+    const offTarget = wrapAngle(angle - actuator.holdAngle) / ASSIST.fullTurnRadians;
+    const turning = this.beamSpin(beam) / ASSIST.fullSpinRadPerSecond;
+    return Math.max(-1, Math.min(1, -(offTarget + turning)));
+  }
+
   wheelCommand(wheel) {
-    if (wheel.cpuControlled) return wheel.cpuTorque;
-    if (this.input.steer !== 0 || !wheel.settings.hold) return -this.input.steer;
-    return Math.max(-1, Math.min(1, -this.beamSpin(wheel) / WHEEL.fullTorqueSpin));
+    return wheel.cpuControlled ? wheel.cpuTorque : this.turnCommand(wheel, wheel);
   }
 
   spinWheels(h) {

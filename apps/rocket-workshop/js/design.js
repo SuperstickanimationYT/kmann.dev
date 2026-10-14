@@ -39,7 +39,7 @@ export function toggleSensor(design, nodeId) {
   return design.sensors.length > before;
 }
 
-export const ENGINE_DEFAULTS = { thrust: 60, limit: 1 };
+export const ENGINE_DEFAULTS = { thrust: 60, limit: 1, gimbal: 5 };
 
 export function toggleEngine(design, beamId, nozzle, settings = {}) {
   const existing = design.engines.find((engine) => engine.beam === beamId);
@@ -72,7 +72,7 @@ export function toggleRange(design, beamId, tip) {
   return true;
 }
 
-export const WHEEL_DEFAULTS = { torque: 20, hold: true };
+export const WHEEL_DEFAULTS = { torque: 20 };
 
 export function toggleWheel(design, beamId) {
   const before = design.wheels.length;

@@ -58,6 +58,7 @@ export const DEVICES = {
     ports: {
       throttle: { write: true, help: 'set from 0 to 1 for no thrust up to full thrust' },
       thrust: { help: 'full thrust in newtons' },
+      gimbal: { write: true, help: 'set from -1 to 1 to tilt the thrust across the engine\'s gimbal range, counterclockwise positive' },
     },
   },
   sep: {
@@ -286,7 +287,7 @@ export function compile(source, hardware) {
     const slots = new Map(variables.map((name, i) => [name, i]));
     const ports = [];
     const portIds = new Map();
-    const drives = { motor: new Set(), engine: new Set(), wheel: new Set() };
+    const drives = { motor: new Set(), engine: new Set(), wheel: new Set(), gimbal: new Set() };
     const code = [];
     let onceFlags = 0;
 
@@ -339,7 +340,8 @@ export function compile(source, hardware) {
       const spec = device.ports[place.port];
       if (!spec) throw new CodeError(place.line, `${place.device} has ${Object.keys(device.ports).join(' and ')}, not "${place.port}".`);
       if (writing && !spec.write) throw new CodeError(place.line, `${place.device}.${place.port} is a reading. A program can't set it.`);
-      if (writing && drives[kind]) drives[kind].add(index);
+      const driven = kind === 'engine' && place.port === 'gimbal' ? 'gimbal' : kind;
+      if (writing && drives[driven]) drives[driven].add(index);
       return { io: portId({ kind: `${kind}-${place.port}`, index }) };
     }
 
