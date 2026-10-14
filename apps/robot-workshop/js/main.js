@@ -1,4 +1,4 @@
-import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, toggleAngleSensor, toggleGyro, toggleSensor, withDefaults } from './design.js';
+import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, toggleAngleSensor, toggleGyro, togglePen, toggleSensor, withDefaults } from './design.js';
 import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
 import { PRESETS } from './presets.js';
 import { robotFromText, robotToText } from './share.js';
@@ -10,6 +10,8 @@ const NEW_PROGRAM_INTRO = `# This program runs over and over while the robot mov
 
 `;
 const WATCH_INTERVAL_MS = 150;
+const PEN_STEP_METERS = 0.003;
+const PEN_MAX_POINTS = 8000;
 
 const SENSOR_HINTS = {
   touch: 'Tap a joint to give it a touch sensor. It reads 1 while that joint touches the ground.',
@@ -34,6 +36,7 @@ const TOOL_HINTS = {
   motor: 'Tap the beam the motor should turn.',
   sensor: 'Pick a sensor kind above the board, then tap to add it. Tap it again to remove it.',
   cpu: 'Tap a beam to mount the CPU on it. Its tilt sensor measures that beam.',
+  pen: 'Tap a joint, or the middle of a beam, to give it a pen. While the robot runs, the pen draws its path.',
   move: 'Drag a joint to move it. Drag empty space to pan.',
   erase: 'Tap a joint or a beam to remove it.',
 };
@@ -118,6 +121,7 @@ let lastFrame = performance.now();
 let accumulator = 0;
 let fittedOnce = false;
 let compiled = null;
+let trails = [];
 let drivenKey = '';
 let lastWatch = 0;
 
@@ -145,6 +149,7 @@ function commit() {
   redoStack.length = 0;
   committed = cloneDesign(design);
   bestTime = null;
+  if (!sim) trails = [];
   save();
   refreshProgram();
   renderControls();
@@ -330,6 +335,37 @@ function tapSensor(point) {
   say(added ? `angle${design.angles.length} added. It reads how far the first beam turns against the second.` : 'Angle sensor removed. The ones after it moved up a number.');
 }
 
+function tapPen(point) {
+  const node = hitNode(point);
+  const beam = node ? null : hitBeam(point);
+  if (!node && !beam) return;
+  const added = togglePen(design, node ? { node: node.id } : { beam: beam.id });
+  commit();
+  renderCpu();
+  say(added ? `pen${design.pens.length} added. Press Run to see its path.` : 'Pen removed. The ones after it moved up a number.');
+}
+
+function recordTrails() {
+  sim.pens.forEach((pen, i) => {
+    const lines = trails[i];
+    const line = lines[lines.length - 1];
+    if (!pen.down) {
+      if (line.length) lines.push([]);
+      return;
+    }
+    const point = sim.penPoint(pen);
+    const last = line[line.length - 1];
+    if (last && Math.hypot(point.x - last.x, point.y - last.y) < PEN_STEP_METERS) return;
+    line.push(point);
+    let total = lines.reduce((sum, l) => sum + l.length, 0);
+    while (total > PEN_MAX_POINTS) {
+      lines[0].shift();
+      if (!lines[0].length && lines.length > 1) lines.shift();
+      total -= 1;
+    }
+  });
+}
+
 function setSensorKind(kind) {
   sensorKind = kind;
   pendingBeam = null;
@@ -426,6 +462,7 @@ function endGesture(event) {
   if (gesture.kind === 'tap' && tool === 'erase') tapErase(point);
   if (gesture.kind === 'tap' && tool === 'sensor') tapSensor(point);
   if (gesture.kind === 'tap' && tool === 'cpu') tapCpu(point);
+  if (gesture.kind === 'tap' && tool === 'pen') tapPen(point);
   if (gesture.kind !== 'pinch' || pointers.size === 0) gesture = null;
 }
 
@@ -447,7 +484,7 @@ function hoverAt(point) {
   }
   const node = hitNode(point);
   if (node) return { kind: 'node', id: node.id };
-  if (tool !== 'erase') return null;
+  if (tool !== 'erase' && tool !== 'pen') return null;
   const beam = hitBeam(point);
   return beam && { kind: 'beam', id: beam.id };
 }
@@ -467,6 +504,7 @@ function startRun() {
   }
   const program = design.cpu && compiled.ok ? compiled.program : null;
   sim = new Simulation(design, program);
+  trails = sim.pens.map(() => [[]]);
   finishTime = null;
   warnedBackwards = false;
   accumulator = 0;
@@ -489,7 +527,7 @@ function stopRun() {
 }
 
 function hardware() {
-  return { motor: design.motors.length, touch: design.sensors.length, gyro: design.gyros.length, angle: design.angles.length };
+  return { motor: design.motors.length, touch: design.sensors.length, gyro: design.gyros.length, angle: design.angles.length, pen: design.pens.length };
 }
 
 function drivenByProgram() {
@@ -704,6 +742,7 @@ function advance(seconds) {
   let steps = 0;
   while (accumulator >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
     sim.step(STEP_SECONDS);
+    recordTrails();
     accumulator -= STEP_SECONDS;
     steps += 1;
   }
@@ -917,6 +956,49 @@ function drawCpu(nodes) {
   context.restore();
 }
 
+function drawTrails() {
+  context.lineWidth = 2;
+  context.lineJoin = 'round';
+  trails.forEach((lines, i) => {
+    context.strokeStyle = design.pens[i]?.color ?? COLORS.hover;
+    for (const line of lines) {
+      if (line.length < 2) continue;
+      context.beginPath();
+      line.forEach((point, k) => {
+        const s = toScreen(point.x, point.y);
+        if (k === 0) context.moveTo(s.x, s.y);
+        else context.lineTo(s.x, s.y);
+      });
+      context.stroke();
+    }
+  });
+}
+
+function drawPens(nodes) {
+  const beams = beamMap(design);
+  const radius = Math.max(4, camera.scale * 0.012);
+  design.pens.forEach((pen, i) => {
+    const beam = pen.beam !== undefined && beams.get(pen.beam);
+    const a = nodes.get(beam ? beam.a : pen.node);
+    const b = nodes.get(beam ? beam.b : pen.node);
+    if (!a || !b) return;
+    const s = toScreen((a.x + b.x) / 2, (a.y + b.y) / 2);
+    context.fillStyle = sim && !sim.pens[i].down ? COLORS.sky : pen.color;
+    context.strokeStyle = pen.color;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(s.x, s.y, radius + 2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    if (camera.scale < 120) return;
+    context.fillStyle = pen.color;
+    context.font = '12px "Trebuchet MS", system-ui, sans-serif';
+    context.textAlign = 'right';
+    context.textBaseline = 'alphabetic';
+    context.fillText(`pen${i + 1}`, s.x - radius - 6, s.y - radius - 2);
+  });
+}
+
 function drawLabel(text, x, y) {
   if (camera.scale < 120) return;
   context.fillStyle = COLORS.sensor;
@@ -1013,11 +1095,13 @@ function draw() {
   context.fillRect(0, 0, view.width, view.height);
   if (!sim) drawGrid();
   drawGround();
+  drawTrails();
   drawRobot();
   const nodes = positions();
   drawCpu(nodes);
   drawSensors(nodes);
   drawMotionSensors(nodes);
+  drawPens(nodes);
   drawBeamPreview();
 }
 
@@ -1064,6 +1148,10 @@ function replaceDesign(next) {
   renderMotors();
   fit();
 }
+
+$('[data-clear-trails]').addEventListener('click', () => {
+  trails = trails.map(() => [[]]);
+});
 
 $('[data-load]').addEventListener('click', () => replaceDesign(PRESETS[presetSelect.value].build()));
 

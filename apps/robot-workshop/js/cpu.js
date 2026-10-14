@@ -42,6 +42,12 @@ export const DEVICES = {
       spin: { help: 'how fast this beam turns, degrees per second' },
     },
   },
+  pen: {
+    plural: 'pens',
+    ports: {
+      down: { write: true, help: 'set to 1 to draw or 0 to lift the pen. Pens start down' },
+    },
+  },
   angle: {
     plural: 'angle sensors',
     ports: {
@@ -296,7 +302,7 @@ export function compile(source, hardware) {
       const spec = device.ports[place.port];
       if (!spec) throw new CodeError(place.line, `${place.device} has ${Object.keys(device.ports).join(' and ')}, not "${place.port}".`);
       if (writing && !spec.write) throw new CodeError(place.line, `${place.device}.${place.port} is a reading. A program can't set it.`);
-      if (writing) drives.add(index);
+      if (writing && kind === 'motor') drives.add(index);
       return { io: portId({ kind: `${kind}-${place.port}`, index }) };
     }
 

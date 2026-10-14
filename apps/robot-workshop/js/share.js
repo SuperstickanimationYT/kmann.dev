@@ -1,4 +1,4 @@
-import { CPU_CLOCKS, MOTOR_DEFAULTS, sharedNode } from './design.js';
+import { CPU_CLOCKS, MOTOR_DEFAULTS, PEN_COLORS, sharedNode } from './design.js';
 
 const FORMAT = 'robot-workshop';
 const VERSION = 1;
@@ -83,6 +83,12 @@ function parseRobot(text) {
     layers,
     sensors: list(data.sensors, 'sensors').filter((id) => nodeIds.has(id)),
     gyros: list(data.gyros, 'gyros').filter((id) => beamIds.has(id)),
+    pens: list(data.pens, 'pens')
+      .filter((pen) => nodeIds.has(pen?.node) || beamIds.has(pen?.beam))
+      .map((pen, i) => ({
+        ...(nodeIds.has(pen.node) ? { node: pen.node } : { beam: pen.beam }),
+        color: /^#[0-9a-f]{6}$/i.test(pen.color) ? pen.color : PEN_COLORS[i % PEN_COLORS.length],
+      })),
     angles: list(data.angles, 'angles').filter((pair) => joinedPair(pair?.driven, pair?.base)).map(({ driven, base }) => ({ driven, base })),
     cpu,
     program: typeof data.program === 'string' ? data.program : '',

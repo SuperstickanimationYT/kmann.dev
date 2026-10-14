@@ -29,8 +29,9 @@
         <button type="button" data-tool="motor" title="Tap the beam to turn, then the beam it pushes against (2)">Motor</button>
         <button type="button" data-tool="sensor" title="Tap a joint to add or remove a touch sensor (3)">Sensor</button>
         <button type="button" data-tool="cpu" title="Tap a beam to mount the CPU on it (4)">CPU</button>
-        <button type="button" data-tool="move" title="Drag joints to move them (5)">Move</button>
-        <button type="button" data-tool="erase" title="Tap a joint or beam to remove it (6)">Erase</button>
+        <button type="button" data-tool="pen" title="Tap a joint or beam to add a pen that draws its path (5)">Pen</button>
+        <button type="button" data-tool="move" title="Drag joints to move them (6)">Move</button>
+        <button type="button" data-tool="erase" title="Tap a joint or beam to remove it (7)">Erase</button>
       </div>
       <button type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
       <button type="button" data-redo title="Redo (Ctrl+Y)">Redo</button>
@@ -59,6 +60,9 @@
         <div><dt>Best to 10 m</dt><dd data-stat="best">&ndash;</dd></div>
       </dl>
       <label class="rw-check"><input type="checkbox" data-follow checked> Camera follows the robot</label>
+      <div class="rw-row">
+        <button type="button" data-clear-trails>Clear pen lines</button>
+      </div>
     </section>
 
     <section class="rw-section">
