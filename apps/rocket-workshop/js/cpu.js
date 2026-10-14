@@ -23,6 +23,9 @@ export const CPU_READINGS = {
   speed: 'meters per second, measured against the planet or moon below',
   vspeed: 'climb speed in meters per second, negative while falling',
   hspeed: 'sideways speed in meters per second, counterclockwise positive',
+  prograde: 'the pitch that points along the direction of travel, in degrees like pitch',
+  apoapsis: 'meters above the surface at the highest point of the current path, or -1 when escaping',
+  periapsis: 'meters above the surface at the lowest point of the current path, negative if it hits the ground',
   pitch: 'degrees the CPU beam leans from straight up, counterclockwise positive, if it was built upright',
   tilt: 'degrees the CPU beam has turned since Run, counterclockwise positive',
   spin: 'how fast the CPU beam turns, degrees per second',
@@ -54,6 +57,7 @@ export const DEVICES = {
     plural: 'engines',
     ports: {
       throttle: { write: true, help: 'set from 0 to 1 for no thrust up to full thrust' },
+      thrust: { help: 'full thrust in newtons' },
     },
   },
   sep: {
@@ -316,7 +320,7 @@ export function compile(source, hardware) {
         const touch = deviceIndex(place.name, 'touch');
         if (touch >= 0) {
           if (writing) throw new CodeError(place.line, `${place.name} is a sensor. A program can't set it.`);
-          if (touch >= hardware.touch) throw new CodeError(place.line, `There is no ${place.name}. This robot has ${hardware.touch} touch sensor${hardware.touch === 1 ? '' : 's'}.`);
+          if (touch >= hardware.touch) throw new CodeError(place.line, `There is no ${place.name}. This rocket has ${hardware.touch} touch sensor${hardware.touch === 1 ? '' : 's'}.`);
           return { io: portId({ kind: 'touch', index: touch }) };
         }
         if (!slots.has(place.name)) {
@@ -331,7 +335,7 @@ export function compile(source, hardware) {
       const device = DEVICES[kind];
       const index = Number(number) - 1;
       const count = hardware[kind];
-      if (index >= count) throw new CodeError(place.line, `There is no ${place.device}. This robot has ${count} ${count === 1 ? device.plural.replace(/s$/, '') : device.plural}.`);
+      if (index >= count) throw new CodeError(place.line, `There is no ${place.device}. This rocket has ${count} ${count === 1 ? device.plural.replace(/s$/, '') : device.plural}.`);
       const spec = device.ports[place.port];
       if (!spec) throw new CodeError(place.line, `${place.device} has ${Object.keys(device.ports).join(' and ')}, not "${place.port}".`);
       if (writing && !spec.write) throw new CodeError(place.line, `${place.device}.${place.port} is a reading. A program can't set it.`);

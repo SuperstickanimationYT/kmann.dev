@@ -117,12 +117,20 @@
 
     <section class="rw-section">
       <h2>CPU</h2>
-      <p class="rw-note" data-no-cpu>No CPU yet. Pick the <strong>CPU</strong> tool and tap a beam to mount one. Then write a program here that reads sensors and drives engines and motors.</p>
+      <p class="rw-note" data-no-cpu>No CPU yet. Pick the <strong>CPU</strong> tool and tap a beam to mount one. Then write a program here that reads sensors and drives engines and motors, or load a ready-made one from the program library, such as an autopilot that flies to orbit.</p>
       <div data-cpu-body hidden>
         <label class="rw-field">
           <span>Clock</span>
           <select data-clock></select>
         </label>
+        <div class="rw-field">
+          <span>Program library</span>
+          <div class="rw-row">
+            <select data-library aria-label="Program library"></select>
+            <button type="button" data-library-load>Load</button>
+          </div>
+          <p class="rw-note" data-library-needs></p>
+        </div>
         <div class="rw-field rw-code-field">
           <div class="rw-code-head">
             <span id="rw-program-label">Program</span>
