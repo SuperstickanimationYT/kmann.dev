@@ -55,6 +55,14 @@
       <button type="button" data-separator-group="4">Group 4</button>
     </div>
   </div>
+  <div class="rw-flight" data-flight hidden>
+    <button type="button" data-steer="left" aria-label="Steer counterclockwise (A)">&#9664;</button>
+    <label class="rw-lever">
+      <span>Throttle <output data-throttle-readout>0%</output></span>
+      <input type="range" min="0" max="100" step="5" value="0" data-throttle>
+    </label>
+    <button type="button" data-steer="right" aria-label="Steer clockwise (D)">&#9654;</button>
+  </div>
   <p class="rw-hud" data-hud hidden></p>
   <p class="rw-status" data-status></p>
 </main>
@@ -87,6 +95,7 @@
       <h2>Engines</h2>
       <ul class="rw-motors" data-engines></ul>
       <p class="rw-note" data-no-engines>No engines yet. Pick the <strong>Engine</strong> tool and tap a beam near the end where the nozzle goes. The engine pushes toward the other end, and burns fuel from the nearest tank still attached to it.</p>
+      <p class="rw-note">While flying, the throttle lever drives every engine the CPU doesn't, up to each engine's thrust limit. To steer by hand, put a motor between an engine and the rocket and set it to <strong>Steer with A and D</strong>.</p>
     </section>
 
     <section class="rw-section">

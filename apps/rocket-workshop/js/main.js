@@ -58,13 +58,14 @@ const MOTOR_FIELDS = [
   { key: 'amplitude', label: 'Swing', modes: ['swing'], min: 0, max: 90, step: 1, format: (v) => `±${v}°` },
   { key: 'frequency', label: 'Swings per second', modes: ['swing'], min: 0.1, max: 3, step: 0.1, format: (v) => v.toFixed(1) },
   { key: 'phase', label: 'Phase', modes: ['swing'], min: 0, max: 345, step: 15, format: (v) => `${v}°` },
-  { key: 'stallTorque', label: 'Stall torque', min: 50, max: 5000, step: 50, format: (v) => `${v} N·m` },
+  { key: 'steerRange', label: 'Steering range (negative turns the other way)', modes: ['steer'], min: -45, max: 45, step: 1, format: (v) => `${v}°` },
+  { key: 'stallTorque', label: 'Stall torque', min: 100, max: 50000, step: 100, format: (v) => `${v} N·m` },
   { key: 'freeRpm', label: 'Top speed', min: 5, max: 120, step: 5, format: (v) => `${v} rpm` },
 ];
 
 const ENGINE_FIELDS = {
   thrust: { key: 'thrust', label: 'Full thrust', min: 5, max: 500, step: 5, format: (v) => `${v} kN` },
-  throttle: { key: 'throttle', label: 'Throttle', min: 0, max: 100, step: 5, toSlider: (v) => v * 100, fromSlider: (v) => v / 100, format: (v) => `${Math.round(v * 100)}%` },
+  limit: { key: 'limit', label: 'Thrust limit', min: 0, max: 100, step: 5, toSlider: (v) => v * 100, fromSlider: (v) => v / 100, format: (v) => `${Math.round(v * 100)}%` },
 };
 
 const LAYER_COLORS = ['#9fd0ff', '#ffd36e', '#c4a8ff', '#7dffa8', '#ff9fc6', '#6fe8e0'];
@@ -113,6 +114,9 @@ const noEngines = $('[data-no-engines]');
 const stageList = $('[data-stages]');
 const warpSelect = $('[data-warp]');
 const hud = $('[data-hud]');
+const flightControls = $('[data-flight]');
+const throttleLever = $('[data-throttle]');
+const throttleReadout = $('[data-throttle-readout]');
 const motorList = $('[data-motors]');
 const noMotors = $('[data-no-motors]');
 const presetSelect = $('[data-preset]');
@@ -137,6 +141,7 @@ let sensorKind = 'touch';
 let activeLayer = 0;
 let focused = false;
 let separatorGroup = 1;
+const pilot = { throttle: 0, left: false, right: false };
 let sim = null;
 let camera = { x: 0, y: 6, scale: 20, rotation: 0 };
 let view = { width: 0, height: 0 };
@@ -606,12 +611,15 @@ function startRun() {
   const program = design.cpu && compiled.ok ? compiled.program : null;
   sim = new Simulation(design, program);
   trails = sim.pens.map(() => [[]]);
+  setThrottle(0);
+  pilot.left = false;
+  pilot.right = false;
   accumulator = 0;
   gesture = null;
   hover = null;
   pendingBeam = null;
   if (design.cpu && !compiled.ok) say(`Running with the CPU off, because line ${compiled.error.line} of the program has an error.`);
-  else say(design.engines.length ? 'Flying. Up and Down arrows change throttle, X cuts it, number keys fire separator groups.' : 'Flying, but with no engine. Add one with the Engine tool.');
+  else say(design.engines.length ? 'Flying. Z full throttle, X cut, W and S or Up and Down change it, A and D or Left and Right steer, number keys fire separators.' : 'Flying, but with no engine. Add one with the Engine tool.');
   renderControls();
   renderMotors();
   renderEngines();
@@ -762,6 +770,7 @@ function renderControls() {
   redoButton.disabled = Boolean(sim) || !redoStack.length;
   runButton.textContent = sim ? 'Stop' : 'Run';
   runButton.setAttribute('aria-pressed', String(Boolean(sim)));
+  flightControls.hidden = !sim;
   sensorKindBar.hidden = tool !== 'sensor' || Boolean(sim);
   separatorGroupBar.hidden = tool !== 'separator' || Boolean(sim);
   for (const button of separatorGroupButtons) button.setAttribute('aria-pressed', String(Number(button.dataset.separatorGroup) === separatorGroup));
@@ -809,7 +818,7 @@ function renderMotors() {
     const programmed = drivenByProgram().has(index);
     const mode = document.createElement('select');
     mode.setAttribute('aria-label', `Motor ${index + 1} mode`);
-    for (const [value, text] of [['spin', 'Spin'], ['swing', 'Swing back and forth']]) mode.add(new Option(text, value, false, motor.mode === value));
+    for (const [value, text] of [['spin', 'Spin'], ['swing', 'Swing back and forth'], ['steer', 'Steer with A and D']]) mode.add(new Option(text, value, false, motor.mode === value));
     mode.addEventListener('change', () => {
       motor.mode = mode.value;
       commit();
@@ -871,7 +880,7 @@ function renderEngines() {
       head.append(note);
     }
     head.append(remove);
-    const fields = [ENGINE_FIELDS.thrust, ...(programmed.has(index) ? [] : [ENGINE_FIELDS.throttle])];
+    const fields = [ENGINE_FIELDS.thrust, ...(programmed.has(index) ? [] : [ENGINE_FIELDS.limit])];
     item.append(head, ...fields.map((field) => slider(engine, field)));
     return item;
   }));
@@ -909,7 +918,15 @@ function renderStats() {
   for (const button of stageList.children) button.disabled = !sim || Boolean(sim.separatorGroups.get(Number(button.dataset.stage))?.fired);
 }
 
+function setThrottle(value) {
+  pilot.throttle = Math.round(Math.max(0, Math.min(1, value)) * 20) / 20;
+  throttleLever.value = String(pilot.throttle * 100);
+  throttleReadout.textContent = `${Math.round(pilot.throttle * 100)}%`;
+}
+
 function advance(seconds) {
+  sim.input.throttle = pilot.throttle;
+  sim.input.steer = (pilot.right ? 1 : 0) - (pilot.left ? 1 : 0);
   accumulator += seconds * Number(warpSelect.value);
   let steps = 0;
   while (accumulator >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
@@ -1514,8 +1531,38 @@ $('[data-share-load]').addEventListener('click', () => {
   say('Rocket loaded. Undo brings back the one you had before.');
 });
 
+const THROTTLE_KEYS = {
+  z: () => 1,
+  x: () => 0,
+  w: (value) => value + 0.1,
+  arrowup: (value) => value + 0.1,
+  s: (value) => value - 0.1,
+  arrowdown: (value) => value - 0.1,
+};
+const STEER_KEYS = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right' };
+
+window.addEventListener('keyup', (event) => {
+  const side = STEER_KEYS[event.key.toLowerCase()];
+  if (side) pilot[side] = false;
+});
+window.addEventListener('blur', () => {
+  pilot.left = false;
+  pilot.right = false;
+});
+throttleLever.addEventListener('input', () => setThrottle(Number(throttleLever.value) / 100));
+throttleLever.addEventListener('change', () => throttleLever.blur());
+for (const button of document.querySelectorAll('[data-steer]')) {
+  const side = button.dataset.steer;
+  const hold = (held) => (event) => {
+    event.preventDefault();
+    pilot[side] = held;
+  };
+  button.addEventListener('pointerdown', hold(true));
+  for (const type of ['pointerup', 'pointerleave', 'pointercancel']) button.addEventListener(type, hold(false));
+}
+
 window.addEventListener('keydown', (event) => {
-  if (event.target.closest('input, select, textarea, button')) return;
+  if (event.target.closest?.('input, select, textarea, button')) return;
   const key = event.key.toLowerCase();
   if ((event.ctrlKey || event.metaKey) && key === 'z') {
     event.preventDefault();
@@ -1537,13 +1584,12 @@ window.addEventListener('keydown', (event) => {
     gesture = null;
   } else if (sim && key >= '1' && key <= '9') {
     sim.fireSeparators(Number(key));
-  } else if (sim && ['arrowup', 'arrowdown', 'x'].includes(key)) {
+  } else if (sim && THROTTLE_KEYS[key] !== undefined) {
     event.preventDefault();
-    for (const engine of design.engines) {
-      const change = key === 'arrowup' ? 0.1 : key === 'arrowdown' ? -0.1 : -1;
-      engine.throttle = Math.round(Math.max(0, Math.min(1, engine.throttle + change)) * 10) / 10;
-    }
-    renderEngines();
+    setThrottle(THROTTLE_KEYS[key](pilot.throttle));
+  } else if (sim && STEER_KEYS[key]) {
+    event.preventDefault();
+    pilot[STEER_KEYS[key]] = true;
   } else if (!sim && key >= '1' && key <= String(Math.min(9, toolButtons.length))) {
     setTool(toolButtons[Number(key) - 1].dataset.tool);
   }

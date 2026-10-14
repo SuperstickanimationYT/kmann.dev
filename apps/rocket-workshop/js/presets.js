@@ -27,20 +27,23 @@ else                        # landed
 end
 `;
 
-const TWO_STAGE_PROGRAM = `# Burn the first stage until its tank is empty, drop it,
-# then light the second stage. The upper tank holds 1600 kg,
-# so fuel falls to 1600 when the lower tank runs dry.
-# Each engine swings on a motor. Steering the thrust sideways
-# keeps the rocket upright, the way real rockets gimbal.
+const TWO_STAGE_PROGRAM = `# Fly-by-wire. You fly: Z for full throttle, X to cut,
+# A and D to steer. The CPU keeps the rocket pointing where
+# you aim by swinging both engines on their motors, and drops
+# the first stage when its tank runs dry. The upper tank holds
+# 1600 kg, so fuel falls to 1600 when the lower tank is empty.
 
 keep stage = 1
-keep lean = 1               # gimbal degrees per degree of lean
-keep damp = 0.3             # gimbal degrees per degree per second of spin
+keep aim = 0                # pitch you are steering toward
+keep turnRate = 20          # degrees per second while A or D is held
+keep lean = 4               # gimbal degrees per degree off aim
+keep damp = 0.6             # gimbal degrees per degree per second of spin
 
-gimbal = clamp(lean * pitch + damp * spin, -8, 8)
+aim = clamp(aim - steer * turnRate * dt, -120, 120)
+gimbal = clamp(lean * (pitch - aim) + damp * spin, -15, 15)
 
 if stage == 1 then
-  engine1.throttle = 1
+  engine1.throttle = throttle
   motor1.power = clamp((gimbal - motor1.angle) * 0.3, -1, 1)
   if fuel <= 1600 then
     engine1.throttle = 0
@@ -48,12 +51,12 @@ if stage == 1 then
     stage = 2
   end
 else
-  engine2.throttle = 1
+  engine2.throttle = throttle
   motor2.power = clamp((gimbal - motor2.angle) * 0.3, -1, 1)
 end
 `;
 
-const GIMBAL_MOTOR = { mode: 'spin', power: 0, stallTorque: 3000, freeRpm: 10 };
+const GIMBAL_MOTOR = { mode: 'spin', power: 0, stallTorque: 30000, freeRpm: 30 };
 
 function place(design, points) {
   return Object.fromEntries(Object.entries(points).map(([name, [x, y]]) => [name, addNode(design, x, y)]));
@@ -73,7 +76,7 @@ function hopper() {
   const n = place(design, { footL: [-2, 0], footR: [2, 0], nozzle1: [0, 1], base1: [0, 2], top1: [0, 8] });
   const [engineBeam, tank] = link(design, [[n.nozzle1, n.base1], [n.base1, n.top1]]);
   bottomStageLegs(design, n);
-  toggleEngine(design, engineBeam.id, n.nozzle1.id, { thrust: 60, throttle: 0 });
+  toggleEngine(design, engineBeam.id, n.nozzle1.id, { thrust: 60 });
   toggleTank(design, tank.id);
   toggleRange(design, engineBeam.id, n.nozzle1.id);
   mountCpu(design, tank.id);
@@ -93,8 +96,8 @@ function twoStage() {
   const [engine2, tank2] = link(design, [[n.nozzle2, n.base2], [n.base2, n.top2]], 1);
   link(design, [[n.lugL2, n.base2], [n.lugR2, n.base2], [n.lugL2, n.top2], [n.lugR2, n.top2]], 1);
   const separators = link(design, [[n.lugL1, n.lugL2], [n.lugR1, n.lugR2], [n.lugL1, n.lugR2]], 1);
-  toggleEngine(design, engine1.id, n.nozzle1.id, { thrust: 120, throttle: 0 });
-  toggleEngine(design, engine2.id, n.nozzle2.id, { thrust: 30, throttle: 0 });
+  toggleEngine(design, engine1.id, n.nozzle1.id, { thrust: 120 });
+  toggleEngine(design, engine2.id, n.nozzle2.id, { thrust: 30 });
   addMotor(design, engine1, tank1, GIMBAL_MOTOR);
   addMotor(design, engine2, tank2, GIMBAL_MOTOR);
   toggleTank(design, tank1.id);
@@ -107,6 +110,6 @@ function twoStage() {
 
 export const PRESETS = {
   hopper: { name: 'Hopper that lands itself', build: hopper },
-  twoStage: { name: 'Two-stage rocket', build: twoStage },
+  twoStage: { name: 'Two-stage rocket you fly', build: twoStage },
   empty: { name: 'Empty', build: emptyDesign },
 };

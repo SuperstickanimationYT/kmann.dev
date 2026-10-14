@@ -59,6 +59,7 @@ export class Simulation {
     this.vx = new Float64Array(count);
     this.vy = new Float64Array(count);
     this.time = 0;
+    this.input = { steer: 0, throttle: 0 };
     const mass = new Float64Array(count).fill(WORLD.pinKg);
     const beams = beamMap(design);
     const beamIndex = new Map(design.beams.map((beam, i) => [beam.id, i]));
@@ -317,6 +318,8 @@ export class Simulation {
       case 'hspeed': return this.telemetry().hspeed;
       case 'mass': return this.pieceStats(this.cpuGyro.a).mass;
       case 'fuel': return this.pieceStats(this.cpuGyro.a).fuel;
+      case 'steer': return this.input.steer;
+      case 'throttle': return this.input.throttle;
       case 'time': return this.time;
       case 'dt': return processor.dt;
       case 'touch': return this.touching(this.sensors[port.index]) ? 1 : 0;
@@ -362,7 +365,7 @@ export class Simulation {
   }
 
   engineThrottle(engine) {
-    return engine.cpuControlled ? engine.cpuThrottle : engine.settings.throttle;
+    return engine.cpuControlled ? engine.cpuThrottle : engine.settings.limit * this.input.throttle;
   }
 
   burnEngines(h) {
@@ -395,7 +398,10 @@ export class Simulation {
     const { settings } = motor;
     if (motor.cpuControlled) return motor.cpuPower;
     if (settings.mode === 'spin') return settings.power;
-    const target = motor.restAngle + ((settings.amplitude * Math.PI) / 180) * Math.sin(TAU * settings.frequency * this.time + (settings.phase * Math.PI) / 180);
+    const swing = settings.mode === 'steer'
+      ? settings.steerRange * this.input.steer
+      : settings.amplitude * Math.sin(TAU * settings.frequency * this.time + (settings.phase * Math.PI) / 180);
+    const target = motor.restAngle + (swing * Math.PI) / 180;
     const error = wrapAngle(target - this.relativeAngle(motor));
     return Math.max(-1, Math.min(1, error * WORLD.swingGain));
   }

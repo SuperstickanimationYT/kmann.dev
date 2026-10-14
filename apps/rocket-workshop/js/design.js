@@ -6,6 +6,7 @@ export const MOTOR_DEFAULTS = {
   phase: 0,
   stallTorque: 40,
   freeRpm: 40,
+  steerRange: 10,
 };
 
 export function emptyDesign() {
@@ -37,7 +38,7 @@ export function toggleSensor(design, nodeId) {
   return design.sensors.length > before;
 }
 
-export const ENGINE_DEFAULTS = { thrust: 60, throttle: 1 };
+export const ENGINE_DEFAULTS = { thrust: 60, limit: 1 };
 
 export function toggleEngine(design, beamId, nozzle, settings = {}) {
   const existing = design.engines.find((engine) => engine.beam === beamId);
