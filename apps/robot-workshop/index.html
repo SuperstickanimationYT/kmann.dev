@@ -70,10 +70,13 @@
           <span>Clock</span>
           <select data-clock></select>
         </label>
-        <label class="rw-field">
-          <span>Program</span>
-          <textarea class="rw-code" data-code rows="14" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
-        </label>
+        <div class="rw-field rw-code-field">
+          <div class="rw-code-head">
+            <span id="rw-program-label">Program</span>
+            <button type="button" data-code-open>Full screen</button>
+          </div>
+          <textarea class="rw-code" data-code rows="14" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-labelledby="rw-program-label"></textarea>
+        </div>
         <p class="rw-error" data-code-error role="status"></p>
         <p class="rw-note" data-cpu-usage></p>
         <dl class="rw-watch" data-watch hidden></dl>
@@ -126,6 +129,14 @@ end</pre>
     <button type="button" class="save-offline" data-save-offline hidden></button>
   </div>
 </aside>
+
+<dialog class="rw-code-dialog" data-code-dialog aria-label="CPU program">
+  <div class="rw-code-bar">
+    <h2>CPU program</h2>
+    <button type="button" data-code-close>Close</button>
+  </div>
+  <div class="rw-code-slot" data-code-slot></div>
+</dialog>
 
 <script type="module" src="js/main.js"></script>
 <script type="module" src="../../assets/js/studio.js"></script>

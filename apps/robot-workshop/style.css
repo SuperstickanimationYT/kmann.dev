@@ -425,3 +425,144 @@
   opacity: 0.4;
   cursor: default;
 }
+
+.rw-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rw-section .rw-code-head button,
+.rw-code-bar button {
+  padding: 4px 10px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 7px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rw-code-dialog {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--bg-deep);
+  color: var(--text);
+}
+
+.rw-code-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.rw-code-dialog::backdrop {
+  background: rgba(3, 8, 15, 0.8);
+}
+
+.rw-code-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--surface);
+}
+
+.rw-code-bar h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-strong);
+}
+
+.rw-code-bar button {
+  padding: 7px 14px;
+  font-size: 14px;
+}
+
+.rw-code-slot {
+  flex: 1;
+  min-height: 0;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+
+.rw-code-slot [data-cpu-body] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-auto-flow: row dense;
+  align-content: start;
+  column-gap: 18px;
+  min-height: 100%;
+}
+
+.rw-code-slot [data-cpu-body] > * {
+  grid-column: 2;
+}
+
+.rw-code-slot .rw-code-field {
+  grid-column: 1;
+  grid-row: 1 / span 20;
+  margin: 0;
+}
+
+.rw-code-slot .rw-code-head {
+  display: none;
+}
+
+.rw-code-slot .rw-code {
+  height: calc(100dvh - 90px);
+  font-size: 14px;
+  resize: none;
+}
+
+.rw-code-slot select {
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+}
+
+.rw-code-slot .rw-row button {
+  padding: 7px 14px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 820px) {
+  .rw-code-slot [data-cpu-body] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rw-code-slot [data-cpu-body] > *,
+  .rw-code-slot .rw-code-field {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .rw-code-slot .rw-code-field {
+    order: -1;
+  }
+
+  .rw-code-slot .rw-code {
+    height: 60dvh;
+  }
+}

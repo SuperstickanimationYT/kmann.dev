@@ -1012,7 +1012,18 @@ codeBox.addEventListener('keydown', (event) => {
   codeBox.setRangeText('  ', codeBox.selectionStart, codeBox.selectionEnd, 'end');
   codeBox.dispatchEvent(new Event('input'));
 });
+const codeDialog = $('[data-code-dialog]');
+const cpuBodyHome = cpuBody.parentElement;
+$('[data-code-open]').addEventListener('click', () => {
+  $('[data-code-slot]').append(cpuBody);
+  codeDialog.showModal();
+  codeBox.focus();
+});
+$('[data-code-close]').addEventListener('click', () => codeDialog.close());
+codeDialog.addEventListener('close', () => cpuBodyHome.append(cpuBody));
+
 $('[data-remove-cpu]').addEventListener('click', () => {
+  if (codeDialog.open) codeDialog.close();
   design.cpu = null;
   commit();
   renderCpu();
