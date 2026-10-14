@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evolution Pond &mdash; kmann314</title>
+<meta name="description" content="Single cells live in a pond with light at the top and nutrients sinking to the bottom. Nothing tells them what to become: mutation and survival decide.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Evolution Pond</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-pond aria-label="The pond. Light comes from the top, nutrients glow amber. Tap a cell to see its genes."></canvas>
+  <div class="ep-toolbar" role="toolbar" aria-label="Simulation">
+    <button type="button" class="ep-primary" data-pause>Pause</button>
+    <div class="ep-segmented" role="group" aria-label="Speed">
+      <button type="button" data-speed-step="-1" aria-label="Slower">&minus;</button>
+      <output data-speed-label></output>
+      <button type="button" data-speed-step="1" aria-label="Faster">+</button>
+    </div>
+    <select data-colour aria-label="Colour cells by">
+      <option value="diet">Colour by diet</option>
+      <option value="lineage">Colour by family</option>
+    </select>
+  </div>
+  <section class="ep-card" data-cell-card hidden aria-live="polite">
+    <header>
+      <strong data-cell-name></strong>
+      <button type="button" data-cell-close aria-label="Close">&times;</button>
+    </header>
+    <dl data-cell-facts></dl>
+  </section>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Pond</button>
+  <div class="studio-panel-body">
+    <div class="ep-panel">
+      <dl class="ep-stats">
+        <dt>Time</dt><dd data-stat="tick"></dd>
+        <dt>Cells alive</dt><dd data-stat="count"></dd>
+        <dt>Most generations</dt><dd data-stat="generation"></dd>
+      </dl>
+
+      <figure class="ep-chart">
+        <figcaption>Cells alive</figcaption>
+        <div class="ep-chart-plot">
+          <canvas data-population-chart aria-label="Line chart of the number of cells alive over time"></canvas>
+          <p class="ep-chart-tip" data-chart-tip hidden></p>
+        </div>
+      </figure>
+
+      <section class="ep-traits">
+        <h2>Average genes</h2>
+        <div data-trait-bars></div>
+      </section>
+
+      <form class="ep-settings" data-settings>
+        <label class="ep-field">
+          <span>Sunlight <output data-light-label></output></span>
+          <input type="range" name="light" min="0.3" max="2" step="0.05" value="1">
+        </label>
+        <fieldset>
+          <legend>New pond</legend>
+          <label class="ep-field">
+            <span>Nutrients <output data-matter-label></output></span>
+            <input type="range" name="matter" min="2000" max="14000" step="500" value="6000">
+          </label>
+          <label class="ep-field">
+            <span>Starting cells <output data-ancestors-label></output></span>
+            <input type="range" name="ancestors" min="10" max="600" step="10" value="300">
+          </label>
+          <label class="ep-field">
+            <span>Seed</span>
+            <input type="number" name="seed" min="1" max="999999" step="1" value="1">
+          </label>
+          <div class="ep-actions">
+            <button type="submit" class="ep-primary">Start over</button>
+            <button type="button" data-new-seed>New seed</button>
+          </div>
+        </fieldset>
+      </form>
+
+      <p class="ep-about">
+        Every cell starts as the same simple alga: it photosynthesises and takes up nutrients. Each
+        child gets slightly mutated genes, including how fast it mutates. Genes cost energy to keep,
+        so nothing is free. Light is strongest at the top and nutrients sink, rising again only at
+        two upwellings. Dead cells and scraps return to the water, so the total amount of matter
+        never changes. There is no score: whatever survives and divides is what you see.
+      </p>
+      <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+      <button type="button" class="save-offline" data-save-offline hidden></button>
+    </div>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>

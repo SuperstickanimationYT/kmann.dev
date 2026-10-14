@@ -23,6 +23,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Evolution Pond',
+    href: 'apps/evolution-pond/',
+    category: 'simulations',
+    poster: 'assets/img/posters/evolution-pond.webp',
+    blurb: 'Simple cells mutate, compete and eat each other in a pond with no goal set. Watch algae, predators and armor appear on their own.',
+    status: 'live',
+  },
+  {
     title: 'Find Home',
     href: 'apps/find-home/',
     category: 'games',

@@ -1,0 +1,288 @@
+.studio-stage canvas[data-pond] {
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.studio-stage [hidden],
+.ep-panel [hidden] {
+  display: none !important;
+}
+
+.ep-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 20px);
+}
+
+.ep-toolbar button,
+.ep-toolbar select,
+.ep-actions button {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: rgba(12, 37, 64, 0.88);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-toolbar select {
+  font-weight: 400;
+}
+
+.ep-toolbar button:hover,
+.ep-actions button:hover {
+  background: #133659;
+}
+
+.ep-primary,
+.ep-toolbar .ep-primary {
+  min-width: 64px;
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.ep-segmented {
+  display: flex;
+  align-items: center;
+}
+
+.ep-segmented button {
+  border-radius: 0;
+}
+
+.ep-segmented button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.ep-segmented button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.ep-segmented output {
+  min-width: 52px;
+  min-height: 34px;
+  padding: 7px 8px;
+  border-block: 1px solid var(--edge-bright);
+  background: rgba(3, 8, 15, 0.8);
+  color: var(--text-strong);
+  font-size: 13px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ep-card {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: min(270px, calc(100% - 20px));
+  max-height: calc(100% - 70px);
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: rgba(11, 33, 55, 0.94);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.ep-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: var(--text-strong);
+}
+
+.ep-card header button {
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.ep-card dl,
+.ep-stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.ep-card dt,
+.ep-stats dt {
+  color: var(--text-dim);
+}
+
+.ep-card dd,
+.ep-stats dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.ep-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ep-chart {
+  margin: 0;
+}
+
+.ep-chart figcaption,
+.ep-traits h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ep-chart-plot {
+  position: relative;
+}
+
+.ep-chart canvas {
+  display: block;
+  width: 100%;
+  height: 110px;
+  cursor: crosshair;
+}
+
+.ep-chart-tip {
+  position: absolute;
+  top: 0;
+  margin: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--bg-deep);
+  color: var(--text-strong);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.ep-trait {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+
+.ep-trait-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.ep-trait-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  background: var(--edge-bright);
+}
+
+.ep-trait-track.ep-signed::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 1px;
+  background: var(--text-dim);
+}
+
+.ep-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ep-settings fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+}
+
+.ep-settings legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ep-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.ep-field > span {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-strong);
+}
+
+.ep-field output {
+  font-variant-numeric: tabular-nums;
+  color: var(--link);
+}
+
+.ep-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--edge-bright);
+}
+
+.ep-field input[type="number"] {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+}
+
+.ep-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ep-actions button {
+  flex: 1;
+}
+
+.ep-about {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}

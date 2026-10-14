@@ -1,0 +1,18 @@
+{
+  "name": "Evolution Pond",
+  "short_name": "Evolution Pond",
+  "description": "Single cells live in a pond with light at the top and nutrients sinking to the bottom. Nothing tells them what to become: mutation and survival decide.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
