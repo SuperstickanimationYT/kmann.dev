@@ -11,10 +11,15 @@ export class NutrientField {
     this.values = new Float32Array(this.cols * this.rows);
     this.next = new Float32Array(this.cols * this.rows);
     this.upwellingColumns = new Uint8Array(this.cols);
-    for (const x of upwellingXs) {
-      const centre = Math.floor(x / cellSize);
+    this.moveUpwellings(upwellingXs);
+  }
+
+  moveUpwellings(xs) {
+    this.upwellingColumns.fill(0);
+    for (const x of xs) {
+      const centre = Math.floor(x / this.cellSize);
       for (let offset = -UPWELLING_HALF_WIDTH; offset <= UPWELLING_HALF_WIDTH; offset++) {
-        this.upwellingColumns[(centre + offset + this.cols) % this.cols] = 1;
+        this.upwellingColumns[(((centre + offset) % this.cols) + this.cols) % this.cols] = 1;
       }
     }
   }

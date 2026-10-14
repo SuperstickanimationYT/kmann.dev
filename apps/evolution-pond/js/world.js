@@ -8,7 +8,15 @@ export const FIELD_CELL_SIZE = 8;
 
 const GRID_CELL_SIZE = 14;
 const SENSE_RADIUS = 14;
-const UPWELLING_XS = [300, 900];
+const UPWELLINGS = [
+  { home: 300, reach: 250, period: 30000, start: 0 },
+  { home: 900, reach: 250, period: 47000, start: 2 },
+];
+const UPWELLING_UPDATE_TICKS = 25;
+const SIGHT_GAIN = 4;
+const TURN_RANGE = Math.PI / 2;
+const FREE_TURN_RATE = 0.2;
+const NUTRIENT_PROBE_DISTANCE = 10;
 const LIGHT_FALLOFF = 2;
 const PHOTOSYNTHESIS_RATE = 0.03;
 const BASE_UPKEEP = 0.002;
@@ -16,7 +24,9 @@ const SWIM_UPKEEP = 0.008;
 const UPTAKE_RATE = 0.02;
 const BUILD_COST = 1;
 const ENERGY_STORE_PER_MASS = 2;
-const BITE_RATE = 0.06;
+const BITE_RATE = 0.15;
+const ARMOR_DRAG = 0.7;
+const ARMOR_BLOCKING = 0.8;
 const DIGESTION_EFFICIENCY = 0.6;
 const BIOMASS_ENERGY = 0.8;
 const MAX_SWIM_SPEED = 1.2;
@@ -67,6 +77,13 @@ function becomeType(cell, typeIndex) {
   cell.maxAge = maxAgeOf(cell.type);
 }
 
+function biteEdge(eater, prey) {
+  const sizeAdvantage = Math.min(1, eater.bodySize / prey.bodySize);
+  const edge = eater.type.predation * (1 - ARMOR_BLOCKING * prey.type.armor) * sizeAdvantage;
+  if (edge <= 0) return 0;
+  return hueDistance(eater.genome, prey.genome) < eater.type.kinSparing * KIN_SPARING_DEGREES ? 0 : edge;
+}
+
 function angleFrom(anchor, cell) {
   return Math.atan2(cell.y - anchor.y, wrappedDx(anchor, cell));
 }
@@ -100,7 +117,7 @@ export class World {
     this.light = light;
     this.tick = 0;
     this.nextId = 1;
-    this.field = new NutrientField(WORLD_WIDTH, WORLD_HEIGHT, FIELD_CELL_SIZE, UPWELLING_XS);
+    this.field = new NutrientField(WORLD_WIDTH, WORLD_HEIGHT, FIELD_CELL_SIZE, this.upwellingXs());
     this.gridCols = Math.ceil(WORLD_WIDTH / GRID_CELL_SIZE);
     this.gridRows = Math.ceil(WORLD_HEIGHT / GRID_CELL_SIZE);
     this.slotStart = new Int32Array(this.gridCols * this.gridRows + 1);
@@ -120,9 +137,13 @@ export class World {
   }
 
   createCell(x, y, mass, energy, genome, typeIndex, generation) {
-    const cell = { id: this.nextId++, x, y, mass, radius: radiusOf(mass), energy, genome, typeIndex: 0, type: null, upkeep: 0, maxAge: 0, generation, bonds: [], heading: 0, anchor: null, headingFromAnchor: 0, swimAngle: 0, vx: 0, vy: 0, signal: 0, nextSignal: 0, phase: 0, lastSensed: 0, age: 0, nearby: 0, pushX: 0, pushY: 0, dead: false };
+    const cell = { id: this.nextId++, x, y, mass, radius: radiusOf(mass), energy, genome, typeIndex: 0, type: null, upkeep: 0, maxAge: 0, generation, bonds: [], heading: 0, anchor: null, headingFromAnchor: 0, swimAngle: 0, vx: 0, vy: 0, bodySize: 1, bodyStamp: 0, signal: 0, nextSignal: 0, turn: 0, threatX: 0, threatY: 0, preyX: 0, preyY: 0, phase: 0, lastSensed: 0, age: 0, nearby: 0, pushX: 0, pushY: 0, dead: false };
     becomeType(cell, typeIndex);
     return cell;
+  }
+
+  upwellingXs() {
+    return UPWELLINGS.map(({ home, reach, period, start }) => home + reach * Math.sin((2 * Math.PI * this.tick) / period + start));
   }
 
   lightAt(y) {
@@ -131,8 +152,10 @@ export class World {
 
   step() {
     this.tick++;
+    if (this.tick % UPWELLING_UPDATE_TICKS === 0) this.field.moveUpwellings(this.upwellingXs());
     this.field.step();
     this.indexCells();
+    this.measureBodies();
     this.interact();
     this.pullBonds();
     for (const cell of this.cells) this.live(cell);
@@ -159,6 +182,29 @@ export class World {
       ys[position] = cell.y;
       cell.radius = radiusOf(cell.mass);
       cell.nearby = 0;
+      cell.threatX = 0;
+      cell.threatY = 0;
+      cell.preyX = 0;
+      cell.preyY = 0;
+    }
+  }
+
+  measureBodies() {
+    const stamp = this.tick;
+    const members = [];
+    for (const cell of this.cells) {
+      if (cell.bodyStamp === stamp) continue;
+      members.length = 0;
+      members.push(cell);
+      cell.bodyStamp = stamp;
+      for (let i = 0; i < members.length; i++) {
+        for (const partner of members[i].bonds) {
+          if (partner.bodyStamp === stamp) continue;
+          partner.bodyStamp = stamp;
+          members.push(partner);
+        }
+      }
+      for (const member of members) member.bodySize = members.length;
     }
   }
 
@@ -202,24 +248,37 @@ export class World {
   meet(a, b, dx, dy, distance) {
     a.nearby++;
     b.nearby++;
+    const nx = dx / distance;
+    const ny = dy / distance;
+    const bonded = a.bonds.includes(b);
+    if (!bonded) {
+      const closeness = 1 - distance / SENSE_RADIUS;
+      const aThreatensB = biteEdge(a, b) * closeness;
+      const bThreatensA = biteEdge(b, a) * closeness;
+      a.threatX += nx * bThreatensA;
+      a.threatY += ny * bThreatensA;
+      a.preyX += nx * aThreatensB;
+      a.preyY += ny * aThreatensB;
+      b.threatX -= nx * aThreatensB;
+      b.threatY -= ny * aThreatensB;
+      b.preyX -= nx * bThreatensA;
+      b.preyY -= ny * bThreatensA;
+    }
     const overlap = a.radius + b.radius - distance;
     if (overlap <= 0) return;
     const share = b.mass / (a.mass + b.mass);
-    const nx = dx / distance;
-    const ny = dy / distance;
     a.pushX -= nx * overlap * share;
     a.pushY -= ny * overlap * share;
     b.pushX += nx * overlap * (1 - share);
     b.pushY += ny * overlap * (1 - share);
-    if (a.bonds.includes(b)) return;
+    if (bonded) return;
     this.bite(a, b);
     this.bite(b, a);
   }
 
   bite(eater, prey) {
-    const edge = eater.type.predation - prey.type.armor;
+    const edge = biteEdge(eater, prey);
     if (edge <= 0 || prey.mass <= 0) return;
-    if (hueDistance(eater.genome, prey.genome) < eater.type.kinSparing * KIN_SPARING_DEGREES) return;
     const taken = Math.min(prey.mass, BITE_RATE * edge);
     const energyTaken = Math.max(0, prey.energy) * (taken / prey.mass);
     prey.mass -= taken;
@@ -235,8 +294,8 @@ export class World {
         if (b.id < a.id) continue;
         const dx = wrappedDx(a, b);
         const dy = b.y - a.y;
-        const distance = Math.hypot(dx, dy) || 0.001;
-        const rest = radiusOf(a.mass) + radiusOf(b.mass);
+        const distance = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const rest = a.radius + b.radius;
         if (distance > rest * BOND_BREAKING_STRETCH) {
           unbond(a, b);
           continue;
@@ -278,7 +337,13 @@ export class World {
 
   think(cell, light, density) {
     const { type } = cell;
-    const sensed = type.lightSense * light + (type.foodSense * density) / this.meanDensity + (type.cellSense * cell.nearby) / CROWD_SCALE;
+    const threat = Math.sqrt(cell.threatX * cell.threatX + cell.threatY * cell.threatY);
+    const prey = Math.sqrt(cell.preyX * cell.preyX + cell.preyY * cell.preyY);
+    const sensed =
+      type.lightSense * light +
+      (type.foodSense * density) / this.meanDensity +
+      (type.cellSense * cell.nearby) / CROWD_SCALE +
+      SIGHT_GAIN * (type.threatSense * threat + type.preySense * prey);
     const change = (sensed - cell.lastSensed) * CHANGE_GAIN;
     cell.lastSensed = sensed;
     let heard = 0;
@@ -286,18 +351,27 @@ export class World {
     if (cell.bonds.length > 0) heard /= cell.bonds.length;
     cell.phase += FASTEST_RHYTHM * type.rhythmSpeed;
     cell.nextSignal = Math.tanh(type.signalBias + sensed + type.changeSense * change + type.neighbourSense * heard * 2 + type.rhythm * RHYTHM_GAIN * Math.sin(cell.phase));
+    const rightX = -Math.sin(cell.heading);
+    const rightY = Math.cos(cell.heading);
+    const threatToRight = rightX * cell.threatX + rightY * cell.threatY;
+    const preyToRight = rightX * cell.preyX + rightY * cell.preyY;
+    const probeX = rightX * NUTRIENT_PROBE_DISTANCE;
+    const probeY = rightY * NUTRIENT_PROBE_DISTANCE;
+    const richerToRight = (this.field.densityAt(cell.x + probeX, cell.y + probeY) - this.field.densityAt(cell.x - probeX, cell.y - probeY)) / this.meanDensity;
+    cell.turn = Math.tanh(SIGHT_GAIN * (type.chasing * preyToRight - type.dodging * threatToRight) + type.foraging * richerToRight);
   }
 
   steer(cell) {
     if (cell.bonds.length === 0) {
       const tumbleChance = CALM_TUMBLE_CHANCE + ((WORSENING_TUMBLE_CHANCE - CALM_TUMBLE_CHANCE) * (1 - cell.signal)) / 2;
       cell.heading += this.random() < tumbleChance ? this.random.between(-Math.PI, Math.PI) : (this.random() - 0.5) * 0.5;
+      cell.heading += cell.turn * FREE_TURN_RATE;
     }
-    cell.swimAngle = cell.heading + cell.type.thrustAngle + cell.type.steering * cell.signal * STEERING_RANGE;
+    cell.swimAngle = cell.heading + cell.type.thrustAngle + cell.type.steering * cell.signal * STEERING_RANGE + cell.turn * TURN_RANGE;
   }
 
   move(cell) {
-    const speed = (MAX_SWIM_SPEED * cell.type.motility * (1 + cell.signal)) / 2;
+    const speed = (MAX_SWIM_SPEED * cell.type.motility * (1 - ARMOR_DRAG * cell.type.armor) * (1 + cell.signal)) / 2;
     const startX = cell.x;
     const startY = cell.y;
     cell.x += Math.cos(cell.swimAngle) * speed + cell.pushX + (this.random() - 0.5) * DRIFT_SPEED;
