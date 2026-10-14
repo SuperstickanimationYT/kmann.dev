@@ -18,7 +18,7 @@ function orbitShape(body, rx, ry, vx, vy) {
   return { eccentricity, semiMajorAxis, semiLatusRectum, toPeriapsis };
 }
 
-function accelerationAt(x, y, time) {
+export function accelerationAt(x, y, time) {
   let ax = 0;
   let ay = 0;
   for (const body of BODIES) {
