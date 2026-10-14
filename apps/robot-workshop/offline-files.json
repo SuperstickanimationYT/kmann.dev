@@ -1,8 +1,9 @@
 {
-  "bytes": 67922,
+  "bytes": 100420,
   "files": [
     "./",
     "index.html",
+    "js/cpu.js",
     "js/design.js",
     "js/main.js",
     "js/presets.js",
