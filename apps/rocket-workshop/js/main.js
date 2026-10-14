@@ -5,7 +5,7 @@ import { LIBRARY } from './programs.js';
 import { rocketFromText, rocketToText } from './share.js';
 import { predictPath } from './orbit.js';
 import { BODIES, EARTH, bodyState, dominantBody } from './planets.js';
-import { Simulation, TANK, WORLD } from './sim.js';
+import { ENGINE_FIRING, Simulation, TANK, WORLD } from './sim.js';
 
 const NEW_PROGRAM_INTRO = `# This program runs over and over while the rocket flies.
 # Read sensors, then set engine throttles from 0 to 1 and
@@ -16,7 +16,8 @@ const NEW_PROGRAM_INTRO = `# This program runs over and over while the rocket fl
 const WATCH_INTERVAL_MS = 150;
 const PEN_STEP_METERS = 0.5;
 const PEN_MAX_POINTS = 20000;
-const WARP_SPEEDS = [1, 2, 5, 10];
+const WARP_SPEEDS = [1, 2, 5, 10, 100, 1000, 10000, 100000];
+const FULL_PHYSICS_WARP = 10;
 const PREDICT_INTERVAL_MS = 200;
 const PATH_MIN_SPEED = 2;
 const SEPARATOR_GROUPS = 4;
@@ -1015,6 +1016,24 @@ function setThrottle(value) {
 function advance(seconds) {
   sim.input.throttle = pilot.throttle;
   sim.input.steer = (pilot.right ? 1 : 0) - (pilot.left ? 1 : 0);
+  const warp = Number(warpSelect.value);
+  if (warp > FULL_PHYSICS_WARP) {
+    const blocker = sim.railsBlocker();
+    if (blocker) {
+      const fallback = blocker === ENGINE_FIRING ? 1 : FULL_PHYSICS_WARP;
+      setWarp(fallback);
+      say(`Fast warp needs every engine off and the rocket above the air, but ${blocker}. Back to ${fallback}×.`);
+    } else {
+      const stopped = sim.coast(seconds * warp);
+      recordTrails();
+      if (stopped) {
+        setWarp(1);
+        say(`Warp stopped because ${stopped}.`);
+      }
+      followCamera(seconds);
+      return;
+    }
+  }
   accumulator += seconds * Number(warpSelect.value);
   let steps = 0;
   while (accumulator >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
@@ -1030,6 +1049,20 @@ function advance(seconds) {
     say('The simulation blew up. Check for joints stacked on top of each other or beams of almost zero length.');
     return;
   }
+  followCamera(seconds);
+}
+
+function setWarp(warp) {
+  warpSelect.value = String(warp);
+  accumulator = 0;
+}
+
+function stepWarp(direction) {
+  const index = WARP_SPEEDS.indexOf(Number(warpSelect.value)) + direction;
+  setWarp(WARP_SPEEDS[Math.max(0, Math.min(WARP_SPEEDS.length - 1, index))]);
+}
+
+function followCamera(seconds) {
   const ease = Math.min(1, seconds * 3);
   if (followBox.checked) {
     const target = sim.cpuGyro ? sim.centerOf(sim.cpuGyro) : sim.centerOfMass();
@@ -1630,7 +1663,7 @@ function resize() {
 for (const button of toolButtons) button.addEventListener('click', () => setTool(button.dataset.tool));
 for (const button of sensorKindButtons) button.addEventListener('click', () => setSensorKind(button.dataset.sensorKind));
 for (const button of separatorGroupButtons) button.addEventListener('click', () => setSeparatorGroup(Number(button.dataset.separatorGroup)));
-for (const warp of WARP_SPEEDS) warpSelect.add(new Option(`${warp}× speed`, String(warp)));
+for (const warp of WARP_SPEEDS) warpSelect.add(new Option(`${warp.toLocaleString('en')}× speed${warp > FULL_PHYSICS_WARP ? ' (coasting only)' : ''}`, String(warp)));
 undoButton.addEventListener('click', () => restore(undoStack, redoStack));
 redoButton.addEventListener('click', () => restore(redoStack, undoStack));
 $('[data-fit]').addEventListener('click', fit);
@@ -1752,6 +1785,8 @@ window.addEventListener('keydown', (event) => {
   } else if (key === 'escape') {
     pendingBeam = null;
     gesture = null;
+  } else if (key === '.' || key === ',') {
+    stepWarp(key === '.' ? 1 : -1);
   } else if (sim && key >= '1' && key <= '9') {
     sim.fireSeparators(Number(key));
   } else if (sim && THROTTLE_KEYS[key] !== undefined) {

@@ -1,6 +1,6 @@
 import { Processor } from './cpu.js';
 import { beamMap, sharedNode } from './design.js';
-import { orbitAltitudes } from './orbit.js';
+import { accelerationAt, orbitAltitudes } from './orbit.js';
 import { BODIES, EARTH, airDensity, bodyState, dominantBody } from './planets.js';
 
 export const WORLD = {
@@ -22,6 +22,10 @@ export const WORLD = {
 
 export const TANK = { fuelKgPerMeter: 400, dryKgPerMeter: 40, width: 1.6 };
 export const ENGINE = { kg: 250, isp: 300 };
+export const ENGINE_FIRING = 'an engine is firing';
+
+export const RAILS = { shortestStep: 1, longestStep: 10, stepsPerCall: 400, cpuOpsPerStep: 600, restingSpeed: 1 };
+
 export const WHEEL = { kg: 200, storeSeconds: 30, fullTorqueSpin: 0.2 };
 
 const TAU = Math.PI * 2;
@@ -571,6 +575,143 @@ export class Simulation {
         y[i] -= (along - kept) * nx;
       }
     }
+  }
+
+  piecesOf() {
+    const pieces = new Map();
+    for (let i = 0; i < this.ids.length; i += 1) {
+      if (!pieces.has(this.piece[i])) pieces.set(this.piece[i], []);
+      pieces.get(this.piece[i]).push(i);
+    }
+    return [...pieces.values()];
+  }
+
+  pieceMotion(nodes) {
+    let mass = 0;
+    let x = 0;
+    let y = 0;
+    let vx = 0;
+    let vy = 0;
+    for (const i of nodes) {
+      mass += this.mass[i];
+      x += this.x[i] * this.mass[i];
+      y += this.y[i] * this.mass[i];
+      vx += this.vx[i] * this.mass[i];
+      vy += this.vy[i] * this.mass[i];
+    }
+    x /= mass;
+    y /= mass;
+    vx /= mass;
+    vy /= mass;
+    let spinMomentum = 0;
+    let inertia = 0;
+    for (const i of nodes) {
+      const dx = this.x[i] - x;
+      const dy = this.y[i] - y;
+      spinMomentum += this.mass[i] * (dx * (this.vy[i] - vy) - dy * (this.vx[i] - vx));
+      inertia += this.mass[i] * (dx * dx + dy * dy);
+    }
+    return { x, y, vx, vy, spin: inertia > 0 ? spinMomentum / inertia : 0 };
+  }
+
+  railsBlocker() {
+    if (this.engines.some((engine) => this.engineThrottle(engine) > 0 && engine.tanksNearestFirst.some((tank) => tank.fuel > 0 && this.piece[tank.a] === this.piece[engine.nozzle]))) {
+      return ENGINE_FIRING;
+    }
+    for (const nodes of this.piecesOf()) {
+      const motion = this.pieceMotion(nodes);
+      if (nodes.some((i) => this.touching(i))) {
+        const ground = bodyState(dominantBody(motion.x, motion.y, this.time), this.time);
+        if (nodes.some((i) => Math.hypot(this.vx[i] - ground.vx, this.vy[i] - ground.vy) > RAILS.restingSpeed)) return 'something is moving along the ground';
+        continue;
+      }
+      const earth = bodyState(EARTH, this.time);
+      if (Math.hypot(motion.x - earth.x, motion.y - earth.y) - EARTH.radius < EARTH.atmosphere.top) return 'something is still inside the air';
+    }
+    return null;
+  }
+
+  coast(seconds) {
+    const pieces = this.piecesOf().map((nodes) => {
+      const motion = this.pieceMotion(nodes);
+      const resting = nodes.some((i) => this.touching(i));
+      const anchor = resting ? dominantBody(motion.x, motion.y, this.time) : null;
+      const anchorAt = anchor && bodyState(anchor, this.time);
+      return {
+        nodes,
+        ...motion,
+        anchor,
+        offsets: nodes.map((i) => ({ x: this.x[i] - (anchor ? anchorAt.x : motion.x), y: this.y[i] - (anchor ? anchorAt.y : motion.y) })),
+        turned: 0,
+      };
+    });
+    const flying = pieces.filter((piece) => !piece.anchor);
+    const stepLength = Math.max(RAILS.shortestStep, Math.min(RAILS.longestStep, seconds / RAILS.stepsPerCall));
+    let left = seconds;
+    while (left > 1e-9) {
+      const h = Math.min(stepLength, left);
+      for (const piece of flying) {
+        let pull = accelerationAt(piece.x, piece.y, this.time);
+        piece.vx += pull.ax * h * 0.5;
+        piece.vy += pull.ay * h * 0.5;
+        piece.x += piece.vx * h;
+        piece.y += piece.vy * h;
+        pull = accelerationAt(piece.x, piece.y, this.time + h);
+        piece.vx += pull.ax * h * 0.5;
+        piece.vy += pull.ay * h * 0.5;
+        piece.turned += piece.spin * h;
+      }
+      this.time += h;
+      left -= h;
+      if (this.processor) {
+        this.placePieces(pieces);
+        this.processor.run(Math.min(this.cpuClock * h, RAILS.cpuOpsPerStep), this.time);
+        if (this.engines.some((engine) => this.engineThrottle(engine) > 0)) return ENGINE_FIRING;
+      }
+      const low = flying.find((piece) => this.coastingTooLow(piece));
+      if (low) {
+        this.placePieces(pieces);
+        return this.coastingTooLow(low);
+      }
+    }
+    this.placePieces(pieces);
+    return null;
+  }
+
+  coastingTooLow(piece) {
+    const earth = bodyState(EARTH, this.time);
+    if (Math.hypot(piece.x - earth.x, piece.y - earth.y) - EARTH.radius < EARTH.atmosphere.top) return 'the path dipped back into the air';
+    for (const body of BODIES) {
+      const state = bodyState(body, this.time);
+      if (Math.hypot(piece.x - state.x, piece.y - state.y) < body.radius + 1000) return `it came within 1 km of the ${body.name}`;
+    }
+    return null;
+  }
+
+  placePieces(pieces) {
+    for (const piece of pieces) {
+      const at = piece.anchor ? bodyState(piece.anchor, this.time) : null;
+      const cos = Math.cos(piece.turned);
+      const sin = Math.sin(piece.turned);
+      piece.nodes.forEach((i, k) => {
+        const { x: ox, y: oy } = piece.offsets[k];
+        if (at) {
+          this.x[i] = at.x + ox;
+          this.y[i] = at.y + oy;
+          this.vx[i] = at.vx;
+          this.vy[i] = at.vy;
+          return;
+        }
+        const rx = ox * cos - oy * sin;
+        const ry = ox * sin + oy * cos;
+        this.x[i] = piece.x + rx;
+        this.y[i] = piece.y + ry;
+        this.vx[i] = piece.vx - piece.spin * ry;
+        this.vy[i] = piece.vy + piece.spin * rx;
+      });
+    }
+    this.prevX.set(this.x);
+    this.prevY.set(this.y);
   }
 
   step(dt) {
