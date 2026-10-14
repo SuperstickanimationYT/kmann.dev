@@ -22,11 +22,11 @@ export function withDefaults(design) {
   design.gyros ??= [];
   design.angles ??= [];
   design.pens ??= [];
-  design.engines ??= [];
+  design.engines = (design.engines ?? []).map((engine) => ({ ...ENGINE_DEFAULTS, ...engine }));
   design.tanks ??= [];
   design.separators ??= [];
   design.ranges ??= [];
-  design.wheels ??= [];
+  design.wheels = (design.wheels ?? []).map((wheel) => ({ ...WHEEL_DEFAULTS, ...wheel }));
   design.cpu ??= null;
   design.program ??= '';
   return design;
