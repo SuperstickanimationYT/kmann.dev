@@ -25,7 +25,12 @@
 
 <main>
   <div class="shell">
-    <ul class="project-grid" data-project-grid></ul>
+    <label class="project-search">
+      <span class="visually-hidden">Search projects</span>
+      <input type="search" placeholder="Search projects" autocomplete="off" data-project-search>
+    </label>
+    <div data-project-sections></div>
+    <p class="grid-empty" data-project-empty hidden>No projects match that search.</p>
   </div>
 </main>
 

@@ -47,25 +47,64 @@ function createPlannedCard(project) {
 
 function createCard(project) {
   const item = document.createElement('li');
+  item.dataset.searchText = `${project.title} ${project.blurb ?? ''}`.toLowerCase();
   item.append(project.status === 'live' ? createLiveCard(project) : createPlannedCard(project));
   return item;
 }
 
+function createSection(category) {
+  const section = document.createElement('section');
+  section.className = 'project-section';
+
+  const heading = document.createElement('h2');
+  heading.className = 'section-title';
+  heading.textContent = category.title;
+
+  const grid = document.createElement('ul');
+  grid.className = 'project-grid';
+  grid.append(...PROJECTS.filter((project) => project.category === category.id).map(createCard));
+
+  section.append(heading, grid);
+  return section;
+}
+
+function filterSections(sections, query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  let shownSections = 0;
+
+  for (const section of sections) {
+    let shownCards = 0;
+    for (const item of section.querySelectorAll('li')) {
+      item.hidden = !words.every((word) => item.dataset.searchText.includes(word));
+      shownCards += item.hidden ? 0 : 1;
+    }
+    section.hidden = shownCards === 0;
+    shownSections += section.hidden ? 0 : 1;
+  }
+
+  return shownSections;
+}
+
 function renderProjects() {
-  const grid = document.querySelector('[data-project-grid]');
-  if (!grid) {
+  const container = document.querySelector('[data-project-sections]');
+  const search = document.querySelector('[data-project-search]');
+  const empty = document.querySelector('[data-project-empty]');
+  if (!container) {
     return;
   }
 
-  if (PROJECTS.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'grid-empty';
-    empty.textContent = 'Nothing here yet.';
-    grid.append(empty);
-    return;
-  }
+  const sections = CATEGORIES.map(createSection);
+  container.append(...sections);
 
-  grid.append(...PROJECTS.map(createCard));
+  const update = () => {
+    const shown = filterSections(sections, search?.value ?? '');
+    if (empty) {
+      empty.hidden = shown > 0;
+    }
+  };
+
+  search?.addEventListener('input', update);
+  update();
 }
 
 renderProjects();

@@ -1,7 +1,15 @@
+const CATEGORIES = [
+  { id: 'games', title: 'Games' },
+  { id: 'simulations', title: 'Simulations' },
+  { id: 'generators', title: 'Generators' },
+  { id: 'tools', title: 'Tools' },
+];
+
 const PROJECTS = [
   {
     title: '4D Platformer',
     href: 'apps/4d-platformer/',
+    category: 'games',
     poster: 'assets/img/posters/4d-platformer.webp',
     blurb: 'Jump between floating platforms in four dimensions, seen as a 3D wireframe photo of the 4D world.',
     status: 'live',
@@ -9,6 +17,7 @@ const PROJECTS = [
   {
     title: 'Conlang Studio',
     href: 'apps/conlang-studio/',
+    category: 'tools',
     poster: 'assets/img/posters/conlang-studio.webp',
     blurb: 'Draw an alphabet, grow a dictionary, write grammar rules and check your conlang.',
     status: 'live',
@@ -16,6 +25,7 @@ const PROJECTS = [
   {
     title: 'Find Home',
     href: 'apps/find-home/',
+    category: 'games',
     poster: 'assets/img/posters/find-home.webp',
     blurb: 'Lost outside the Milky Way with your eyes and a wide-field camera. Find the Sun, using real nebulae and stars, while light delay shifts everything.',
     status: 'live',
@@ -23,6 +33,7 @@ const PROJECTS = [
   {
     title: 'FractalExplorer',
     href: 'apps/fractal-explorer/',
+    category: 'generators',
     poster: 'assets/img/posters/fractal-explorer.webp',
     blurb: 'Explore, animate and invent fractal formulas on the GPU.',
     status: 'live',
@@ -30,6 +41,7 @@ const PROJECTS = [
   {
     title: 'Galaxy Photo Generator',
     href: 'apps/galaxy-photos/',
+    category: 'generators',
     poster: 'assets/img/posters/galaxy-photos.webp',
     blurb: 'Procedural generation, no AI: hand-written rules for arms, dust and starlight build galaxies that look like telescope photos.',
     status: 'live',
@@ -37,6 +49,7 @@ const PROJECTS = [
   {
     title: 'GlaBo',
     href: 'apps/glabo/',
+    category: 'tools',
     poster: 'assets/img/posters/glabo.webp',
     blurb: 'Talk to a glass-box chatbot about a table of blocks, teach it words, and watch a crowd vet what it learns.',
     status: 'live',
@@ -44,6 +57,7 @@ const PROJECTS = [
   {
     title: 'Gravity Playground',
     href: 'apps/gravity-playground/',
+    category: 'simulations',
     poster: 'assets/img/posters/gravity-playground.webp',
     blurb: 'Fling planets in 2D and switch gravity between 1/r, 1/r², 1/r³ and beyond.',
     status: 'live',
@@ -51,6 +65,7 @@ const PROJECTS = [
   {
     title: 'Hurricane Basin',
     href: 'apps/hurricane-basin/',
+    category: 'simulations',
     poster: 'assets/img/posters/hurricane-basin.webp',
     blurb: 'A live Atlantic weather model. Seed storms and watch them grow over warm water, orbit and merge, and fall apart over land.',
     status: 'live',
@@ -58,6 +73,7 @@ const PROJECTS = [
   {
     title: 'Logic Circuits',
     href: 'apps/logic-circuits/',
+    category: 'simulations',
     poster: 'assets/img/posters/logic-circuits.webp',
     blurb: 'Wire logic gates on an endless board, pack circuits into chips, and build chips from chips up to a computer.',
     status: 'live',
@@ -65,6 +81,7 @@ const PROJECTS = [
   {
     title: 'Markov Pictures',
     href: 'apps/planet-markov/',
+    category: 'generators',
     poster: 'assets/img/posters/planet-markov.webp',
     blurb: 'Generative AI in its simplest form: a tiny model learns from example pictures, then paints planets, galaxies and mazes.',
     status: 'live',
@@ -72,6 +89,7 @@ const PROJECTS = [
   {
     title: 'Moon Base',
     href: 'apps/moon-base/',
+    category: 'games',
     poster: 'assets/img/posters/moon-base.webp',
     blurb: 'Crash-land on the Moon, keep your air breathable, build up to a rocket and fly it home through real Earth-Moon gravity.',
     status: 'live',
@@ -79,6 +97,7 @@ const PROJECTS = [
   {
     title: 'PangPlanet',
     href: 'apps/pangplanet/',
+    category: 'games',
     poster: 'assets/img/posters/pangplanet.webp',
     blurb: 'Fly a rocket between planets and wormholes, mine fuel, trade galactokens.',
     status: 'live',
@@ -86,6 +105,7 @@ const PROJECTS = [
   {
     title: 'Planet Calculator',
     href: 'apps/planet-calculator/',
+    category: 'tools',
     poster: 'assets/img/posters/planet-calculator.webp',
     blurb: 'Worldbuilding maths: pick a star and an orbit, get the year, gravity, temperature, tidal locking and what the sky looks like.',
     status: 'live',
@@ -93,6 +113,7 @@ const PROJECTS = [
   {
     title: 'Planet Texture Generator',
     href: 'apps/planet-textures/',
+    category: 'generators',
     poster: 'assets/img/posters/planet-textures.webp',
     blurb: 'Dial in or roll random procedural planets and save them as PNG textures.',
     status: 'live',
@@ -100,6 +121,7 @@ const PROJECTS = [
   {
     title: 'Robot Workshop',
     href: 'apps/robot-workshop/',
+    category: 'simulations',
     poster: 'assets/img/posters/robot-workshop.webp',
     blurb: 'Build robots from beams, joints and electric motors, from Strandbeests to crawlers, then see how far they walk.',
     status: 'live',
@@ -107,6 +129,7 @@ const PROJECTS = [
   {
     title: 'Song Studio',
     href: 'apps/song-studio/',
+    category: 'tools',
     poster: 'assets/img/posters/song-studio.webp',
     blurb: 'Click notes onto a grid, stack melody, chords, bass and drums, and every note stays in key.',
     status: 'live',
@@ -114,6 +137,7 @@ const PROJECTS = [
   {
     title: 'Star Systems',
     href: 'apps/star-systems/',
+    category: 'simulations',
     poster: 'assets/img/posters/star-systems.webp',
     blurb: 'Fly through five real star systems drawn to scale, from home to TRAPPIST-1 to a nova about to go off.',
     status: 'live',
@@ -121,6 +145,7 @@ const PROJECTS = [
   {
     title: 'Worm Simulator',
     href: 'apps/worm-simulator/',
+    category: 'simulations',
     poster: 'assets/img/posters/worm-simulator.webp',
     blurb: 'A worm looks after itself: it hunts food, drinks at the pond, sleeps at home and ploughs through the sand.',
     status: 'live',
