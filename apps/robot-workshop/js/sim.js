@@ -48,33 +48,41 @@ export class Simulation {
       mass[b] += (length * WORLD.beamKgPerMeter) / 2;
       return { a, b, length };
     });
+    const beams = beamMap(design);
+    const gyroOn = (beamId, kg) => {
+      const beam = beams.get(beamId);
+      const gyro = { a: index.get(beam.a), b: index.get(beam.b) };
+      mass[gyro.a] += kg / 2;
+      mass[gyro.b] += kg / 2;
+      gyro.restAngle = this.beamAngle(gyro);
+      return gyro;
+    };
+    const jointOf = (drivenId, baseId) => {
+      const driven = beams.get(drivenId);
+      const base = beams.get(baseId);
+      const pivotId = sharedNode(driven, base);
+      const otherEnd = (beam) => index.get(beam.a === pivotId ? beam.b : beam.a);
+      const joint = { pivot: index.get(pivotId), drivenEnd: otherEnd(driven), baseEnd: otherEnd(base), turned: 0 };
+      joint.restAngle = this.relativeAngle(joint);
+      joint.lastAngle = joint.restAngle;
+      return joint;
+    };
+
     for (const id of design.sensors ?? []) mass[index.get(id)] += WORLD.sensorKg;
     this.sensors = (design.sensors ?? []).map((id) => index.get(id));
-    const cpuBeam = design.cpu && design.beams.find((beam) => beam.id === design.cpu.beam);
-    if (cpuBeam) {
-      this.cpuEnds = { a: index.get(cpuBeam.a), b: index.get(cpuBeam.b) };
-      mass[this.cpuEnds.a] += WORLD.cpuKg / 2;
-      mass[this.cpuEnds.b] += WORLD.cpuKg / 2;
+    this.gyros = (design.gyros ?? []).map((beamId) => gyroOn(beamId, WORLD.sensorKg));
+    this.angleSensors = (design.angles ?? []).map(({ driven, base }) => jointOf(driven, base));
+    for (const joint of this.angleSensors) mass[joint.pivot] += WORLD.sensorKg;
+    if (design.cpu) {
+      this.cpuGyro = gyroOn(design.cpu.beam, WORLD.cpuKg);
       this.cpuClock = design.cpu.clock;
-      this.cpuRestAngle = this.cpuAngle();
       if (program) this.processor = new Processor(program, this);
     }
     this.mass = mass;
     this.inverseMass = Float64Array.from(mass, (m) => 1 / m);
     this.totalMass = mass.reduce((sum, m) => sum + m, 0);
 
-    const beams = beamMap(design);
-    this.motors = design.motors.map((settings) => {
-      const driven = beams.get(settings.driven);
-      const base = beams.get(settings.base);
-      const pivotId = sharedNode(driven, base);
-      const otherEnd = (beam) => index.get(beam.a === pivotId ? beam.b : beam.a);
-      const motor = { settings, pivot: index.get(pivotId), drivenEnd: otherEnd(driven), baseEnd: otherEnd(base), torque: 0, speed: 0, cpuPower: 0 };
-      motor.restAngle = this.relativeAngle(motor);
-      motor.lastAngle = motor.restAngle;
-      motor.turned = 0;
-      return motor;
-    });
+    this.motors = design.motors.map((settings) => ({ settings, ...jointOf(settings.driven, settings.base), torque: 0, speed: 0, cpuPower: 0 }));
     this.motors.forEach((motor, i) => {
       motor.cpuControlled = Boolean(this.processor?.program.drives.has(i));
     });
@@ -104,28 +112,49 @@ export class Simulation {
     return driven - base;
   }
 
-  cpuAngle() {
-    const { a, b } = this.cpuEnds;
+  beamAngle({ a, b }) {
     return Math.atan2(this.y[b] - this.y[a], this.x[b] - this.x[a]);
   }
 
+  beamSpin({ a, b }) {
+    const dx = this.x[b] - this.x[a];
+    const dy = this.y[b] - this.y[a];
+    return (dx * (this.vy[b] - this.vy[a]) - dy * (this.vx[b] - this.vx[a])) / (dx * dx + dy * dy);
+  }
+
+  gyroTilt(gyro) {
+    return toDegrees(wrapAngle(this.beamAngle(gyro) - gyro.restAngle));
+  }
+
+  jointSpeed({ pivot: p, drivenEnd: d, baseEnd: b }) {
+    return this.beamSpin({ a: p, b: d }) - this.beamSpin({ a: p, b });
+  }
+
+  trackJoint(joint) {
+    const angle = this.relativeAngle(joint);
+    joint.turned += wrapAngle(angle - joint.lastAngle);
+    joint.lastAngle = angle;
+  }
+
   read(port, processor) {
-    const { a, b } = this.cpuEnds;
     const motor = this.motors[port.index];
+    const gyro = this.gyros[port.index];
+    const joint = this.angleSensors[port.index];
+    const radPerSecondToRpm = 60 / TAU;
     switch (port.kind) {
-      case 'tilt': return toDegrees(wrapAngle(this.cpuAngle() - this.cpuRestAngle));
-      case 'spin': {
-        const dx = this.x[b] - this.x[a];
-        const dy = this.y[b] - this.y[a];
-        return toDegrees((dx * (this.vy[b] - this.vy[a]) - dy * (this.vx[b] - this.vx[a])) / (dx * dx + dy * dy));
-      }
-      case 'height': return (this.y[a] + this.y[b]) / 2;
+      case 'tilt': return this.gyroTilt(this.cpuGyro);
+      case 'spin': return toDegrees(this.beamSpin(this.cpuGyro));
+      case 'height': return (this.y[this.cpuGyro.a] + this.y[this.cpuGyro.b]) / 2;
       case 'time': return this.time;
       case 'dt': return processor.dt;
       case 'touch': return this.y[this.sensors[port.index]] < WORLD.touchMeters ? 1 : 0;
       case 'motor-power': return motor.cpuPower;
       case 'motor-angle': return toDegrees(motor.turned);
-      case 'motor-speed': return (motor.speed * 60) / TAU;
+      case 'motor-speed': return motor.speed * radPerSecondToRpm;
+      case 'gyro-tilt': return this.gyroTilt(gyro);
+      case 'gyro-spin': return toDegrees(this.beamSpin(gyro));
+      case 'angle-angle': return toDegrees(joint.turned);
+      case 'angle-speed': return this.jointSpeed(joint) * radPerSecondToRpm;
       default: return 0;
     }
   }
@@ -145,9 +174,7 @@ export class Simulation {
 
   driveMotor(motor, h) {
     const { pivot: p, drivenEnd: d, baseEnd: b, settings } = motor;
-    const angle = this.relativeAngle(motor);
-    motor.turned += wrapAngle(angle - motor.lastAngle);
-    motor.lastAngle = angle;
+    this.trackJoint(motor);
     const w = this.inverseMass;
     const rdx = this.x[d] - this.x[p];
     const rdy = this.y[d] - this.y[p];
@@ -214,6 +241,7 @@ export class Simulation {
     const h = dt / WORLD.substeps;
     const { x, y, vx, vy, prevX, prevY } = this;
     for (let s = 0; s < WORLD.substeps; s += 1) {
+      for (const joint of this.angleSensors) this.trackJoint(joint);
       this.processor?.run(this.cpuClock * h, this.time);
       for (const motor of this.motors) this.driveMotor(motor, h);
       for (let i = 0; i < x.length; i += 1) {

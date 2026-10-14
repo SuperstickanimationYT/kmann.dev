@@ -38,6 +38,11 @@
       <button type="button" class="rw-primary" data-run title="Start or stop the simulation (Space)">Run</button>
     </div>
     <div class="rw-layers" role="toolbar" aria-label="Layers" data-layers></div>
+    <div class="rw-layers" role="group" aria-label="Sensor kind" data-sensor-kinds hidden>
+      <button type="button" data-sensor-kind="touch" title="Tap a joint: reads 1 while it touches the ground">Touch</button>
+      <button type="button" data-sensor-kind="gyro" title="Tap a beam: reads its tilt and spin">Gyro</button>
+      <button type="button" data-sensor-kind="angle" title="Tap two beams that share a joint: reads the angle between them">Angle</button>
+    </div>
   </div>
   <p class="rw-status" data-status></p>
 </main>

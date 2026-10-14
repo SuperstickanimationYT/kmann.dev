@@ -9,7 +9,7 @@ export const MOTOR_DEFAULTS = {
 };
 
 export function emptyDesign() {
-  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], sensors: [], cpu: null, program: '', nextId: 1 };
+  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], sensors: [], gyros: [], angles: [], cpu: null, program: '', nextId: 1 };
 }
 
 export const CPU_CLOCKS = [1000, 2000, 5000, 10000, 20000, 50000];
@@ -18,6 +18,8 @@ export function withDefaults(design) {
   design.layers ??= ['Layer 1'];
   for (const beam of design.beams) beam.layer ??= 0;
   design.sensors ??= [];
+  design.gyros ??= [];
+  design.angles ??= [];
   design.cpu ??= null;
   design.program ??= '';
   return design;
@@ -28,6 +30,21 @@ export function toggleSensor(design, nodeId) {
   design.sensors = design.sensors.filter((id) => id !== nodeId);
   if (design.sensors.length === before) design.sensors.push(nodeId);
   return design.sensors.length > before;
+}
+
+export function toggleGyro(design, beamId) {
+  const before = design.gyros.length;
+  design.gyros = design.gyros.filter((id) => id !== beamId);
+  if (design.gyros.length === before) design.gyros.push(beamId);
+  return design.gyros.length > before;
+}
+
+export function toggleAngleSensor(design, driven, base) {
+  const before = design.angles.length;
+  const samePair = (pair) => (pair.driven === driven.id && pair.base === base.id) || (pair.driven === base.id && pair.base === driven.id);
+  design.angles = design.angles.filter((pair) => !samePair(pair));
+  if (design.angles.length === before) design.angles.push({ driven: driven.id, base: base.id });
+  return design.angles.length > before;
 }
 
 export function mountCpu(design, beamId) {
@@ -101,6 +118,8 @@ export function removeBeam(design, beamId) {
   design.beams = design.beams.filter((beam) => beam.id !== beamId);
   design.motors = design.motors.filter((motor) => motor.driven !== beamId && motor.base !== beamId);
   if (design.cpu?.beam === beamId) design.cpu = null;
+  design.gyros = design.gyros.filter((id) => id !== beamId);
+  design.angles = design.angles.filter((pair) => pair.driven !== beamId && pair.base !== beamId);
   const used = new Set(design.beams.flatMap((beam) => [beam.a, beam.b]));
   design.nodes = design.nodes.filter((node) => used.has(node.id));
   design.sensors = design.sensors.filter((id) => used.has(id));

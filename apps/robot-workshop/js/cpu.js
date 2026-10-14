@@ -26,11 +26,31 @@ export const CPU_READINGS = {
   dt: 'seconds since the previous pass began',
 };
 
-export const MOTOR_PORTS = {
-  power: { write: true, help: 'set from -1 to 1 to drive the motor, read back what you set' },
-  angle: { write: false, help: 'degrees the motor has turned since Run' },
-  speed: { write: false, help: 'motor speed in rpm' },
+export const DEVICES = {
+  motor: {
+    plural: 'motors',
+    ports: {
+      power: { write: true, help: 'set from -1 to 1 to drive the motor, read back what you set' },
+      angle: { help: 'degrees the motor has turned since Run' },
+      speed: { help: 'motor speed in rpm' },
+    },
+  },
+  gyro: {
+    plural: 'gyros',
+    ports: {
+      tilt: { help: 'degrees this beam has turned since Run, counterclockwise positive' },
+      spin: { help: 'how fast this beam turns, degrees per second' },
+    },
+  },
+  angle: {
+    plural: 'angle sensors',
+    ports: {
+      angle: { help: 'degrees this joint has turned since Run' },
+      speed: { help: 'how fast this joint turns, in rpm' },
+    },
+  },
 };
+const DEVICE_NAME = new RegExp(`^(${Object.keys(DEVICES).join('|')})([1-9][0-9]*)$`);
 
 const OP = {
   PUSH: 0, LOAD: 1, STORE: 2, IN: 3, OUT: 4, ONCE: 5, JUMP: 6, JUMP_IF_ZERO: 7, CALL: 8,
@@ -249,13 +269,15 @@ export function compile(source, hardware) {
           if (writing) throw new CodeError(place.line, `${place.name} is a reading. A program can't set it.`);
           return { io: portId({ kind: place.name }) };
         }
-        if (/^motor[0-9]+$/.test(place.name)) {
-          throw new CodeError(place.line, `Say which part of ${place.name} you mean, like ${place.name}.power or ${place.name}.angle.`);
+        const bare = place.name.match(DEVICE_NAME);
+        if (bare) {
+          const examples = Object.keys(DEVICES[bare[1]].ports).map((port) => `${place.name}.${port}`).join(' or ');
+          throw new CodeError(place.line, `Say which reading of ${place.name} you mean, like ${examples}.`);
         }
         const touch = deviceIndex(place.name, 'touch');
         if (touch >= 0) {
           if (writing) throw new CodeError(place.line, `${place.name} is a sensor. A program can't set it.`);
-          if (touch >= hardware.sensors) throw new CodeError(place.line, `There is no ${place.name}. This robot has ${hardware.sensors} touch sensor${hardware.sensors === 1 ? '' : 's'}.`);
+          if (touch >= hardware.touch) throw new CodeError(place.line, `There is no ${place.name}. This robot has ${hardware.touch} touch sensor${hardware.touch === 1 ? '' : 's'}.`);
           return { io: portId({ kind: 'touch', index: touch }) };
         }
         if (!slots.has(place.name)) {
@@ -264,14 +286,18 @@ export function compile(source, hardware) {
         }
         return { slot: slots.get(place.name) };
       }
-      const motor = deviceIndex(place.device, 'motor');
-      if (motor < 0) throw new CodeError(place.line, `Unknown part "${place.device}". Motors are motor1, motor2 and so on.`);
-      if (motor >= hardware.motors) throw new CodeError(place.line, `There is no ${place.device}. This robot has ${hardware.motors} motor${hardware.motors === 1 ? '' : 's'}.`);
-      const spec = MOTOR_PORTS[place.port];
-      if (!spec) throw new CodeError(place.line, `Motors have power, angle and speed, not "${place.port}".`);
-      if (writing && !spec.write) throw new CodeError(place.line, `${place.device}.${place.port} is a reading. Set ${place.device}.power to move the motor.`);
-      if (writing) drives.add(motor);
-      return { io: portId({ kind: `motor-${place.port}`, index: motor }) };
+      const match = place.device.match(DEVICE_NAME);
+      if (!match) throw new CodeError(place.line, `Unknown part "${place.device}". Parts are named like ${Object.keys(DEVICES).map((kind) => `${kind}1`).join(', ')}.`);
+      const [, kind, number] = match;
+      const device = DEVICES[kind];
+      const index = Number(number) - 1;
+      const count = hardware[kind];
+      if (index >= count) throw new CodeError(place.line, `There is no ${place.device}. This robot has ${count} ${count === 1 ? device.plural.replace(/s$/, '') : device.plural}.`);
+      const spec = device.ports[place.port];
+      if (!spec) throw new CodeError(place.line, `${place.device} has ${Object.keys(device.ports).join(' and ')}, not "${place.port}".`);
+      if (writing && !spec.write) throw new CodeError(place.line, `${place.device}.${place.port} is a reading. A program can't set it.`);
+      if (writing) drives.add(index);
+      return { io: portId({ kind: `${kind}-${place.port}`, index }) };
     }
 
     function expression(node) {
