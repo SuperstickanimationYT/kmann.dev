@@ -1,4 +1,4 @@
-import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, separatorGroupCount, sharedNode, toggleAngleSensor, toggleEngine, toggleGyro, togglePen, toggleRange, toggleSensor, toggleSeparator, toggleTank, withDefaults } from './design.js';
+import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, separatorGroupCount, sharedNode, toggleAngleSensor, toggleEngine, toggleGyro, togglePen, toggleRange, toggleSensor, toggleSeparator, toggleTank, toggleWheel, withDefaults } from './design.js';
 import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
 import { PRESETS } from './presets.js';
 import { rocketFromText, rocketToText } from './share.js';
@@ -48,6 +48,7 @@ const TOOL_HINTS = {
   motor: 'Tap the beam the motor should turn.',
   engine: 'Tap a beam near the end where the nozzle goes. The engine pushes toward the other end. Tap the same end again to remove it.',
   tank: 'Tap a beam to turn it into a fuel tank, or tap a tank to turn it back into a beam.',
+  wheel: 'Tap a beam to mount a reaction wheel on it. A and D twist the rocket, and it holds still when you let go.',
   separator: 'Pick a group above the board, then tap the beams that hold two stages together. Firing a group lets go of all its beams at once.',
   sensor: 'Pick a sensor kind above the board, then tap to add it. Tap it again to remove it.',
   cpu: 'Tap a beam to mount the CPU on it. Build it upright, and its gyro measures that beam.',
@@ -70,6 +71,10 @@ const ENGINE_FIELDS = {
   thrust: { key: 'thrust', label: 'Full thrust', min: 5, max: 500, step: 5, format: (v) => `${v} kN` },
   limit: { key: 'limit', label: 'Thrust limit', min: 0, max: 100, step: 5, toSlider: (v) => v * 100, fromSlider: (v) => v / 100, format: (v) => `${Math.round(v * 100)}%` },
 };
+
+const WHEEL_FIELDS = [
+  { key: 'torque', label: 'Most torque', min: 1, max: 200, step: 1, format: (v) => `${v} kN·m` },
+];
 
 const LAYER_COLORS = ['#9fd0ff', '#ffd36e', '#c4a8ff', '#7dffa8', '#ff9fc6', '#6fe8e0'];
 
@@ -94,6 +99,7 @@ const COLORS = {
   flame: '#ffcf5c',
   separator: '#ffd36e',
   range: '#ff6b6b',
+  wheel: '#c4a8ff',
   path: 'rgba(95, 227, 255, 0.75)',
   apsis: '#5fe3ff',
   impact: '#ff6b6b',
@@ -116,6 +122,8 @@ const sensorKindButtons = [...document.querySelectorAll('[data-sensor-kind]')];
 const separatorGroupBar = $('[data-separator-groups]');
 const separatorGroupButtons = [...document.querySelectorAll('[data-separator-group]')];
 const engineList = $('[data-engines]');
+const wheelList = $('[data-wheels]');
+const noWheels = $('[data-no-wheels]');
 const noEngines = $('[data-no-engines]');
 const stageList = $('[data-stages]');
 const warpSelect = $('[data-warp]');
@@ -443,6 +451,16 @@ function tapTank(point) {
   say(added ? 'Fuel tank made. Longer tanks hold more fuel. Engines burn from the nearest tank they are still attached to.' : 'Tank turned back into a plain beam.');
 }
 
+function tapWheel(point) {
+  const beam = hitBeam(point);
+  if (!beam) return;
+  const added = toggleWheel(design, beam.id);
+  commit();
+  renderWheels();
+  renderCpu();
+  say(added ? `wheel${design.wheels.length} added. While flying, A and D twist the rocket with it.` : 'Reaction wheel removed. The ones after it moved up a number.');
+}
+
 function tapSeparator(point) {
   const beam = hitBeam(point);
   if (!beam) return;
@@ -577,6 +595,7 @@ function endGesture(event) {
   if (gesture.kind === 'tap' && tool === 'pen') tapPen(point);
   if (gesture.kind === 'tap' && tool === 'engine') tapEngine(point);
   if (gesture.kind === 'tap' && tool === 'tank') tapTank(point);
+  if (gesture.kind === 'tap' && tool === 'wheel') tapWheel(point);
   if (gesture.kind === 'tap' && tool === 'separator') tapSeparator(point);
   if (gesture.kind !== 'pinch' || pointers.size === 0) gesture = null;
 }
@@ -593,7 +612,7 @@ canvas.addEventListener('wheel', (event) => {
 }, { passive: false });
 
 function hoverAt(point) {
-  if (['motor', 'cpu', 'engine', 'tank', 'separator'].includes(tool) || (tool === 'sensor' && sensorKind !== 'touch')) {
+  if (['motor', 'cpu', 'engine', 'tank', 'separator', 'wheel'].includes(tool) || (tool === 'sensor' && sensorKind !== 'touch')) {
     const beam = hitBeam(point);
     return beam && { kind: 'beam', id: beam.id };
   }
@@ -633,6 +652,7 @@ function startRun() {
   renderControls();
   renderMotors();
   renderEngines();
+  renderWheels();
   renderStages();
   renderCpu();
 }
@@ -645,12 +665,13 @@ function stopRun() {
   renderControls();
   renderMotors();
   renderEngines();
+  renderWheels();
   renderStages();
   renderCpu();
 }
 
 function hardware() {
-  return { motor: design.motors.length, touch: design.sensors.length, gyro: design.gyros.length, angle: design.angles.length, pen: design.pens.length, engine: design.engines.length, sep: separatorGroupCount(design), range: design.ranges.length };
+  return { motor: design.motors.length, touch: design.sensors.length, gyro: design.gyros.length, angle: design.angles.length, pen: design.pens.length, engine: design.engines.length, sep: separatorGroupCount(design), range: design.ranges.length, wheel: design.wheels.length };
 }
 
 function drivenByProgram(kind = 'motor') {
@@ -660,11 +681,12 @@ function drivenByProgram(kind = 'motor') {
 function refreshProgram() {
   compiled = compile(design.program, hardware());
   codeError.textContent = compiled.ok ? '' : `Line ${compiled.error.line}: ${compiled.error.message}`;
-  const key = `${[...drivenByProgram('motor')]}|${[...drivenByProgram('engine')]}`;
+  const key = `${[...drivenByProgram('motor')]}|${[...drivenByProgram('engine')]}|${[...drivenByProgram('wheel')]}`;
   if (key !== drivenKey) {
     drivenKey = key;
     renderMotors();
     renderEngines();
+    renderWheels();
   }
 }
 
@@ -717,7 +739,8 @@ function renderWatch(now) {
   const variables = processor.program.variables.map((name, i) => referenceRow(name, String(Math.round(processor.values[i] * 1000) / 1000)));
   const powers = sim.motors.flatMap((motor, i) => (motor.cpuControlled ? [referenceRow(`motor${i + 1}.power`, motor.cpuPower.toFixed(2))] : []));
   const throttles = sim.engines.flatMap((engine, i) => (engine.cpuControlled ? [referenceRow(`engine${i + 1}.throttle`, engine.cpuThrottle.toFixed(2))] : []));
-  watchList.replaceChildren(...variables, ...powers, ...throttles);
+  const twists = sim.wheels.flatMap((wheel, i) => (wheel.cpuControlled ? [referenceRow(`wheel${i + 1}.torque`, wheel.cpuTorque.toFixed(2))] : []));
+  watchList.replaceChildren(...variables, ...powers, ...throttles, ...twists);
 }
 
 function fit() {
@@ -895,6 +918,56 @@ function renderEngines() {
     return item;
   }));
   noEngines.hidden = design.engines.length > 0;
+}
+
+function renderWheels() {
+  const programmed = drivenByProgram('wheel');
+  wheelList.replaceChildren(...design.wheels.map((wheel, index) => {
+    const item = document.createElement('li');
+    item.className = 'rw-motor rw-wheel';
+    const head = document.createElement('div');
+    head.className = 'rw-motor-head';
+    const title = document.createElement('strong');
+    title.textContent = `Wheel ${index + 1} `;
+    const codeName = document.createElement('code');
+    codeName.textContent = `wheel${index + 1}`;
+    title.append(codeName);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'rw-remove';
+    remove.textContent = 'Remove';
+    remove.disabled = Boolean(sim);
+    remove.addEventListener('click', () => {
+      design.wheels = design.wheels.filter((other) => other !== wheel);
+      commit();
+      renderWheels();
+      renderCpu();
+    });
+    head.append(title);
+    if (programmed.has(index)) {
+      const note = document.createElement('span');
+      note.className = 'rw-driven';
+      note.textContent = 'Driven by the CPU';
+      head.append(note);
+    }
+    head.append(remove);
+    item.append(head, ...WHEEL_FIELDS.map((field) => slider(wheel, field)));
+    if (!programmed.has(index)) {
+      const hold = document.createElement('label');
+      hold.className = 'rw-check';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = wheel.hold;
+      box.addEventListener('change', () => {
+        wheel.hold = box.checked;
+        commit();
+      });
+      hold.append(box, ' Hold still when not steering');
+      item.append(hold);
+    }
+    return item;
+  }));
+  noWheels.hidden = design.wheels.length > 0;
 }
 
 function renderStages() {
@@ -1401,6 +1474,36 @@ function drawEngines(nodes) {
   });
 }
 
+function drawWheels(nodes) {
+  const beams = beamMap(design);
+  const radius = px(0.6, 8);
+  design.wheels.forEach((wheel, i) => {
+    const beam = beams.get(wheel.beam);
+    if (!beam) return;
+    const a = nodes.get(beam.a);
+    const b = nodes.get(beam.b);
+    const s = toScreen((a.x + b.x) / 2, (a.y + b.y) / 2);
+    const live = sim?.wheels[i];
+    const fill = live ? Math.max(-1, Math.min(1, sim.wheelFill(live))) : 0;
+    context.fillStyle = COLORS.beamShadow;
+    context.strokeStyle = COLORS.wheel;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    if (fill !== 0) {
+      context.fillStyle = COLORS.wheel;
+      context.beginPath();
+      context.moveTo(s.x, s.y);
+      context.arc(s.x, s.y, radius * 0.75, -Math.PI / 2, -Math.PI / 2 - fill * Math.PI * 2, fill > 0);
+      context.closePath();
+      context.fill();
+    }
+    drawLabel(`wheel${i + 1}`, s.x + radius + 4, s.y - radius, COLORS.wheel);
+  });
+}
+
 function drawSeparators(nodes) {
   const index = new Map(design.beams.map((beam, i) => [beam.id, i]));
   const beams = beamMap(design);
@@ -1476,6 +1579,7 @@ function draw() {
   drawTanks(nodes);
   drawStructure();
   drawEngines(nodes);
+  drawWheels(nodes);
   drawSeparators(nodes);
   drawRanges(nodes);
   drawCpu(nodes);
@@ -1541,6 +1645,7 @@ function replaceDesign(next) {
   renderCpu();
   renderMotors();
   renderEngines();
+  renderWheels();
   renderStages();
   fit();
 }

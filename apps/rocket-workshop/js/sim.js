@@ -13,7 +13,7 @@ export const WORLD = {
   friction: 0.8,
   swingGain: 4,
   beamWidth: 0.3,
-  dragCoefficient: 1,
+  dragCoefficient: 0.5,
   standardGravity: 9.80665,
   rangeLimit: 20000,
   separationSpeed: 1.5,
@@ -21,6 +21,7 @@ export const WORLD = {
 
 export const TANK = { fuelKgPerMeter: 400, dryKgPerMeter: 40, width: 1.6 };
 export const ENGINE = { kg: 250, isp: 300 };
+export const WHEEL = { kg: 200, storeSeconds: 30, fullTorqueSpin: 0.2 };
 
 const TAU = Math.PI * 2;
 
@@ -113,6 +114,15 @@ export class Simulation {
       return { tip: index.get(tip), back: otherEndOf(beam, tip), distance: WORLD.rangeLimit };
     });
 
+    this.wheels = (design.wheels ?? []).map((settings) => {
+      const beam = beams.get(settings.beam);
+      const a = index.get(beam.a);
+      const b = index.get(beam.b);
+      mass[a] += WHEEL.kg / 2;
+      mass[b] += WHEEL.kg / 2;
+      return { settings, a, b, stored: 0, applied: 0, cpuTorque: 0, cpuControlled: false };
+    });
+
     this.tanks = (design.tanks ?? []).map((beamId) => {
       const beam = this.beams[beamIndex.get(beamId)];
       const capacity = beam.length * TANK.fuelKgPerMeter;
@@ -148,6 +158,9 @@ export class Simulation {
     });
     this.engines.forEach((engine, i) => {
       engine.cpuControlled = Boolean(this.processor?.program.drives.engine.has(i));
+    });
+    this.wheels.forEach((wheel, i) => {
+      wheel.cpuControlled = Boolean(this.processor?.program.drives.wheel.has(i));
     });
 
     this.findPieces();
@@ -334,6 +347,8 @@ export class Simulation {
       case 'engine-throttle': return this.engines[port.index].cpuThrottle;
       case 'sep-fire': return this.separatorGroups.get(port.index + 1)?.fired ? 1 : 0;
       case 'range-distance': return this.measureRange(this.ranges[port.index]);
+      case 'wheel-torque': return this.wheels[port.index].cpuTorque;
+      case 'wheel-spin': return this.wheelFill(this.wheels[port.index]);
       default: return 0;
     }
   }
@@ -343,6 +358,7 @@ export class Simulation {
     if (port.kind === 'pen-down') this.pens[port.index].down = value === 0 ? 0 : 1;
     if (port.kind === 'engine-throttle') this.engines[port.index].cpuThrottle = Math.max(0, Math.min(1, value));
     if (port.kind === 'sep-fire' && value !== 0) this.fireSeparators(port.index + 1);
+    if (port.kind === 'wheel-torque') this.wheels[port.index].cpuTorque = Math.max(-1, Math.min(1, value));
   }
 
   fireSeparators(group) {
@@ -392,6 +408,35 @@ export class Simulation {
       }
     }
     if (burned) this.updateMass();
+  }
+
+  wheelFill(wheel) {
+    return wheel.stored / (wheel.settings.torque * 1000 * WHEEL.storeSeconds);
+  }
+
+  wheelCommand(wheel) {
+    if (wheel.cpuControlled) return wheel.cpuTorque;
+    if (this.input.steer !== 0 || !wheel.settings.hold) return -this.input.steer;
+    return Math.max(-1, Math.min(1, -this.beamSpin(wheel) / WHEEL.fullTorqueSpin));
+  }
+
+  spinWheels(h) {
+    for (const wheel of this.wheels) {
+      const most = wheel.settings.torque * 1000;
+      let torque = this.wheelCommand(wheel) * most;
+      const fill = this.wheelFill(wheel);
+      if ((fill >= 1 && torque < 0) || (fill <= -1 && torque > 0)) torque = 0;
+      wheel.stored -= torque * h;
+      wheel.applied = torque / most;
+      const dx = this.x[wheel.b] - this.x[wheel.a];
+      const dy = this.y[wheel.b] - this.y[wheel.a];
+      const length2 = dx * dx + dy * dy;
+      const push = (torque * h) / length2;
+      this.vx[wheel.b] += -dy * push * this.inverseMass[wheel.b];
+      this.vy[wheel.b] += dx * push * this.inverseMass[wheel.b];
+      this.vx[wheel.a] -= -dy * push * this.inverseMass[wheel.a];
+      this.vy[wheel.a] -= dx * push * this.inverseMass[wheel.a];
+    }
   }
 
   throttle(motor) {
@@ -530,6 +575,7 @@ export class Simulation {
       this.processor?.run(this.cpuClock * h, this.time);
       for (const motor of this.motors) this.driveMotor(motor, h);
       this.burnEngines(h);
+      this.spinWheels(h);
       this.applyGravity(h, bodies);
       this.applyDrag(h, bodies[0].state);
       for (let i = 0; i < x.length; i += 1) {

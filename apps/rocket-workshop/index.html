@@ -29,11 +29,12 @@
         <button type="button" data-tool="engine" title="Tap a beam near the nozzle end to add an engine (2)">Engine</button>
         <button type="button" data-tool="tank" title="Tap a beam to make it a fuel tank (3)">Tank</button>
         <button type="button" data-tool="separator" title="Tap beams that hold stages together (4)">Separator</button>
-        <button type="button" data-tool="motor" title="Tap the beam to turn, then the beam it pushes against (5)">Motor</button>
-        <button type="button" data-tool="sensor" title="Add touch sensors, gyros, angle sensors and rangefinders (6)">Sensor</button>
-        <button type="button" data-tool="cpu" title="Tap a beam to mount the CPU on it (7)">CPU</button>
-        <button type="button" data-tool="pen" title="Tap a joint or beam to add a pen that draws its path (8)">Pen</button>
-        <button type="button" data-tool="move" title="Drag joints to move them (9)">Move</button>
+        <button type="button" data-tool="wheel" title="Tap a beam to mount a reaction wheel (5)">Wheel</button>
+        <button type="button" data-tool="motor" title="Tap the beam to turn, then the beam it pushes against (6)">Motor</button>
+        <button type="button" data-tool="sensor" title="Add touch sensors, gyros, angle sensors and rangefinders (7)">Sensor</button>
+        <button type="button" data-tool="cpu" title="Tap a beam to mount the CPU on it (8)">CPU</button>
+        <button type="button" data-tool="pen" title="Tap a joint or beam to add a pen that draws its path (9)">Pen</button>
+        <button type="button" data-tool="move" title="Drag joints to move them">Move</button>
         <button type="button" data-tool="erase" title="Tap a joint or beam to remove it">Erase</button>
       </div>
       <button type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
@@ -99,6 +100,13 @@
       <ul class="rw-motors" data-engines></ul>
       <p class="rw-note" data-no-engines>No engines yet. Pick the <strong>Engine</strong> tool and tap a beam near the end where the nozzle goes. The engine pushes toward the other end, and burns fuel from the nearest tank still attached to it.</p>
       <p class="rw-note">While flying, the throttle lever drives every engine the CPU doesn't, up to each engine's thrust limit. To steer by hand, put a motor between an engine and the rocket and set it to <strong>Steer with A and D</strong>.</p>
+    </section>
+
+    <section class="rw-section">
+      <h2>Reaction wheels</h2>
+      <ul class="rw-motors" data-wheels></ul>
+      <p class="rw-note" data-no-wheels>No reaction wheels yet. Pick the <strong>Wheel</strong> tool and tap a beam. A reaction wheel twists its beam by spinning a flywheel the other way, so it steers even with the engine off.</p>
+      <p class="rw-note">A wheel stores everything it absorbs. Once full (the disc fills up) it can't twist further that way until you twist back. Fighting the air with it fills it fast.</p>
     </section>
 
     <section class="rw-section">

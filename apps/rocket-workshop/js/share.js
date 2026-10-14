@@ -1,4 +1,4 @@
-import { CPU_CLOCKS, ENGINE_DEFAULTS, MOTOR_DEFAULTS, PEN_COLORS, sharedNode } from './design.js';
+import { CPU_CLOCKS, ENGINE_DEFAULTS, MOTOR_DEFAULTS, PEN_COLORS, WHEEL_DEFAULTS, sharedNode } from './design.js';
 
 const FORMAT = 'rocket-workshop';
 const VERSION = 1;
@@ -102,6 +102,11 @@ function parseRocket(text) {
     })),
     tanks: [...new Set(list(data.tanks, 'tanks').filter((id) => beamIds.has(id)))],
     separators: onePerBeam(list(data.separators, 'separators').filter((separator) => beamIds.has(separator?.beam) && Number.isInteger(separator.group) && separator.group >= 1 && separator.group <= 9)).map(({ beam, group }) => ({ beam, group })),
+    wheels: onePerBeam(list(data.wheels, 'wheels').filter((wheel) => beamIds.has(wheel?.beam))).map((wheel) => ({
+      beam: wheel.beam,
+      torque: clamp(wheel.torque, 1, 1000, WHEEL_DEFAULTS.torque),
+      hold: typeof wheel.hold === 'boolean' ? wheel.hold : WHEEL_DEFAULTS.hold,
+    })),
     ranges: onePerBeam(list(data.ranges, 'ranges').filter((range) => endOf(range?.beam, range?.tip))).map(({ beam, tip }) => ({ beam, tip })),
     cpu,
     program: typeof data.program === 'string' ? data.program : '',
