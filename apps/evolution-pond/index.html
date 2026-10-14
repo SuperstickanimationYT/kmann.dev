@@ -51,6 +51,8 @@
         <dt>Time</dt><dd data-stat="tick"></dd>
         <dt>Cells alive</dt><dd data-stat="count"></dd>
         <dt>Most generations</dt><dd data-stat="generation"></dd>
+        <dt>Cells in bodies</dt><dd data-stat="bodied"></dd>
+        <dt>Largest body</dt><dd data-stat="largest"></dd>
       </dl>
 
       <figure class="ep-chart">
@@ -93,9 +95,12 @@
       </form>
 
       <p class="ep-about">
-        Every cell starts as the same simple alga: it photosynthesises and takes up nutrients. Each
-        child gets slightly mutated genes, including how fast it mutates. Genes cost energy to keep,
-        so nothing is free. Light is strongest at the top and nutrients sink, rising again only at
+        Every cell starts as the same simple alga: it photosynthesises and takes up nutrients. A
+        genome is a list of cell types, each with its own traits and a rule for dividing: which type
+        the child becomes, at what angle, and whether it stays attached. Attached cells form one body
+        with one genome and can share energy. Cells that break free carry slightly mutated genes,
+        including how fast they mutate, and types can be copied and then drift apart. Genes cost
+        energy to keep, so nothing is free. Light is strongest at the top and nutrients sink, rising again only at
         two upwellings. Dead cells and scraps return to the water, so the total amount of matter
         never changes. There is no score: whatever survives and divides is what you see.
       </p>

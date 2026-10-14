@@ -1,5 +1,5 @@
 import { NutrientField } from './field.js';
-import { ancestorGenome, hueDistance, mutate, upkeepPerMass } from './genome.js';
+import { ancestorGenome, hueDistance, mutate, sticksToChild, upkeepPerMass } from './genome.js';
 import { createRandom } from './random.js';
 
 export const WORLD_WIDTH = 1200;
@@ -29,15 +29,39 @@ const KIN_SPARING_DEGREES = 60;
 const CALM_TUMBLE_CHANCE = 0.02;
 const WORSENING_TUMBLE_CHANCE = 0.2;
 const CROWD_SCALE = 4;
+const MAX_BONDS = 6;
+const BOND_UPKEEP = 0.0005;
+const BOND_STIFFNESS = 0.3;
+const BOND_BREAKING_STRETCH = 2.2;
+const SHARING_RATE = 0.1;
 
 export const radiusOf = (mass) => 1.5 * Math.sqrt(mass);
-export const divisionMassOf = (genome) => 2 + 10 * genome.divisionSize;
-export const maxAgeOf = (genome) => 800 + 8000 * genome.lifespan;
+export const divisionMassOf = (type) => 2 + 10 * type.divisionSize;
+export const maxAgeOf = (type) => 800 + 8000 * type.lifespan;
+
+function wrappedDx(from, to) {
+  let dx = to.x - from.x;
+  if (dx > WORLD_WIDTH / 2) dx -= WORLD_WIDTH;
+  else if (dx < -WORLD_WIDTH / 2) dx += WORLD_WIDTH;
+  return dx;
+}
 
 function keepInside(cell) {
   const radius = radiusOf(cell.mass);
   cell.x = (cell.x + WORLD_WIDTH) % WORLD_WIDTH;
   cell.y = Math.min(WORLD_HEIGHT - radius, Math.max(radius, cell.y));
+}
+
+function becomeType(cell, typeIndex) {
+  cell.typeIndex = Math.min(typeIndex, cell.genome.types.length - 1);
+  cell.type = cell.genome.types[cell.typeIndex];
+  cell.upkeep = BASE_UPKEEP + upkeepPerMass(cell.type) + SWIM_UPKEEP * cell.type.motility ** 2;
+  cell.maxAge = maxAgeOf(cell.type);
+}
+
+function unbond(a, b) {
+  a.bonds.splice(a.bonds.indexOf(b), 1);
+  b.bonds.splice(b.bonds.indexOf(a), 1);
 }
 
 export class World {
@@ -53,7 +77,7 @@ export class World {
     this.gridNext = new Int32Array(MAX_CELLS);
     this.cells = [];
     for (let i = 0; i < ancestors; i++) {
-      const cell = this.createCell(this.random() * WORLD_WIDTH, this.random() * WORLD_HEIGHT, STARTING_MASS, STARTING_ENERGY, ancestorGenome(), 0);
+      const cell = this.createCell(this.random() * WORLD_WIDTH, this.random() * WORLD_HEIGHT, STARTING_MASS, STARTING_ENERGY, ancestorGenome(), 0, 0);
       cell.heading = this.random.between(-Math.PI, Math.PI);
       this.cells.push(cell);
     }
@@ -61,9 +85,10 @@ export class World {
     this.meanDensity = matter / this.field.values.length;
   }
 
-  createCell(x, y, mass, energy, genome, generation) {
-    const upkeep = BASE_UPKEEP + upkeepPerMass(genome) + SWIM_UPKEEP * genome.motility ** 2;
-    return { id: this.nextId++, x, y, mass, energy, genome, upkeep, maxAge: maxAgeOf(genome), generation, heading: 0, age: 0, nearby: 0, lastSignal: 0, pushX: 0, pushY: 0, dead: false };
+  createCell(x, y, mass, energy, genome, typeIndex, generation) {
+    const cell = { id: this.nextId++, x, y, mass, energy, genome, typeIndex: 0, type: null, upkeep: 0, maxAge: 0, generation, bonds: [], heading: 0, age: 0, nearby: 0, lastSignal: 0, pushX: 0, pushY: 0, dead: false };
+    becomeType(cell, typeIndex);
+    return cell;
   }
 
   lightAt(y) {
@@ -75,6 +100,7 @@ export class World {
     this.field.step();
     this.indexCells();
     this.interact();
+    this.pullBonds();
     for (const cell of this.cells) this.live(cell);
     for (const cell of this.cells) this.move(cell);
     this.divideAndBury();
@@ -116,9 +142,7 @@ export class World {
   }
 
   meet(a, b) {
-    let dx = b.x - a.x;
-    if (dx > WORLD_WIDTH / 2) dx -= WORLD_WIDTH;
-    else if (dx < -WORLD_WIDTH / 2) dx += WORLD_WIDTH;
+    const dx = wrappedDx(a, b);
     const dy = b.y - a.y;
     const distanceSquared = dx * dx + dy * dy;
     if (distanceSquared > SENSE_RADIUS * SENSE_RADIUS) return;
@@ -134,14 +158,15 @@ export class World {
     a.pushY -= ny * overlap * share;
     b.pushX += nx * overlap * (1 - share);
     b.pushY += ny * overlap * (1 - share);
+    if (a.bonds.includes(b)) return;
     this.bite(a, b);
     this.bite(b, a);
   }
 
   bite(eater, prey) {
-    const edge = eater.genome.predation - prey.genome.armor;
+    const edge = eater.type.predation - prey.type.armor;
     if (edge <= 0 || prey.mass <= 0) return;
-    if (hueDistance(eater.genome, prey.genome) < eater.genome.kinSparing * KIN_SPARING_DEGREES) return;
+    if (hueDistance(eater.genome, prey.genome) < eater.type.kinSparing * KIN_SPARING_DEGREES) return;
     const taken = Math.min(prey.mass, BITE_RATE * edge);
     const energyTaken = Math.max(0, prey.energy) * (taken / prey.mass);
     prey.mass -= taken;
@@ -151,31 +176,61 @@ export class World {
     this.field.add(prey.x, prey.y, taken * (1 - DIGESTION_EFFICIENCY));
   }
 
+  pullBonds() {
+    for (const a of this.cells) {
+      for (const b of a.bonds) {
+        if (b.id < a.id) continue;
+        const dx = wrappedDx(a, b);
+        const dy = b.y - a.y;
+        const distance = Math.hypot(dx, dy) || 0.001;
+        const rest = radiusOf(a.mass) + radiusOf(b.mass);
+        if (distance > rest * BOND_BREAKING_STRETCH) {
+          unbond(a, b);
+          continue;
+        }
+        const share = b.mass / (a.mass + b.mass);
+        const pull = (BOND_STIFFNESS * (distance - rest)) / distance;
+        a.pushX += dx * pull * share;
+        a.pushY += dy * pull * share;
+        b.pushX -= dx * pull * (1 - share);
+        b.pushY -= dy * pull * (1 - share);
+        this.shareEnergy(a, b);
+      }
+    }
+  }
+
+  shareEnergy(a, b) {
+    const openness = (a.type.sharing + b.type.sharing) / 2;
+    const flow = SHARING_RATE * openness * (a.energy / a.mass - b.energy / b.mass) * Math.min(a.mass, b.mass) * 0.5;
+    a.energy -= flow;
+    b.energy += flow;
+  }
+
   live(cell) {
-    const { genome } = cell;
+    const { type } = cell;
     const light = this.lightAt(cell.y);
-    cell.energy += PHOTOSYNTHESIS_RATE * genome.photosynthesis * light * cell.mass;
-    cell.energy -= cell.mass * cell.upkeep;
+    cell.energy += PHOTOSYNTHESIS_RATE * type.photosynthesis * light * cell.mass;
+    cell.energy -= cell.mass * cell.upkeep + BOND_UPKEEP * cell.bonds.length;
     const density = this.field.densityAt(cell.x, cell.y);
     const affordable = Math.max(0, cell.energy) / BUILD_COST;
-    const absorbed = this.field.take(cell.x, cell.y, Math.min(UPTAKE_RATE * genome.absorption * density, affordable));
+    const absorbed = this.field.take(cell.x, cell.y, Math.min(UPTAKE_RATE * type.absorption * density, affordable));
     cell.mass += absorbed;
     cell.energy = Math.min(cell.energy - absorbed * BUILD_COST, cell.mass * ENERGY_STORE_PER_MASS);
     cell.age++;
     cell.dead = cell.energy <= 0 || cell.mass < MIN_MASS || cell.age > cell.maxAge;
-    if (genome.motility > 0) this.steer(cell, light, density);
+    if (type.motility > 0) this.steer(cell, light, density);
   }
 
   steer(cell, light, density) {
-    const { genome } = cell;
-    const signal = genome.lightSeeking * light + (genome.foodSeeking * density) / this.meanDensity + (genome.cellSeeking * cell.nearby) / CROWD_SCALE;
+    const { type } = cell;
+    const signal = type.lightSeeking * light + (type.foodSeeking * density) / this.meanDensity + (type.cellSeeking * cell.nearby) / CROWD_SCALE;
     const tumbleChance = signal >= cell.lastSignal ? CALM_TUMBLE_CHANCE : WORSENING_TUMBLE_CHANCE;
     cell.heading += this.random() < tumbleChance ? this.random.between(-Math.PI, Math.PI) : (this.random() - 0.5) * 0.5;
     cell.lastSignal = signal;
   }
 
   move(cell) {
-    const speed = MAX_SWIM_SPEED * cell.genome.motility;
+    const speed = MAX_SWIM_SPEED * cell.type.motility;
     cell.x += Math.cos(cell.heading) * speed + cell.pushX + (this.random() - 0.5) * DRIFT_SPEED;
     cell.y += Math.sin(cell.heading) * speed + cell.pushY + (this.random() - 0.5) * DRIFT_SPEED;
     cell.pushX = 0;
@@ -188,24 +243,35 @@ export class World {
     for (const cell of this.cells) {
       if (cell.dead) {
         this.field.add(cell.x, cell.y, Math.max(0, cell.mass));
+        for (const partner of [...cell.bonds]) unbond(cell, partner);
         continue;
       }
       survivors.push(cell);
-      if (cell.mass >= divisionMassOf(cell.genome) && survivors.length < MAX_CELLS) survivors.push(this.divide(cell));
+      if (cell.mass >= divisionMassOf(cell.type) && survivors.length < MAX_CELLS) survivors.push(this.divide(cell));
     }
     this.cells = survivors;
   }
 
   divide(parent) {
+    const rule = parent.type;
+    const staysAttached = sticksToChild(rule) && parent.bonds.length < MAX_BONDS;
     parent.mass /= 2;
     parent.energy /= 2;
-    const angle = this.random.between(-Math.PI, Math.PI);
+    const angle = staysAttached ? parent.heading + rule.splitAngle : this.random.between(-Math.PI, Math.PI);
     const offset = radiusOf(parent.mass);
-    const child = this.createCell(parent.x + Math.cos(angle) * offset, parent.y + Math.sin(angle) * offset, parent.mass, parent.energy, mutate(parent.genome, this.random), parent.generation + 1);
+    const genome = staysAttached ? parent.genome : mutate(parent.genome, this.random);
+    const childType = Math.min(rule.childType, genome.types.length - 1);
+    const child = this.createCell(parent.x + Math.cos(angle) * offset, parent.y + Math.sin(angle) * offset, parent.mass, parent.energy, genome, childType, staysAttached ? parent.generation : parent.generation + 1);
     child.heading = angle;
+    becomeType(parent, rule.parentBecomes);
+    if (staysAttached) {
+      parent.bonds.push(child);
+      child.bonds.push(parent);
+    } else {
+      parent.heading = angle + Math.PI;
+    }
     parent.x -= Math.cos(angle) * offset;
     parent.y -= Math.sin(angle) * offset;
-    parent.heading = angle + Math.PI;
     keepInside(parent);
     keepInside(child);
     return child;
@@ -228,6 +294,24 @@ export class World {
       }
     }
     return nearestDistance < reach ? nearest : null;
+  }
+
+  bodies() {
+    const seen = new Set();
+    const bodies = [];
+    for (const cell of this.cells) {
+      if (seen.has(cell)) continue;
+      const body = this.bodyOf(cell);
+      for (const member of body) seen.add(member);
+      bodies.push(body);
+    }
+    return bodies;
+  }
+
+  bodyOf(cell) {
+    const body = new Set([cell]);
+    for (const member of body) for (const partner of member.bonds) body.add(partner);
+    return [...body];
   }
 
   findCell(id) {
