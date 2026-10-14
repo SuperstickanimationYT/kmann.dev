@@ -1,7 +1,7 @@
 {
-  "name": "Robot Workshop",
-  "short_name": "Robot Workshop",
-  "description": "Build 2D robots from beams, joints and electric motors, then drop them on the ground and see how far they walk. Prototype.",
+  "name": "Rocket Workshop",
+  "short_name": "Rocket Workshop",
+  "description": "Build rockets from beams, joints, engines, fuel tanks and separators, program their flight computer, and fly them around a 1/20 scale Earth and Moon. Prototype.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
