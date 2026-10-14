@@ -63,6 +63,7 @@
       <input type="range" min="0" max="100" step="5" value="0" data-throttle>
     </label>
     <button type="button" data-steer="right" aria-label="Steer clockwise (D)">&#9654;</button>
+    <button type="button" class="rw-assist" data-assist aria-pressed="true" title="Stability assist: holds the rocket still when you are not steering (T)">Assist</button>
   </div>
   <p class="rw-hud" data-hud hidden></p>
   <p class="rw-status" data-status></p>
@@ -100,13 +101,13 @@
       <h2>Engines</h2>
       <ul class="rw-motors" data-engines></ul>
       <p class="rw-note" data-no-engines>No engines yet. Pick the <strong>Engine</strong> tool and tap a beam near the end where the nozzle goes. The engine pushes toward the other end, and burns fuel from the nearest tank still attached to it.</p>
-      <p class="rw-note">While flying, the throttle lever drives every engine the CPU doesn't, up to each engine's thrust limit. To steer by hand, put a motor between an engine and the rocket and set it to <strong>Steer with A and D</strong>.</p>
+      <p class="rw-note">While flying, the throttle lever drives every engine the CPU doesn't, up to each engine's thrust limit. A and D tilt each engine's thrust across its gimbal range. <strong>Stability assist</strong> (the Assist button, or T) stops the rocket turning when you let go and holds it there with gimbals and reaction wheels. It waits while a program steers. You can still build your own gimbal from a motor instead.</p>
     </section>
 
     <section class="rw-section">
       <h2>Reaction wheels</h2>
       <ul class="rw-motors" data-wheels></ul>
-      <p class="rw-note" data-no-wheels>No reaction wheels yet. Pick the <strong>Wheel</strong> tool and tap a beam. A reaction wheel twists its beam by spinning a flywheel the other way, so it steers even with the engine off.</p>
+      <p class="rw-note" data-no-wheels>No reaction wheels yet. Pick the <strong>Wheel</strong> tool and tap a beam. A reaction wheel twists its beam by spinning a flywheel the other way, so it steers even with the engine off, and stability assist uses it to hold still.</p>
       <p class="rw-note">A wheel stores everything it absorbs. Once full (the disc fills up) it can't twist further that way until you twist back. Fighting the air with it fills it fast.</p>
     </section>
 

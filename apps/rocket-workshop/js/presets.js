@@ -99,8 +99,8 @@ function twoStage() {
   const [engine2, tank2] = link(design, [[n.nozzle2, n.base2], [n.base2, n.top2]], 1);
   link(design, [[n.lugL2, n.base2], [n.lugR2, n.base2], [n.lugL2, n.top2], [n.lugR2, n.top2]], 1);
   const separators = link(design, [[n.lugL1, n.lugL2], [n.lugR1, n.lugR2], [n.lugL1, n.lugR2]], 1);
-  toggleEngine(design, engine1.id, n.nozzle1.id, { thrust: 120 });
-  toggleEngine(design, engine2.id, n.nozzle2.id, { thrust: 30 });
+  toggleEngine(design, engine1.id, n.nozzle1.id, { thrust: 120, gimbal: 0 });
+  toggleEngine(design, engine2.id, n.nozzle2.id, { thrust: 30, gimbal: 0 });
   addMotor(design, engine1, tank1, GIMBAL_MOTOR);
   addMotor(design, engine2, tank2, GIMBAL_MOTOR);
   toggleTank(design, tank1.id);

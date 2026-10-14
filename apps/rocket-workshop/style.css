@@ -670,6 +670,18 @@
   background: var(--accent);
 }
 
+.rw-flight .rw-assist {
+  width: auto;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rw-flight .rw-assist[aria-pressed="true"] {
+  border-color: #7dffa8;
+  color: #7dffa8;
+}
+
 .rw-lever {
   display: flex;
   flex-direction: column;

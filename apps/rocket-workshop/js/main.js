@@ -71,6 +71,7 @@ const MOTOR_FIELDS = [
 
 const ENGINE_FIELDS = {
   thrust: { key: 'thrust', label: 'Full thrust', min: 5, max: 500, step: 5, format: (v) => `${v} kN` },
+  gimbal: { key: 'gimbal', label: 'Gimbal range (A and D tilt the thrust)', min: 0, max: 20, step: 1, format: (v) => `±${v}°` },
   limit: { key: 'limit', label: 'Thrust limit', min: 0, max: 100, step: 5, toSlider: (v) => v * 100, fromSlider: (v) => v / 100, format: (v) => `${Math.round(v * 100)}%` },
 };
 
@@ -133,6 +134,7 @@ const hud = $('[data-hud]');
 const flightControls = $('[data-flight]');
 const throttleLever = $('[data-throttle]');
 const throttleReadout = $('[data-throttle-readout]');
+const assistButton = $('[data-assist]');
 const motorList = $('[data-motors]');
 const noMotors = $('[data-no-motors]');
 const presetSelect = $('[data-preset]');
@@ -160,7 +162,7 @@ let sensorKind = 'touch';
 let activeLayer = 0;
 let focused = false;
 let separatorGroup = 1;
-const pilot = { throttle: 0, left: false, right: false };
+const pilot = { throttle: 0, left: false, right: false, assist: true };
 let sim = null;
 let camera = { x: 0, y: 6, scale: 20, rotation: 0 };
 let view = { width: 0, height: 0 };
@@ -652,7 +654,7 @@ function startRun() {
   hover = null;
   pendingBeam = null;
   if (design.cpu && !compiled.ok) say(`Running with the CPU off, because line ${compiled.error.line} of the program has an error.`);
-  else say(design.engines.length ? 'Flying. Z full throttle, X cut, W and S or Up and Down change it, A and D or Left and Right steer, number keys fire separators.' : 'Flying, but with no engine. Add one with the Engine tool.');
+  else say(design.engines.length ? 'Flying. Z full throttle, X cut, W and S change it, A and D steer, T toggles stability assist, number keys fire separators.' : 'Flying, but with no engine. Add one with the Engine tool.');
   renderControls();
   renderMotors();
   renderEngines();
@@ -685,7 +687,7 @@ function drivenByProgram(kind = 'motor') {
 function refreshProgram() {
   compiled = compile(design.program, hardware());
   codeError.textContent = compiled.ok ? '' : `Line ${compiled.error.line}: ${compiled.error.message}`;
-  const key = `${[...drivenByProgram('motor')]}|${[...drivenByProgram('engine')]}|${[...drivenByProgram('wheel')]}`;
+  const key = ['motor', 'engine', 'wheel', 'gimbal'].map((kind) => [...drivenByProgram(kind)].join(',')).join('|');
   if (key !== drivenKey) {
     drivenKey = key;
     renderMotors();
@@ -742,7 +744,10 @@ function renderWatch(now) {
   cpuUsage.textContent = `The program repeats about ${rate} times a second.`;
   const variables = processor.program.variables.map((name, i) => referenceRow(name, String(Math.round(processor.values[i] * 1000) / 1000)));
   const powers = sim.motors.flatMap((motor, i) => (motor.cpuControlled ? [referenceRow(`motor${i + 1}.power`, motor.cpuPower.toFixed(2))] : []));
-  const throttles = sim.engines.flatMap((engine, i) => (engine.cpuControlled ? [referenceRow(`engine${i + 1}.throttle`, engine.cpuThrottle.toFixed(2))] : []));
+  const throttles = sim.engines.flatMap((engine, i) => [
+    ...(engine.cpuControlled ? [referenceRow(`engine${i + 1}.throttle`, engine.cpuThrottle.toFixed(2))] : []),
+    ...(engine.cpuSteers ? [referenceRow(`engine${i + 1}.gimbal`, engine.cpuGimbal.toFixed(2))] : []),
+  ]);
   const twists = sim.wheels.flatMap((wheel, i) => (wheel.cpuControlled ? [referenceRow(`wheel${i + 1}.torque`, wheel.cpuTorque.toFixed(2))] : []));
   watchList.replaceChildren(...variables, ...powers, ...throttles, ...twists);
 }
@@ -917,7 +922,7 @@ function renderEngines() {
       head.append(note);
     }
     head.append(remove);
-    const fields = [ENGINE_FIELDS.thrust, ...(programmed.has(index) ? [] : [ENGINE_FIELDS.limit])];
+    const fields = [ENGINE_FIELDS.thrust, ENGINE_FIELDS.gimbal, ...(programmed.has(index) ? [] : [ENGINE_FIELDS.limit])];
     item.append(head, ...fields.map((field) => slider(engine, field)));
     return item;
   }));
@@ -956,19 +961,6 @@ function renderWheels() {
     }
     head.append(remove);
     item.append(head, ...WHEEL_FIELDS.map((field) => slider(wheel, field)));
-    if (!programmed.has(index)) {
-      const hold = document.createElement('label');
-      hold.className = 'rw-check';
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = wheel.hold;
-      box.addEventListener('change', () => {
-        wheel.hold = box.checked;
-        commit();
-      });
-      hold.append(box, ' Hold still when not steering');
-      item.append(hold);
-    }
     return item;
   }));
   noWheels.hidden = design.wheels.length > 0;
@@ -1007,6 +999,12 @@ function renderStats() {
   for (const button of stageList.children) button.disabled = !sim || Boolean(sim.separatorGroups.get(Number(button.dataset.stage))?.fired);
 }
 
+function setAssist(on) {
+  pilot.assist = on;
+  assistButton.setAttribute('aria-pressed', String(on));
+  if (sim?.programSteers && on) say('Stability assist is on, but it waits while the program steers.');
+}
+
 function setThrottle(value) {
   pilot.throttle = Math.round(Math.max(0, Math.min(1, value)) * 20) / 20;
   throttleLever.value = String(pilot.throttle * 100);
@@ -1016,6 +1014,7 @@ function setThrottle(value) {
 function advance(seconds) {
   sim.input.throttle = pilot.throttle;
   sim.input.steer = (pilot.right ? 1 : 0) - (pilot.left ? 1 : 0);
+  sim.input.assist = pilot.assist;
   const warp = Number(warpSelect.value);
   if (warp > FULL_PHYSICS_WARP) {
     const blocker = sim.railsBlocker();
@@ -1754,6 +1753,7 @@ window.addEventListener('blur', () => {
 });
 throttleLever.addEventListener('input', () => setThrottle(Number(throttleLever.value) / 100));
 throttleLever.addEventListener('change', () => throttleLever.blur());
+assistButton.addEventListener('click', () => setAssist(!pilot.assist));
 for (const button of document.querySelectorAll('[data-steer]')) {
   const side = button.dataset.steer;
   const hold = (held) => (event) => {
@@ -1792,6 +1792,8 @@ window.addEventListener('keydown', (event) => {
   } else if (sim && THROTTLE_KEYS[key] !== undefined) {
     event.preventDefault();
     setThrottle(THROTTLE_KEYS[key](pilot.throttle));
+  } else if (sim && key === 't') {
+    setAssist(!pilot.assist);
   } else if (sim && STEER_KEYS[key]) {
     event.preventDefault();
     pilot[STEER_KEYS[key]] = true;
