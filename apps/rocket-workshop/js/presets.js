@@ -1,4 +1,4 @@
-import { addBeam, addMotor, addNode, emptyDesign, mountCpu, toggleEngine, toggleRange, toggleSeparator, toggleTank } from './design.js';
+import { addBeam, addMotor, addNode, emptyDesign, mountCpu, toggleEngine, toggleRange, toggleSeparator, toggleTank, toggleWheel } from './design.js';
 
 const HOPPER_PROGRAM = `# Hop: climb for 5 seconds, coast up and fall back, then land
 # softly. range1 looks down from the engine, so it measures
@@ -15,13 +15,13 @@ if phase == 1 then          # climb
   if time > 5 then phase = 2 end
 elseif phase == 2 then      # fall, then brake just in time
   brake = thrust / mass - 9.8
-  target = -sqrt(0.8 * brake * max(height, 0)) - 1   # fall no faster than braking at 40% can stop
+  target = -sqrt(0.6 * brake * max(height, 0)) - 0.5   # fall no faster than braking at 30% of full can stop
   if vspeed > 0 then
     engine1.throttle = 0
   else
-    engine1.throttle = clamp(mass * (9.8 + 4 * (target - vspeed)) / thrust, 0, 1)
+    engine1.throttle = clamp(mass * (9.8 + 8 * (target - vspeed)) / thrust, 0, 1)
   end
-  if height < 0.2 then phase = 3 end
+  if height < 0.05 then phase = 3 end
 else                        # landed
   engine1.throttle = 0
 end
@@ -55,6 +55,9 @@ else
   motor2.power = clamp((gimbal - motor2.angle) * 0.3, -1, 1)
 end
 `;
+
+const ORBITER_THRUST = 150;
+const ORBITER_WHEEL_TORQUE = 60;
 
 const GIMBAL_MOTOR = { mode: 'spin', power: 0, stallTorque: 30000, freeRpm: 30 };
 
@@ -108,8 +111,23 @@ function twoStage() {
   return design;
 }
 
+function orbiter() {
+  const design = emptyDesign();
+  design.layers = ['Orbiter'];
+  const n = place(design, { footL: [-2, 0], footR: [2, 0], nozzle1: [0, 1], base1: [0, 2], top1: [0, 12], nose: [0, 14], shoulderL: [-1, 12], shoulderR: [1, 12] });
+  const [engineBeam, tank, noseBeam] = link(design, [[n.nozzle1, n.base1], [n.base1, n.top1], [n.top1, n.nose]]);
+  bottomStageLegs(design, n);
+  link(design, [[n.shoulderL, n.nose], [n.shoulderR, n.nose], [n.shoulderL, n.base1], [n.shoulderR, n.base1], [n.shoulderL, n.top1], [n.shoulderR, n.top1]]);
+  toggleEngine(design, engineBeam.id, n.nozzle1.id, { thrust: ORBITER_THRUST });
+  toggleTank(design, tank.id);
+  toggleWheel(design, noseBeam.id);
+  design.wheels[0].torque = ORBITER_WHEEL_TORQUE;
+  return design;
+}
+
 export const PRESETS = {
   hopper: { name: 'Hopper that lands itself', build: hopper },
   twoStage: { name: 'Two-stage rocket you fly', build: twoStage },
+  orbiter: { name: 'Orbiter with a reaction wheel', build: orbiter },
   empty: { name: 'Empty', build: emptyDesign },
 };

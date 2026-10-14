@@ -10,7 +10,7 @@ export const MOTOR_DEFAULTS = {
 };
 
 export function emptyDesign() {
-  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], sensors: [], gyros: [], angles: [], pens: [], engines: [], tanks: [], separators: [], ranges: [], cpu: null, program: '', nextId: 1 };
+  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], sensors: [], gyros: [], angles: [], pens: [], engines: [], tanks: [], separators: [], ranges: [], wheels: [], cpu: null, program: '', nextId: 1 };
 }
 
 export const CPU_CLOCKS = [1000, 2000, 5000, 10000, 20000, 50000];
@@ -26,6 +26,7 @@ export function withDefaults(design) {
   design.tanks ??= [];
   design.separators ??= [];
   design.ranges ??= [];
+  design.wheels ??= [];
   design.cpu ??= null;
   design.program ??= '';
   return design;
@@ -69,6 +70,15 @@ export function toggleRange(design, beamId, tip) {
   if (existing?.tip === tip) return false;
   design.ranges.push({ beam: beamId, tip });
   return true;
+}
+
+export const WHEEL_DEFAULTS = { torque: 20, hold: true };
+
+export function toggleWheel(design, beamId) {
+  const before = design.wheels.length;
+  design.wheels = design.wheels.filter((wheel) => wheel.beam !== beamId);
+  if (design.wheels.length === before) design.wheels.push({ beam: beamId, ...WHEEL_DEFAULTS });
+  return design.wheels.length > before;
 }
 
 export function separatorGroupCount(design) {
@@ -176,6 +186,7 @@ export function removeBeam(design, beamId) {
   design.tanks = design.tanks.filter((id) => id !== beamId);
   design.separators = design.separators.filter((separator) => separator.beam !== beamId);
   design.ranges = design.ranges.filter((range) => range.beam !== beamId);
+  design.wheels = design.wheels.filter((wheel) => wheel.beam !== beamId);
   const used = new Set(design.beams.flatMap((beam) => [beam.a, beam.b]));
   design.nodes = design.nodes.filter((node) => used.has(node.id));
   design.sensors = design.sensors.filter((id) => used.has(id));

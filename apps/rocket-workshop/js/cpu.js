@@ -62,6 +62,13 @@ export const DEVICES = {
       fire: { write: true, help: 'set to 1 to let go of every separator in this group. Reads 1 once fired' },
     },
   },
+  wheel: {
+    plural: 'reaction wheels',
+    ports: {
+      torque: { write: true, help: 'set from -1 to 1 to twist the wheel\'s beam, counterclockwise positive' },
+      spin: { help: 'how full the wheel is, from -1 to 1. At 1 or -1 it cannot twist further that way' },
+    },
+  },
   range: {
     plural: 'rangefinders',
     ports: {
@@ -275,7 +282,7 @@ export function compile(source, hardware) {
     const slots = new Map(variables.map((name, i) => [name, i]));
     const ports = [];
     const portIds = new Map();
-    const drives = { motor: new Set(), engine: new Set() };
+    const drives = { motor: new Set(), engine: new Set(), wheel: new Set() };
     const code = [];
     let onceFlags = 0;
 
