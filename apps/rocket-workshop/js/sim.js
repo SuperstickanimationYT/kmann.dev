@@ -1,7 +1,7 @@
 import { Processor } from './cpu.js';
 import { beamMap, sharedNode } from './design.js';
 import { accelerationAt, orbitAltitudes } from './orbit.js';
-import { BODIES, EARTH, airDensity, bodyState, dominantBody } from './planets.js';
+import { BODIES, EARTH, airAround, airDensity, bodyState, dominantBody } from './planets.js';
 
 export const WORLD = {
   substeps: 32,
@@ -63,8 +63,9 @@ export class Simulation {
     this.y = Float64Array.from(design.nodes, (n) => n.y);
     this.prevX = new Float64Array(count);
     this.prevY = new Float64Array(count);
-    this.vx = new Float64Array(count);
-    this.vy = new Float64Array(count);
+    const launchPad = bodyState(EARTH, 0);
+    this.vx = new Float64Array(count).fill(launchPad.vx);
+    this.vy = new Float64Array(count).fill(launchPad.vy);
     this.time = 0;
     this.input = { steer: 0, throttle: 0, assist: true };
     const mass = new Float64Array(count).fill(WORLD.pinKg);
@@ -535,25 +536,30 @@ export class Simulation {
     }
   }
 
-  applyDrag(h, earth) {
+  applyDrag(h) {
     const { x, y, vx, vy, inverseMass: w } = this;
     for (const beam of this.beams) {
       if (!beam.active) continue;
       const mx = (x[beam.a] + x[beam.b]) / 2;
       const my = (y[beam.a] + y[beam.b]) / 2;
-      const density = airDensity(Math.hypot(mx - earth.x, my - earth.y) - EARTH.radius);
+      const air = airAround(mx, my, this.time);
+      if (!air) continue;
+      const density = airDensity(air.body, air.altitude);
       if (density === 0) continue;
+      const wind = bodyState(air.body, this.time);
       const bx = (x[beam.b] - x[beam.a]) / beam.length;
       const by = (y[beam.b] - y[beam.a]) / beam.length;
       for (const node of [beam.a, beam.b]) {
-        const speed = Math.hypot(vx[node], vy[node]);
+        const rx = vx[node] - wind.vx;
+        const ry = vy[node] - wind.vy;
+        const speed = Math.hypot(rx, ry);
         if (speed < 1e-6) continue;
-        const across = Math.abs(bx * vy[node] - by * vx[node]) / speed;
+        const across = Math.abs(bx * ry - by * rx) / speed;
         const area = (beam.length * beam.width * across + beam.width * beam.width * 0.25) / 2;
         const k = 0.5 * density * WORLD.dragCoefficient * area * w[node];
         const slow = 1 / (1 + k * speed * h);
-        vx[node] *= slow;
-        vy[node] *= slow;
+        vx[node] = wind.vx + rx * slow;
+        vy[node] = wind.vy + ry * slow;
       }
     }
   }
@@ -647,8 +653,8 @@ export class Simulation {
         if (nodes.some((i) => Math.hypot(this.vx[i] - ground.vx, this.vy[i] - ground.vy) > RAILS.restingSpeed)) return 'something is moving along the ground';
         continue;
       }
-      const earth = bodyState(EARTH, this.time);
-      if (Math.hypot(motion.x - earth.x, motion.y - earth.y) - EARTH.radius < EARTH.atmosphere.top) return 'something is still inside the air';
+      const air = airAround(motion.x, motion.y, this.time);
+      if (air) return `something is still inside the air of ${air.body.name}`;
     }
     return null;
   }
@@ -701,8 +707,8 @@ export class Simulation {
   }
 
   coastingTooLow(piece) {
-    const earth = bodyState(EARTH, this.time);
-    if (Math.hypot(piece.x - earth.x, piece.y - earth.y) - EARTH.radius < EARTH.atmosphere.top) return 'the path dipped back into the air';
+    const air = airAround(piece.x, piece.y, this.time);
+    if (air) return `the path dipped into the air of ${air.body.name}`;
     for (const body of BODIES) {
       const state = bodyState(body, this.time);
       if (Math.hypot(piece.x - state.x, piece.y - state.y) < body.radius + 1000) return `it came within 1 km of the ${body.name}`;
@@ -748,7 +754,7 @@ export class Simulation {
       this.burnEngines(h);
       this.spinWheels(h);
       this.applyGravity(h, bodies);
-      this.applyDrag(h, bodies[0].state);
+      this.applyDrag(h);
       for (let i = 0; i < x.length; i += 1) {
         prevX[i] = x[i];
         prevY[i] = y[i];
@@ -756,7 +762,7 @@ export class Simulation {
         y[i] += vy[i] * h;
       }
       for (let pass = 0; pass < WORLD.beamPasses; pass += 1) this.solveBeams();
-      this.solveGround(h, bodies);
+      this.solveGround(h, BODIES.map((body) => ({ body, state: bodyState(body, this.time + h) })));
       for (let i = 0; i < x.length; i += 1) {
         vx[i] = (x[i] - prevX[i]) / h;
         vy[i] = (y[i] - prevY[i]) / h;
