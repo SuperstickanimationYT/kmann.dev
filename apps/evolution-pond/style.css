@@ -78,6 +78,29 @@
   font-variant-numeric: tabular-nums;
 }
 
+.ep-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: rgba(3, 8, 15, 0.85);
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.ep-legend-ramp {
+  width: 90px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgb(70, 140, 255), rgb(140, 148, 158), rgb(255, 150, 50));
+}
+
 .ep-card {
   position: absolute;
   right: 10px;

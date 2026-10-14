@@ -22,13 +22,28 @@ export function lineageColour(genome) {
   return `hsl(${Math.round(genome.hue / HUE_STEP_DEGREES) * HUE_STEP_DEGREES}, 75%, 62%)`;
 }
 
+const SIGNAL_LEVELS = 4;
+const SIGNAL_REST = [140, 148, 158];
+const SIGNAL_HIGH = [255, 150, 50];
+const SIGNAL_LOW = [70, 140, 255];
+
+function signalColour(signal) {
+  const end = signal > 0 ? SIGNAL_HIGH : SIGNAL_LOW;
+  const amount = Math.abs(signal);
+  const [red, green, blue] = SIGNAL_REST.map((rest, channel) => Math.round(rest + (end[channel] - rest) * amount));
+  return `rgb(${red}, ${green}, ${blue})`;
+}
+
+const SIGNAL_COLOURS = Array.from({ length: 2 * SIGNAL_LEVELS + 1 }, (_, level) => signalColour((level - SIGNAL_LEVELS) / SIGNAL_LEVELS));
+
 const COLOURINGS = {
   diet: { colourOf: dietColour, keyOf: (cell) => cell.type },
   lineage: { colourOf: lineageColour, keyOf: (cell) => cell.genome },
 };
 const colourCaches = { diet: new WeakMap(), lineage: new WeakMap() };
 
-function cachedColour(mode, cell) {
+function colourFor(mode, cell) {
+  if (mode === 'signal') return SIGNAL_COLOURS[Math.round(cell.signal * SIGNAL_LEVELS) + SIGNAL_LEVELS];
   const { colourOf, keyOf } = COLOURINGS[mode];
   const key = keyOf(cell);
   const cache = colourCaches[mode];
@@ -127,7 +142,7 @@ export function createPondRenderer(canvas) {
       if (motility <= 0.05) continue;
       const tail = drawnRadius(cell) * (1 + 2.5 * motility);
       context.moveTo(cell.x, cell.y);
-      context.lineTo(cell.x - Math.cos(cell.heading) * tail, cell.y - Math.sin(cell.heading) * tail);
+      context.lineTo(cell.x - Math.cos(cell.swimAngle) * tail, cell.y - Math.sin(cell.swimAngle) * tail);
     }
     context.stroke();
 
@@ -143,7 +158,7 @@ export function createPondRenderer(canvas) {
     }
     context.stroke();
 
-    for (const [colour, cells] of groupBy(world.cells, (cell) => cachedColour(colourMode, cell))) {
+    for (const [colour, cells] of groupBy(world.cells, (cell) => colourFor(colourMode, cell))) {
       context.fillStyle = colour;
       traceCircles(cells);
       context.fill();

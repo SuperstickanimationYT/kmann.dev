@@ -4,9 +4,15 @@ export const TRAITS = [
   { key: 'predation', label: 'Predation', min: 0, max: 1, upkeep: 0.005 },
   { key: 'armor', label: 'Armor', min: 0, max: 1, upkeep: 0.004 },
   { key: 'motility', label: 'Swimming', min: 0, max: 1, upkeep: 0.003 },
-  { key: 'lightSeeking', label: 'Likes light', min: -1, max: 1, upkeep: 0 },
-  { key: 'foodSeeking', label: 'Likes nutrients', min: -1, max: 1, upkeep: 0 },
-  { key: 'cellSeeking', label: 'Likes other cells', min: -1, max: 1, upkeep: 0 },
+  { key: 'lightSense', label: 'Senses light', min: -1, max: 1, upkeep: 0.0005 },
+  { key: 'foodSense', label: 'Senses nutrients', min: -1, max: 1, upkeep: 0.0005 },
+  { key: 'cellSense', label: 'Senses other cells', min: -1, max: 1, upkeep: 0.0005 },
+  { key: 'changeSense', label: 'Reacts to change', min: -1, max: 1, upkeep: 0.0005 },
+  { key: 'neighbourSense', label: 'Listens to neighbours', min: -1, max: 1, upkeep: 0.0005 },
+  { key: 'signalBias', label: 'Resting signal', min: -1, max: 1, upkeep: 0 },
+  { key: 'rhythm', label: 'Rhythm strength', min: 0, max: 1, upkeep: 0.001 },
+  { key: 'rhythmSpeed', label: 'Rhythm speed', min: 0, max: 1, upkeep: 0 },
+  { key: 'steering', label: 'Turns with signal', min: -1, max: 1, upkeep: 0 },
   { key: 'kinSparing', label: 'Spares look-alikes', min: 0, max: 1, upkeep: 0.001 },
   { key: 'adhesion', label: 'Child stays attached', min: 0, max: 1, upkeep: 0 },
   { key: 'sharing', label: 'Shares energy', min: 0, max: 1, upkeep: 0.001 },
@@ -31,15 +37,22 @@ function ancestorType() {
     predation: 0,
     armor: 0,
     motility: 0,
-    lightSeeking: 0,
-    foodSeeking: 0,
-    cellSeeking: 0,
+    lightSense: 0,
+    foodSense: 0,
+    cellSense: 0,
+    changeSense: 0,
+    neighbourSense: 0,
+    signalBias: 0,
+    rhythm: 0,
+    rhythmSpeed: 0.3,
+    steering: 0,
     kinSparing: 0,
     adhesion: 0.2,
     sharing: 0.2,
     divisionSize: 0.2,
     lifespan: 0.4,
     splitAngle: 0,
+    thrustAngle: 0,
     childType: 0,
     parentBecomes: 0,
   };
@@ -60,6 +73,7 @@ function mutateType(type, rate, typeCount, random) {
     child[trait.key] = clamp(type[trait.key] + random.gaussian() * jump * span, trait.min, trait.max);
   }
   child.splitAngle = wrapAngle(type.splitAngle + random.gaussian() * rate * SPLIT_ANGLE_DRIFT);
+  child.thrustAngle = wrapAngle(type.thrustAngle + random.gaussian() * rate * SPLIT_ANGLE_DRIFT);
   if (random() < REWIRE_CHANCE) child.childType = Math.floor(random() * typeCount);
   if (random() < REWIRE_CHANCE) child.parentBecomes = Math.floor(random() * typeCount);
   return child;
