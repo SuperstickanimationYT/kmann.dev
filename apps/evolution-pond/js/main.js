@@ -1,13 +1,14 @@
 import { createPopulationChart } from './chart.js';
 import { TRAITS } from './genome.js';
 import { createPondRenderer } from './render.js';
-import { divisionMassOf, World } from './world.js';
+import { bodySpeed, divisionMassOf, World } from './world.js';
 
 const TICKS_PER_FRAME = [1, 2, 5, 10, 20, 50];
 const DEFAULT_SPEED = 2;
 const FRAME_BUDGET_MS = 14;
 const CHART_EVERY_TICKS = 50;
 const PANEL_REFRESH_MS = 250;
+const SMALLEST_FAST_BODY = 3;
 
 const find = (selector) => document.querySelector(selector);
 const settings = find('[data-settings]');
@@ -56,6 +57,8 @@ function refreshPanel() {
   const bodied = bodySizes.filter((size) => size > 1).reduce((sum, size) => sum + size, 0);
   find('[data-stat="bodied"]').textContent = `${Math.round((100 * bodied) / Math.max(1, cells.length))}%`;
   find('[data-stat="largest"]').textContent = cellCount(Math.max(0, ...bodySizes));
+  const fastest = world.fastestBody(SMALLEST_FAST_BODY);
+  find('[data-stat="fastest"]').textContent = fastest ? `${fastest.speed.toFixed(2)} per tick` : 'none yet';
   for (const { trait, fill } of traitRows) {
     const mean = cells.reduce((sum, cell) => sum + cell.type[trait.key], 0) / Math.max(1, cells.length);
     if (trait.min < 0) {
@@ -90,6 +93,8 @@ function refreshCellCard() {
   const degrees = (radians) => `${Math.round((radians * 180) / Math.PI)}°`;
   find('[data-cell-facts]').innerHTML = [
     fact('Body', cellCount(state.world.bodyOf(cell).length)),
+    fact('Body speed', `${bodySpeed(state.world.bodyOf(cell)).toFixed(2)} per tick`),
+    fact('Signal', signed(cell.signal)),
     fact('Cell type', `${cell.typeIndex + 1} of ${genome.types.length}`),
     fact('Generation', cell.generation),
     fact('Age', `${cell.age} / ${Math.round(cell.maxAge)} ticks`),
@@ -99,6 +104,7 @@ function refreshCellCard() {
     fact('Child type', type.childType + 1),
     fact('Becomes after dividing', `type ${type.parentBecomes + 1}`),
     fact('Child angle', degrees(type.splitAngle)),
+    fact('Push angle', degrees(type.thrustAngle)),
     fact('Mutation rate', genome.mutationRate.toFixed(3)),
   ].join('');
 }
@@ -137,6 +143,14 @@ for (const button of document.querySelectorAll('[data-speed-step]')) {
 
 find('[data-colour]').addEventListener('change', (event) => {
   state.colourMode = event.target.value;
+  find('[data-signal-legend]').hidden = state.colourMode !== 'signal';
+});
+
+find('[data-find-fastest]').addEventListener('click', () => {
+  const fastest = state.world.fastestBody(SMALLEST_FAST_BODY);
+  state.selectedId = fastest ? fastest.body[0].id : null;
+  cellCard.hidden = !fastest;
+  refreshCellCard();
 });
 
 find('[data-pond]').addEventListener('click', (event) => {

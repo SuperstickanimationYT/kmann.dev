@@ -29,10 +29,16 @@ const KIN_SPARING_DEGREES = 60;
 const CALM_TUMBLE_CHANCE = 0.02;
 const WORSENING_TUMBLE_CHANCE = 0.2;
 const CROWD_SCALE = 4;
+const CHANGE_GAIN = 20;
+const RHYTHM_GAIN = 2;
+const FASTEST_RHYTHM = 0.3;
+const STEERING_RANGE = Math.PI / 2;
+const VELOCITY_SMOOTHING = 0.05;
+const FORWARD_NEIGHBOURS = [[0, 1], [1, -1], [1, 0], [1, 1]];
 const MAX_BONDS = 6;
 const BOND_UPKEEP = 0.0005;
-const BOND_STIFFNESS = 0.3;
-const BOND_BREAKING_STRETCH = 2.2;
+const BOND_STIFFNESS = 0.5;
+const BOND_BREAKING_STRETCH = 3;
 const SHARING_RATE = 0.1;
 
 export const radiusOf = (mass) => 1.5 * Math.sqrt(mass);
@@ -46,8 +52,10 @@ function wrappedDx(from, to) {
   return dx;
 }
 
+const DEPTH_LIGHT = Float64Array.from({ length: WORLD_HEIGHT + 1 }, (_, y) => Math.exp((-LIGHT_FALLOFF * y) / WORLD_HEIGHT));
+
 function keepInside(cell) {
-  const radius = radiusOf(cell.mass);
+  const { radius } = cell;
   cell.x = (cell.x + WORLD_WIDTH) % WORLD_WIDTH;
   cell.y = Math.min(WORLD_HEIGHT - radius, Math.max(radius, cell.y));
 }
@@ -57,6 +65,28 @@ function becomeType(cell, typeIndex) {
   cell.type = cell.genome.types[cell.typeIndex];
   cell.upkeep = BASE_UPKEEP + upkeepPerMass(cell.type) + SWIM_UPKEEP * cell.type.motility ** 2;
   cell.maxAge = maxAgeOf(cell.type);
+}
+
+function angleFrom(anchor, cell) {
+  return Math.atan2(cell.y - anchor.y, wrappedDx(anchor, cell));
+}
+
+function turnWithBody(cell) {
+  if (cell.anchor === null || !cell.bonds.includes(cell.anchor)) {
+    cell.anchor = cell.bonds[0] ?? null;
+    if (cell.anchor) cell.headingFromAnchor = cell.heading - angleFrom(cell.anchor, cell);
+  }
+  if (cell.anchor) cell.heading = angleFrom(cell.anchor, cell) + cell.headingFromAnchor;
+}
+
+export function bodySpeed(body) {
+  let vx = 0;
+  let vy = 0;
+  for (const cell of body) {
+    vx += cell.vx;
+    vy += cell.vy;
+  }
+  return Math.hypot(vx, vy) / body.length;
 }
 
 function unbond(a, b) {
@@ -73,8 +103,12 @@ export class World {
     this.field = new NutrientField(WORLD_WIDTH, WORLD_HEIGHT, FIELD_CELL_SIZE, UPWELLING_XS);
     this.gridCols = Math.ceil(WORLD_WIDTH / GRID_CELL_SIZE);
     this.gridRows = Math.ceil(WORLD_HEIGHT / GRID_CELL_SIZE);
-    this.gridHeads = new Int32Array(this.gridCols * this.gridRows);
-    this.gridNext = new Int32Array(MAX_CELLS);
+    this.slotStart = new Int32Array(this.gridCols * this.gridRows + 1);
+    this.slotFill = new Int32Array(this.gridCols * this.gridRows);
+    this.cellSlot = new Int32Array(MAX_CELLS);
+    this.order = new Int32Array(MAX_CELLS);
+    this.xs = new Float64Array(MAX_CELLS);
+    this.ys = new Float64Array(MAX_CELLS);
     this.cells = [];
     for (let i = 0; i < ancestors; i++) {
       const cell = this.createCell(this.random() * WORLD_WIDTH, this.random() * WORLD_HEIGHT, STARTING_MASS, STARTING_ENERGY, ancestorGenome(), 0, 0);
@@ -86,13 +120,13 @@ export class World {
   }
 
   createCell(x, y, mass, energy, genome, typeIndex, generation) {
-    const cell = { id: this.nextId++, x, y, mass, energy, genome, typeIndex: 0, type: null, upkeep: 0, maxAge: 0, generation, bonds: [], heading: 0, age: 0, nearby: 0, lastSignal: 0, pushX: 0, pushY: 0, dead: false };
+    const cell = { id: this.nextId++, x, y, mass, radius: radiusOf(mass), energy, genome, typeIndex: 0, type: null, upkeep: 0, maxAge: 0, generation, bonds: [], heading: 0, anchor: null, headingFromAnchor: 0, swimAngle: 0, vx: 0, vy: 0, signal: 0, nextSignal: 0, phase: 0, lastSensed: 0, age: 0, nearby: 0, pushX: 0, pushY: 0, dead: false };
     becomeType(cell, typeIndex);
     return cell;
   }
 
   lightAt(y) {
-    return this.light * Math.exp((-LIGHT_FALLOFF * y) / WORLD_HEIGHT);
+    return this.light * DEPTH_LIGHT[Math.min(WORLD_HEIGHT, Math.max(0, Math.round(y)))];
   }
 
   step() {
@@ -102,18 +136,30 @@ export class World {
     this.interact();
     this.pullBonds();
     for (const cell of this.cells) this.live(cell);
+    for (const cell of this.cells) cell.signal = cell.nextSignal;
     for (const cell of this.cells) this.move(cell);
     this.divideAndBury();
   }
 
   indexCells() {
-    this.gridHeads.fill(-1);
-    this.cells.forEach((cell, index) => {
-      const slot = this.gridSlot(cell.x, cell.y);
-      this.gridNext[index] = this.gridHeads[slot];
-      this.gridHeads[slot] = index;
+    const { cells, slotStart, slotFill, cellSlot, order, xs, ys } = this;
+    slotStart.fill(0);
+    for (let i = 0; i < cells.length; i++) {
+      const slot = this.gridSlot(cells[i].x, cells[i].y);
+      cellSlot[i] = slot;
+      slotStart[slot + 1]++;
+    }
+    for (let slot = 1; slot < slotStart.length; slot++) slotStart[slot] += slotStart[slot - 1];
+    slotFill.set(slotStart.subarray(0, slotFill.length));
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const position = slotFill[cellSlot[i]]++;
+      order[position] = i;
+      xs[position] = cell.x;
+      ys[position] = cell.y;
+      cell.radius = radiusOf(cell.mass);
       cell.nearby = 0;
-    });
+    }
   }
 
   gridSlot(x, y) {
@@ -123,33 +169,40 @@ export class World {
   }
 
   interact() {
-    const { cells, gridHeads, gridNext, gridCols, gridRows } = this;
-    for (let i = 0; i < cells.length; i++) {
-      const a = cells[i];
-      const col = Math.min(gridCols - 1, Math.floor(a.x / GRID_CELL_SIZE));
-      const row = Math.min(gridRows - 1, Math.floor(a.y / GRID_CELL_SIZE));
-      for (let rowStep = -1; rowStep <= 1; rowStep++) {
-        const neighbourRow = row + rowStep;
-        if (neighbourRow < 0 || neighbourRow >= gridRows) continue;
-        for (let colStep = -1; colStep <= 1; colStep++) {
-          const neighbourCol = (col + colStep + gridCols) % gridCols;
-          for (let j = gridHeads[neighbourRow * gridCols + neighbourCol]; j !== -1; j = gridNext[j]) {
-            if (j > i) this.meet(a, cells[j]);
+    const { gridCols, gridRows, slotStart } = this;
+    for (let row = 0; row < gridRows; row++) {
+      for (let col = 0; col < gridCols; col++) {
+        const slot = row * gridCols + col;
+        const end = slotStart[slot + 1];
+        for (let p = slotStart[slot]; p < end; p++) {
+          for (let q = p + 1; q < end; q++) this.check(p, q);
+          for (const [rowStep, colStep] of FORWARD_NEIGHBOURS) {
+            const neighbourRow = row + rowStep;
+            if (neighbourRow >= gridRows) continue;
+            const neighbour = neighbourRow * gridCols + ((col + colStep + gridCols) % gridCols);
+            const neighbourEnd = slotStart[neighbour + 1];
+            for (let q = slotStart[neighbour]; q < neighbourEnd; q++) this.check(p, q);
           }
         }
       }
     }
   }
 
-  meet(a, b) {
-    const dx = wrappedDx(a, b);
-    const dy = b.y - a.y;
+  check(p, q) {
+    const { xs, ys } = this;
+    let dx = xs[q] - xs[p];
+    if (dx > WORLD_WIDTH / 2) dx -= WORLD_WIDTH;
+    else if (dx < -WORLD_WIDTH / 2) dx += WORLD_WIDTH;
+    const dy = ys[q] - ys[p];
     const distanceSquared = dx * dx + dy * dy;
     if (distanceSquared > SENSE_RADIUS * SENSE_RADIUS) return;
-    const distance = Math.sqrt(distanceSquared) || 0.001;
+    this.meet(this.cells[this.order[p]], this.cells[this.order[q]], dx, dy, Math.sqrt(distanceSquared) || 0.001);
+  }
+
+  meet(a, b, dx, dy, distance) {
     a.nearby++;
     b.nearby++;
-    const overlap = radiusOf(a.mass) + radiusOf(b.mass) - distance;
+    const overlap = a.radius + b.radius - distance;
     if (overlap <= 0) return;
     const share = b.mass / (a.mass + b.mass);
     const nx = dx / distance;
@@ -218,24 +271,42 @@ export class World {
     cell.energy = Math.min(cell.energy - absorbed * BUILD_COST, cell.mass * ENERGY_STORE_PER_MASS);
     cell.age++;
     cell.dead = cell.energy <= 0 || cell.mass < MIN_MASS || cell.age > cell.maxAge;
-    if (type.motility > 0) this.steer(cell, light, density);
+    turnWithBody(cell);
+    this.think(cell, light, density);
+    if (type.motility > 0) this.steer(cell);
   }
 
-  steer(cell, light, density) {
+  think(cell, light, density) {
     const { type } = cell;
-    const signal = type.lightSeeking * light + (type.foodSeeking * density) / this.meanDensity + (type.cellSeeking * cell.nearby) / CROWD_SCALE;
-    const tumbleChance = signal >= cell.lastSignal ? CALM_TUMBLE_CHANCE : WORSENING_TUMBLE_CHANCE;
-    cell.heading += this.random() < tumbleChance ? this.random.between(-Math.PI, Math.PI) : (this.random() - 0.5) * 0.5;
-    cell.lastSignal = signal;
+    const sensed = type.lightSense * light + (type.foodSense * density) / this.meanDensity + (type.cellSense * cell.nearby) / CROWD_SCALE;
+    const change = (sensed - cell.lastSensed) * CHANGE_GAIN;
+    cell.lastSensed = sensed;
+    let heard = 0;
+    for (const partner of cell.bonds) heard += partner.signal;
+    if (cell.bonds.length > 0) heard /= cell.bonds.length;
+    cell.phase += FASTEST_RHYTHM * type.rhythmSpeed;
+    cell.nextSignal = Math.tanh(type.signalBias + sensed + type.changeSense * change + type.neighbourSense * heard * 2 + type.rhythm * RHYTHM_GAIN * Math.sin(cell.phase));
+  }
+
+  steer(cell) {
+    if (cell.bonds.length === 0) {
+      const tumbleChance = CALM_TUMBLE_CHANCE + ((WORSENING_TUMBLE_CHANCE - CALM_TUMBLE_CHANCE) * (1 - cell.signal)) / 2;
+      cell.heading += this.random() < tumbleChance ? this.random.between(-Math.PI, Math.PI) : (this.random() - 0.5) * 0.5;
+    }
+    cell.swimAngle = cell.heading + cell.type.thrustAngle + cell.type.steering * cell.signal * STEERING_RANGE;
   }
 
   move(cell) {
-    const speed = MAX_SWIM_SPEED * cell.type.motility;
-    cell.x += Math.cos(cell.heading) * speed + cell.pushX + (this.random() - 0.5) * DRIFT_SPEED;
-    cell.y += Math.sin(cell.heading) * speed + cell.pushY + (this.random() - 0.5) * DRIFT_SPEED;
+    const speed = (MAX_SWIM_SPEED * cell.type.motility * (1 + cell.signal)) / 2;
+    const startX = cell.x;
+    const startY = cell.y;
+    cell.x += Math.cos(cell.swimAngle) * speed + cell.pushX + (this.random() - 0.5) * DRIFT_SPEED;
+    cell.y += Math.sin(cell.swimAngle) * speed + cell.pushY + (this.random() - 0.5) * DRIFT_SPEED;
     cell.pushX = 0;
     cell.pushY = 0;
     keepInside(cell);
+    cell.vx += (wrappedDx({ x: startX }, cell) - cell.vx) * VELOCITY_SMOOTHING;
+    cell.vy += (cell.y - startY - cell.vy) * VELOCITY_SMOOTHING;
   }
 
   divideAndBury() {
@@ -257,12 +328,16 @@ export class World {
     const staysAttached = sticksToChild(rule) && parent.bonds.length < MAX_BONDS;
     parent.mass /= 2;
     parent.energy /= 2;
+    parent.radius = radiusOf(parent.mass);
     const angle = staysAttached ? parent.heading + rule.splitAngle : this.random.between(-Math.PI, Math.PI);
     const offset = radiusOf(parent.mass);
     const genome = staysAttached ? parent.genome : mutate(parent.genome, this.random);
     const childType = Math.min(rule.childType, genome.types.length - 1);
     const child = this.createCell(parent.x + Math.cos(angle) * offset, parent.y + Math.sin(angle) * offset, parent.mass, parent.energy, genome, childType, staysAttached ? parent.generation : parent.generation + 1);
-    child.heading = angle;
+    child.heading = staysAttached ? parent.heading : angle;
+    child.swimAngle = child.heading;
+    child.signal = parent.signal;
+    child.phase = parent.phase;
     becomeType(parent, rule.parentBecomes);
     if (staysAttached) {
       parent.bonds.push(child);
@@ -306,6 +381,20 @@ export class World {
       bodies.push(body);
     }
     return bodies;
+  }
+
+  fastestBody(fewestCells) {
+    let fastest = null;
+    let fastestSpeed = 0;
+    for (const body of this.bodies()) {
+      if (body.length < fewestCells) continue;
+      const speed = bodySpeed(body);
+      if (speed > fastestSpeed) {
+        fastest = body;
+        fastestSpeed = speed;
+      }
+    }
+    return fastest && { body: fastest, speed: fastestSpeed };
   }
 
   bodyOf(cell) {

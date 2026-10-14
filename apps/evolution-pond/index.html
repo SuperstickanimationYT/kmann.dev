@@ -32,8 +32,11 @@
     <select data-colour aria-label="Colour cells by">
       <option value="diet">Colour by diet</option>
       <option value="lineage">Colour by family</option>
+      <option value="signal">Colour by signal</option>
     </select>
+    <button type="button" data-find-fastest>Find fastest body</button>
   </div>
+  <p class="ep-legend" data-signal-legend hidden><span>Low signal</span><span class="ep-legend-ramp"></span><span>High signal</span></p>
   <section class="ep-card" data-cell-card hidden aria-live="polite">
     <header>
       <strong data-cell-name></strong>
@@ -53,6 +56,7 @@
         <dt>Most generations</dt><dd data-stat="generation"></dd>
         <dt>Cells in bodies</dt><dd data-stat="bodied"></dd>
         <dt>Largest body</dt><dd data-stat="largest"></dd>
+        <dt>Fastest body</dt><dd data-stat="fastest"></dd>
       </dl>
 
       <figure class="ep-chart">
@@ -98,7 +102,11 @@
         Every cell starts as the same simple alga: it photosynthesises and takes up nutrients. A
         genome is a list of cell types, each with its own traits and a rule for dividing: which type
         the child becomes, at what angle, and whether it stays attached. Attached cells form one body
-        with one genome and can share energy. Cells that break free carry slightly mutated genes,
+        with one genome, can share energy, and face the way their parent faced, so swimmers in a body
+        push together. Every cell carries a signal between &minus;1 and +1, worked out from what it
+        senses, how that is changing, an inner rhythm and the signals of the cells it touches. The
+        signal sets how hard a swimming cell pushes and which way it turns, so a body's cells can act
+        like a small nervous system. Cells that break free carry slightly mutated genes,
         including how fast they mutate, and types can be copied and then drift apart. Genes cost
         energy to keep, so nothing is free. Light is strongest at the top and nutrients sink, rising again only at
         two upwellings. Dead cells and scraps return to the water, so the total amount of matter
