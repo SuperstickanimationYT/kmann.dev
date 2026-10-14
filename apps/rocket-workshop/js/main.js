@@ -4,7 +4,7 @@ import { PRESETS } from './presets.js';
 import { LIBRARY } from './programs.js';
 import { rocketFromText, rocketToText } from './share.js';
 import { predictPath } from './orbit.js';
-import { BODIES, EARTH, bodyState, dominantBody } from './planets.js';
+import { BODIES, EARTH, SUN, airAround, bodyState, dominantBody } from './planets.js';
 import { ENGINE_FIRING, Simulation, TANK, WORLD } from './sim.js';
 
 const NEW_PROGRAM_INTRO = `# This program runs over and over while the rocket flies.
@@ -21,7 +21,6 @@ const FULL_PHYSICS_WARP = 10;
 const PREDICT_INTERVAL_MS = 200;
 const PATH_MIN_SPEED = 2;
 const SEPARATOR_GROUPS = 4;
-const SKY_GROUND = [40, 92, 150];
 const SKY_SPACE = [5, 13, 24];
 
 const SENSOR_HINTS = {
@@ -39,7 +38,9 @@ const TAP_SLOP_PX = 6;
 const STEP_SECONDS = 1 / 60;
 const MAX_STEPS_PER_FRAME = 40;
 const UNDO_LIMIT = 100;
-const MIN_SCALE = 0.00001;
+const MIN_SCALE = 1e-9;
+const ORBIT_LINE_MIN_PX = 24;
+const BODY_DOT_PX = 3;
 const MAX_SCALE = 300;
 const LABEL_MIN_SCALE = 8;
 const MAP_SCALE = 0.3;
@@ -491,9 +492,12 @@ function recordTrails() {
       if (line.length) lines.push([]);
       return;
     }
-    const point = sim.penPoint(pen);
+    const at = sim.penPoint(pen);
+    const body = dominantBody(at.x, at.y, sim.time);
+    const anchor = bodyState(body, sim.time);
+    const point = { body, x: at.x - anchor.x, y: at.y - anchor.y };
     const last = line[line.length - 1];
-    if (last && Math.hypot(point.x - last.x, point.y - last.y) < PEN_STEP_METERS) return;
+    if (last && last.body === body && Math.hypot(point.x - last.x, point.y - last.y) < PEN_STEP_METERS) return;
     line.push(point);
     let total = lines.reduce((sum, l) => sum + l.length, 0);
     while (total > PEN_MAX_POINTS) {
@@ -980,6 +984,7 @@ function renderStages() {
 }
 
 function formatDistance(meters) {
+  if (Math.abs(meters) >= 1e9) return `${(meters / 1e9).toFixed(2)} million km`;
   return Math.abs(meters) >= 10000 ? `${(meters / 1000).toFixed(1)} km` : `${meters.toFixed(1)} m`;
 }
 
@@ -1098,16 +1103,60 @@ function drawGrid() {
 }
 
 function skyColor() {
-  const earth = bodyState(EARTH, sim?.time ?? 0);
-  const altitude = Math.hypot(camera.x - earth.x, camera.y - earth.y) - EARTH.radius;
-  const t = Math.max(0, Math.min(1, altitude / EARTH.atmosphere.top));
-  const mix = SKY_GROUND.map((ground, i) => Math.round(ground + (SKY_SPACE[i] - ground) * t));
+  const air = airAround(camera.x, camera.y, sim?.time ?? 0);
+  if (!air) return `rgb(${SKY_SPACE.join(', ')})`;
+  const t = Math.max(0, Math.min(1, air.altitude / air.body.atmosphere.top));
+  const mix = air.body.atmosphere.sky.map((ground, i) => Math.round(ground + (SKY_SPACE[i] - ground) * t));
   return `rgb(${mix.join(', ')})`;
+}
+
+function onScreen(s, margin) {
+  return s.x > -margin && s.y > -margin && s.x < view.width + margin && s.y < view.height + margin;
+}
+
+function drawOrbitLine(body, time) {
+  if (!body.parent || body.orbitRadius * camera.scale < ORBIT_LINE_MIN_PX || camera.scale >= MAP_SCALE) return;
+  const parent = bodyState(body.parent, time);
+  const center = toScreen(parent.x, parent.y);
+  const radius = body.orbitRadius * camera.scale;
+  if (radius > 1e6) return;
+  context.strokeStyle = 'rgba(159, 208, 255, 0.18)';
+  context.lineWidth = 1;
+  context.beginPath();
+  context.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  context.stroke();
+}
+
+function drawBodyName(body, s) {
+  const named = body.parent === SUN || !body.parent || body.orbitRadius * camera.scale > ORBIT_LINE_MIN_PX * 2;
+  if (!named || camera.scale >= MAP_SCALE) return;
+  context.font = '12px "Trebuchet MS", system-ui, sans-serif';
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.fillStyle = 'rgba(226, 239, 253, 0.85)';
+  context.fillText(body.name, s.x + Math.max(BODY_DOT_PX, body.radius * camera.scale) + 5, s.y);
 }
 
 function drawBody(body, time) {
   const center = bodyState(body, time);
   const diagonal = Math.hypot(view.width, view.height) / camera.scale;
+  const s = toScreen(center.x, center.y);
+  const screenRadius = body.radius * camera.scale;
+  if (!onScreen(s, screenRadius + 80)) return;
+  drawBodyName(body, s);
+  if (screenRadius < BODY_DOT_PX) {
+    context.fillStyle = body.color;
+    context.beginPath();
+    context.arc(s.x, s.y, BODY_DOT_PX, 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+  if (body === SUN) {
+    context.fillStyle = 'rgba(255, 210, 122, 0.18)';
+    context.beginPath();
+    context.arc(s.x, s.y, screenRadius * 1.4 + 8, 0, Math.PI * 2);
+    context.fill();
+  }
   const toCamera = Math.atan2(camera.y - center.y, camera.x - center.x);
   const span = Math.min(Math.PI, (diagonal / body.radius) * 1.5 + 0.001);
   const inner = Math.max(0, body.radius - diagonal * 2);
@@ -1127,19 +1176,18 @@ function drawBody(body, time) {
   context.closePath();
   context.fillStyle = body.color;
   context.fill();
-  if (camera.scale * body.radius < 3) {
-    const dot = toScreen(center.x, center.y);
-    context.beginPath();
-    context.arc(dot.x, dot.y, 3, 0, Math.PI * 2);
-    context.fill();
-  }
 }
 
 function drawBodies() {
   const time = sim?.time ?? 0;
+  for (const body of BODIES) drawOrbitLine(body, time);
   for (const body of BODIES) drawBody(body, time);
-  const a = toScreen(-6, -0.6);
-  const b = toScreen(6, 0);
+  const earthNow = bodyState(EARTH, time);
+  const earthAtLaunch = bodyState(EARTH, 0);
+  const shiftX = earthNow.x - earthAtLaunch.x;
+  const shiftY = earthNow.y - earthAtLaunch.y;
+  const a = toScreen(shiftX - 6, shiftY - 0.6);
+  const b = toScreen(shiftX + 6, shiftY);
   if (camera.scale > 0.5) {
     context.strokeStyle = COLORS.pad;
     context.lineWidth = px(0.6, 2);
@@ -1284,7 +1332,8 @@ function drawTrails() {
       if (line.length < 2) continue;
       context.beginPath();
       line.forEach((point, k) => {
-        const s = toScreen(point.x, point.y);
+        const anchor = bodyState(point.body, sim?.time ?? 0);
+        const s = toScreen(anchor.x + point.x, anchor.y + point.y);
         if (k === 0) context.moveTo(s.x, s.y);
         else context.lineTo(s.x, s.y);
       });
@@ -1415,22 +1464,24 @@ function drawApsis(point, label, color) {
 
 function drawPrediction() {
   if (!prediction) return;
+  const anchor = bodyState(prediction.body, sim.time);
+  const from = (point) => ({ x: anchor.x + point.x, y: anchor.y + point.y });
   context.strokeStyle = COLORS.path;
   context.lineWidth = 2;
   context.lineJoin = 'round';
   context.setLineDash([10, 6]);
   context.beginPath();
   prediction.points.forEach((point, k) => {
-    const s = toScreen(point.x, point.y);
+    const s = toScreen(anchor.x + point.x, anchor.y + point.y);
     if (k === 0) context.moveTo(s.x, s.y);
     else context.lineTo(s.x, s.y);
   });
   context.stroke();
   context.setLineDash([]);
-  const { apoapsis, periapsis, impact } = prediction;
-  if (apoapsis) drawApsis(apoapsis.at, `Ap ${formatDistance(apoapsis.altitude)}`, COLORS.apsis);
-  if (periapsis.altitude > 0) drawApsis(periapsis.at, `Pe ${formatDistance(periapsis.altitude)}`, COLORS.apsis);
-  if (impact) drawApsis(impact, 'Impact', COLORS.impact);
+  const { apoapsis, periapsis, impact, body } = prediction;
+  if (apoapsis) drawApsis(from(apoapsis.at), `Ap ${formatDistance(apoapsis.altitude)}`, COLORS.apsis);
+  if (periapsis.altitude > 0) drawApsis(from(periapsis.at), `Pe ${formatDistance(periapsis.altitude)}${body === SUN ? ' from the Sun' : ''}`, COLORS.apsis);
+  if (impact) drawApsis(from(impact), 'Impact', COLORS.impact);
 }
 
 function drawMapMarker() {
