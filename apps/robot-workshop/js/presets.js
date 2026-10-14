@@ -1,4 +1,4 @@
-import { addBeam, addMotor, addNode, emptyDesign, liftOntoGround } from './design.js';
+import { addBeam, addMotor, addNode, emptyDesign, liftOntoGround, mountCpu } from './design.js';
 
 const JANSEN = { a: 38, l: 7.8, m: 15, b: 41.5, c: 39.3, d: 40.1, e: 55.8, f: 39.4, g: 36.7, h: 65.7, i: 49, j: 50, k: 61.9 };
 const JANSEN_METERS_PER_UNIT = 0.01;
@@ -82,7 +82,32 @@ function strandbeest() {
   return design;
 }
 
-function rower() {
+const CRAWLER_PROGRAM = `# Arm crawler gait. The hand lifts, reaches down until it
+# touches the ground, then pulls the body forward.
+# motor1 is the shoulder, motor2 the elbow, touch1 the hand.
+
+keep phase = 1
+keep gain = 0.1
+
+if phase == 1 then          # lift the hand
+  shoulder = 5
+  elbow = 0
+  if abs(motor1.angle - shoulder) < 5 and abs(motor2.angle - elbow) < 8 then phase = 2 end
+elseif phase == 2 then      # reach down until the hand touches
+  shoulder = 0
+  elbow = -40
+  if touch1 == 1 then phase = 3 end
+else                        # pull the body forward
+  shoulder = -50
+  elbow = -30
+  if abs(motor1.angle - shoulder) < 5 and abs(motor2.angle - elbow) < 8 then phase = 1 end
+end
+
+motor1.power = clamp((shoulder - motor1.angle) * gain, -1, 1)
+motor2.power = clamp((elbow - motor2.angle) * gain, -1, 1)
+`;
+
+function rower({ withCpu }) {
   const design = emptyDesign();
   const corners = [[0, 0], [0.7, 0], [0.7, 0.18], [0, 0.18]].map(([x, y]) => addNode(design, x, y));
   for (let n = 0; n < 4; n += 1) addBeam(design, corners[n].id, corners[(n + 1) % 4].id);
@@ -95,12 +120,18 @@ function rower() {
   const forearm = addBeam(design, elbow.id, hand.id, 1);
   addMotor(design, upperArm, bodyTop, { mode: 'swing', amplitude: 45, frequency: 1.5, phase: 0, stallTorque: 30 });
   addMotor(design, forearm, upperArm, { mode: 'swing', amplitude: 35, frequency: 1.5, phase: -45, stallTorque: 20 });
+  if (withCpu) {
+    mountCpu(design, bodyTop.id);
+    design.sensors = [hand.id];
+    design.program = CRAWLER_PROGRAM;
+  }
   liftOntoGround(design);
   return design;
 }
 
 export const PRESETS = {
   strandbeest: { name: 'Strandbeest', build: strandbeest },
-  rower: { name: 'Arm crawler', build: rower },
+  rower: { name: 'Arm crawler', build: () => rower({ withCpu: false }) },
+  smartRower: { name: 'Arm crawler with a CPU', build: () => rower({ withCpu: true }) },
   empty: { name: 'Empty', build: emptyDesign },
 };

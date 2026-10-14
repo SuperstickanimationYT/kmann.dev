@@ -1,6 +1,14 @@
-import { addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, withLayers } from './design.js';
+import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, sharedNode, toggleSensor, withDefaults } from './design.js';
+import { BUILTINS, CPU_READINGS, MOTOR_PORTS, compile } from './cpu.js';
 import { PRESETS } from './presets.js';
-import { Simulation } from './sim.js';
+import { Simulation, WORLD } from './sim.js';
+
+const NEW_PROGRAM_INTRO = `# This program runs over and over while the robot moves.
+# Read sensors, then set each motor's power from -1 to 1.
+# Open "What the program can use" below for every name.
+
+`;
+const WATCH_INTERVAL_MS = 150;
 
 const STORAGE_KEY = 'robot-workshop:v1';
 const GOAL_METERS = 10;
@@ -17,6 +25,8 @@ const MAX_SCALE = 2000;
 const TOOL_HINTS = {
   beam: 'Drag from one point to another to add a beam. Start or end on a joint to connect to it.',
   motor: 'Tap the beam the motor should turn.',
+  sensor: 'Tap a joint to give it a touch sensor, or tap a sensor to remove it.',
+  cpu: 'Tap a beam to mount the CPU on it. Its tilt sensor measures that beam.',
   move: 'Drag a joint to move it. Drag empty space to pan.',
   erase: 'Tap a joint or a beam to remove it.',
 };
@@ -47,6 +57,9 @@ const COLORS = {
   erase: '#ff8a9a',
   motor: '#ffb454',
   finish: '#7dffa8',
+  chip: '#123d2c',
+  chipEdge: '#7dffa8',
+  sensor: '#ff9fc6',
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -63,6 +76,14 @@ const noMotors = $('[data-no-motors]');
 const presetSelect = $('[data-preset]');
 const snapBox = $('[data-snap]');
 const followBox = $('[data-follow]');
+const cpuEmpty = $('[data-no-cpu]');
+const cpuBody = $('[data-cpu-body]');
+const codeBox = $('[data-code]');
+const codeError = $('[data-code-error]');
+const clockSelect = $('[data-clock]');
+const cpuUsage = $('[data-cpu-usage]');
+const watchList = $('[data-watch]');
+const reference = $('[data-reference]');
 const stats = Object.fromEntries([...document.querySelectorAll('[data-stat]')].map((el) => [el.dataset.stat, el]));
 
 let design = loadDesign();
@@ -86,11 +107,14 @@ const pointers = new Map();
 let lastFrame = performance.now();
 let accumulator = 0;
 let fittedOnce = false;
+let compiled = null;
+let drivenKey = '';
+let lastWatch = 0;
 
 function loadDesign() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (isDesign(stored)) return withLayers(stored);
+    if (isDesign(stored)) return withDefaults(stored);
   } catch {}
   return PRESETS.strandbeest.build();
 }
@@ -112,6 +136,7 @@ function commit() {
   committed = cloneDesign(design);
   bestTime = null;
   save();
+  refreshProgram();
   renderControls();
 }
 
@@ -124,6 +149,8 @@ function restore(from, to) {
   bestTime = null;
   activeLayer = Math.min(activeLayer, design.layers.length - 1);
   save();
+  refreshProgram();
+  renderCpu();
   renderMotors();
   renderControls();
   renderLayers();
@@ -257,6 +284,27 @@ function tapErase(point) {
   renderMotors();
 }
 
+function tapSensor(point) {
+  const node = hitNode(point);
+  if (!node) return;
+  const added = toggleSensor(design, node.id);
+  commit();
+  renderCpu();
+  say(added ? `Touch sensor touch${design.sensors.length} added. It reads 1 while the joint touches the ground.` : 'Touch sensor removed. The ones after it moved up a number.');
+}
+
+function tapCpu(point) {
+  const beam = hitBeam(point);
+  if (!beam) return;
+  mountCpu(design, beam.id);
+  if (!design.program.trim()) design.program = NEW_PROGRAM_INTRO + (design.motors.length ? 'motor1.power = 1
+' : '# Add a motor, then drive it here with motor1.power = 1
+');
+  commit();
+  renderCpu();
+  say('CPU mounted. Write its program in the panel.');
+}
+
 function zoomAt(point, factor) {
   const before = toWorld(point);
   camera.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, camera.scale * factor));
@@ -333,6 +381,8 @@ function endGesture(event) {
   if (gesture.kind === 'move' && gesture.moved) commit();
   if (gesture.kind === 'tap' && tool === 'motor') tapMotor(point);
   if (gesture.kind === 'tap' && tool === 'erase') tapErase(point);
+  if (gesture.kind === 'tap' && tool === 'sensor') tapSensor(point);
+  if (gesture.kind === 'tap' && tool === 'cpu') tapCpu(point);
   if (gesture.kind !== 'pinch' || pointers.size === 0) gesture = null;
 }
 
@@ -348,7 +398,7 @@ canvas.addEventListener('wheel', (event) => {
 }, { passive: false });
 
 function hoverAt(point) {
-  if (tool === 'motor') {
+  if (tool === 'motor' || tool === 'cpu') {
     const beam = hitBeam(point);
     return beam && { kind: 'beam', id: beam.id };
   }
@@ -372,16 +422,19 @@ function startRun() {
     say('Build something first. Drag on the board with the Beam tool.');
     return;
   }
-  sim = new Simulation(design);
+  const program = design.cpu && compiled.ok ? compiled.program : null;
+  sim = new Simulation(design, program);
   finishTime = null;
   warnedBackwards = false;
   accumulator = 0;
   gesture = null;
   hover = null;
   pendingMotorBeam = null;
-  say(design.motors.length ? 'Running. Motor sliders work live.' : 'Running. Without a motor it can only fall over. Add one with the Motor tool.');
+  if (design.cpu && !compiled.ok) say(`Running with the CPU off, because line ${compiled.error.line} of the program has an error.`);
+  else say(design.motors.length ? 'Running. Motor sliders work live.' : 'Running. Without a motor it can only fall over. Add one with the Motor tool.');
   renderControls();
   renderMotors();
+  renderCpu();
 }
 
 function stopRun() {
@@ -389,6 +442,73 @@ function stopRun() {
   say(TOOL_HINTS[tool]);
   renderControls();
   renderMotors();
+  renderCpu();
+}
+
+function hardware() {
+  return { motors: design.motors.length, sensors: design.sensors.length };
+}
+
+function drivenByProgram() {
+  return design.cpu && compiled?.ok ? compiled.program.drives : new Set();
+}
+
+function refreshProgram() {
+  compiled = compile(design.program, hardware());
+  codeError.textContent = compiled.ok ? '' : `Line ${compiled.error.line}: ${compiled.error.message}`;
+  const key = [...drivenByProgram()].join(',');
+  if (key !== drivenKey) {
+    drivenKey = key;
+    renderMotors();
+  }
+}
+
+function referenceRow(name, help) {
+  const row = document.createElement('div');
+  const term = document.createElement('dt');
+  term.textContent = name;
+  const text = document.createElement('dd');
+  text.textContent = help;
+  row.append(term, text);
+  return row;
+}
+
+function renderReference() {
+  const rows = [];
+  design.motors.forEach((_, i) => {
+    for (const [port, spec] of Object.entries(MOTOR_PORTS)) rows.push(referenceRow(`motor${i + 1}.${port}`, spec.help));
+  });
+  design.sensors.forEach((_, i) => rows.push(referenceRow(`touch${i + 1}`, '1 while this joint touches the ground, otherwise 0')));
+  for (const [name, help] of Object.entries(CPU_READINGS)) rows.push(referenceRow(name, help));
+  for (const builtin of Object.values(BUILTINS)) {
+    const [call, ...words] = builtin.help.split(' ');
+    rows.push(referenceRow(call, words.join(' ')));
+  }
+  reference.replaceChildren(...rows);
+}
+
+function renderCpu() {
+  cpuEmpty.hidden = Boolean(design.cpu);
+  cpuBody.hidden = !design.cpu;
+  if (!design.cpu) return;
+  if (codeBox.value !== design.program) codeBox.value = design.program;
+  codeBox.readOnly = Boolean(sim);
+  clockSelect.value = String(design.cpu.clock);
+  clockSelect.disabled = Boolean(sim);
+  watchList.hidden = !sim?.processor;
+  cpuUsage.textContent = sim ? '' : 'Every operation in the program costs one tick of the clock. A faster clock repeats the program more times a second.';
+  renderReference();
+}
+
+function renderWatch(now) {
+  const processor = sim?.processor;
+  if (!processor || now - lastWatch < WATCH_INTERVAL_MS) return;
+  lastWatch = now;
+  const rate = processor.dt > 0 ? Math.round(1 / processor.dt) : 0;
+  cpuUsage.textContent = `The program repeats about ${rate} times a second.`;
+  const variables = processor.program.variables.map((name, i) => referenceRow(name, String(Math.round(processor.values[i] * 1000) / 1000)));
+  const powers = sim.motors.flatMap((motor, i) => (motor.cpuControlled ? [referenceRow(`motor${i + 1}.power`, motor.cpuPower.toFixed(2))] : []));
+  watchList.replaceChildren(...variables, ...powers);
 }
 
 function fit() {
@@ -487,7 +607,11 @@ function renderMotors() {
     const head = document.createElement('div');
     head.className = 'rw-motor-head';
     const title = document.createElement('strong');
-    title.textContent = `Motor ${index + 1}`;
+    title.textContent = `Motor ${index + 1} `;
+    const codeName = document.createElement('code');
+    codeName.textContent = `motor${index + 1}`;
+    title.append(codeName);
+    const programmed = drivenByProgram().has(index);
     const mode = document.createElement('select');
     mode.setAttribute('aria-label', `Motor ${index + 1} mode`);
     for (const [value, text] of [['spin', 'Spin'], ['swing', 'Swing back and forth']]) mode.add(new Option(text, value, false, motor.mode === value));
@@ -507,8 +631,15 @@ function renderMotors() {
       commit();
       renderMotors();
     });
-    head.append(title, mode, remove);
-    item.append(head, ...MOTOR_FIELDS.filter((field) => !field.modes || field.modes.includes(motor.mode)).map((field) => slider(motor, field)));
+    if (programmed) {
+      const note = document.createElement('span');
+      note.className = 'rw-driven';
+      note.textContent = 'Driven by the CPU';
+      head.append(title, note, remove);
+    } else {
+      head.append(title, mode, remove);
+    }
+    item.append(head, ...MOTOR_FIELDS.filter((field) => !field.modes || (!programmed && field.modes.includes(motor.mode))).map((field) => slider(motor, field)));
     return item;
   }));
   noMotors.hidden = design.motors.length > 0;
@@ -711,6 +842,60 @@ function drawRobot() {
   }
 }
 
+function drawCpu(nodes) {
+  const beam = design.cpu && beamMap(design).get(design.cpu.beam);
+  if (!beam) return;
+  const a = toScreen(nodes.get(beam.a).x, nodes.get(beam.a).y);
+  const b = toScreen(nodes.get(beam.b).x, nodes.get(beam.b).y);
+  const width = Math.max(26, camera.scale * 0.12);
+  const height = Math.max(16, camera.scale * 0.07);
+  let angle = Math.atan2(b.y - a.y, b.x - a.x);
+  if (Math.abs(angle) > Math.PI / 2) angle += Math.PI;
+  context.save();
+  context.translate((a.x + b.x) / 2, (a.y + b.y) / 2);
+  context.rotate(angle);
+  context.fillStyle = COLORS.chip;
+  context.strokeStyle = COLORS.chipEdge;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.roundRect(-width / 2, -height / 2, width, height, 3);
+  context.fill();
+  context.stroke();
+  context.fillStyle = COLORS.chipEdge;
+  context.font = `700 ${Math.round(height * 0.55)}px "Trebuchet MS", system-ui, sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('CPU', 0, 1);
+  context.restore();
+}
+
+function drawSensors(nodes) {
+  const size = Math.max(6, camera.scale * 0.02);
+  const touching = new Set(sim ? sim.sensors.filter((i) => sim.y[i] < WORLD.touchMeters).map((i) => sim.ids[i]) : []);
+  design.sensors.forEach((id, i) => {
+    const p = nodes.get(id);
+    if (!p) return;
+    const s = toScreen(p.x, p.y);
+    context.strokeStyle = COLORS.sensor;
+    context.fillStyle = touching.has(id) ? COLORS.sensor : COLORS.sky;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(s.x, s.y - size);
+    context.lineTo(s.x + size, s.y);
+    context.lineTo(s.x, s.y + size);
+    context.lineTo(s.x - size, s.y);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    if (camera.scale < 120) return;
+    context.fillStyle = COLORS.sensor;
+    context.font = '12px "Trebuchet MS", system-ui, sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    context.fillText(`touch${i + 1}`, s.x + size + 4, s.y - size);
+  });
+}
+
 function drawBeamPreview() {
   if (gesture?.kind !== 'beam') return;
   const { from, to } = gesture;
@@ -730,6 +915,9 @@ function draw() {
   if (!sim) drawGrid();
   drawGround();
   drawRobot();
+  const nodes = positions();
+  drawCpu(nodes);
+  drawSensors(nodes);
   drawBeamPreview();
 }
 
@@ -738,6 +926,7 @@ function frame(now) {
   lastFrame = now;
   if (sim) advance(seconds);
   renderStats();
+  renderWatch(now);
   draw();
   requestAnimationFrame(frame);
 }
@@ -769,6 +958,7 @@ $('[data-load]').addEventListener('click', () => {
   focused = false;
   commit();
   renderLayers();
+  renderCpu();
   renderMotors();
   fit();
 });
@@ -794,15 +984,48 @@ window.addEventListener('keydown', (event) => {
   } else if (key === 'escape') {
     pendingMotorBeam = null;
     gesture = null;
-  } else if (!sim && ['1', '2', '3', '4'].includes(key)) {
+  } else if (!sim && key >= '1' && key <= String(toolButtons.length)) {
     setTool(toolButtons[Number(key) - 1].dataset.tool);
   }
 });
 
+for (const clock of CPU_CLOCKS) clockSelect.add(new Option(`${clock.toLocaleString('en')} ops a second`, String(clock)));
+clockSelect.addEventListener('change', () => {
+  design.cpu.clock = Number(clockSelect.value);
+  commit();
+});
+
+let compileTimer = 0;
+codeBox.addEventListener('input', () => {
+  design.program = codeBox.value;
+  clearTimeout(compileTimer);
+  compileTimer = setTimeout(() => {
+    refreshProgram();
+    save();
+  }, 250);
+});
+codeBox.addEventListener('change', () => {
+  clearTimeout(compileTimer);
+  commit();
+});
+codeBox.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab' || event.shiftKey || codeBox.readOnly) return;
+  event.preventDefault();
+  codeBox.setRangeText('  ', codeBox.selectionStart, codeBox.selectionEnd, 'end');
+  codeBox.dispatchEvent(new Event('input'));
+});
+$('[data-remove-cpu]').addEventListener('click', () => {
+  design.cpu = null;
+  commit();
+  renderCpu();
+});
+
 new ResizeObserver(resize).observe(canvas);
 resize();
+refreshProgram();
 renderLayers();
 renderMotors();
+renderCpu();
 renderControls();
 say(TOOL_HINTS[tool]);
 requestAnimationFrame(frame);

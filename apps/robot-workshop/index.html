@@ -27,8 +27,10 @@
       <div class="rw-group" role="group" aria-label="Tool" data-tools>
         <button type="button" data-tool="beam" title="Drag between two points to add a beam (1)">Beam</button>
         <button type="button" data-tool="motor" title="Tap the beam to turn, then the beam it pushes against (2)">Motor</button>
-        <button type="button" data-tool="move" title="Drag joints to move them (3)">Move</button>
-        <button type="button" data-tool="erase" title="Tap a joint or beam to remove it (4)">Erase</button>
+        <button type="button" data-tool="sensor" title="Tap a joint to add or remove a touch sensor (3)">Sensor</button>
+        <button type="button" data-tool="cpu" title="Tap a beam to mount the CPU on it (4)">CPU</button>
+        <button type="button" data-tool="move" title="Drag joints to move them (5)">Move</button>
+        <button type="button" data-tool="erase" title="Tap a joint or beam to remove it (6)">Erase</button>
       </div>
       <button type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
       <button type="button" data-redo title="Redo (Ctrl+Y)">Redo</button>
@@ -58,6 +60,51 @@
       <h2>Motors</h2>
       <ul class="rw-motors" data-motors></ul>
       <p class="rw-note" data-no-motors>No motors yet. Pick the <strong>Motor</strong> tool, tap the beam that should turn, then tap a beam joined to it at the same joint. The motor turns the first beam against the second.</p>
+    </section>
+
+    <section class="rw-section">
+      <h2>CPU</h2>
+      <p class="rw-note" data-no-cpu>No CPU yet. Pick the <strong>CPU</strong> tool and tap a beam to mount one. Then write a program here that reads sensors and drives motors.</p>
+      <div data-cpu-body hidden>
+        <label class="rw-field">
+          <span>Clock</span>
+          <select data-clock></select>
+        </label>
+        <label class="rw-field">
+          <span>Program</span>
+          <textarea class="rw-code" data-code rows="14" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+        </label>
+        <p class="rw-error" data-code-error role="status"></p>
+        <p class="rw-note" data-cpu-usage></p>
+        <dl class="rw-watch" data-watch hidden></dl>
+        <details class="rw-help">
+          <summary>How the language works</summary>
+          <pre class="rw-example"># Lines starting with # are notes.
+speed = 0.5             # set a name
+keep count = 0          # keep: set once, then remember
+count = count + 1
+
+if touch1 == 1 then
+  motor1.power = -speed
+elseif tilt &gt; 10 and not (time &lt; 2) then
+  motor1.power = 0
+else
+  motor1.power = speed
+end
+
+while motor2.angle &lt; 90 do
+  motor2.power = 1      # waits here, burning clock ticks
+end</pre>
+          <p class="rw-note">Math: + - * / % ^ and brackets. Compare with == != &lt; &lt;= &gt; &gt;=, combine with and, or, not. true is 1 and false is 0. Angles are in degrees.</p>
+        </details>
+        <details class="rw-help">
+          <summary>What the program can use</summary>
+          <dl class="rw-reference" data-reference></dl>
+        </details>
+        <div class="rw-row">
+          <button type="button" data-remove-cpu>Remove CPU</button>
+        </div>
+      </div>
     </section>
 
     <section class="rw-section">

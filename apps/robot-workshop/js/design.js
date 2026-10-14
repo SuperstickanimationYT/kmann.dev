@@ -9,13 +9,29 @@ export const MOTOR_DEFAULTS = {
 };
 
 export function emptyDesign() {
-  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], nextId: 1 };
+  return { nodes: [], beams: [], motors: [], layers: ['Layer 1'], sensors: [], cpu: null, program: '', nextId: 1 };
 }
 
-export function withLayers(design) {
+export const CPU_CLOCKS = [1000, 2000, 5000, 10000, 20000, 50000];
+
+export function withDefaults(design) {
   design.layers ??= ['Layer 1'];
   for (const beam of design.beams) beam.layer ??= 0;
+  design.sensors ??= [];
+  design.cpu ??= null;
+  design.program ??= '';
   return design;
+}
+
+export function toggleSensor(design, nodeId) {
+  const before = design.sensors.length;
+  design.sensors = design.sensors.filter((id) => id !== nodeId);
+  if (design.sensors.length === before) design.sensors.push(nodeId);
+  return design.sensors.length > before;
+}
+
+export function mountCpu(design, beamId) {
+  design.cpu = { beam: beamId, clock: design.cpu?.clock ?? 5000 };
 }
 
 export function addLayer(design) {
@@ -84,13 +100,16 @@ export function addMotor(design, driven, base, settings = {}) {
 export function removeBeam(design, beamId) {
   design.beams = design.beams.filter((beam) => beam.id !== beamId);
   design.motors = design.motors.filter((motor) => motor.driven !== beamId && motor.base !== beamId);
+  if (design.cpu?.beam === beamId) design.cpu = null;
   const used = new Set(design.beams.flatMap((beam) => [beam.a, beam.b]));
   design.nodes = design.nodes.filter((node) => used.has(node.id));
+  design.sensors = design.sensors.filter((id) => used.has(id));
 }
 
 export function removeNode(design, nodeId) {
   for (const beam of design.beams.filter((b) => b.a === nodeId || b.b === nodeId)) removeBeam(design, beam.id);
   design.nodes = design.nodes.filter((node) => node.id !== nodeId);
+  design.sensors = design.sensors.filter((id) => id !== nodeId);
 }
 
 export function removeMotor(design, motorId) {

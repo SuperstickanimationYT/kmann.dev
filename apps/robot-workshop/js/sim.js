@@ -1,3 +1,4 @@
+import { Processor } from './cpu.js';
 import { beamMap, sharedNode } from './design.js';
 
 export const WORLD = {
@@ -5,6 +6,9 @@ export const WORLD = {
   substeps: 32,
   beamKgPerMeter: 0.4,
   pinKg: 0.05,
+  cpuKg: 0.3,
+  sensorKg: 0.02,
+  touchMeters: 0.002,
   friction: 0.9,
   swingGain: 4,
 };
@@ -19,8 +23,12 @@ function rpmToRadPerSecond(rpm) {
   return (rpm * TAU) / 60;
 }
 
+function toDegrees(radians) {
+  return (radians * 180) / Math.PI;
+}
+
 export class Simulation {
-  constructor(design) {
+  constructor(design, program = null) {
     const index = new Map(design.nodes.map((node, i) => [node.id, i]));
     const count = design.nodes.length;
     this.ids = design.nodes.map((node) => node.id);
@@ -40,6 +48,17 @@ export class Simulation {
       mass[b] += (length * WORLD.beamKgPerMeter) / 2;
       return { a, b, length };
     });
+    for (const id of design.sensors ?? []) mass[index.get(id)] += WORLD.sensorKg;
+    this.sensors = (design.sensors ?? []).map((id) => index.get(id));
+    const cpuBeam = design.cpu && design.beams.find((beam) => beam.id === design.cpu.beam);
+    if (cpuBeam) {
+      this.cpuEnds = { a: index.get(cpuBeam.a), b: index.get(cpuBeam.b) };
+      mass[this.cpuEnds.a] += WORLD.cpuKg / 2;
+      mass[this.cpuEnds.b] += WORLD.cpuKg / 2;
+      this.cpuClock = design.cpu.clock;
+      this.cpuRestAngle = this.cpuAngle();
+      if (program) this.processor = new Processor(program, this);
+    }
     this.mass = mass;
     this.inverseMass = Float64Array.from(mass, (m) => 1 / m);
     this.totalMass = mass.reduce((sum, m) => sum + m, 0);
@@ -50,9 +69,14 @@ export class Simulation {
       const base = beams.get(settings.base);
       const pivotId = sharedNode(driven, base);
       const otherEnd = (beam) => index.get(beam.a === pivotId ? beam.b : beam.a);
-      const motor = { settings, pivot: index.get(pivotId), drivenEnd: otherEnd(driven), baseEnd: otherEnd(base), torque: 0, speed: 0 };
+      const motor = { settings, pivot: index.get(pivotId), drivenEnd: otherEnd(driven), baseEnd: otherEnd(base), torque: 0, speed: 0, cpuPower: 0 };
       motor.restAngle = this.relativeAngle(motor);
+      motor.lastAngle = motor.restAngle;
+      motor.turned = 0;
       return motor;
+    });
+    this.motors.forEach((motor, i) => {
+      motor.cpuControlled = Boolean(this.processor?.program.drives.has(i));
     });
 
     this.time = 0;
@@ -80,8 +104,39 @@ export class Simulation {
     return driven - base;
   }
 
+  cpuAngle() {
+    const { a, b } = this.cpuEnds;
+    return Math.atan2(this.y[b] - this.y[a], this.x[b] - this.x[a]);
+  }
+
+  read(port, processor) {
+    const { a, b } = this.cpuEnds;
+    const motor = this.motors[port.index];
+    switch (port.kind) {
+      case 'tilt': return toDegrees(wrapAngle(this.cpuAngle() - this.cpuRestAngle));
+      case 'spin': {
+        const dx = this.x[b] - this.x[a];
+        const dy = this.y[b] - this.y[a];
+        return toDegrees((dx * (this.vy[b] - this.vy[a]) - dy * (this.vx[b] - this.vx[a])) / (dx * dx + dy * dy));
+      }
+      case 'height': return (this.y[a] + this.y[b]) / 2;
+      case 'time': return this.time;
+      case 'dt': return processor.dt;
+      case 'touch': return this.y[this.sensors[port.index]] < WORLD.touchMeters ? 1 : 0;
+      case 'motor-power': return motor.cpuPower;
+      case 'motor-angle': return toDegrees(motor.turned);
+      case 'motor-speed': return (motor.speed * 60) / TAU;
+      default: return 0;
+    }
+  }
+
+  write(port, value) {
+    if (port.kind === 'motor-power') this.motors[port.index].cpuPower = Math.max(-1, Math.min(1, value));
+  }
+
   throttle(motor) {
     const { settings } = motor;
+    if (motor.cpuControlled) return motor.cpuPower;
     if (settings.mode === 'spin') return settings.power;
     const target = motor.restAngle + ((settings.amplitude * Math.PI) / 180) * Math.sin(TAU * settings.frequency * this.time + (settings.phase * Math.PI) / 180);
     const error = wrapAngle(target - this.relativeAngle(motor));
@@ -90,6 +145,9 @@ export class Simulation {
 
   driveMotor(motor, h) {
     const { pivot: p, drivenEnd: d, baseEnd: b, settings } = motor;
+    const angle = this.relativeAngle(motor);
+    motor.turned += wrapAngle(angle - motor.lastAngle);
+    motor.lastAngle = angle;
     const w = this.inverseMass;
     const rdx = this.x[d] - this.x[p];
     const rdy = this.y[d] - this.y[p];
@@ -156,6 +214,7 @@ export class Simulation {
     const h = dt / WORLD.substeps;
     const { x, y, vx, vy, prevX, prevY } = this;
     for (let s = 0; s < WORLD.substeps; s += 1) {
+      this.processor?.run(this.cpuClock * h, this.time);
       for (const motor of this.motors) this.driveMotor(motor, h);
       for (let i = 0; i < x.length; i += 1) {
         vy[i] -= WORLD.gravity * h;
