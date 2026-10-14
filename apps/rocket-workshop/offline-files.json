@@ -1,5 +1,5 @@
 {
-  "bytes": 172227,
+  "bytes": 182057,
   "files": [
     "./",
     "index.html",
@@ -9,6 +9,7 @@
     "js/orbit.js",
     "js/planets.js",
     "js/presets.js",
+    "js/programs.js",
     "js/share.js",
     "js/sim.js",
     "manifest.webmanifest",

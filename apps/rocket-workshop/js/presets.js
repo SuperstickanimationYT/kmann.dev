@@ -1,10 +1,10 @@
 import { addBeam, addMotor, addNode, emptyDesign, mountCpu, toggleEngine, toggleRange, toggleSeparator, toggleTank, toggleWheel } from './design.js';
+import { LAUNCH_PROGRAM } from './programs.js';
 
 const HOPPER_PROGRAM = `# Hop: climb for 5 seconds, coast up and fall back, then land
 # softly. range1 looks down from the engine, so it measures
 # the height of the nozzle above the ground.
 
-keep thrust = 60000         # newtons, the engine's full thrust
 keep nozzleHeight = 1       # range1 reading while standing on the pad
 keep phase = 1
 
@@ -14,12 +14,12 @@ if phase == 1 then          # climb
   engine1.throttle = 1
   if time > 5 then phase = 2 end
 elseif phase == 2 then      # fall, then brake just in time
-  brake = thrust / mass - 9.8
+  brake = engine1.thrust / mass - 9.8
   target = -sqrt(0.6 * brake * max(height, 0)) - 0.5   # fall no faster than braking at 30% of full can stop
   if vspeed > 0 then
     engine1.throttle = 0
   else
-    engine1.throttle = clamp(mass * (9.8 + 8 * (target - vspeed)) / thrust, 0, 1)
+    engine1.throttle = clamp(mass * (9.8 + 8 * (target - vspeed)) / engine1.thrust, 0, 1)
   end
   if height < 0.05 then phase = 3 end
 else                        # landed
@@ -125,9 +125,17 @@ function orbiter() {
   return design;
 }
 
+function autoOrbiter() {
+  const design = orbiter();
+  mountCpu(design, design.beams[1].id);
+  design.program = LAUNCH_PROGRAM;
+  return design;
+}
+
 export const PRESETS = {
   hopper: { name: 'Hopper that lands itself', build: hopper },
   twoStage: { name: 'Two-stage rocket you fly', build: twoStage },
   orbiter: { name: 'Orbiter with a reaction wheel', build: orbiter },
+  autoOrbiter: { name: 'Orbiter that flies itself to orbit', build: autoOrbiter },
   empty: { name: 'Empty', build: emptyDesign },
 };

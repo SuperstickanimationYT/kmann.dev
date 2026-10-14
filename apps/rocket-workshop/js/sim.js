@@ -1,5 +1,6 @@
 import { Processor } from './cpu.js';
 import { beamMap, sharedNode } from './design.js';
+import { orbitAltitudes } from './orbit.js';
 import { BODIES, EARTH, airDensity, bodyState, dominantBody } from './planets.js';
 
 export const WORLD = {
@@ -329,6 +330,12 @@ export class Simulation {
       case 'speed': return this.telemetry().speed;
       case 'vspeed': return this.telemetry().vspeed;
       case 'hspeed': return this.telemetry().hspeed;
+      case 'prograde': {
+        const flight = this.telemetry();
+        return toDegrees(Math.atan2(flight.hspeed, flight.vspeed));
+      }
+      case 'apoapsis': return orbitAltitudes(this.centerOf(this.cpuGyro), this.velocityOf(this.cpuGyro), this.time).apoapsis ?? -1;
+      case 'periapsis': return orbitAltitudes(this.centerOf(this.cpuGyro), this.velocityOf(this.cpuGyro), this.time).periapsis;
       case 'mass': return this.pieceStats(this.cpuGyro.a).mass;
       case 'fuel': return this.pieceStats(this.cpuGyro.a).fuel;
       case 'steer': return this.input.steer;
@@ -345,6 +352,7 @@ export class Simulation {
       case 'angle-speed': return this.jointSpeed(joint) * radPerSecondToRpm;
       case 'pen-down': return this.pens[port.index].down;
       case 'engine-throttle': return this.engines[port.index].cpuThrottle;
+      case 'engine-thrust': return this.engines[port.index].settings.thrust * 1000;
       case 'sep-fire': return this.separatorGroups.get(port.index + 1)?.fired ? 1 : 0;
       case 'range-distance': return this.measureRange(this.ranges[port.index]);
       case 'wheel-torque': return this.wheels[port.index].cpuTorque;

@@ -40,6 +40,15 @@ function surfaceHit(x, y, time) {
   });
 }
 
+export function orbitAltitudes(position, velocity, time) {
+  const body = dominantBody(position.x, position.y, time);
+  const center = bodyState(body, time);
+  const shape = orbitShape(body, position.x - center.x, position.y - center.y, velocity.x - center.vx, velocity.y - center.vy);
+  const periapsis = shape.semiLatusRectum / (1 + shape.eccentricity) - body.radius;
+  const apoapsis = shape.semiMajorAxis === Infinity ? null : shape.semiLatusRectum / (1 - shape.eccentricity) - body.radius;
+  return { apoapsis, periapsis };
+}
+
 export function predictPath(position, velocity, time) {
   const body = dominantBody(position.x, position.y, time);
   const start = bodyState(body, time);

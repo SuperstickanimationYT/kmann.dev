@@ -1,6 +1,7 @@
 import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, separatorGroupCount, sharedNode, toggleAngleSensor, toggleEngine, toggleGyro, togglePen, toggleRange, toggleSensor, toggleSeparator, toggleTank, toggleWheel, withDefaults } from './design.js';
 import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
 import { PRESETS } from './presets.js';
+import { LIBRARY } from './programs.js';
 import { rocketFromText, rocketToText } from './share.js';
 import { predictPath } from './orbit.js';
 import { BODIES, EARTH, bodyState, dominantBody } from './planets.js';
@@ -145,6 +146,8 @@ const clockSelect = $('[data-clock]');
 const cpuUsage = $('[data-cpu-usage]');
 const watchList = $('[data-watch]');
 const reference = $('[data-reference]');
+const librarySelect = $('[data-library]');
+const libraryNeeds = $('[data-library-needs]');
 const stats = Object.fromEntries([...document.querySelectorAll('[data-stat]')].map((el) => [el.dataset.stat, el]));
 
 let design = loadDesign();
@@ -1796,6 +1799,22 @@ $('[data-code-open]').addEventListener('click', () => {
 });
 $('[data-code-close]').addEventListener('click', () => codeDialog.close());
 codeDialog.addEventListener('close', () => cpuBodyHome.append(cpuBody));
+
+function showLibraryNeeds() {
+  const entry = LIBRARY.find((program) => program.id === librarySelect.value);
+  libraryNeeds.textContent = `Needs ${entry.needs}. Read the notes at the top of the program for what it does and the numbers to change.`;
+}
+
+for (const program of LIBRARY) librarySelect.add(new Option(program.name, program.id));
+librarySelect.addEventListener('change', showLibraryNeeds);
+showLibraryNeeds();
+$('[data-library-load]').addEventListener('click', () => {
+  const entry = LIBRARY.find((program) => program.id === librarySelect.value);
+  design.program = entry.code;
+  commit();
+  renderCpu();
+  say(compiled.ok ? `Loaded "${entry.name}". Undo brings your old program back.` : `Loaded "${entry.name}", but line ${compiled.error.line} needs a part this rocket doesn't have: ${compiled.error.message}`);
+});
 
 $('[data-remove-cpu]').addEventListener('click', () => {
   if (codeDialog.open) codeDialog.close();
