@@ -2,6 +2,7 @@ import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign,
 import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
 import { PRESETS } from './presets.js';
 import { rocketFromText, rocketToText } from './share.js';
+import { predictPath } from './orbit.js';
 import { BODIES, EARTH, bodyState, dominantBody } from './planets.js';
 import { Simulation, TANK, WORLD } from './sim.js';
 
@@ -15,6 +16,8 @@ const WATCH_INTERVAL_MS = 150;
 const PEN_STEP_METERS = 0.5;
 const PEN_MAX_POINTS = 20000;
 const WARP_SPEEDS = [1, 2, 5, 10];
+const PREDICT_INTERVAL_MS = 200;
+const PATH_MIN_SPEED = 2;
 const SEPARATOR_GROUPS = 4;
 const SKY_GROUND = [40, 92, 150];
 const SKY_SPACE = [5, 13, 24];
@@ -91,6 +94,9 @@ const COLORS = {
   flame: '#ffcf5c',
   separator: '#ffd36e',
   range: '#ff6b6b',
+  path: 'rgba(95, 227, 255, 0.75)',
+  apsis: '#5fe3ff',
+  impact: '#ff6b6b',
   chip: '#123d2c',
   chipEdge: '#7dffa8',
   sensor: '#ff9fc6',
@@ -122,6 +128,7 @@ const noMotors = $('[data-no-motors]');
 const presetSelect = $('[data-preset]');
 const snapBox = $('[data-snap]');
 const followBox = $('[data-follow]');
+const pathBox = $('[data-path]');
 const cpuEmpty = $('[data-no-cpu]');
 const cpuBody = $('[data-cpu-body]');
 const codeBox = $('[data-code]');
@@ -155,6 +162,8 @@ let accumulator = 0;
 let fittedOnce = false;
 let compiled = null;
 let trails = [];
+let prediction = null;
+let lastPrediction = 0;
 let drivenKey = '';
 let lastWatch = 0;
 
@@ -611,6 +620,7 @@ function startRun() {
   const program = design.cpu && compiled.ok ? compiled.program : null;
   sim = new Simulation(design, program);
   trails = sim.pens.map(() => [[]]);
+  prediction = null;
   setThrottle(0);
   pilot.left = false;
   pilot.right = false;
@@ -912,6 +922,8 @@ function renderStats() {
   stats.vspeed.textContent = flight ? `${flight.vspeed.toFixed(1)} m/s` : '–';
   stats.fuel.textContent = sim ? `${Math.round(piece ? piece.fuel : sim.tanks.reduce((sum, tank) => sum + tank.fuel, 0))} kg` : '–';
   stats.time.textContent = sim ? `${sim.time.toFixed(1)} s` : '–';
+  stats.apoapsis.textContent = prediction ? (prediction.apoapsis ? formatDistance(prediction.apoapsis.altitude) : 'Escaping') : '–';
+  stats.periapsis.textContent = prediction ? (prediction.periapsis.altitude > 0 ? formatDistance(prediction.periapsis.altitude) : 'Below ground') : '–';
   if (piece) stats.mass.textContent = `${Math.round(piece.mass).toLocaleString('en')} kg`;
   hud.hidden = !flight;
   if (flight) hud.textContent = `${flight.body.name} · ${formatDistance(flight.altitude)} up · ${flight.speed.toFixed(0)} m/s`;
@@ -1276,6 +1288,43 @@ function drawSensors(nodes) {
   });
 }
 
+function drawApsis(point, label, color) {
+  const s = toScreen(point.x, point.y);
+  context.fillStyle = color;
+  context.strokeStyle = COLORS.beamShadow;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.arc(s.x, s.y, 5, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  context.font = '12px "Trebuchet MS", system-ui, sans-serif';
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.lineWidth = 3;
+  context.strokeText(label, s.x + 9, s.y);
+  context.fillText(label, s.x + 9, s.y);
+}
+
+function drawPrediction() {
+  if (!prediction) return;
+  context.strokeStyle = COLORS.path;
+  context.lineWidth = 2;
+  context.lineJoin = 'round';
+  context.setLineDash([10, 6]);
+  context.beginPath();
+  prediction.points.forEach((point, k) => {
+    const s = toScreen(point.x, point.y);
+    if (k === 0) context.moveTo(s.x, s.y);
+    else context.lineTo(s.x, s.y);
+  });
+  context.stroke();
+  context.setLineDash([]);
+  const { apoapsis, periapsis, impact } = prediction;
+  if (apoapsis) drawApsis(apoapsis.at, `Ap ${formatDistance(apoapsis.altitude)}`, COLORS.apsis);
+  if (periapsis.altitude > 0) drawApsis(periapsis.at, `Pe ${formatDistance(periapsis.altitude)}`, COLORS.apsis);
+  if (impact) drawApsis(impact, 'Impact', COLORS.impact);
+}
+
 function drawMapMarker() {
   const center = sim ? (sim.cpuGyro ? sim.centerOf(sim.cpuGyro) : sim.centerOfMass()) : { x: 0, y: 0 };
   const s = toScreen(center.x, center.y);
@@ -1418,6 +1467,7 @@ function draw() {
   if (!sim && camera.scale >= GRID_MIN_SCALE) drawGrid();
   drawBodies();
   drawTrails();
+  drawPrediction();
   if (camera.scale < MAP_SCALE) {
     drawMapMarker();
     return;
@@ -1435,10 +1485,22 @@ function draw() {
   drawBeamPreview();
 }
 
+function updatePrediction(now) {
+  if (!sim || !pathBox.checked || sim.telemetry().speed < PATH_MIN_SPEED) {
+    prediction = null;
+    return;
+  }
+  if (now - lastPrediction < PREDICT_INTERVAL_MS) return;
+  lastPrediction = now;
+  const point = sim.cpuGyro ?? sim.heaviestNode();
+  prediction = predictPath(sim.centerOf(point), sim.velocityOf(point), sim.time);
+}
+
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
   if (sim) advance(seconds);
+  if (sim) updatePrediction(now);
   renderStats();
   renderWatch(now);
   draw();
