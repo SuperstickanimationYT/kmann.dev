@@ -1,11 +1,16 @@
 {
-  "bytes": 62792,
+  "bytes": 103625,
   "files": [
     "./",
     "index.html",
+    "js/deepsky.js",
+    "js/eye.js",
     "js/fft.js",
     "js/main.js",
+    "js/moon.js",
+    "js/noise.js",
     "js/optics.js",
+    "js/planets.js",
     "js/targets.js",
     "js/worker.js",
     "manifest.webmanifest",

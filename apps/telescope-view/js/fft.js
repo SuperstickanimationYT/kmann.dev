@@ -70,10 +70,10 @@ export function fft2d(re, im, n, inverse = false) {
 }
 
 export function splitPackedSpectrum(re, im, n) {
-  const aRe = new Float64Array(n * n);
-  const aIm = new Float64Array(n * n);
-  const bRe = new Float64Array(n * n);
-  const bIm = new Float64Array(n * n);
+  const aRe = new Float32Array(n * n);
+  const aIm = new Float32Array(n * n);
+  const bRe = new Float32Array(n * n);
+  const bIm = new Float32Array(n * n);
   for (let y = 0; y < n; y++) {
     const my = (n - y) % n;
     for (let x = 0; x < n; x++) {
