@@ -3,6 +3,7 @@ import { OFF_BOARD } from './plane.js';
 const MIN_CELL = 0.05;
 const MAX_CELL = 64;
 const GRID_FROM = 9;
+const READOUT_CLEARANCE = 112;
 
 const rgba = (hex) => {
   const value = parseInt(hex.slice(1), 16);
@@ -18,7 +19,7 @@ const COLOURS = {
 };
 
 export class View {
-  constructor(canvas, { onDraw, onCameraMove }) {
+  constructor(canvas, { onDraw, onCameraMove, onSelect, onPaste }) {
     this.canvas = canvas;
     this.context = canvas.getContext('2d');
     this.image = document.createElement('canvas');
@@ -29,6 +30,11 @@ export class View {
     this.dimEther = true;
     this.onDraw = onDraw;
     this.onCameraMove = onCameraMove;
+    this.onSelect = onSelect;
+    this.onPaste = onPaste;
+    this.selection = null;
+    this.pasting = null;
+    this.hover = null;
     this.pointers = new Map();
     this.listen();
   }
@@ -95,7 +101,8 @@ export class View {
     if (this.dimensions !== 1 || !this.follow) return;
     if (!this.world.board) this.keepActiveColumnsInView();
     const halfRows = this.size.height / 2 / this.camera.cell;
-    this.camera.y = Math.max(this.world.firstGeneration + halfRows, this.world.generation + 1 - halfRows);
+    const clearOfReadout = (this.size.height / 2 - READOUT_CLEARANCE) / this.camera.cell;
+    this.camera.y = Math.max(this.world.firstGeneration + clearOfReadout, this.world.generation + 1 - halfRows);
   }
 
   keepActiveColumnsInView() {
@@ -138,6 +145,60 @@ export class View {
     if (stride === 1) context.drawImage(this.image, offsetX, offsetY, columns * cell, rows * cell);
     else context.drawImage(this.image, 0, 0, width, height);
     if (cell >= GRID_FROM) this.drawGrid(offsetX, offsetY, cell, columns, rows);
+    if (this.selection) this.drawSelection(cell);
+    if (this.pasting && this.hover) this.drawGhost(cell);
+  }
+
+  toScreen(x, y, cell) {
+    return {
+      x: (x - this.camera.x) * cell + this.canvas.width / 2,
+      y: (y - this.camera.y) * cell + this.canvas.height / 2,
+    };
+  }
+
+  rowSpan(top, bottom) {
+    return this.dimensions === 1 ? { top: this.world.generation, bottom: this.world.generation + 1 } : { top, bottom };
+  }
+
+  drawSelection(cell) {
+    const { left, right } = this.selection;
+    const { top, bottom } = this.rowSpan(this.selection.top, this.selection.bottom);
+    const from = this.toScreen(left, top, cell);
+    const to = this.toScreen(right, bottom, cell);
+    const context = this.context;
+    context.fillStyle = 'rgba(95, 227, 255, 0.12)';
+    context.strokeStyle = '#5fe3ff';
+    context.lineWidth = Math.max(1, window.devicePixelRatio || 1);
+    context.setLineDash([6, 4]);
+    const height = Math.max(to.y - from.y, 3);
+    context.fillRect(from.x, from.y, to.x - from.x, height);
+    context.strokeRect(Math.round(from.x) + 0.5, Math.round(from.y) + 0.5, Math.round(to.x - from.x), Math.round(height));
+    context.setLineDash([]);
+  }
+
+  pasteOrigin() {
+    const { width, height, snap = 1 } = this.pasting;
+    const top = this.dimensions === 1 ? this.world.generation : this.hover.y - Math.floor(height / 2);
+    return { left: Math.round((this.hover.x - Math.floor(width / 2)) / snap) * snap, top };
+  }
+
+  drawGhost(cell) {
+    const { width, height, cells } = this.pasting;
+    const { left, top } = this.pasteOrigin();
+    const context = this.context;
+    const size = Math.max(cell, 1);
+    context.fillStyle = 'rgba(255, 196, 92, 0.8)';
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (!cells[y * width + x]) continue;
+        const corner = this.toScreen(left + x, top + y, cell);
+        context.fillRect(corner.x, corner.y, size, size);
+      }
+    }
+    const from = this.toScreen(left, top, cell);
+    context.strokeStyle = 'rgba(255, 196, 92, 0.9)';
+    context.lineWidth = 1;
+    context.strokeRect(Math.round(from.x) + 0.5, Math.round(from.y) + 0.5, Math.round(width * cell), Math.round(Math.max(height * cell, 3)));
   }
 
   colour(value, ether) {
@@ -236,17 +297,37 @@ export class View {
     canvas.addEventListener('pointerdown', (event) => {
       canvas.setPointerCapture(event.pointerId);
       const point = local(event);
-      const drawing = this.tool === 'draw' && event.button === 0 && this.pointers.size === 0;
-      this.pointers.set(event.pointerId, { ...point, drawing });
-      if (drawing) this.drawAt(point, true);
+      const primary = event.button === 0 && this.pointers.size === 0;
+      let action = 'pan';
+      if (primary && this.pasting) {
+        this.hover = this.cellAt(point);
+        const { left, top } = this.pasteOrigin();
+        this.onPaste(left, top);
+        action = 'none';
+      } else if (primary && this.tool === 'draw') {
+        action = 'draw';
+        this.drawAt(point, true);
+      } else if (primary && this.tool === 'select') {
+        action = 'select';
+        this.selectFrom = this.cellAt(point);
+        this.selectTo(point);
+      }
+      this.pointers.set(event.pointerId, { ...point, action });
     });
 
     canvas.addEventListener('pointermove', (event) => {
+      const point = local(event);
+      if (this.pasting) {
+        this.hover = this.cellAt(point);
+        this.onCameraMove();
+      }
       const previous = this.pointers.get(event.pointerId);
       if (!previous) return;
-      const point = local(event);
-      if (previous.drawing) {
+      if (previous.action === 'none') return;
+      if (previous.action === 'draw') {
         this.strokeTo(previous, point);
+      } else if (previous.action === 'select') {
+        this.selectTo(point);
       } else if (this.pointers.size === 2) {
         const [other] = [...this.pointers].filter(([id]) => id !== event.pointerId).map(([, value]) => value);
         const before = Math.hypot(previous.x - other.x, previous.y - other.y);
@@ -256,12 +337,29 @@ export class View {
       } else {
         this.panBy(point.x - previous.x, point.y - previous.y);
       }
-      this.pointers.set(event.pointerId, { ...point, drawing: previous.drawing });
+      this.pointers.set(event.pointerId, { ...point, action: previous.action });
     });
 
     const release = (event) => this.pointers.delete(event.pointerId);
     canvas.addEventListener('pointerup', release);
     canvas.addEventListener('pointercancel', release);
+  }
+
+  cellAt(point) {
+    const { x, y } = this.toWorld(point.x, point.y);
+    return { x: Math.floor(x), y: Math.floor(y) };
+  }
+
+  selectTo(point) {
+    const end = this.cellAt(point);
+    const start = this.selectFrom;
+    this.selection = {
+      left: Math.min(start.x, end.x),
+      right: Math.max(start.x, end.x) + 1,
+      top: Math.min(start.y, end.y),
+      bottom: Math.max(start.y, end.y) + 1,
+    };
+    this.onSelect(this.selection);
   }
 
   strokeTo(from, to) {

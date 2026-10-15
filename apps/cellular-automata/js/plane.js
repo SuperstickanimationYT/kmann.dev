@@ -162,6 +162,33 @@ export class PlaneWorld {
     }
   }
 
+  readRegion({ left, top, right, bottom }) {
+    const width = right - left;
+    const height = bottom - top;
+    const cells = new Uint8Array(width * height);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) cells[y * width + x] = this.get(left + x, top + y) & 1;
+    }
+    return { width, height, cells };
+  }
+
+  writeRegion(left, top, { width, height, cells, opaque }) {
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const value = cells[y * width + x];
+        if (opaque || value) this.set(left + x, top + y, value);
+      }
+    }
+    if (!this.board) this.dropBackgroundChunks();
+  }
+
+  clearRegion({ left, top, right, bottom }) {
+    for (let y = top; y < bottom; y += 1) {
+      for (let x = left; x < right; x += 1) this.set(x, y, this.backgroundAt(x, y));
+    }
+    if (!this.board) this.dropBackgroundChunks();
+  }
+
   dropBackgroundChunks() {
     for (const [key, chunk] of this.chunks) {
       if (sameCells(chunk, this.backgroundChunk(chunkX(key), chunkY(key), this.tile, this.backgroundChunks))) this.chunks.delete(key);

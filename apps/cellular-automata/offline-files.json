@@ -1,5 +1,5 @@
 {
-  "bytes": 78969,
+  "bytes": 99141,
   "files": [
     "./",
     "index.html",
@@ -8,11 +8,12 @@
     "js/ether-worker.js",
     "js/line.js",
     "js/main.js",
+    "js/patterns.js",
     "js/plane.js",
     "js/rules.js",
     "js/view.js",
-    "style.css",
     "manifest.webmanifest",
+    "style.css",
     "../../assets/img/mark.svg",
     "../../assets/css/site.css",
     "../../assets/css/studio.css",
