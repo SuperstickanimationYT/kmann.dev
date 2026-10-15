@@ -23,6 +23,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Cellular Automata',
+    href: 'apps/cellular-automata/',
+    category: 'simulations',
+    poster: 'assets/img/posters/cellular-automata.webp',
+    blurb: 'Run 1D rules like Rule 110 and 2D rules like B3/S23 on infinite or finite boards, inside ether backgrounds found by search.',
+    status: 'live',
+  },
+  {
     title: 'Conlang Studio',
     href: 'apps/conlang-studio/',
     category: 'tools',

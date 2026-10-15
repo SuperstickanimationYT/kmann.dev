@@ -1,0 +1,22 @@
+{
+  "bytes": 78969,
+  "files": [
+    "./",
+    "index.html",
+    "js/background.js",
+    "js/ether-search.js",
+    "js/ether-worker.js",
+    "js/line.js",
+    "js/main.js",
+    "js/plane.js",
+    "js/rules.js",
+    "js/view.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}

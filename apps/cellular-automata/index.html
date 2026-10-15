@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cellular Automata &mdash; kmann314</title>
+<meta name="description" content="Run 1D rules like Rule 110 and 2D B/S rules like Conway's Life on an endless or finite board, and start them inside an ether background found by search.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Cellular Automata</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-board aria-label="Cellular automaton. Drag to move around, scroll or pinch to zoom, or pick Draw to flip cells."></canvas>
+  <dl class="ca-readout" data-readout></dl>
+  <div class="ca-toolbar" role="toolbar" aria-label="Run">
+    <button type="button" class="ca-primary" data-run>Play</button>
+    <button type="button" data-step title="One generation (N)">Step</button>
+    <div class="ca-group" role="group" aria-label="Tool">
+      <button type="button" data-tool="move" aria-pressed="true">Move</button>
+      <button type="button" data-tool="draw" aria-pressed="false">Draw</button>
+    </div>
+    <button type="button" data-fit>Fit</button>
+  </div>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
+    <form class="ca-panel" data-controls>
+      <div class="ca-segmented" role="radiogroup" aria-label="Dimensions">
+        <label><input type="radio" name="dimensions" value="1" checked><span>1D</span></label>
+        <label><input type="radio" name="dimensions" value="2"><span>2D</span></label>
+      </div>
+
+      <fieldset>
+        <legend>Rule</legend>
+        <div data-for-dimensions="1">
+          <label class="ca-field">
+            <span>Rule number (0&ndash;255)</span>
+            <input type="number" name="lineRule" min="0" max="255" step="1" value="110" inputmode="numeric">
+          </label>
+        </div>
+        <div data-for-dimensions="2">
+          <label class="ca-field">
+            <span>Birth / Survival</span>
+            <input type="text" name="planeRule" value="B3/S23" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+        <label class="ca-field">
+          <span>Presets</span>
+          <select data-presets></select>
+        </label>
+        <p class="ca-hint" data-rule-hint></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Board</legend>
+        <div class="ca-segmented" role="radiogroup" aria-label="Board size">
+          <label><input type="radio" name="size" value="endless" checked><span>Infinite</span></label>
+          <label><input type="radio" name="size" value="board"><span>Finite</span></label>
+        </div>
+        <div data-for-size="board">
+          <div class="ca-pair">
+            <label class="ca-field">
+              <span>Width</span>
+              <input type="number" name="width" min="4" max="20000" step="1" value="400">
+            </label>
+            <label class="ca-field" data-for-dimensions="2">
+              <span>Height</span>
+              <input type="number" name="height" min="4" max="2000" step="1" value="150">
+            </label>
+          </div>
+          <label class="ca-field">
+            <span>Edges</span>
+            <select name="edges">
+              <option value="wrap">Wrap around (the board loops)</option>
+              <option value="cut">Cut off (dead cells past the edge)</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Background</legend>
+        <label class="ca-field">
+          <span>Ether</span>
+          <select name="ether" data-ether></select>
+        </label>
+        <p class="ca-hint" data-ether-hint></p>
+        <label class="ca-check">
+          <input type="checkbox" name="dimEther" checked>
+          Dim the background so gliders stand out
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Start</legend>
+        <label class="ca-field">
+          <span>Begin with</span>
+          <select name="start">
+            <option value="patch">A random patch</option>
+            <option value="cell">One flipped cell</option>
+            <option value="background">Only the background</option>
+          </select>
+        </label>
+        <div class="ca-pair" data-for-start="patch">
+          <label class="ca-field">
+            <span>Patch size</span>
+            <input type="number" name="patch" min="1" max="2000" step="1" value="40">
+          </label>
+          <label class="ca-field">
+            <span>Fill <output data-density></output></span>
+            <input type="range" name="density" min="0.05" max="0.95" step="0.05" value="0.5">
+          </label>
+        </div>
+        <button type="submit" class="ca-primary">Restart</button>
+      </fieldset>
+
+      <label class="ca-field">
+        <span>Speed <output data-speed></output></span>
+        <input type="range" name="speed" min="0" max="1" step="0.01" value="0.45">
+      </label>
+    </form>
+
+    <details class="ca-about">
+      <summary>How it works</summary>
+      <p><strong>1D</strong> rules use Wolfram's numbering. Each cell looks at itself and its two neighbours, giving 8 cases from 111 down to 000; write the new state for each case as a binary number and that is the rule. Rule 110 is 01101110. Each new generation is drawn under the last one, so time runs down the screen.</p>
+      <p><strong>2D</strong> rules use B/S notation. A dead cell is born with any count of live neighbours listed after B, and a live cell survives with any count listed after S. Conway's Life is B3/S23. Neighbours are the 8 cells around a cell.</p>
+      <p><strong>Infinite</strong> boards have no edge. Outside the busy area the board is the background repeated forever, so a glider can travel as far as it likes.</p>
+      <p>An <strong>ether</strong> is a background that repeats in both space and time. Gliders in Rule 110 only exist inside one. The search tries every repeating strip up to 16 cells wide (1D) or tile up to 16 cells in area (2D) and keeps the ones that come back to themselves. Then it runs a random board and measures how much of it settles into each one, and lists the most common first. A rule whose random boards settle into an ether is one where gliders on that ether are likely to show up by themselves.</p>
+      <p>With <strong>Dim the background</strong> on, any cell that fits the chosen background pattern is drawn faintly, and everything else is bright.</p>
+      <p>Keys: Space play/pause, N step, F fit.</p>
+    </details>
+
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
