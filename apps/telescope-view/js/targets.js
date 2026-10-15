@@ -1,14 +1,12 @@
-import { seededRandom } from './optics.js';
+import { DEEP_SKY } from './deepsky.js';
+import { MOON_RADIUS_ARCSEC, moonAdaptationFlux, paintMoon } from './moon.js';
+import { gaussian, seededRandom, surfaceFlux } from './noise.js';
+import { PLANETS, jupiterSystem, paintPlanet } from './planets.js';
 
-export const TARGETS = {
-  jupiter: { name: 'Jupiter', kind: 'planet', extentArcsec: 46, apparentBrightness: 1 },
-  saturn: { name: 'Saturn', kind: 'planet', extentArcsec: 44, apparentBrightness: 0.55 },
-  mars: { name: 'Mars (near opposition)', kind: 'planet', extentArcsec: 20, apparentBrightness: 1.3 },
-  venus: { name: 'Venus (crescent)', kind: 'planet', extentArcsec: 40, apparentBrightness: 6 },
+const DOUBLES = {
   albireo: {
     name: 'Albireo (gold and blue double)',
-    kind: 'stars',
-    extentArcsec: 44,
+    fieldDensity: 4,
     stars: [
       { x: -14, y: 10, mag: 3.1, bv: 1.13 },
       { x: 14, y: -10, mag: 4.7, bv: -0.1 },
@@ -16,29 +14,59 @@ export const TARGETS = {
   },
   epsilonLyrae: {
     name: 'ε¹ Lyrae (half of the Double Double)',
-    kind: 'stars',
-    extentArcsec: 8,
+    fieldDensity: 2.5,
     stars: [
       { x: 0.2, y: -1.1, mag: 5.0, bv: 0.16 },
       { x: -0.2, y: 1.1, mag: 6.1, bv: 0.2 },
+      { x: -95, y: -185, mag: 5.2, bv: 0.08 },
+      { x: -97, y: -187.4, mag: 5.5, bv: 0.08 },
     ],
   },
-  testDouble: { name: 'Test double (pick the gap)', kind: 'stars', extentArcsec: 8, adjustableSeparation: true },
-  vega: { name: 'Vega (bright white star)', kind: 'stars', extentArcsec: 8, stars: [{ x: 0, y: 0, mag: 0.03, bv: 0 }] },
+  testDouble: { name: 'Test double (pick the gap)', fieldDensity: 1 },
+  vega: { name: 'Vega (bright white star)', fieldDensity: 2.5, stars: [{ x: 0, y: 0, mag: 0.03, bv: 0 }] },
 };
 
-export function starsFor(targetId, separationArcsec) {
-  const target = TARGETS[targetId];
-  if (!target.adjustableSeparation) return target.stars;
-  return [
-    { x: -separationArcsec / 2, y: 0, mag: 6, bv: 0.3 },
-    { x: separationArcsec / 2, y: 0, mag: 6, bv: 0.3 },
-  ];
+const PLANET_NAMES = {
+  jupiter: 'Jupiter and its moons',
+  saturn: 'Saturn',
+  mars: 'Mars (near opposition)',
+  venus: 'Venus (crescent)',
+};
+
+export const TARGET_GROUPS = [
+  ['Moon and planets', ['moon', ...Object.keys(PLANET_NAMES)]],
+  ['Stars', Object.keys(DOUBLES)],
+  ['Faint objects', Object.keys(DEEP_SKY)],
+];
+
+export const TARGETS = {
+  moon: { name: 'The Moon', kind: 'moon', fieldDensity: 1 },
+  ...Object.fromEntries(Object.entries(PLANET_NAMES).map(([id, name]) => [id, { name, kind: 'planet', fieldDensity: 1 }])),
+  ...Object.fromEntries(Object.entries(DOUBLES).map(([id, entry]) => [id, { ...entry, kind: 'double' }])),
+  ...Object.fromEntries(Object.entries(DEEP_SKY).map(([id, entry]) => [id, { ...entry, kind: 'deepsky' }])),
+};
+
+export function hasDetailLayer(targetId) {
+  return ['planet', 'double'].includes(TARGETS[targetId].kind);
 }
 
-export function extentArcsec(targetId, separationArcsec) {
-  const target = TARGETS[targetId];
-  return target.adjustableSeparation ? Math.max(8, separationArcsec * 2.5) : target.extentArcsec;
+function planetRadiusArcsec(settings) {
+  return settings.targetId === 'jupiter' ? jupiterSystem(settings.epochMs).radiusArcsec : PLANETS[settings.targetId].radiusArcsec;
+}
+
+export function detailExtentArcsec(settings) {
+  const target = TARGETS[settings.targetId];
+  if (target.kind === 'planet') return planetRadiusArcsec(settings) * (settings.targetId === 'saturn' ? 4.8 : 2.15);
+  if (settings.targetId === 'testDouble') return Math.max(8, settings.separationArcsec * 2.5);
+  if (settings.targetId === 'albireo') return 44;
+  return 8;
+}
+
+export function adaptationFlux(settings, skyFluxLuminance) {
+  const target = TARGETS[settings.targetId];
+  if (target.kind === 'planet') return surfaceFlux(PLANETS[settings.targetId].meanSurfaceMag);
+  if (target.kind === 'moon') return moonAdaptationFlux(settings.moonAgeDays);
+  return target.kind === 'double' ? skyFluxLuminance : null;
 }
 
 const STAR_COLORS = [
@@ -63,227 +91,116 @@ function starColor(bv) {
   return [1, 1, 1];
 }
 
-const STAR_FLUX_AT_MAG_4_IN_100MM = 18;
+const MIN_FIELD_SQUARE_ARCSEC = 9000;
+const FAINTEST_FIELD_STAR = 16.5;
+const fieldStarCache = new Map();
 
-function depositStars(image, n, pixelArcsec, stars, apertureMm) {
-  for (const star of stars) {
-    const flux = STAR_FLUX_AT_MAG_4_IN_100MM * 10 ** (-0.4 * (star.mag - 4)) * (apertureMm / 100) ** 2;
-    const color = starColor(star.bv);
-    const gx = n / 2 + star.x / pixelArcsec;
-    const gy = n / 2 - star.y / pixelArcsec;
-    const x0 = Math.floor(gx);
-    const y0 = Math.floor(gy);
-    const fx = gx - x0;
-    const fy = gy - y0;
-    const corners = [
-      [x0, y0, (1 - fx) * (1 - fy)],
-      [x0 + 1, y0, fx * (1 - fy)],
-      [x0, y0 + 1, (1 - fx) * fy],
-      [x0 + 1, y0 + 1, fx * fy],
+function starsBrighterThanPerSquareDegree(mag) {
+  const t = mag - 6;
+  return 10 ** (-0.92 + 0.43 * t - 0.004 * t * t);
+}
+
+function fieldStars(targetId, viewArcsec) {
+  const square = Math.max(MIN_FIELD_SQUARE_ARCSEC, Math.ceil(viewArcsec / 3600) * 3600);
+  const key = `${targetId}:${square}`;
+  if (fieldStarCache.has(key)) return fieldStarCache.get(key);
+  const random = seededRandom([...targetId].reduce((sum, ch) => sum * 31 + ch.charCodeAt(0), 7));
+  const squareDegrees = (square / 3600) ** 2;
+  const total = Math.round(starsBrighterThanPerSquareDegree(FAINTEST_FIELD_STAR) * squareDegrees * TARGETS[targetId].fieldDensity);
+  const stars = [];
+  for (let i = 0; i < total; i++) {
+    const wanted = starsBrighterThanPerSquareDegree(FAINTEST_FIELD_STAR) * random();
+    let low = 1;
+    let high = FAINTEST_FIELD_STAR;
+    for (let step = 0; step < 24; step++) {
+      const mid = (low + high) / 2;
+      if (starsBrighterThanPerSquareDegree(mid) < wanted) low = mid;
+      else high = mid;
+    }
+    const x = (random() - 0.5) * square;
+    const y = (random() - 0.5) * square;
+    if (low < 8 && Math.hypot(x, y) < 300) continue;
+    stars.push({ x, y, mag: low, bv: Math.min(Math.max(0.65 + 0.4 * gaussian(random), -0.2), 1.8) });
+  }
+  fieldStarCache.set(key, stars);
+  return stars;
+}
+
+const deepSkyCache = new Map();
+
+function deepSkyObject(targetId) {
+  if (!deepSkyCache.has(targetId)) deepSkyCache.set(targetId, DEEP_SKY[targetId].build());
+  return deepSkyCache.get(targetId);
+}
+
+function targetStars(settings) {
+  const target = TARGETS[settings.targetId];
+  if (settings.targetId === 'testDouble') {
+    return [
+      { x: -settings.separationArcsec / 2, y: 0, mag: 6, bv: 0.3 },
+      { x: settings.separationArcsec / 2, y: 0, mag: 6, bv: 0.3 },
     ];
-    for (const [x, y, weight] of corners) {
-      if (x < 0 || y < 0 || x >= n || y >= n) continue;
-      for (let c = 0; c < 3; c++) image[c][y * n + x] += flux * weight * color[c];
-    }
   }
+  if (target.kind === 'double') return target.stars;
+  if (target.kind === 'deepsky') return deepSkyObject(settings.targetId).stars;
+  if (settings.targetId === 'jupiter') return jupiterSystem(settings.epochMs).moons;
+  return [];
 }
 
-function valueNoise(seed) {
-  const random = seededRandom(seed);
-  const size = 256;
-  const table = new Float64Array(size * size);
-  for (let i = 0; i < table.length; i++) table[i] = random();
-  const smooth = (t) => t * t * (3 - 2 * t);
-  const at = (x, y) => table[(((y % size) + size) % size) * size + (((x % size) + size) % size)];
-  const noise = (x, y) => {
-    const x0 = Math.floor(x);
-    const y0 = Math.floor(y);
-    const fx = smooth(x - x0);
-    const fy = smooth(y - y0);
-    const top = at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx;
-    const bottom = at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx;
-    return top * (1 - fy) + bottom * fy;
-  };
-  return (x, y, octaves = 4) => {
-    let sum = 0;
-    let amplitude = 0.5;
-    let frequency = 1;
-    for (let o = 0; o < octaves; o++) {
-      sum += amplitude * noise(x * frequency, y * frequency);
-      amplitude *= 0.5;
-      frequency *= 2.03;
-    }
-    return sum;
-  };
-}
-
-function mix(a, b, t) {
-  return a.map((v, k) => v + (b[k] - v) * t);
-}
-
-function bandedColor(bands, latDeg) {
-  for (let i = 1; i < bands.length; i++) {
-    if (latDeg <= bands[i][0]) {
-      const [l0, c0] = bands[i - 1];
-      const [l1, c1] = bands[i];
-      const t = (latDeg - l0) / (l1 - l0);
-      return mix(c0, c1, t * t * (3 - 2 * t));
-    }
-  }
-  return bands[bands.length - 1][1];
-}
-
-const ZONE = [0.87, 0.81, 0.69];
-const BELT = [0.5, 0.34, 0.25];
-const JUPITER_BANDS = [
-  [-90, [0.42, 0.4, 0.38]],
-  [-50, [0.55, 0.52, 0.47]],
-  [-36, [0.72, 0.66, 0.57]],
-  [-30, [0.6, 0.48, 0.38]],
-  [-26, ZONE],
-  [-21, ZONE],
-  [-19, BELT],
-  [-13, [0.64, 0.47, 0.35]],
-  [-9, BELT],
-  [-6, [0.88, 0.82, 0.7]],
-  [5, ZONE],
-  [8, [0.47, 0.31, 0.23]],
-  [17, BELT],
-  [20, ZONE],
-  [25, [0.82, 0.76, 0.66]],
-  [28, [0.62, 0.5, 0.4]],
-  [32, [0.78, 0.72, 0.62]],
-  [48, [0.58, 0.54, 0.49]],
-  [90, [0.42, 0.4, 0.38]],
-];
-
-const SATURN_BANDS = [
-  [-90, [0.6, 0.62, 0.6]],
-  [-55, [0.78, 0.72, 0.58]],
-  [-25, [0.9, 0.82, 0.62]],
-  [-8, [0.95, 0.88, 0.68]],
-  [8, [0.95, 0.88, 0.68]],
-  [14, [0.8, 0.68, 0.5]],
-  [24, [0.9, 0.82, 0.62]],
-  [45, [0.82, 0.76, 0.6]],
-  [70, [0.62, 0.66, 0.66]],
-  [90, [0.58, 0.62, 0.64]],
-];
-
-function globePoint(dx, dy, radius, oblateness) {
-  const x = dx / radius;
-  const y = dy / (radius * oblateness);
-  const r2 = x * x + y * y;
-  if (r2 > 1) return null;
-  const z = Math.sqrt(1 - r2);
-  return { x, y, z, latDeg: (Math.asin(-y) * 180) / Math.PI, lon: Math.atan2(x, z) };
-}
-
-function jupiterAt(dx, dy, radius, noise) {
-  const p = globePoint(dx, dy, radius, 0.935);
-  if (!p) return null;
-  const swirl = noise(p.lon * 6 + 40, p.latDeg * 0.35, 5) - 0.5;
-  let color = bandedColor(JUPITER_BANDS, p.latDeg + swirl * 3.2);
-  const grain = noise(p.lon * 22, p.latDeg * 1.4, 3) - 0.5;
-  color = color.map((v) => v * (1 + grain * 0.12));
-  const festoon = Math.exp(-(((p.latDeg - 6) / 2.5) ** 2)) * Math.max(0, noise(p.lon * 9, 7, 2) - 0.52) * 3;
-  color = mix(color, [0.48, 0.42, 0.42], Math.min(festoon, 0.6));
-  const spot = ((p.lon - 0.35) / 0.2) ** 2 + ((p.latDeg + 22) / 5) ** 2;
-  if (spot < 1) color = mix(color, [0.78, 0.42, 0.3], (1 - spot) ** 0.6 * 0.85);
-  const limb = p.z ** 0.55;
-  return color.map((v) => v * limb);
-}
-
-const RING_ZONES = [
-  [1.24, 1.53, 0.12, [0.7, 0.66, 0.6]],
-  [1.53, 1.95, 0.9, [0.95, 0.9, 0.78]],
-  [1.95, 2.03, 0.04, [0.6, 0.58, 0.55]],
-  [2.03, 2.21, 0.65, [0.85, 0.8, 0.7]],
-  [2.21, 2.215, 0.1, [0.7, 0.66, 0.6]],
-  [2.215, 2.27, 0.6, [0.82, 0.77, 0.67]],
-];
-
-function ringAt(dx, dy, radius, tiltRad) {
-  const sinTilt = Math.max(Math.sin(tiltRad), 0.004);
-  const r = Math.hypot(dx / radius, dy / (radius * sinTilt));
-  for (const [inner, outer, opacity, color] of RING_ZONES) {
-    if (r >= inner && r < outer) {
-      const radialShade = 0.92 + 0.08 * Math.sin(r * 90);
-      return { opacity: Math.min(opacity / Math.max(sinTilt, 0.05) ** 0.15, 0.97), color: color.map((v) => v * radialShade), front: dy > 0 };
-    }
-  }
-  return null;
-}
-
-function saturnAt(dx, dy, radius, tiltDeg, noise) {
-  const tilt = (tiltDeg * Math.PI) / 180;
-  const ring = ringAt(dx, dy, radius, tilt);
-  const p = globePoint(dx, dy, radius, 0.9);
-  let color = null;
-  if (p) {
-    const swirl = noise(p.lon * 4, p.latDeg * 0.25, 3) - 0.5;
-    color = bandedColor(SATURN_BANDS, p.latDeg + swirl * 2).map((v) => v * p.z ** 0.6);
-  }
-  if (ring && (ring.front || !p)) {
-    const under = color ?? [0, 0, 0];
-    return mix(under, ring.color, ring.opacity);
-  }
-  return color;
-}
-
-function marsAt(dx, dy, radius, noise) {
-  const p = globePoint(dx, dy, radius, 0.995);
-  if (!p) return null;
-  const albedo = noise(p.lon * 2.4 + 9, p.latDeg * 0.07 + 3, 5);
-  const dark = Math.min(Math.max((albedo - 0.44) * 3.5, 0), 1) * (Math.abs(p.latDeg) < 55 ? 1 : 0.3);
-  let color = mix([0.86, 0.5, 0.3], [0.42, 0.28, 0.22], dark * 0.8);
-  const cap = Math.min(Math.max((-p.latDeg - 68) / 4, 0), 1);
-  color = mix(color, [0.98, 0.96, 0.94], cap);
-  const haze = 0.85 + 0.15 * (1 - p.z) ** 3;
-  return color.map((v) => v * (0.55 + 0.45 * p.z ** 0.4) * haze);
-}
-
-function venusAt(dx, dy, radius, illuminatedFraction) {
-  const p = globePoint(dx, dy, radius, 1);
-  if (!p) return null;
-  const phaseAngle = Math.acos(2 * illuminatedFraction - 1);
-  const sunward = p.x * Math.sin(phaseAngle) + p.z * Math.cos(phaseAngle);
-  if (sunward <= 0) return [0, 0, 0];
-  const light = sunward ** 0.35 * Math.min(1, sunward * 12);
-  return [1, 0.97, 0.88].map((v) => v * light);
-}
-
-const PLANET_RADII_ARCSEC = { jupiter: 22, saturn: 9.3, mars: 9.2, venus: 19 };
-
-function paintPlanet(image, n, pixelArcsec, targetId, options) {
-  const noise = valueNoise(targetId.length * 977 + 11);
-  const radius = PLANET_RADII_ARCSEC[targetId] / pixelArcsec;
-  const surface = TARGETS[targetId].apparentBrightness;
-  const reach = Math.ceil(radius * 2.4);
-  const samples = [-0.25, 0.25];
-  for (let y = Math.max(0, n / 2 - reach); y < Math.min(n, n / 2 + reach); y++) {
-    for (let x = Math.max(0, n / 2 - reach); x < Math.min(n, n / 2 + reach); x++) {
-      const sum = [0, 0, 0];
-      for (const sy of samples) {
-        for (const sx of samples) {
-          const dx = x + sx - n / 2;
-          const dy = y + sy - n / 2;
-          let color = null;
-          if (targetId === 'jupiter') color = jupiterAt(dx, dy, radius, noise);
-          else if (targetId === 'saturn') color = saturnAt(dx, dy, radius, options.ringTiltDeg, noise);
-          else if (targetId === 'mars') color = marsAt(dx, dy, radius, noise);
-          else if (targetId === 'venus') color = venusAt(dx, dy, radius, options.venusPhase);
-          if (color) for (let c = 0; c < 3; c++) sum[c] += color[c] / 4;
-        }
+function depositStar(image, n, pixelArcsec, star, pointBoost) {
+  const flux = (pointBoost * 10 ** (-0.4 * star.mag)) / pixelArcsec ** 2;
+  const color = starColor(star.bv);
+  const gx = n / 2 + star.x / pixelArcsec;
+  const gy = n / 2 - star.y / pixelArcsec;
+  const discRadius = (star.radiusArcsec ?? 0) / pixelArcsec;
+  if (discRadius > 0.7) {
+    const reach = Math.ceil(discRadius + 1);
+    const cells = [];
+    for (let y = Math.floor(gy) - reach; y <= Math.floor(gy) + reach; y++) {
+      for (let x = Math.floor(gx) - reach; x <= Math.floor(gx) + reach; x++) {
+        if (x >= 0 && y >= 0 && x < n && y < n && Math.hypot(x - gx, y - gy) <= discRadius) cells.push(y * n + x);
       }
-      for (let c = 0; c < 3; c++) image[c][y * n + x] = sum[c] * surface;
+    }
+    for (const index of cells) for (let c = 0; c < 3; c++) image[c][index] += (flux * color[c]) / cells.length;
+    return;
+  }
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const fx = gx - x0;
+  const fy = gy - y0;
+  for (const [x, y, weight] of [[x0, y0, (1 - fx) * (1 - fy)], [x0 + 1, y0, fx * (1 - fy)], [x0, y0 + 1, (1 - fx) * fy], [x0 + 1, y0 + 1, fx * fy]]) {
+    if (x < 0 || y < 0 || x >= n || y >= n) continue;
+    for (let c = 0; c < 3; c++) image[c][y * n + x] += flux * weight * color[c];
+  }
+}
+
+function paintDeepSky(image, n, pixelArcsec, targetId) {
+  const object = deepSkyObject(targetId);
+  for (let py = 0; py < n; py++) {
+    const y = -(py - n / 2) * pixelArcsec;
+    for (let px = 0; px < n; px++) {
+      const value = object.paint((px - n / 2) * pixelArcsec, y);
+      const index = py * n + px;
+      image[0][index] += value[0];
+      image[1][index] += value[1];
+      image[2][index] += value[2];
     }
   }
 }
 
-export function buildSource({ targetId, n, pixelArcsec, apertureMm, separationArcsec, ringTiltDeg, venusPhase }) {
-  const image = [new Float64Array(n * n), new Float64Array(n * n), new Float64Array(n * n)];
-  if (TARGETS[targetId].kind === 'planet') paintPlanet(image, n, pixelArcsec, targetId, { ringTiltDeg, venusPhase });
-  else depositStars(image, n, pixelArcsec, starsFor(targetId, separationArcsec), apertureMm);
+export function buildLayerSource(layer, settings, n, pixelArcsec, pointBoost) {
+  const image = [new Float32Array(n * n), new Float32Array(n * n), new Float32Array(n * n)];
+  const target = TARGETS[settings.targetId];
+  const half = (n / 2) * pixelArcsec;
+  const inside = (star) => Math.abs(star.x) < half && Math.abs(star.y) < half;
+  const stars = [...fieldStars(settings.targetId, n * pixelArcsec), ...targetStars(settings)];
+  for (const star of stars) if (inside(star)) depositStar(image, n, pixelArcsec, star, pointBoost);
+  if (target.kind === 'deepsky') paintDeepSky(image, n, pixelArcsec, settings.targetId);
+  if (target.kind === 'moon') paintMoon(image, n, pixelArcsec, settings.moonAgeDays);
+  if (target.kind === 'planet') {
+    paintPlanet(image, n, pixelArcsec, settings.targetId, { ...settings, radiusArcsec: planetRadiusArcsec(settings) });
+  }
   return image;
 }
+
+export { MOON_RADIUS_ARCSEC };

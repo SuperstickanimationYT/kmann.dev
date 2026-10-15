@@ -1,7 +1,7 @@
 {
   "name": "Telescope View Simulator",
   "short_name": "Telescope View Simulator",
-  "description": "Enter your telescope and eyepiece, then see a planet or double star the way that scope would show it: diffraction, false colour, seeing and all.",
+  "description": "Enter your telescope and eyepiece, then see the Moon, a planet, a double star, a nebula or a galaxy the way that scope and your eye would show it.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

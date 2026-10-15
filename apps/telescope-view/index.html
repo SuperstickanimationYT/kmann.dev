@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Telescope View Simulator &mdash; kmann314</title>
-<meta name="description" content="Enter your telescope and eyepiece, then see a planet or double star the way that scope would show it: diffraction, false colour, seeing and all.">
+<meta name="description" content="Enter your telescope and eyepiece, then see the Moon, a planet, a double star, a nebula or a galaxy the way that scope and your eye would show it.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="../../assets/css/site.css">
@@ -45,6 +45,14 @@
       <label class="tv-field" data-show-for="venus">
         <span>Lit fraction <output></output></span>
         <input type="range" name="venusPhase" min="0.05" max="0.95" step="0.01" value="0.3">
+      </label>
+      <label class="tv-field" data-show-for="moon">
+        <span>Days since new moon <output></output></span>
+        <input type="range" name="moonAgeDays" min="1.5" max="28" step="0.25" value="7">
+      </label>
+      <label class="tv-field" data-show-for="jupiter">
+        <span>Moon positions for <output></output></span>
+        <input type="range" name="hoursFromNow" min="-72" max="72" step="0.5" value="0">
       </label>
 
       <fieldset>
@@ -142,27 +150,47 @@
           <span>Altitude above horizon (&deg;) <output></output></span>
           <input type="range" name="altitudeDeg" min="8" max="90" step="1" value="40">
         </label>
-        <label class="tv-check">
+        <label class="tv-field">
+          <span>Sky darkness (SQM) <output></output></span>
+          <input type="range" name="sqm" min="16.5" max="22" step="0.1" value="21.3">
+        </label>
+        <label class="tv-check" data-live-only>
           <input type="checkbox" name="live" checked>
           <span>Moving air (the image shimmers)</span>
         </label>
       </fieldset>
 
       <fieldset>
+        <legend>Your eye</legend>
+        <label class="tv-field">
+          <span>Dark-adapted pupil (mm) <output></output></span>
+          <input type="range" name="eyePupilMm" min="4" max="8" step="0.5" value="7">
+        </label>
+        <label class="tv-check">
+          <input type="checkbox" name="averted">
+          <span>Averted vision (look slightly to the side)</span>
+        </label>
+        <p class="tv-hint">Young eyes open to about 7 mm in the dark; by 60 most open to about 5 mm.</p>
+      </fieldset>
+
+      <fieldset>
         <legend>Screen</legend>
         <label class="tv-field">
           <span>Magnifier <output></output></span>
-          <input type="range" name="zoom" min="1" max="8" step="0.25" value="3">
+          <input type="range" name="zoom" min="1" max="8" step="0.25" value="1">
         </label>
         <p class="tv-hint">At 1&times; the eyepiece&rsquo;s field fills the view. Raise it to inspect detail your eye would see at that size.</p>
       </fieldset>
     </form>
 
     <p class="tv-about">
-      Every frame is computed from wave optics: the light through your aperture, obstruction and spider is
+      Every view is computed from wave optics: the light through your aperture, obstruction and spider is
       Fourier-transformed at seven wavelengths into a diffraction pattern, bent by a drifting turbulent air layer
-      and the refractor&rsquo;s focus error at each colour, then blurred into the target. The planets are drawn
-      procedurally, so their markings are plausible, not a map of tonight.
+      and the refractor&rsquo;s focus error at each colour, then blurred into the target. Brightness is then passed
+      through a model of the dark-adapted eye: surface brightness through the exit pupil, sky glow, colour fading as
+      rods take over, coarser vision in dim light, and a detection threshold that hides what is too faint. The planets,
+      Moon and deep-sky objects are drawn procedurally with real sizes and brightness, so their details are plausible,
+      not a map. Jupiter&rsquo;s moons are placed for the date shown.
     </p>
     <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
     <button type="button" class="save-offline" data-save-offline hidden></button>

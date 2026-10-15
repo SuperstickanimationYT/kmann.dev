@@ -163,7 +163,7 @@ const PROJECTS = [
     href: 'apps/telescope-view/',
     category: 'simulations',
     poster: 'assets/img/posters/telescope-view.webp',
-    blurb: 'Enter your telescope and eyepiece, then see a planet or double star through it: diffraction, false colour and shimmering air, all computed from wave optics.',
+    blurb: 'Enter your telescope and eyepiece, then see the Moon, planets, double stars, nebulae and galaxies through it, with wave optics, shimmering air, sky glow and a model of the dark-adapted eye.',
     status: 'live',
   },
   {
