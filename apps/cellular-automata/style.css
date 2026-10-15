@@ -4,7 +4,8 @@
   cursor: grab;
 }
 
-.ca-drawing .studio-stage canvas {
+.ca-drawing .studio-stage canvas,
+.ca-selecting .studio-stage canvas {
   cursor: crosshair;
 }
 
@@ -156,7 +157,8 @@
 }
 
 .ca-panel button,
-.ca-toolbar button {
+.ca-toolbar button,
+.ca-editbar button {
   padding: 7px 12px;
   border: 1px solid var(--edge);
   border-radius: 8px;
@@ -169,12 +171,14 @@
 }
 
 .ca-panel button:hover,
-.ca-toolbar button:hover {
+.ca-toolbar button:hover:not(:disabled),
+.ca-editbar button:hover {
   background: #133659;
 }
 
 .ca-panel .ca-primary,
-.ca-toolbar .ca-primary {
+.ca-toolbar .ca-primary,
+.ca-editbar .ca-primary {
   border-color: var(--edge-bright);
   background: var(--accent-deep);
 }
@@ -199,6 +203,40 @@
   min-width: 72px;
 }
 
+.ca-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ca-editbar {
+  position: absolute;
+  bottom: 58px;
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 10px;
+  background: rgba(3, 8, 15, 0.88);
+  transform: translateX(-50%);
+}
+
+.ca-editbar[hidden],
+.ca-editbar [hidden] {
+  display: none;
+}
+
+.ca-editbar-note {
+  padding: 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
 .ca-group {
   display: flex;
 }
@@ -211,8 +249,11 @@
   border-radius: 8px 0 0 8px;
 }
 
-.ca-group button:last-child {
+.ca-group button + button {
   border-left: 0;
+}
+
+.ca-group button:last-child {
   border-radius: 0 8px 8px 0;
 }
 

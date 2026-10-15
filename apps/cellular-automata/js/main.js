@@ -1,5 +1,8 @@
 import { emptyLineBackground, emptyPlaneBackground } from './background.js';
 import { LineWorld } from './line.js';
+import {
+  LINE_PATTERNS, PLANE_PATTERNS, flip, parseClipboardText, rotate, toRle,
+} from './patterns.js';
 import { PlaneWorld } from './plane.js';
 import {
   LINE_PRESETS, PLANE_PRESETS, formatPlaneRule, lineRuleTable, parseLineRule, parsePlaneRule, planeRuleTable,
@@ -20,15 +23,27 @@ const ruleHint = document.querySelector('[data-rule-hint]');
 const readout = document.querySelector('[data-readout]');
 const runButton = document.querySelector('[data-run]');
 const toolButtons = document.querySelectorAll('[data-tool]');
+const selectionBar = document.querySelector('[data-selection-bar]');
+const pasteBar = document.querySelector('[data-paste-bar]');
+const pasteButton = document.querySelector('[data-paste]');
+const patternSelect = document.querySelector('[data-pattern]');
+const patternHint = document.querySelector('[data-pattern-hint]');
 const field = (name) => form.elements[name];
 
 const view = new View(document.querySelector('[data-board]'), {
   onDraw: drawCell,
   onCameraMove: () => { needsRender = true; },
+  onSelect: () => {
+    showEditBars();
+    needsRender = true;
+    updateReadout(true);
+  },
+  onPaste: stamp,
 });
 
 const etherCache = new Map();
 const searching = new Set();
+const etherWaiters = new Map();
 const worker = new Worker(new URL('./ether-worker.js', import.meta.url), { type: 'module' });
 
 let world = null;
@@ -39,6 +54,8 @@ let lastFrame = performance.now();
 let lastReadout = 0;
 let paintValue = 1;
 let lastPainted = null;
+let clipboard = null;
+let lastCopiedText = '';
 
 const dimensions = () => Number(form.elements.dimensions.value);
 
@@ -85,8 +102,18 @@ function requestEthers(rule) {
 worker.addEventListener('message', ({ data: { key, ethers } }) => {
   searching.delete(key);
   etherCache.set(key, ethers);
+  etherWaiters.get(key)?.forEach((resolve) => resolve(ethers));
+  etherWaiters.delete(key);
   if (currentRule()?.key === key) fillEthers();
 });
+
+function ethersReady(rule) {
+  if (etherCache.has(rule.key)) return Promise.resolve(etherCache.get(rule.key));
+  return new Promise((resolve) => {
+    if (!etherWaiters.has(rule.key)) etherWaiters.set(rule.key, []);
+    etherWaiters.get(rule.key).push(resolve);
+  });
+}
 
 function etherPeriod({ time, dx, dy, width, height }) {
   let repeats = 1;
@@ -175,6 +202,9 @@ function restart() {
   const board = form.elements.size.value === 'board' ? { ...size, wrap: field('edges').value === 'wrap' } : null;
   const settings = { table: rule.table, board, background: backgroundFor(rule) };
   world = dimensions() === 1 ? new LineWorld(settings) : new PlaneWorld(settings);
+  view.selection = null;
+  view.pasting = null;
+  showEditBars();
   seed(board);
   view.setWorld(world, dimensions());
   view.fit();
@@ -245,6 +275,10 @@ function updateReadout(force = false) {
     [emptyBackground ? 'Live cells' : 'Off-ether cells', world.offBackground().toLocaleString()],
     ['Speed', `${speed()} gen/s`],
   ];
+  if (view.selection) {
+    const { left, right, top, bottom } = view.selection;
+    rows.push(['Selection', dimensions() === 1 ? `${right - left} cells` : `${right - left}×${bottom - top}`]);
+  }
   readout.replaceChildren(...rows.flatMap(([term, value]) => {
     const dt = document.createElement('dt');
     const dd = document.createElement('dd');
@@ -299,15 +333,20 @@ function dimensionsChanged() {
   field('width').value = defaults.width;
   if (defaults.height) field('height').value = defaults.height;
   field('patch').value = defaults.patch;
+  clipboard = null;
   syncVisibility();
   fillPresets();
+  fillPatterns();
   ruleChanged();
 }
 
 form.addEventListener('change', (event) => {
   const name = event.target.name;
   if (name === 'dimensions') dimensionsChanged();
-  else if (name === 'lineRule' || name === 'planeRule') ruleChanged();
+  else if (name === 'lineRule' || name === 'planeRule') {
+    ruleChanged();
+    describePattern();
+  }
   else if (name === 'dimEther') {
     view.dimEther = event.target.checked;
     needsRender = true;
@@ -339,6 +378,7 @@ presets.addEventListener('change', () => {
   field(dimensions() === 1 ? 'lineRule' : 'planeRule').value = presets.value;
   presets.value = '';
   ruleChanged();
+  describePattern();
 });
 
 runButton.addEventListener('click', () => setRunning(!running));
@@ -354,7 +394,9 @@ document.querySelector('[data-fit]').addEventListener('click', () => {
 
 function setTool(tool) {
   view.tool = tool;
+  stopPasting();
   document.body.classList.toggle('ca-drawing', tool === 'draw');
+  document.body.classList.toggle('ca-selecting', tool === 'select');
   toolButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.tool === tool)));
 }
 toolButtons.forEach((button) => button.addEventListener('click', () => setTool(button.dataset.tool)));
@@ -371,8 +413,182 @@ document.addEventListener('keydown', (event) => {
   } else if (event.key === 'f' || event.key === 'F') {
     view.fit();
     needsRender = true;
+  } else if (event.key === 'Escape') {
+    if (view.pasting) stopPasting();
+    else deselect();
+  } else if (event.key === 'Delete' || event.key === 'Backspace') {
+    clearSelection();
+  } else if ((event.key === 'r' || event.key === 'R') && view.pasting && dimensions() === 2) {
+    turnPasting(rotate);
+  } else if ((event.key === 'h' || event.key === 'H') && view.pasting && dimensions() === 2) {
+    turnPasting(flip);
   }
 });
+
+function showEditBars() {
+  selectionBar.hidden = !view.selection || Boolean(view.pasting);
+  pasteBar.hidden = !view.pasting;
+  pasteButton.disabled = !clipboard;
+}
+
+function edited() {
+  needsRender = true;
+  updateReadout(true);
+}
+
+function copySelection() {
+  if (!view.selection) return null;
+  clipboard = { ...world.readRegion(view.selection), opaque: true };
+  lastCopiedText = toRle(clipboard);
+  showEditBars();
+  return clipboard;
+}
+
+function clearSelection() {
+  if (!view.selection) return;
+  world.clearRegion(view.selection);
+  edited();
+}
+
+function deselect() {
+  view.selection = null;
+  showEditBars();
+  edited();
+}
+
+function startPasting(pattern) {
+  view.pasting = pattern;
+  view.selection = null;
+  showEditBars();
+  edited();
+}
+
+function stopPasting() {
+  if (!view.pasting) return;
+  view.pasting = null;
+  showEditBars();
+  needsRender = true;
+}
+
+function turnPasting(turn) {
+  view.pasting = turn(view.pasting);
+  needsRender = true;
+}
+
+function stamp(left, top) {
+  const { pattern, shift } = matchEtherPhase(view.pasting);
+  world.writeRegion(left + shift, top, pattern);
+  edited();
+}
+
+function matchEtherPhase(pattern) {
+  if (!pattern.ether) return { pattern, shift: 0 };
+  const rule = currentRule();
+  const steps = world.generation % etherPeriod(chosenEther());
+  const scratch = new LineWorld({ table: rule.table, board: null, background: backgroundFor(rule) });
+  scratch.fill(0, pattern.width, (x) => pattern.cells[x]);
+  for (let step = 0; step < steps; step += 1) scratch.step();
+  return { pattern: { ...scratch.readRegion({ left: -steps, right: pattern.width + steps }), opaque: true }, shift: -steps };
+}
+
+function asLinePattern(pattern) {
+  return dimensions() === 1 ? { ...pattern, height: 1, cells: pattern.cells.slice(0, pattern.width) } : pattern;
+}
+
+const typingInField = (event) => event.target.closest?.('input, select, textarea');
+
+document.addEventListener('copy', (event) => {
+  if (typingInField(event) || !copySelection()) return;
+  event.preventDefault();
+  event.clipboardData.setData('text/plain', lastCopiedText);
+});
+
+document.addEventListener('cut', (event) => {
+  if (typingInField(event) || !copySelection()) return;
+  event.preventDefault();
+  event.clipboardData.setData('text/plain', lastCopiedText);
+  clearSelection();
+});
+
+document.addEventListener('paste', (event) => {
+  if (typingInField(event)) return;
+  const text = event.clipboardData.getData('text/plain');
+  const outside = text && text !== lastCopiedText ? parseClipboardText(text) : null;
+  if (outside) clipboard = asLinePattern({ ...outside, opaque: false });
+  if (!clipboard) return;
+  event.preventDefault();
+  startPasting(clipboard);
+});
+
+function copyToSystemClipboard() {
+  if (copySelection()) navigator.clipboard?.writeText(lastCopiedText).catch(() => {});
+}
+
+document.querySelector('[data-copy]').addEventListener('click', copyToSystemClipboard);
+document.querySelector('[data-cut]').addEventListener('click', () => {
+  copyToSystemClipboard();
+  clearSelection();
+});
+document.querySelector('[data-clear]').addEventListener('click', clearSelection);
+document.querySelector('[data-deselect]').addEventListener('click', deselect);
+pasteButton.addEventListener('click', () => clipboard && startPasting(clipboard));
+document.querySelector('[data-rotate]').addEventListener('click', () => turnPasting(rotate));
+document.querySelector('[data-flip]').addEventListener('click', () => turnPasting(flip));
+document.querySelector('[data-paste-done]').addEventListener('click', stopPasting);
+
+const patternList = () => (dimensions() === 1 ? LINE_PATTERNS : PLANE_PATTERNS);
+
+function fillPatterns() {
+  patternSelect.replaceChildren(...patternList().map((pattern, index) => new Option(pattern.name, String(index))));
+  describePattern();
+}
+
+function chosenPattern() {
+  return patternList()[Number(patternSelect.value)];
+}
+
+function lineEtherMatches(pattern) {
+  const ether = chosenEther();
+  return currentRule()?.number === pattern.rule && ether && ether.phases[0].join('') === pattern.ether;
+}
+
+function describePattern() {
+  const pattern = chosenPattern();
+  if (!pattern) return;
+  if (dimensions() === 1) {
+    patternHint.textContent = lineEtherMatches(pattern)
+      ? `Snaps to the ether's ${pattern.ether.length}-cell grid when you place it.`
+      : `A Rule 110 glider, so it only works inside the ${pattern.ether.length}-cell ether. Placing it switches to Rule 110 with that ether and restarts.`;
+    return;
+  }
+  const rule = currentRule();
+  const preset = PLANE_PRESETS.find((entry) => entry.rule === pattern.rule);
+  const madeFor = `Made for ${preset ? `${preset.name} (${pattern.rule})` : pattern.rule}`;
+  patternHint.textContent = rule && rule.label !== pattern.rule ? `${madeFor}. Under ${rule.label} it will act differently.` : `${madeFor}.`;
+}
+
+async function placePattern() {
+  const pattern = chosenPattern();
+  if (dimensions() === 1 && !lineEtherMatches(pattern)) await switchToEther(pattern);
+  startPasting(pattern.ether ? { ...pattern, snap: pattern.ether.length } : pattern);
+}
+
+async function switchToEther(pattern) {
+  field('lineRule').value = String(pattern.rule);
+  ruleChanged();
+  const ethers = await ethersReady(currentRule());
+  const index = ethers.findIndex((ether) => ether.phases[0].join('') === pattern.ether);
+  etherSelect.value = String(index + 1);
+  field('start').value = 'background';
+  syncVisibility();
+  describeEther();
+  restart();
+  describePattern();
+}
+
+patternSelect.addEventListener('change', describePattern);
+document.querySelector('[data-place-pattern]').addEventListener('click', placePattern);
+
 
 window.addEventListener('resize', () => {
   view.resize();
@@ -384,5 +600,6 @@ document.querySelector('[data-speed]').textContent = `${speed()} gen/s`;
 document.querySelector('[data-density]').textContent = `${Math.round(Number(field('density').value) * 100)}%`;
 syncVisibility();
 fillPresets();
+fillPatterns();
 ruleChanged();
 requestAnimationFrame(frame);

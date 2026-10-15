@@ -23,13 +23,27 @@
 <main class="studio-stage">
   <canvas data-board aria-label="Cellular automaton. Drag to move around, scroll or pinch to zoom, or pick Draw to flip cells."></canvas>
   <dl class="ca-readout" data-readout></dl>
+  <div class="ca-editbar" role="toolbar" aria-label="Selection" data-selection-bar hidden>
+    <button type="button" data-copy title="Copy (Ctrl+C)">Copy</button>
+    <button type="button" data-cut title="Cut (Ctrl+X)">Cut</button>
+    <button type="button" data-clear title="Set back to the background (Del)">Clear</button>
+    <button type="button" data-deselect title="Esc">Deselect</button>
+  </div>
+  <div class="ca-editbar" role="toolbar" aria-label="Pasting" data-paste-bar hidden>
+    <span class="ca-editbar-note" data-paste-note>Click to place. Keep clicking for more copies.</span>
+    <button type="button" data-rotate title="Rotate (R)" data-for-dimensions="2">Rotate</button>
+    <button type="button" data-flip title="Flip (H)" data-for-dimensions="2">Flip</button>
+    <button type="button" class="ca-primary" data-paste-done title="Esc">Done</button>
+  </div>
   <div class="ca-toolbar" role="toolbar" aria-label="Run">
     <button type="button" class="ca-primary" data-run>Play</button>
     <button type="button" data-step title="One generation (N)">Step</button>
     <div class="ca-group" role="group" aria-label="Tool">
       <button type="button" data-tool="move" aria-pressed="true">Move</button>
       <button type="button" data-tool="draw" aria-pressed="false">Draw</button>
+      <button type="button" data-tool="select" aria-pressed="false">Select</button>
     </div>
+    <button type="button" data-paste title="Paste (Ctrl+V)" disabled>Paste</button>
     <button type="button" data-fit>Fit</button>
   </div>
 </main>
@@ -105,6 +119,16 @@
       </fieldset>
 
       <fieldset>
+        <legend>Patterns</legend>
+        <label class="ca-field">
+          <span>Pattern</span>
+          <select data-pattern></select>
+        </label>
+        <p class="ca-hint" data-pattern-hint></p>
+        <button type="button" data-place-pattern>Place pattern</button>
+      </fieldset>
+
+      <fieldset>
         <legend>Start</legend>
         <label class="ca-field">
           <span>Begin with</span>
@@ -140,7 +164,9 @@
       <p><strong>Infinite</strong> boards have no edge. Outside the busy area the board is the background repeated forever, so a glider can travel as far as it likes.</p>
       <p>An <strong>ether</strong> is a background that repeats in both space and time. Gliders in Rule 110 only exist inside one. The search tries every repeating strip up to 16 cells wide (1D) or tile up to 16 cells in area (2D) and keeps the ones that come back to themselves. Then it runs a random board and measures how much of it settles into each one, and lists the most common first. A rule whose random boards settle into an ether is one where gliders on that ether are likely to show up by themselves.</p>
       <p>With <strong>Dim the background</strong> on, any cell that fits the chosen background pattern is drawn faintly, and everything else is bright.</p>
-      <p>Keys: Space play/pause, N step, F fit.</p>
+      <p><strong>Select</strong> drags out a box (in 1D, a stretch of the newest row). Copy, cut or clear it, then Paste and click to place copies. Copying also puts the cells on your system clipboard as RLE, the text format Golly and LifeWiki use, and you can paste RLE from there too.</p>
+      <p>The Rule 110 gliders are found by the same kind of search: flip a few cells of the ether and keep the ones that turn into a single object that repeats as it moves.</p>
+      <p>Keys: Space play/pause, N step, F fit, Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste, Del clear, R rotate, H flip, Esc cancel.</p>
     </details>
 
     <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>

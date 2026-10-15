@@ -107,6 +107,22 @@ export class LineWorld {
     row.ether = this.etherMask(row);
   }
 
+  readRegion({ left, right }) {
+    const row = this.latest;
+    const cells = Uint8Array.from({ length: right - left }, (_, i) => this.valueAt(row, left + i) & 1);
+    return { width: right - left, height: 1, cells };
+  }
+
+  writeRegion(left, top, { width, cells, opaque }) {
+    const row = this.latest;
+    this.fill(left, left + width, (x) => (opaque || cells[x - left] ? cells[x - left] : this.valueAt(row, x)));
+  }
+
+  clearRegion({ left, right }) {
+    const { background } = this.latest;
+    this.fill(left, right, (x) => background[mod(x, background.length)]);
+  }
+
   offBackground(row = this.latest) {
     let count = 0;
     for (let i = 0; i < row.cells.length; i += 1) {
