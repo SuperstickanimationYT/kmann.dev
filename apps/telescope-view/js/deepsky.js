@@ -216,24 +216,37 @@ function andromeda() {
   };
 }
 
+const WHIRLPOOL_PA = 163;
+const WHIRLPOOL_AXIS_RATIO = 0.85;
+const COMPANION_OFFSET = { x: 30, y: 260 };
+
+function whirlpoolPlane(x, y) {
+  const { u, v } = axes(x, y, WHIRLPOOL_PA);
+  const dv = v / WHIRLPOOL_AXIS_RATIO;
+  return { r: Math.hypot(u, dv), angle: Math.atan2(dv, u) };
+}
+
 function whirlpool() {
   const knots = fractalNoise(51);
-  const bulge = sersic({ totalMag: 9.9, effectiveRadius: 25, index: 2, axisRatio: 0.85, paDeg: 163 });
-  const companion = sersic({ totalMag: 9.6, effectiveRadius: 35, index: 2.5, axisRatio: 0.8, paDeg: 80, cx: 30, cy: 260 });
+  const bulge = sersic({ totalMag: 9.9, effectiveRadius: 25, index: 2, axisRatio: 0.85, paDeg: WHIRLPOOL_PA });
+  const companion = sersic({ totalMag: 9.6, effectiveRadius: 35, index: 2.5, axisRatio: 0.8, paDeg: 80, cx: COMPANION_OFFSET.x, cy: COMPANION_OFFSET.y });
   const diskScale = 90;
-  const diskFlux = 10 ** (-0.4 * 8.65) / (2 * Math.PI * diskScale ** 2 * 0.85);
+  const diskFlux = 10 ** (-0.4 * 8.65) / (2 * Math.PI * diskScale ** 2 * WHIRLPOOL_AXIS_RATIO);
   const pitch = Math.tan((18 * Math.PI) / 180);
+  const armPhase = (r, angle) => 2 * angle - (2 * Math.log(Math.max(r, 5) / 20)) / pitch;
+  const companionPlane = whirlpoolPlane(COMPANION_OFFSET.x, COMPANION_OFFSET.y);
+  const armThroughCompanion = armPhase(companionPlane.r, companionPlane.angle);
   return {
     stars: [],
     paint(x, y) {
-      const { u, v } = axes(x, y, 163);
-      const dv = v / 0.85;
-      const r = Math.hypot(u, dv);
-      const phase = 2 * Math.atan2(dv, u) - (2 * Math.log(Math.max(r, 5) / 20)) / pitch;
-      const arm = ((1 + Math.cos(phase)) / 2) ** 2;
+      const { r, angle } = whirlpoolPlane(x, y);
+      const arm = ((1 + Math.cos(armPhase(r, angle) - armThroughCompanion)) / 2) ** 2;
       const clumps = 0.7 + 0.6 * knots(x / 9, y / 9, 3);
-      const disk = diskFlux * Math.exp(-r / diskScale) * (0.5 + 1.3 * arm * clumps) * smoothstep(8, 30, r);
-      const bridge = surfaceFlux(23.2) * Math.exp(-Math.abs(Math.hypot(x - 10, y - 140) - 140) / 18) * smoothstep(-50, 60, x) * smoothstep(0, 120, y);
+      const interArm = 0.5 * (1 - smoothstep(110, 260, r));
+      const armWeight = 1.3 * (1 + smoothstep(100, 280, r) * 4);
+      const disk = diskFlux * Math.exp(-r / diskScale) * (interArm + armWeight * arm * clumps) * smoothstep(8, 30, r) * (1 - smoothstep(300, 360, r));
+      const nearCompanion = Math.exp(-Math.hypot(x - COMPANION_OFFSET.x, y - COMPANION_OFFSET.y) / 120);
+      const bridge = surfaceFlux(21.6) * arm * nearCompanion * smoothstep(120, 200, r);
       return add(tinted(OLD_STARS, bulge(x, y) + companion(x, y) + bridge), tinted(YOUNG_STARS, disk));
     },
   };
