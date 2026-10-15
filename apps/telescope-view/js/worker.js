@@ -37,8 +37,8 @@ function nextPowerOfTwo(value) {
 function samplingFor(params) {
   const finestRad = (SHORTEST_NM * 1e-9) / (2.2 * (params.scope.apertureMm / 1000));
   const neededRad = extentArcsec(params.targetId, params.separationArcsec) * 1.3 * ARCSEC;
-  const n = Math.min(Math.max(nextPowerOfTwo(neededRad / finestRad), PSF_GRID), MAX_GRID);
-  return { n, pixelRad: Math.max(finestRad, neededRad / n) };
+  const n = Math.min(nextPowerOfTwo(neededRad / finestRad + PSF_GRID), MAX_GRID);
+  return { n, pixelRad: Math.max(finestRad, neededRad / (n - PSF_GRID)) };
 }
 
 function sourceSpectra(params, n, pixelRad) {
@@ -85,13 +85,26 @@ function workspaceFor(n) {
   return workspaces.get(n);
 }
 
+const PSF_EDGE_TAPER = (() => {
+  const window = new Float64Array(PSF_GRID * PSF_GRID);
+  const half = PSF_GRID / 2;
+  for (let y = 0; y < PSF_GRID; y++) {
+    const dy = y < half ? y : PSF_GRID - y;
+    for (let x = 0; x < PSF_GRID; x++) {
+      const dx = x < half ? x : PSF_GRID - x;
+      const r = Math.hypot(dx, dy) / half;
+      window[y * PSF_GRID + x] = r < 0.7 ? 1 : r >= 1 ? 0 : Math.cos(((r - 0.7) / 0.3) * (Math.PI / 2)) ** 2;
+    }
+  }
+  return window;
+})();
+
 const channelPsfBuffers = [0, 1, 2].map(() => new Float64Array(PSF_GRID * PSF_GRID));
 
 function channelPsfs(params, pixelRad) {
   const focusMm = (params.focusWaves * 8 * (params.scope.focalLengthMm / params.scope.apertureMm) ** 2 * REFERENCE_NM) / 1e6;
   const seeing = seeingAt(params);
   for (const channel of channelPsfBuffers) channel.fill(0);
-  const totals = [0, 0, 0];
   WAVELENGTHS_NM.forEach((nm, w) => {
     const psf = psfForWavelength({
       size: PSF_GRID,
@@ -104,14 +117,18 @@ function channelPsfs(params, pixelRad) {
     });
     for (let c = 0; c < 3; c++) {
       const weight = CHANNEL_WEIGHTS[w][c];
-      totals[c] += weight;
       const channel = channelPsfBuffers[c];
       for (let i = 0; i < psf.length; i++) channel[i] += psf[i] * weight;
     }
   });
-  channelPsfBuffers.forEach((channel, c) => {
-    for (let i = 0; i < channel.length; i++) channel[i] /= totals[c];
-  });
+  for (const channel of channelPsfBuffers) {
+    let total = 0;
+    for (let i = 0; i < channel.length; i++) {
+      channel[i] *= PSF_EDGE_TAPER[i];
+      total += channel[i];
+    }
+    for (let i = 0; i < channel.length; i++) channel[i] /= total;
+  }
   return channelPsfBuffers;
 }
 
