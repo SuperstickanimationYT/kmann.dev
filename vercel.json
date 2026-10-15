@@ -21,6 +21,18 @@
     {
       "source": "/apps/fractal-explorer/:path*",
       "destination": "https://fractal-explorer-six.vercel.app/:path*"
+    },
+    {
+      "source": "/apps/blocktext/",
+      "destination": "https://blocktext-phi.vercel.app/"
+    },
+    {
+      "source": "/apps/blocktext/:path*/",
+      "destination": "https://blocktext-phi.vercel.app/:path*/"
+    },
+    {
+      "source": "/apps/blocktext/:path*",
+      "destination": "https://blocktext-phi.vercel.app/:path*"
     }
   ]
 }

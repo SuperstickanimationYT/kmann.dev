@@ -15,6 +15,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Block Text',
+    href: 'apps/blocktext/',
+    category: 'tools',
+    poster: 'assets/img/posters/blocktext.webp',
+    blurb: 'Edit Scratch and PenguinMod projects as text, then save them back as blocks.',
+    status: 'live',
+  },
+  {
     title: 'Conlang Studio',
     href: 'apps/conlang-studio/',
     category: 'tools',

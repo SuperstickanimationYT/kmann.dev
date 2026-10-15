@@ -78,17 +78,23 @@ kmann.dev never holds a copy and never falls behind. FractalExplorer works this
 way: it is developed in [notFrost/fractal-explorer](https://github.com/notFrost/fractal-explorer)
 and deployed on its own Vercel project, and `vercel.json` here rewrites
 `/apps/fractal-explorer/*` onto that deployment. Merging there is live here.
+Block Text works the same way, from [SuperstickanimationYT/blocktext](https://github.com/SuperstickanimationYT/blocktext).
 
-To add another, copy both blocks in `vercel.json`:
+To add another, copy the blocks in `vercel.json`:
 
 - a **rewrite** pair forwarding `/apps/<slug>/*` to the upstream deployment, one
   entry preserving a trailing slash for directories and one without it for files
-- a **redirect** sending bare `/apps/<slug>` to whatever the upstream serves as its
-  entry point, so the upstream's own root redirect never fires
+- if the upstream serves its page at `/`, a **rewrite** from `/apps/<slug>/` to
+  the upstream's `/`, as Block Text has
+- if the upstream redirects `/` instead, a **redirect** sending bare `/apps/<slug>`
+  to whatever the upstream serves as its entry point, so that redirect never fires
 
-That redirect matters. Upstream answers `/` with a 307 to an absolute URL on its
+That redirect matters. FractalExplorer answers `/` with a 307 to an absolute URL on its
 own domain, which would bounce visitors off kmann.dev. Sending them straight to
 the real entry point avoids it.
+
+Use the project's production domain (Settings → Domains on Vercel). Per-deployment
+URLs sit behind Vercel's sign-in.
 
 The upstream must use relative paths throughout, or it will break under a subpath.
 
