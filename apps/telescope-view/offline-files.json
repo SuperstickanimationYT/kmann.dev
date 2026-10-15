@@ -1,0 +1,19 @@
+{
+  "bytes": 62454,
+  "files": [
+    "./",
+    "index.html",
+    "js/fft.js",
+    "js/main.js",
+    "js/optics.js",
+    "js/targets.js",
+    "js/worker.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}

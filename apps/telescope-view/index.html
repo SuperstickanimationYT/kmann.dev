@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telescope View Simulator &mdash; kmann314</title>
+<meta name="description" content="Enter your telescope and eyepiece, then see a planet or double star the way that scope would show it: diffraction, false colour, seeing and all.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Telescope View Simulator</h1>
+</header>
+
+<main class="studio-stage">
+  <canvas data-view></canvas>
+  <dl class="tv-readout" data-readout></dl>
+  <p class="tv-status" data-status></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
+    <form class="tv-panel" data-controls>
+      <label class="tv-field">
+        <span>Target</span>
+        <select name="targetId"></select>
+      </label>
+      <label class="tv-field" data-show-for="testDouble">
+        <span>Gap between the stars (&Prime;) <output></output></span>
+        <input type="range" name="separationArcsec" min="0.3" max="5" step="0.05" value="1.2">
+      </label>
+      <label class="tv-field" data-show-for="saturn">
+        <span>Ring tilt (&deg;) <output></output></span>
+        <input type="range" name="ringTiltDeg" min="0" max="27" step="0.5" value="18">
+      </label>
+      <label class="tv-field" data-show-for="venus">
+        <span>Lit fraction <output></output></span>
+        <input type="range" name="venusPhase" min="0.05" max="0.95" step="0.01" value="0.3">
+      </label>
+
+      <fieldset>
+        <legend>Telescope</legend>
+        <label class="tv-field">
+          <span>Preset</span>
+          <select data-preset></select>
+        </label>
+        <label class="tv-field">
+          <span>Design</span>
+          <select name="correction">
+            <option value="none">Mirror or catadioptric (no false colour)</option>
+            <option value="achromat">Achromatic refractor</option>
+            <option value="ed">ED doublet refractor</option>
+            <option value="apo">Apochromatic triplet</option>
+          </select>
+        </label>
+        <div class="tv-pair">
+          <label class="tv-field">
+            <span>Aperture (mm)</span>
+            <input type="number" name="apertureMm" min="40" max="500" step="1">
+          </label>
+          <label class="tv-field">
+            <span>Focal length (mm)</span>
+            <input type="number" name="focalLengthMm" min="200" max="5000" step="1">
+          </label>
+        </div>
+        <label class="tv-field">
+          <span>Central obstruction (%) <output></output></span>
+          <input type="range" name="obstructionPct" min="0" max="45" step="1">
+        </label>
+        <div class="tv-pair">
+          <label class="tv-field">
+            <span>Spider vanes</span>
+            <select name="vanes">
+              <option value="0">None</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </label>
+          <label class="tv-field">
+            <span>Vane width (mm)</span>
+            <input type="number" name="vaneWidthMm" min="0.2" max="5" step="0.1">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Optical quality</legend>
+        <label class="tv-field">
+          <span>Spherical aberration (waves RMS) <output></output></span>
+          <input type="range" name="sphericalWaves" min="0" max="0.25" step="0.005">
+        </label>
+        <label class="tv-field">
+          <span>Miscollimation coma (waves RMS) <output></output></span>
+          <input type="range" name="comaWaves" min="0" max="0.25" step="0.005">
+        </label>
+        <label class="tv-field">
+          <span>Astigmatism (waves RMS) <output></output></span>
+          <input type="range" name="astigWaves" min="0" max="0.25" step="0.005">
+        </label>
+        <p class="tv-hint">0.07 waves RMS is roughly the classic &ldquo;&frac14; wave&rdquo; mirror.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Eyepiece</legend>
+        <div class="tv-pair">
+          <label class="tv-field">
+            <span>Focal length (mm)</span>
+            <input type="number" name="eyepieceMm" min="2" max="55" step="0.5" value="9">
+          </label>
+          <label class="tv-field">
+            <span>Apparent field</span>
+            <select name="afovDeg">
+              <option value="45">45&deg; (Kellner)</option>
+              <option value="52" selected>52&deg; (Pl&ouml;ssl)</option>
+              <option value="68">68&deg;</option>
+              <option value="82">82&deg;</option>
+            </select>
+          </label>
+        </div>
+        <label class="tv-field">
+          <span>Focus (waves) <output></output></span>
+          <input type="range" name="focusWaves" min="-8" max="8" step="0.1" value="0">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Sky</legend>
+        <label class="tv-field">
+          <span>Seeing (&Prime;) <output></output></span>
+          <input type="range" name="seeingArcsec" min="0" max="5" step="0.1" value="1.5">
+        </label>
+        <label class="tv-field">
+          <span>Altitude above horizon (&deg;) <output></output></span>
+          <input type="range" name="altitudeDeg" min="8" max="90" step="1" value="40">
+        </label>
+        <label class="tv-check">
+          <input type="checkbox" name="live" checked>
+          <span>Moving air (the image shimmers)</span>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Screen</legend>
+        <label class="tv-field">
+          <span>Magnifier <output></output></span>
+          <input type="range" name="zoom" min="1" max="8" step="0.25" value="3">
+        </label>
+        <p class="tv-hint">At 1&times; the eyepiece&rsquo;s field fills the view. Raise it to inspect detail your eye would see at that size.</p>
+      </fieldset>
+    </form>
+
+    <p class="tv-about">
+      Every frame is computed from wave optics: the light through your aperture, obstruction and spider is
+      Fourier-transformed at seven wavelengths into a diffraction pattern, bent by a drifting turbulent air layer
+      and the refractor&rsquo;s focus error at each colour, then blurred into the target. The planets are drawn
+      procedurally, so their markings are plausible, not a map of tonight.
+    </p>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
