@@ -159,6 +159,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Telescope View Simulator',
+    href: 'apps/telescope-view/',
+    category: 'simulations',
+    poster: 'assets/img/posters/telescope-view.webp',
+    blurb: 'Enter your telescope and eyepiece, then see a planet or double star through it: diffraction, false colour and shimmering air, all computed from wave optics.',
+    status: 'live',
+  },
+  {
     title: 'Worm Simulator',
     href: 'apps/worm-simulator/',
     category: 'simulations',

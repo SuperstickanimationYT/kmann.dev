@@ -1,0 +1,18 @@
+{
+  "name": "Telescope View Simulator",
+  "short_name": "Telescope View Simulator",
+  "description": "Enter your telescope and eyepiece, then see a planet or double star the way that scope would show it: diffraction, false colour, seeing and all.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
