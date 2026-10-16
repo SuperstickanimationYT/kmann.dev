@@ -50,6 +50,11 @@ page groups cards under those headings, and its search bar matches titles and bl
 
 `status: 'planned'` renders a dashed placeholder card and ignores `href`.
 
+`status: 'wip'` moves the card out of its category into the collapsed Prototypes shelf at the
+bottom of the home page. Also add
+`<span class="wip-tag" title="This app is unfinished. Expect bugs and missing parts.">Work in progress</span>`
+right after the app's title in its header, and remove both when the app is done.
+
 Apps built around a canvas and a settings panel use the studio layout instead of
 `app.css`: link `studio.css`, give `<body>` the `studio` class, put the canvas in
 `<main class="studio-stage">` and the controls in an `<aside class="studio-panel"
