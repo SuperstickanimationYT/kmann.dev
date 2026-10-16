@@ -188,3 +188,15 @@ a:focus-visible,
 .save-offline[hidden] {
   display: none;
 }
+
+.wip-tag {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid #c9a227;
+  border-radius: 999px;
+  color: #f2d36b;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}

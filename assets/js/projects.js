@@ -20,7 +20,7 @@ const PROJECTS = [
     category: 'tools',
     poster: 'assets/img/posters/astro-edit.webp',
     blurb: 'Open a stacked or phone night sky photo, including Samsung Expert RAW, then remove sky glow and vignetting and bring out nebulae, galaxies and the Milky Way.',
-    status: 'live',
+    status: 'wip',
   },
   {
     title: 'Block Text',
@@ -157,6 +157,13 @@ const PROJECTS = [
     poster: 'assets/img/posters/robot-workshop.webp',
     blurb: 'Build robots from beams, joints and electric motors, from Strandbeests to crawlers, then see how far they walk.',
     status: 'live',
+  },
+  {
+    title: 'Rocket Workshop',
+    href: 'apps/rocket-workshop/',
+    category: 'simulations',
+    blurb: 'Build rockets from beams, joints, engines, fuel tanks and separators, program their flight computer, and fly them through a 1/20 scale Solar System.',
+    status: 'wip',
   },
   {
     title: 'Song Studio',

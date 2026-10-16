@@ -132,6 +132,21 @@ a.card:hover {
   padding: 3px 10px;
 }
 
+.prototype-shelf summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.prototype-shelf summary:hover {
+  color: var(--text);
+}
+
+.prototype-note {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
 .grid-empty {
   color: var(--text-dim);
   font-size: 15px;

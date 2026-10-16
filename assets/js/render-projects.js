@@ -48,8 +48,15 @@ function createPlannedCard(project) {
 function createCard(project) {
   const item = document.createElement('li');
   item.dataset.searchText = `${project.title} ${project.blurb ?? ''}`.toLowerCase();
-  item.append(project.status === 'live' ? createLiveCard(project) : createPlannedCard(project));
+  item.append(project.status === 'planned' ? createPlannedCard(project) : createLiveCard(project));
   return item;
+}
+
+function createGrid(projects) {
+  const grid = document.createElement('ul');
+  grid.className = 'project-grid';
+  grid.append(...projects.map(createCard));
+  return grid;
 }
 
 function createSection(category) {
@@ -60,12 +67,26 @@ function createSection(category) {
   heading.className = 'section-title';
   heading.textContent = category.title;
 
-  const grid = document.createElement('ul');
-  grid.className = 'project-grid';
-  grid.append(...PROJECTS.filter((project) => project.category === category.id).map(createCard));
-
-  section.append(heading, grid);
+  const projects = PROJECTS.filter((project) => project.category === category.id && project.status !== 'wip');
+  section.append(heading, createGrid(projects));
   return section;
+}
+
+function createPrototypeShelf() {
+  const projects = PROJECTS.filter((project) => project.status === 'wip');
+  const shelf = document.createElement('details');
+  shelf.className = 'project-section prototype-shelf';
+
+  const summary = document.createElement('summary');
+  summary.className = 'section-title';
+  summary.textContent = `Prototypes (${projects.length})`;
+
+  const note = document.createElement('p');
+  note.className = 'prototype-note';
+  note.textContent = 'Unfinished apps. Fun to try, but expect bugs and missing parts.';
+
+  shelf.append(summary, note, createGrid(projects));
+  return shelf;
 }
 
 function filterSections(sections, query) {
@@ -93,11 +114,16 @@ function renderProjects() {
     return;
   }
 
-  const sections = CATEGORIES.map(createSection);
+  const shelf = createPrototypeShelf();
+  const sections = [...CATEGORIES.map(createSection), shelf];
   container.append(...sections);
 
   const update = () => {
-    const shown = filterSections(sections, search?.value ?? '');
+    const query = search?.value ?? '';
+    const shown = filterSections(sections, query);
+    if (query.trim() && !shelf.hidden) {
+      shelf.open = true;
+    }
     if (empty) {
       empty.hidden = shown > 0;
     }
