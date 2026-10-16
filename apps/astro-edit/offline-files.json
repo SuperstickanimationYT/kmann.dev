@@ -1,0 +1,24 @@
+{
+  "bytes": 1796991,
+  "files": [
+    "./",
+    "index.html",
+    "js/jxl.js",
+    "js/main.js",
+    "js/pipeline.js",
+    "js/png.js",
+    "js/tiff.js",
+    "js/worker.js",
+    "style.css",
+    "vendor/jxl-oxide-wasm/LICENSE-APACHE",
+    "vendor/jxl-oxide-wasm/LICENSE-MIT",
+    "vendor/jxl-oxide-wasm/jxl_oxide_wasm.js",
+    "vendor/jxl-oxide-wasm/jxl_oxide_wasm_bg.wasm",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}

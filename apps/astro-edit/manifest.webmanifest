@@ -1,0 +1,18 @@
+{
+  "name": "Astrophoto Editor",
+  "short_name": "Astrophoto Editor",
+  "description": "Open a stacked or long-exposure night sky photo, remove sky glow and vignetting, and bring out nebulae, galaxies and the Milky Way in a few sliders.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

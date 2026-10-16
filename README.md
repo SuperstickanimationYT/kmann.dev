@@ -1,7 +1,9 @@
 # kmann.dev
 
 Games, simulations and other small programs, all reachable from one domain.
-The site itself is static files with no build step and no dependencies.
+The site itself is static files with no build step and no dependencies, with one exception:
+the Astrophoto Editor vendors [jxl-oxide-wasm](https://www.npmjs.com/package/jxl-oxide-wasm) 0.12.6 in
+`apps/astro-edit/vendor/` to read the JPEG XL inside Samsung Expert RAW DNGs at 16 bits.
 
 ## Layout
 
