@@ -2,6 +2,7 @@ const CELL_STROKES = ['rgba(90, 230, 140, 0.55)', 'rgba(255, 110, 90, 0.8)', 'rg
 const CELL_FILLS = ['rgba(0, 0, 0, 0)', 'rgba(255, 90, 70, 0.14)', 'rgba(255, 50, 50, 0.3)', 'rgba(90, 255, 140, 0.22)'];
 const CELL_EXCLUDED = 2;
 const SETTING_FORMATS = {
+  evenColour: (value) => `${Math.round(value * 100)}%`,
   degree: (value) => ['flat', 'tilted', 'curved', 'wavy', 'complex'][value - 1],
   background: (value) => `${Math.round(value * 100)}%`,
   blackPoint: (value) => value.toFixed(1),
@@ -37,6 +38,7 @@ function readSettings() {
   return {
     removeBackground: form.elements.removeBackground.checked,
     flattenVignetting: form.elements.flattenVignetting.checked,
+    evenColour: number('evenColour'),
     degree: number('degree'),
     background: number('background'),
     blackPoint: number('blackPoint'),

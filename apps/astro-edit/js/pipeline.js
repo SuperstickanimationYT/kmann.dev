@@ -9,6 +9,8 @@ const FIT_ROUNDS = 6;
 const WHITE_PERCENTILE = 0.9995;
 const HALO_DAMPING = 0.25;
 const VIGNETTE_FLOOR = 0.5;
+const COLOUR_SMOOTHING_CELLS = 1.2;
+const CHROMA_NOISE_RADIUS = 0.0025;
 
 export const CELL_USED = 0;
 export const CELL_REJECTED = 1;
@@ -18,6 +20,7 @@ export const CELL_FORCED = 3;
 export const DEFAULT_SETTINGS = {
   removeBackground: true,
   flattenVignetting: true,
+  evenColour: 1,
   degree: 3,
   background: 0.12,
   blackPoint: 2,
@@ -99,6 +102,7 @@ export function measureCells(image, columns) {
         }
       }
       cells.push({
+        col, row,
         x0, y0, x1, y1,
         u: ((x0 + x1) / width) - 1,
         v: ((y0 + y1) / height) - 1,
@@ -178,11 +182,70 @@ export function fitBackground(cells, degree, overrides) {
     states = next;
     coefficients = leastSquares(cells, states, terms);
   }
-  const usedLumas = lumas.filter((_, index) => states[index] === CELL_USED || states[index] === CELL_FORCED);
-  return { terms, coefficients, states, level: median(usedLumas) };
+  const isSky = states.map((state) => state === CELL_USED || state === CELL_FORCED);
+  return {
+    terms,
+    coefficients,
+    states,
+    level: median(lumas.filter((_, index) => isSky[index])),
+    colourShifts: colourShiftGrid(cells, isSky, coefficients, terms),
+  };
 }
 
-function removeModel(image, model, flattenVignetting) {
+function colourShiftGrid(cells, isSky, coefficients, terms) {
+  const columns = cells.at(-1).col + 1;
+  const rows = cells.at(-1).row + 1;
+  const shifts = new Float32Array(columns * rows * 3);
+  cells.forEach((cell, index) => {
+    if (!isSky[index]) return;
+    const glow = modelAt(coefficients, terms, cell.u, cell.v);
+    const residual = cell.values.map((value, c) => value - glow[c]);
+    const brightness = luma(...residual);
+    for (let c = 0; c < 3; c++) shifts[(cell.row * columns + cell.col) * 3 + c] = residual[c] - brightness;
+  });
+
+  const reach = Math.ceil(3 * COLOUR_SMOOTHING_CELLS);
+  const smoothed = new Float32Array(shifts.length);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+      const sums = [0, 0, 0];
+      let weights = 0;
+      for (let dy = -reach; dy <= reach; dy++) {
+        for (let dx = -reach; dx <= reach; dx++) {
+          const sourceRow = row + dy;
+          const sourceCol = col + dx;
+          if (sourceRow < 0 || sourceRow >= rows || sourceCol < 0 || sourceCol >= columns) continue;
+          const source = sourceRow * columns + sourceCol;
+          if (!isSky[source]) continue;
+          const weight = Math.exp(-(dx * dx + dy * dy) / (2 * COLOUR_SMOOTHING_CELLS ** 2));
+          for (let c = 0; c < 3; c++) sums[c] += weight * shifts[source * 3 + c];
+          weights += weight;
+        }
+      }
+      for (let c = 0; c < 3; c++) smoothed[(row * columns + col) * 3 + c] = weights > 0 ? sums[c] / weights : 0;
+    }
+  }
+  return { columns, rows, shifts: smoothed };
+}
+
+function colourShiftAt(grid, u, v) {
+  const gx = Math.min(grid.columns - 1, Math.max(0, ((u + 1) / 2) * grid.columns - 0.5));
+  const gy = Math.min(grid.rows - 1, Math.max(0, ((v + 1) / 2) * grid.rows - 0.5));
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const x1 = Math.min(grid.columns - 1, x0 + 1);
+  const y1 = Math.min(grid.rows - 1, y0 + 1);
+  const tx = gx - x0;
+  const ty = gy - y0;
+  const at = (x, y, c) => grid.shifts[(y * grid.columns + x) * 3 + c];
+  return [0, 1, 2].map((c) => {
+    const top = at(x0, y0, c) + (at(x1, y0, c) - at(x0, y0, c)) * tx;
+    const bottom = at(x0, y1, c) + (at(x1, y1, c) - at(x0, y1, c)) * tx;
+    return top + (bottom - top) * ty;
+  });
+}
+
+function removeModel(image, model, settings) {
   const { width, height, rgb } = image;
   const out = new Float32Array(rgb.length);
   const floor = VIGNETTE_FLOOR * model.level;
@@ -192,7 +255,9 @@ function removeModel(image, model, flattenVignetting) {
     const v = ((2 * y + 1) / height) - 1;
     for (let k = 0; k < knots; k++) {
       const u = ((2 * Math.min(k * MODEL_STEP, width - 1) + 1) / width) - 1;
-      rowModel.set(modelAt(model.coefficients, model.terms, u, v), k * 3);
+      const glow = modelAt(model.coefficients, model.terms, u, v);
+      const shift = colourShiftAt(model.colourShifts, u, v);
+      rowModel.set(glow.map((value, c) => value + settings.evenColour * shift[c]), k * 3);
     }
     for (let x = 0; x < width; x++) {
       const k = Math.floor(x / MODEL_STEP);
@@ -200,7 +265,7 @@ function removeModel(image, model, flattenVignetting) {
       const at = (y * width + x) * 3;
       const next = Math.min(k + 1, knots - 1) * 3;
       const glow = [0, 1, 2].map((c) => rowModel[k * 3 + c] + (rowModel[next + c] - rowModel[k * 3 + c]) * t);
-      const flatten = flattenVignetting ? model.level / Math.max(floor, luma(...glow)) : 1;
+      const flatten = settings.flattenVignetting ? model.level / Math.max(floor, luma(...glow)) : 1;
       for (let c = 0; c < 3; c++) out[at + c] = (rgb[at + c] - glow[c]) * flatten;
     }
   }
@@ -304,7 +369,7 @@ function reduceNoise(rgb, width, height, settings) {
     redDifference[pixel] = rgb[pixel * 3] - brightness[pixel];
     blueDifference[pixel] = rgb[pixel * 3 + 2] - brightness[pixel];
   }
-  const chromaRadius = Math.round(settings.noise * 0.006 * longEdge);
+  const chromaRadius = Math.round(settings.noise * CHROMA_NOISE_RADIUS * longEdge);
   const smoothRed = blur(redDifference, width, height, chromaRadius);
   const smoothBlue = blur(blueDifference, width, height, chromaRadius);
   const smoothBrightness = blur(brightness, width, height, Math.max(1, Math.round(settings.noise * 0.0015 * longEdge)));
@@ -357,7 +422,7 @@ function enhance(rgb, width, height, settings) {
 export function render(image, model, settings) {
   const { width, height } = image;
   const pixels = width * height;
-  const rgb = settings.removeBackground && model ? removeModel(image, model, settings.flattenVignetting) : Float32Array.from(image.rgb);
+  const rgb = settings.removeBackground && model ? removeModel(image, model, settings) : Float32Array.from(image.rgb);
   stretch(rgb, pixels, measureLevels(rgb, pixels), settings);
   if (settings.noise > 0) reduceNoise(rgb, width, height, settings);
   enhance(rgb, width, height, settings);
