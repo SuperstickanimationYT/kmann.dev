@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Astrophoto Editor &mdash; kmann314</title>
+<meta name="description" content="Open a stacked or long-exposure night sky photo, remove sky glow and vignetting, and bring out nebulae, galaxies and the Milky Way in a few sliders.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Astrophoto Editor</h1>
+</header>
+
+<main class="studio-stage" data-stage>
+  <canvas data-view hidden></canvas>
+  <canvas class="ae-cells" data-cells hidden></canvas>
+  <div class="ae-empty" data-empty>
+    <p>Drop a night sky photo here</p>
+    <p class="ae-hint">DNG (including Samsung Expert RAW), TIFF, PNG or JPEG. Nothing leaves your device.</p>
+    <label class="ae-button ae-primary">
+      Open image
+      <input type="file" accept=".dng,.tif,.tiff,image/*" data-file hidden>
+    </label>
+  </div>
+  <p class="ae-status" data-status></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
+    <div class="ae-actions">
+      <label class="ae-button">
+        Open image
+        <input type="file" accept=".dng,.tif,.tiff,image/*" data-file hidden>
+      </label>
+      <button type="button" class="ae-button ae-primary" data-export disabled>Save PNG</button>
+    </div>
+    <p class="ae-info" data-info></p>
+
+    <form class="ae-panel" data-controls>
+      <fieldset>
+        <legend>Sky glow</legend>
+        <label class="ae-check">
+          <input type="checkbox" name="removeBackground" checked>
+          <span>Remove sky glow and gradients</span>
+        </label>
+        <label class="ae-check">
+          <input type="checkbox" name="flattenVignetting" checked>
+          <span>Also even out darker corners</span>
+        </label>
+        <label class="ae-field">
+          <span>Gradient shape <output></output></span>
+          <input type="range" name="degree" min="1" max="5" step="1" value="3">
+        </label>
+        <label class="ae-check">
+          <input type="checkbox" name="showCells">
+          <span>Show sky samples</span>
+        </label>
+        <p class="ae-hint" data-cells-hint hidden>Green boxes measure the sky; red ones were skipped as objects or foreground. Click a box to flip it, click again to go back to automatic.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Stretch</legend>
+        <label class="ae-field">
+          <span>Sky brightness <output></output></span>
+          <input type="range" name="background" min="0.03" max="0.3" step="0.01" value="0.12">
+        </label>
+        <label class="ae-field">
+          <span>Black point <output></output></span>
+          <input type="range" name="blackPoint" min="0" max="4" step="0.1" value="2">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Enhance</legend>
+        <label class="ae-field">
+          <span>Nebula &amp; galaxy boost <output></output></span>
+          <input type="range" name="boost" min="0" max="1.5" step="0.05" value="0.5">
+        </label>
+        <label class="ae-field">
+          <span>Colour <output></output></span>
+          <input type="range" name="saturation" min="0.5" max="2.5" step="0.05" value="1.25">
+        </label>
+        <label class="ae-field">
+          <span>Noise reduction <output></output></span>
+          <input type="range" name="noise" min="0" max="1" step="0.05" value="0.4">
+        </label>
+      </fieldset>
+
+      <div class="ae-actions">
+        <button type="button" class="ae-button" data-compare disabled>Hold to see before</button>
+        <button type="button" class="ae-button" data-reset>Reset</button>
+      </div>
+    </form>
+
+    <p class="ae-about">
+      This is a finishing tool, not a stacker: open an image that is already stacked or a single long
+      exposure. It fits a smooth surface to the empty sky and divides and subtracts it away, which removes
+      light pollution, moonlight gradients and lens vignetting. Then it brightens the faint end with an
+      arcsinh stretch that keeps star colours, lifts structure in areas brighter than the sky, and smooths
+      colour noise. Raw and TIFF files keep their full 16-bit linear data, so far more faint detail survives
+      than with an edited JPEG.
+    </p>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>

@@ -15,6 +15,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Astrophoto Editor',
+    href: 'apps/astro-edit/',
+    category: 'tools',
+    poster: 'assets/img/posters/astro-edit.webp',
+    blurb: 'Open a stacked or phone night sky photo, including Samsung Expert RAW, then remove sky glow and vignetting and bring out nebulae, galaxies and the Milky Way.',
+    status: 'live',
+  },
+  {
     title: 'Block Text',
     href: 'apps/blocktext/',
     category: 'tools',

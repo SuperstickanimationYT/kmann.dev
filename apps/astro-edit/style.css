@@ -1,0 +1,174 @@
+.ae-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ae-panel fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+}
+
+.ae-panel legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.ae-panel [hidden],
+.studio-stage [hidden] {
+  display: none;
+}
+
+.ae-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.ae-field > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-strong);
+}
+
+.ae-field output {
+  font-variant-numeric: tabular-nums;
+  color: var(--link);
+}
+
+.ae-panel input[type="range"] {
+  width: 100%;
+  accent-color: var(--edge-bright);
+}
+
+.ae-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.ae-check input {
+  accent-color: var(--edge-bright);
+}
+
+.ae-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ae-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+
+.ae-button:hover:not(:disabled) {
+  border-color: var(--edge-bright);
+}
+
+.ae-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ae-primary {
+  border-color: var(--edge-bright);
+  background: var(--accent);
+}
+
+.studio-panel :focus-visible,
+.ae-button:focus-within {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.ae-info {
+  margin: 10px 0 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.ae-info:empty {
+  display: none;
+}
+
+.ae-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.ae-about {
+  margin: 18px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.ae-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 340px;
+  padding: 28px 24px;
+  border: 2px dashed var(--edge);
+  border-radius: var(--radius);
+  text-align: center;
+  color: var(--text-strong);
+}
+
+.ae-empty p {
+  margin: 0;
+}
+
+.ae-dragging .ae-empty,
+.ae-dragging canvas {
+  border-color: var(--link);
+  outline: 2px dashed var(--link);
+  outline-offset: -8px;
+}
+
+.ae-cells {
+  cursor: pointer;
+}
+
+.ae-status {
+  position: absolute;
+  inset: auto 0 12px;
+  margin: 0;
+  padding: 0 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.ae-status.ae-error {
+  color: #ffb36b;
+}
