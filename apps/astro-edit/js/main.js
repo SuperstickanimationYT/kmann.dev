@@ -1,7 +1,10 @@
 const CELL_STROKES = ['rgba(90, 230, 140, 0.55)', 'rgba(255, 110, 90, 0.8)', 'rgba(255, 70, 70, 1)', 'rgba(90, 255, 140, 1)'];
 const CELL_FILLS = ['rgba(0, 0, 0, 0)', 'rgba(255, 90, 70, 0.14)', 'rgba(255, 50, 50, 0.3)', 'rgba(90, 255, 140, 0.22)'];
+const CELL_USED = 0;
 const CELL_EXCLUDED = 2;
+const FINE_GRID_CELLS = 2000;
 const SETTING_FORMATS = {
+  blurSize: (value) => `${Math.round(value * 100)}%`,
   evenColour: (value) => `${Math.round(value * 100)}%`,
   degree: (value) => ['flat', 'tilted', 'curved', 'wavy', 'complex'][value - 1],
   background: (value) => `${Math.round(value * 100)}%`,
@@ -23,7 +26,7 @@ const form = document.querySelector('[data-controls]');
 const exportButton = document.querySelector('[data-export]');
 const compareButton = document.querySelector('[data-compare]');
 const resetButton = document.querySelector('[data-reset]');
-const cellsHint = document.querySelector('[data-cells-hint]');
+const cellsHints = document.querySelectorAll('[data-cells-hint]');
 
 const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
 let fileName = 'astrophoto';
@@ -38,6 +41,8 @@ function readSettings() {
   return {
     removeBackground: form.elements.removeBackground.checked,
     flattenVignetting: form.elements.flattenVignetting.checked,
+    skyModel: form.elements.skyModel.value,
+    blurSize: number('blurSize'),
     evenColour: number('evenColour'),
     degree: number('degree'),
     background: number('background'),
@@ -55,6 +60,12 @@ function showOutputs() {
   }
 }
 
+function showModelFields() {
+  for (const field of form.querySelectorAll('[data-sky-model]:not([data-cells-hint])')) {
+    field.hidden = field.dataset.skyModel !== form.elements.skyModel.value;
+  }
+}
+
 function setStatus(text, isError = false) {
   status.textContent = text;
   status.classList.toggle('ae-error', isError);
@@ -68,9 +79,20 @@ function requestRender(compare = false) {
 function drawCells() {
   const visible = form.elements.showCells.checked && !comparing && cells.length > 0;
   cellLayer.hidden = !visible;
-  cellsHint.hidden = !form.elements.showCells.checked;
+  for (const hint of cellsHints) {
+    hint.hidden = !form.elements.showCells.checked || hint.dataset.skyModel !== form.elements.skyModel.value;
+  }
   if (!visible) return;
+  cellLayer.classList.toggle('ae-fine', cells.length > FINE_GRID_CELLS);
   cellContext.clearRect(0, 0, cellLayer.width, cellLayer.height);
+  if (cells.length > FINE_GRID_CELLS) {
+    for (const cell of cells) {
+      if (cell.state === CELL_USED) continue;
+      cellContext.fillStyle = CELL_STROKES[cell.state];
+      cellContext.fillRect(cell.x0, cell.y0, cell.x1 - cell.x0, cell.y1 - cell.y0);
+    }
+    return;
+  }
   cellContext.lineWidth = Math.max(1, cellLayer.width / 800);
   for (const cell of cells) {
     cellContext.strokeStyle = CELL_STROKES[cell.state];
@@ -163,6 +185,7 @@ worker.onmessage = ({ data }) => {
 
 form.addEventListener('input', (event) => {
   showOutputs();
+  showModelFields();
   if (event.target.name === 'showCells') drawCells();
   else requestRender();
 });
@@ -186,6 +209,7 @@ stage.addEventListener('drop', (event) => {
 });
 
 cellLayer.addEventListener('click', (event) => {
+  if (cells.length > FINE_GRID_CELLS) return;
   const { x, y } = imagePoint(event);
   const index = cells.findIndex((cell) => x >= cell.x0 && x < cell.x1 && y >= cell.y0 && y < cell.y1);
   if (index >= 0) worker.postMessage({ type: 'toggleCell', index, settings: readSettings() });
@@ -218,9 +242,14 @@ exportButton.addEventListener('click', () => {
 resetButton.addEventListener('click', () => {
   for (const input of form.querySelectorAll('input[type="range"]')) input.value = input.defaultValue;
   for (const input of form.querySelectorAll('input[type="checkbox"]')) input.checked = input.defaultChecked;
+  for (const select of form.querySelectorAll('select')) {
+    select.value = [...select.options].find((option) => option.defaultSelected)?.value ?? select.options[0].value;
+  }
   worker.postMessage({ type: 'resetCells' });
   showOutputs();
+  showModelFields();
   requestRender();
 });
 
 showOutputs();
+showModelFields();

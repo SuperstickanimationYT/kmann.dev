@@ -11,6 +11,10 @@ const HALO_DAMPING = 0.25;
 const VIGNETTE_FLOOR = 0.5;
 const COLOUR_SMOOTHING_CELLS = 1.2;
 const CHROMA_NOISE_RADIUS = 0.0025;
+const LOCAL_CLIP_ROUNDS = 3;
+const LOCAL_CLIP_FRACTION = 0.4;
+
+export const LOCAL_COLUMNS = 120;
 
 export const CELL_USED = 0;
 export const CELL_REJECTED = 1;
@@ -21,6 +25,8 @@ export const DEFAULT_SETTINGS = {
   removeBackground: true,
   flattenVignetting: true,
   evenColour: 1,
+  skyModel: 'local',
+  blurSize: 0.06,
   degree: 3,
   background: 0.12,
   blackPoint: 2,
@@ -182,8 +188,9 @@ export function fitBackground(cells, degree, overrides) {
     states = next;
     coefficients = leastSquares(cells, states, terms);
   }
-  const isSky = states.map((state) => state === CELL_USED || state === CELL_FORCED);
+  const isSky = states.map(isSkyState);
   return {
+    kind: 'polynomial',
     terms,
     coefficients,
     states,
@@ -192,9 +199,59 @@ export function fitBackground(cells, degree, overrides) {
   };
 }
 
+function gridShape(cells) {
+  return { columns: cells.at(-1).col + 1, rows: cells.at(-1).row + 1 };
+}
+
+function isSkyState(state) {
+  return state === CELL_USED || state === CELL_FORCED;
+}
+
+function gaussianKernel(spread) {
+  const reach = Math.max(1, Math.ceil(3 * spread));
+  return Array.from({ length: 2 * reach + 1 }, (_, i) => Math.exp(-((i - reach) ** 2) / (2 * spread ** 2)));
+}
+
+function convolveLines(src, dst, columns, rows, kernel, horizontal) {
+  const reach = (kernel.length - 1) / 2;
+  const lines = horizontal ? rows : columns;
+  const length = horizontal ? columns : rows;
+  for (let line = 0; line < lines; line++) {
+    for (let i = 0; i < length; i++) {
+      const sums = [0, 0, 0, 0];
+      for (let k = -reach; k <= reach; k++) {
+        const j = i + k;
+        if (j < 0 || j >= length) continue;
+        const cell = horizontal ? line * columns + j : j * columns + line;
+        for (let c = 0; c < 4; c++) sums[c] += kernel[k + reach] * src[cell * 4 + c];
+      }
+      dst.set(sums, (horizontal ? line * columns + i : i * columns + line) * 4);
+    }
+  }
+}
+
+function smoothGrid(values, isSky, columns, rows, spread) {
+  const cells = columns * rows;
+  const weighted = new Float32Array(cells * 4);
+  for (let cell = 0; cell < cells; cell++) {
+    if (!isSky[cell]) continue;
+    for (let c = 0; c < 3; c++) weighted[cell * 4 + c] = values[cell * 3 + c];
+    weighted[cell * 4 + 3] = 1;
+  }
+  const kernel = gaussianKernel(spread);
+  const across = new Float32Array(weighted.length);
+  convolveLines(weighted, across, columns, rows, kernel, true);
+  convolveLines(across, weighted, columns, rows, kernel, false);
+  const smoothed = new Float32Array(cells * 3);
+  for (let cell = 0; cell < cells; cell++) {
+    const weight = weighted[cell * 4 + 3];
+    for (let c = 0; c < 3; c++) smoothed[cell * 3 + c] = weight > 1e-9 ? weighted[cell * 4 + c] / weight : 0;
+  }
+  return { columns, rows, values: smoothed };
+}
+
 function colourShiftGrid(cells, isSky, coefficients, terms) {
-  const columns = cells.at(-1).col + 1;
-  const rows = cells.at(-1).row + 1;
+  const { columns, rows } = gridShape(cells);
   const shifts = new Float32Array(columns * rows * 3);
   cells.forEach((cell, index) => {
     if (!isSky[index]) return;
@@ -203,46 +260,57 @@ function colourShiftGrid(cells, isSky, coefficients, terms) {
     const brightness = luma(...residual);
     for (let c = 0; c < 3; c++) shifts[(cell.row * columns + cell.col) * 3 + c] = residual[c] - brightness;
   });
-
-  const reach = Math.ceil(3 * COLOUR_SMOOTHING_CELLS);
-  const smoothed = new Float32Array(shifts.length);
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < columns; col++) {
-      const sums = [0, 0, 0];
-      let weights = 0;
-      for (let dy = -reach; dy <= reach; dy++) {
-        for (let dx = -reach; dx <= reach; dx++) {
-          const sourceRow = row + dy;
-          const sourceCol = col + dx;
-          if (sourceRow < 0 || sourceRow >= rows || sourceCol < 0 || sourceCol >= columns) continue;
-          const source = sourceRow * columns + sourceCol;
-          if (!isSky[source]) continue;
-          const weight = Math.exp(-(dx * dx + dy * dy) / (2 * COLOUR_SMOOTHING_CELLS ** 2));
-          for (let c = 0; c < 3; c++) sums[c] += weight * shifts[source * 3 + c];
-          weights += weight;
-        }
-      }
-      for (let c = 0; c < 3; c++) smoothed[(row * columns + col) * 3 + c] = weights > 0 ? sums[c] / weights : 0;
-    }
-  }
-  return { columns, rows, shifts: smoothed };
+  return smoothGrid(shifts, isSky, columns, rows, COLOUR_SMOOTHING_CELLS);
 }
 
-function colourShiftAt(grid, u, v) {
+function catmullRom(p0, p1, p2, p3, t) {
+  return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+}
+
+function sampleGrid(grid, u, v) {
   const gx = Math.min(grid.columns - 1, Math.max(0, ((u + 1) / 2) * grid.columns - 0.5));
   const gy = Math.min(grid.rows - 1, Math.max(0, ((v + 1) / 2) * grid.rows - 0.5));
-  const x0 = Math.floor(gx);
-  const y0 = Math.floor(gy);
-  const x1 = Math.min(grid.columns - 1, x0 + 1);
-  const y1 = Math.min(grid.rows - 1, y0 + 1);
-  const tx = gx - x0;
-  const ty = gy - y0;
-  const at = (x, y, c) => grid.shifts[(y * grid.columns + x) * 3 + c];
+  const x = Math.floor(gx);
+  const y = Math.floor(gy);
+  const clampX = (i) => Math.min(grid.columns - 1, Math.max(0, i));
+  const clampY = (i) => Math.min(grid.rows - 1, Math.max(0, i));
+  const at = (col, row, c) => grid.values[(clampY(row) * grid.columns + clampX(col)) * 3 + c];
   return [0, 1, 2].map((c) => {
-    const top = at(x0, y0, c) + (at(x1, y0, c) - at(x0, y0, c)) * tx;
-    const bottom = at(x0, y1, c) + (at(x1, y1, c) - at(x0, y1, c)) * tx;
-    return top + (bottom - top) * ty;
+    const across = [-1, 0, 1, 2].map((dy) => catmullRom(at(x - 1, y + dy, c), at(x, y + dy, c), at(x + 1, y + dy, c), at(x + 2, y + dy, c), gx - x));
+    return catmullRom(...across, gy - y);
   });
+}
+
+export function fitLocalBackground(cells, overrides, blurSize) {
+  const { columns, rows } = gridShape(cells);
+  const spread = blurSize * columns;
+  const lumas = cells.map((cell) => luma(...cell.values));
+  const values = new Float32Array(cells.length * 3);
+  cells.forEach((cell, index) => values.set(cell.values, index * 3));
+  let states = cells.map((_, index) => overrides.get(index) ?? CELL_USED);
+  let grid = smoothGrid(values, states.map(isSkyState), columns, rows, spread);
+  for (let round = 0; round < LOCAL_CLIP_ROUNDS; round++) {
+    states = cells.map((_, index) => {
+      if (overrides.has(index)) return overrides.get(index);
+      const expected = grid.values.subarray(index * 3, index * 3 + 3);
+      const outlier = cells[index].values.some((value, c) => Math.abs(value / Math.max(1e-6, expected[c]) - 1) > LOCAL_CLIP_FRACTION);
+      return outlier ? CELL_REJECTED : CELL_USED;
+    });
+    grid = smoothGrid(values, states.map(isSkyState), columns, rows, spread);
+  }
+  return {
+    kind: 'local',
+    states,
+    level: median(lumas.filter((_, index) => isSkyState(states[index]))),
+    grid,
+  };
+}
+
+function glowAt(model, u, v, evenColour) {
+  if (model.kind === 'local') return sampleGrid(model.grid, u, v);
+  const glow = modelAt(model.coefficients, model.terms, u, v);
+  const shift = sampleGrid(model.colourShifts, u, v);
+  return glow.map((value, c) => value + evenColour * shift[c]);
 }
 
 function removeModel(image, model, settings) {
@@ -255,9 +323,7 @@ function removeModel(image, model, settings) {
     const v = ((2 * y + 1) / height) - 1;
     for (let k = 0; k < knots; k++) {
       const u = ((2 * Math.min(k * MODEL_STEP, width - 1) + 1) / width) - 1;
-      const glow = modelAt(model.coefficients, model.terms, u, v);
-      const shift = colourShiftAt(model.colourShifts, u, v);
-      rowModel.set(glow.map((value, c) => value + settings.evenColour * shift[c]), k * 3);
+      rowModel.set(glowAt(model, u, v, settings.evenColour), k * 3);
     }
     for (let x = 0; x < width; x++) {
       const k = Math.floor(x / MODEL_STEP);

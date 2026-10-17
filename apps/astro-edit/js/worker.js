@@ -1,4 +1,4 @@
-import { CELL_EXCLUDED, CELL_FORCED, CELL_REJECTED, CELL_USED, PLAIN_STRETCH, fitBackground, measureCells, render, workingCopy } from './pipeline.js';
+import { CELL_EXCLUDED, CELL_FORCED, CELL_REJECTED, CELL_USED, LOCAL_COLUMNS, PLAIN_STRETCH, fitBackground, fitLocalBackground, measureCells, render, workingCopy } from './pipeline.js';
 import { decodeTiff, isTiff } from './tiff.js';
 
 const PREVIEW_EDGE = 1600;
@@ -8,9 +8,10 @@ const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 let source = null;
 let preview = null;
 let cells = [];
+let cellColumns = 0;
 let overrides = new Map();
 let model = null;
-let modelDegree = 0;
+let modelKey = '';
 let latestRequest = null;
 let renderScheduled = false;
 
@@ -44,10 +45,22 @@ async function decodeRaster(file) {
   };
 }
 
-function currentModel(degree) {
-  if (!model || modelDegree !== degree) {
-    model = fitBackground(cells, degree, overrides);
-    modelDegree = degree;
+function columnsFor(settings) {
+  return settings.skyModel === 'local' ? LOCAL_COLUMNS : CELL_COLUMNS;
+}
+
+function currentModel(settings) {
+  const columns = columnsFor(settings);
+  if (columns !== cellColumns) {
+    cells = measureCells(preview, columns);
+    cellColumns = columns;
+    overrides = new Map();
+    model = null;
+  }
+  const key = settings.skyModel === 'local' ? `local|${settings.blurSize}` : `smooth|${settings.degree}`;
+  if (!model || modelKey !== key) {
+    model = settings.skyModel === 'local' ? fitLocalBackground(cells, overrides, settings.blurSize) : fitBackground(cells, settings.degree, overrides);
+    modelKey = key;
   }
   return model;
 }
@@ -57,7 +70,7 @@ function renderLatest() {
   const request = latestRequest;
   latestRequest = null;
   if (!request || !preview) return;
-  const background = currentModel(request.settings.degree);
+  const background = currentModel(request.settings);
   const settings = request.compare ? { ...request.settings, ...PLAIN_STRETCH } : request.settings;
   const frame = render(preview, background, settings);
   postMessage({
@@ -70,8 +83,8 @@ function renderLatest() {
   }, [frame.rgba.buffer]);
 }
 
-function toggleCell(index, degree) {
-  const state = currentModel(degree).states[index];
+function toggleCell(index, settings) {
+  const state = currentModel(settings).states[index];
   if (state === CELL_USED) overrides.set(index, CELL_EXCLUDED);
   else if (state === CELL_REJECTED) overrides.set(index, CELL_FORCED);
   else overrides.delete(index);
@@ -90,7 +103,7 @@ async function open(file) {
   source = isTiff(bytes) ? await decodeTiff(bytes, status) : await decodeRaster(file);
   status('Measuring the sky…');
   preview = workingCopy(source, PREVIEW_EDGE);
-  cells = measureCells(preview, CELL_COLUMNS);
+  cellColumns = 0;
   overrides = new Map();
   model = null;
   postMessage({ type: 'opened', description: source.description });
@@ -98,7 +111,7 @@ async function open(file) {
 
 async function exportFullSize(settings) {
   status('Rendering at full size…');
-  const frame = render(workingCopy(source, Infinity), currentModel(settings.degree), settings);
+  const frame = render(workingCopy(source, Infinity), currentModel(settings), settings);
   const canvas = new OffscreenCanvas(frame.width, frame.height);
   canvas.getContext('2d').putImageData(new ImageData(frame.rgba, frame.width, frame.height), 0, 0);
   status('Encoding PNG…');
@@ -112,7 +125,7 @@ onmessage = async ({ data }) => {
     } else if (data.type === 'render') {
       queueRender(data);
     } else if (data.type === 'toggleCell') {
-      toggleCell(data.index, data.settings.degree);
+      toggleCell(data.index, data.settings);
       model = null;
       queueRender({ settings: data.settings, compare: false });
     } else if (data.type === 'resetCells') {
