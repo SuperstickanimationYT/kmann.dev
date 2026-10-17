@@ -158,6 +158,20 @@
   cursor: pointer;
 }
 
+.ae-cells.ae-fine {
+  cursor: default;
+}
+
+.ae-panel select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+}
+
 .ae-status {
   position: absolute;
   inset: auto 0 12px;

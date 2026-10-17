@@ -59,10 +59,21 @@
           <span>Also even out darker corners</span>
         </label>
         <label class="ae-field">
+          <span>Sky model</span>
+          <select name="skyModel">
+            <option value="local" selected>Blur and subtract (wide fields)</option>
+            <option value="smooth">Smooth surface (keeps big faint objects)</option>
+          </select>
+        </label>
+        <label class="ae-field" data-sky-model="local">
+          <span>Blur size <output></output></span>
+          <input type="range" name="blurSize" min="0.02" max="0.2" step="0.01" value="0.06">
+        </label>
+        <label class="ae-field" data-sky-model="smooth">
           <span>Even out sky colour <output></output></span>
           <input type="range" name="evenColour" min="0" max="1" step="0.05" value="1">
         </label>
-        <label class="ae-field">
+        <label class="ae-field" data-sky-model="smooth">
           <span>Gradient shape <output></output></span>
           <input type="range" name="degree" min="1" max="5" step="1" value="3">
         </label>
@@ -70,7 +81,8 @@
           <input type="checkbox" name="showCells">
           <span>Show sky samples</span>
         </label>
-        <p class="ae-hint" data-cells-hint hidden>Green boxes measure the sky; red ones were skipped as objects or foreground. Click a box to flip it, click again to go back to automatic.</p>
+        <p class="ae-hint" data-cells-hint data-sky-model="local" hidden>Red areas are left out of the blur as foreground or bright objects. A smaller blur follows glow more tightly but also dims larger objects like the Milky Way.</p>
+        <p class="ae-hint" data-cells-hint data-sky-model="smooth" hidden>Green boxes measure the sky; red ones were skipped as objects or foreground. Click a box to flip it, click again to go back to automatic.</p>
       </fieldset>
 
       <fieldset>
@@ -109,8 +121,9 @@
 
     <p class="ae-about">
       This is a finishing tool, not a stacker: open an image that is already stacked or a single long
-      exposure. It fits a smooth surface to the empty sky and divides and subtracts it away, which removes
-      light pollution, moonlight gradients and lens vignetting. Then it brightens the faint end with an
+      exposure. It estimates the sky glow, either as a heavy blur of the sky that skips stars, foreground
+      and bright objects, or as one smooth surface that spares large faint objects, then divides and
+      subtracts it away, removing light pollution, moonlight gradients and lens vignetting. Then it brightens the faint end with an
       arcsinh stretch that keeps star colours, lifts structure in areas brighter than the sky, and smooths
       colour noise. Raw and TIFF files keep their full 16-bit linear data, so far more faint detail survives
       than with an edited JPEG.
