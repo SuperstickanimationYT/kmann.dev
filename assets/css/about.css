@@ -13,3 +13,7 @@
 .prose p {
   margin: 0 0 14px;
 }
+
+.prose a {
+  color: var(--link);
+}
