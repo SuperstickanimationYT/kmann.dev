@@ -46,7 +46,9 @@ import {
   canRescue,
   createDrone,
   dockFlight,
+  droneFromSave,
   dronePose,
+  droneToSave,
   flyRescue,
   finishRecording,
   flyDrone,
@@ -95,7 +97,7 @@ import { cruise, dropOut, headingIntoWell, nextFtlTier } from './ftl.js';
 import { addPart, breakArmor, buildPlan, engineNozzles, canFit, canPlace, canRemove, canScoop, chargeShip, createShip, describeShip, flightStats, hasFtl, hydrogenCapacity, hydrogenShare, leaveHelm, moveWithPilot, removePart, runReactor, scoopHydrogen, shipFromSave, takeHelm } from './fleet.js';
 import { deleteSave, findWorld, markPlayed, readSave, readSettings, writeSave, writeSettings } from './save.js';
 import { showWorldMenu } from './menu.js';
-import { FULLY_OBSERVED, VISIT_RANGE, chartVisitsNear, createStarChart, crystalsSeen, foundPlanets, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
+import { FULLY_OBSERVED, VISIT_RANGE, chartFromSave, chartToSave, chartVisitsNear, createStarChart, foundPlanets, isCharted, learned, observe, scanFrom, stardustTip, starKey } from './starchart.js';
 import { forgetNebulaTextures } from './nebula-sky.js';
 import { loadSprites } from './sprites.js';
 import { bakeNextTexture, forgetPlanetTextures } from './textures.js';
@@ -109,13 +111,10 @@ import {
   followFarShore,
   galaxyAt,
   homeworldNear,
-  homeworldSpecies,
-  livingWorlds,
   openGateway,
   seedersWithin,
   setBuiltMouths,
   setGalaxySeed,
-  stardustWorlds,
   starsWithin,
   streamAt,
   streamSectors,
@@ -2966,7 +2965,7 @@ function snapshot() {
     antennasInHold: game.antennasInHold,
     pads: game.pads,
     padsInHold: game.padsInHold,
-    drones: game.drones.map((drone) => ({ ...drone, flight: drone.flight && { ...drone.flight, soi: null } })),
+    drones: game.drones.map((drone) => droneToSave(drone, PILOT_HANDS)),
     haulers: game.haulers,
     gold: game.gold,
     crystals: game.crystals,
@@ -2978,7 +2977,7 @@ function snapshot() {
     sailsInHold: game.sailsInHold,
     upgrades: game.upgrades,
     claimedBounties: [...game.claimedBounties],
-    starChart: [...game.starChart],
+    starChart: chartToSave(game.starChart),
     seeders: [...game.seeders],
     bookmarks: [...game.bookmarks],
     ownsTelescope: game.ownsTelescope,
@@ -3010,31 +3009,16 @@ function restore(saved) {
   Object.assign(game, { satellites: listOf('satellites', 'satellite').map(satelliteFromSave), rig: saved.rig ? rigFromSave(saved.rig) : null, gold: saved.gold ?? 0 });
   game.observatories = (saved.observatories ?? []).map(observatoryFromSave);
   Object.assign(game, { fleet: (saved.fleet ?? []).map(shipFromSave), boarded: saved.boarded ?? null });
-  Object.assign(game, { banks: listOf('banks', 'bank').map(bankFromSave), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone').map((drone) => ({ waitSeconds: 0, resting: 0, ...drone })), haulers: saved.haulers ?? [] });
+  Object.assign(game, { banks: listOf('banks', 'bank').map(bankFromSave), antennas: saved.antennas ?? [], antennasInHold: saved.antennasInHold ?? 0, drones: listOf('drones', 'drone').map(droneFromSave), haulers: saved.haulers ?? [] });
   game.upgrades = { ...createUpgrades(), ...saved.upgrades };
   game.timewarp = Math.min(saved.timewarp, timewarpBought());
   game.claimedBounties = new Set(saved.claimedBounties ?? []);
-  game.starChart = new Map(saved.starChart ?? []);
+  game.starChart = chartFromSave(saved.starChart ?? []);
   game.seeders = new Map(saved.seeders ?? []);
   game.bookmarks = new Set(saved.bookmarks ?? []);
   game.crystals = saved.crystals ?? 0;
   game.stardust = saved.stardust ?? 0;
   Object.assign(game, { science: saved.science ?? 0, studies: new Set(saved.studies ?? []), sails: (saved.sails ?? []).map(sailFromOldSave), sailsInHold: saved.sailsInHold ?? 0 });
-  for (const [key, entry] of game.starChart) {
-    const system = systemAt(entry.x, entry.y);
-    if (!system || starKey(system.star) !== key) {
-      game.starChart.delete(key);
-      continue;
-    }
-    const planets = system?.planets ?? [];
-    entry.stardust ??= entry.visited ? stardustWorlds(planets) : 0;
-    if (learned(entry, 'biosignature')) entry.biosignature = Boolean(system.star.biosignature);
-    entry.aliens ??= entry.visited ? homeworldSpecies(planets) : null;
-    entry.life ??= entry.visited ? livingWorlds(planets) : 0;
-    entry.wormhole ??= entry.visited && system.wormholes.length > 0;
-    entry.watched ??= FULLY_OBSERVED;
-    entry.crystals = crystalsSeen(entry, planets);
-  }
   game.ownsTelescope = saved.ownsTelescope ?? false;
   game.relations = { ...startingRelations(), ...saved.relations };
   game.gct = gctLogFromSave(saved.gct);

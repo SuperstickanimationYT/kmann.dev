@@ -1,5 +1,5 @@
 {
-  "bytes": 613126,
+  "bytes": 618135,
   "files": [
     "./",
     "img/battery.svg",
@@ -52,6 +52,7 @@
     "js/progression.js",
     "js/real-systems.js",
     "js/render.js",
+    "js/route-packing.js",
     "js/save.js",
     "js/science.js",
     "js/ship-builder.js",

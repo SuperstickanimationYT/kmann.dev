@@ -31,6 +31,29 @@ export const starKey = (star) => `${star.name}@${Math.round(star.x)},${Math.roun
 
 export const createStarChart = () => new Map();
 
+const playerNotes = ({ visited, watched, stardust }) => (visited ? { visited } : { watched, ...(stardust > 0 && { stardustTip: true }) });
+
+export const chartToSave = (chart) => [...chart].map(([key, entry]) => [key, playerNotes(entry)]);
+
+function positionInKey(key) {
+  const [x, y] = key.slice(key.lastIndexOf('@') + 1).split(',').map(Number);
+  return { x, y };
+}
+
+export function chartFromSave(saved) {
+  const chart = createStarChart();
+  for (const [key, notes] of saved) {
+    const { x, y } = 'x' in notes ? notes : positionInKey(key);
+    const system = systemAt(x, y);
+    if (!system || starKey(system.star) !== key) continue;
+    const visited = notes.visited === true;
+    const entry = chartEntry(system, visited, notes.watched ?? FULLY_OBSERVED);
+    if (notes.stardustTip || (!visited && notes.stardust > 0)) entry.stardust = stardustWorlds(system.planets);
+    chart.set(key, entry);
+  }
+  return chart;
+}
+
 function chartEntry({ star, planets, wormholes }, visited, watched) {
   const entry = { visited, watched: visited ? FULLY_OBSERVED : watched };
   return {
