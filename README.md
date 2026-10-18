@@ -10,6 +10,7 @@ the Astrophoto Editor vendors [jxl-oxide-wasm](https://www.npmjs.com/package/jxl
 ```
 index.html                 project index
 about.html                 about page
+contact.html               contact page
 vercel.json                trailing slashes, and the proxy for apps hosted elsewhere
 assets/css/site.css        shared shell (colour tokens, header, footer)
 assets/css/home.css        project card grid
