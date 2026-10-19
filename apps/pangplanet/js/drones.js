@@ -1,4 +1,5 @@
 import { advance } from './physics.js';
+import { packControls, unpackControls } from './route-packing.js';
 import { ANTENNA, DRONE, FUEL_PACK, RESCUE } from './world.js';
 
 export const inSignal = (antennas, x, y) => antennas.some((antenna) => Math.hypot(x - antenna.x, y - antenna.y) <= ANTENNA.range);
@@ -152,3 +153,14 @@ export function flyRescue(drone, target, speed, dt) {
 }
 
 export const routeProgress = (drone) => (drone.flight && drone.route ? drone.flight.step / drone.route.steps : 0);
+
+const packedRoutes = new WeakMap();
+
+function packedRoute(route, hands) {
+  if (!packedRoutes.has(route)) packedRoutes.set(route, { ...route, controls: packControls(route.controls, hands) });
+  return packedRoutes.get(route);
+}
+
+export const droneToSave = (drone, hands) => ({ ...drone, route: drone.route && packedRoute(drone.route, hands), flight: drone.flight && { ...drone.flight, soi: null } });
+
+export const droneFromSave = (drone) => ({ waitSeconds: 0, resting: 0, ...drone, route: drone.route && { ...drone.route, controls: unpackControls(drone.route.controls) } });
