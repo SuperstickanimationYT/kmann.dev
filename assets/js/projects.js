@@ -182,6 +182,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'System Builder',
+    href: 'apps/system-builder/',
+    category: 'tools',
+    poster: 'assets/img/posters/system-builder.webp',
+    blurb: 'Build a planetary system with real physics, check that it stays stable, and export it as a Spaceflight Simulator planet pack.',
+    status: 'wip',
+  },
+  {
     title: 'Telescope View Simulator',
     href: 'apps/telescope-view/',
     category: 'simulations',

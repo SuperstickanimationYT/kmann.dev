@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Builder &mdash; kmann314</title>
+<meta name="description" content="Build a planetary system with real physics, check that it stays stable, and export it as a Spaceflight Simulator planet pack.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">System Builder</h1>
+  <span class="wip-tag" title="This app is unfinished. Expect bugs and missing parts.">Work in progress</span>
+</header>
+<main class="studio-stage">
+  <canvas data-stage aria-label="Top-down map of the system. Drag to pan, scroll or pinch to zoom, click a body to select it."></canvas>
+  <p class="sb-clock" data-clock></p>
+</main>
+<aside class="studio-panel" data-studio-panel aria-label="Editor">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Editor</button>
+  <div class="studio-panel-body">
+    <div class="sb-panel">
+      <fieldset>
+        <legend>System</legend>
+        <div class="sb-row">
+          <select data-preset aria-label="Start from"></select>
+          <button type="button" data-load-preset>Start over</button>
+        </div>
+        <label class="sb-field"><span>Name</span><input type="text" data-system-field="name"></label>
+        <label class="sb-field"><span>Author</span><input type="text" data-system-field="author"></label>
+        <label class="sb-field"><span>Description</span><textarea rows="2" data-system-field="description"></textarea></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Bodies</legend>
+        <ul class="sb-tree" data-tree></ul>
+        <div class="sb-actions">
+          <button type="button" data-add="planet">Add planet</button>
+          <button type="button" data-add="moon">Add moon</button>
+          <button type="button" data-add="star">Add star</button>
+        </div>
+        <p class="sb-hint" data-add-hint></p>
+      </fieldset>
+
+      <fieldset data-editor hidden>
+        <legend>Selected</legend>
+        <label class="sb-field"><span>Name</span><input type="text" data-body-field="name"></label>
+        <div class="sb-grid">
+          <label class="sb-field"><span>Kind</span><select data-body-field="kind"></select></label>
+          <label class="sb-field"><span>Colour</span><input type="color" data-body-field="color"></label>
+        </div>
+        <label class="sb-field" data-orbit-only><span>Orbits</span><select data-body-field="parent"></select></label>
+        <div class="sb-grid">
+          <label class="sb-field"><span>Mass <small data-unit="mass"></small></span><input type="number" step="any" min="0" data-body-field="mass"></label>
+          <label class="sb-field"><span>Radius <small data-unit="radius"></small></span><input type="number" step="any" min="0" data-body-field="radius"></label>
+        </div>
+        <div class="sb-grid" data-orbit-only>
+          <label class="sb-field"><span>Distance <small data-unit="distance"></small></span><input type="number" step="any" min="0" data-body-field="a"></label>
+          <label class="sb-field"><span>Eccentricity</span><input type="number" step="0.01" min="0" max="0.99" data-body-field="e"></label>
+          <label class="sb-field"><span>Inclination&deg;</span><input type="number" step="any" min="0" max="180" data-body-field="i"></label>
+          <label class="sb-field"><span>Ascending node&deg;</span><input type="number" step="any" data-body-field="node"></label>
+          <label class="sb-field"><span>Periapsis argument&deg;</span><input type="number" step="any" data-body-field="peri"></label>
+          <label class="sb-field"><span>Mean anomaly&deg;</span><input type="number" step="any" data-body-field="meanAnomaly"></label>
+        </div>
+        <dl class="sb-facts" data-facts></dl>
+        <div class="sb-actions">
+          <button type="button" data-follow>Follow</button>
+          <button type="button" class="sb-danger" data-remove>Delete</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Stability</legend>
+        <ul class="sb-checks" data-checks></ul>
+      </fieldset>
+
+      <fieldset>
+        <legend>Time</legend>
+        <div class="sb-actions">
+          <button type="button" class="sb-primary" data-play>Play</button>
+          <button type="button" data-rewind>Back to start</button>
+          <button type="button" data-overview>Whole system</button>
+        </div>
+        <label class="sb-field">
+          <span>Speed <output data-speed-label></output></span>
+          <input type="range" min="-2" max="4" step="0.05" value="1" data-speed>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Spaceflight Simulator</legend>
+        <div class="sb-grid">
+          <label class="sb-field"><span>Home world</span><select data-home></select></label>
+          <label class="sb-field"><span>Shrink lengths by</span><input type="number" min="1" step="any" value="20" data-scale></label>
+        </div>
+        <ul class="sb-problems" data-problems></ul>
+        <div class="sb-actions">
+          <button type="button" class="sb-primary" data-export-sfs>Download planet pack</button>
+        </div>
+        <p class="sb-hint">
+          Unzip it into <code>Spaceflight Simulator_Data/Custom Solar Systems/</code>. Stock SFS shrinks lengths by 20.
+          SFS is flat, so tilts are dropped and orbits keep only their direction from above.
+        </p>
+      </fieldset>
+
+      <fieldset>
+        <legend>File</legend>
+        <div class="sb-actions">
+          <button type="button" data-save>Save system file</button>
+          <label class="sb-file-button">Open system file<input type="file" accept=".json,application/json" data-open hidden></label>
+        </div>
+        <p class="sb-hint" data-file-status></p>
+      </fieldset>
+
+      <details class="sb-help">
+        <summary>How it works</summary>
+        <ul>
+          <li>Everything is in real units and to scale. The map shows the system from above.</li>
+          <li>Stability checks run on every edit. Red means the system breaks; amber means it is at risk.</li>
+          <li>The dashed circle around the selected body is its Hill sphere, where its own gravity beats its parent's.</li>
+          <li>Drag to pan, scroll or pinch to zoom, click a body to select it, double-click to follow it.</li>
+        </ul>
+      </details>
+    </div>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
