@@ -10,6 +10,7 @@ const SMALLEST_DOT = { star: 5, planet: 3.5, moon: 2.5 };
 const SMALLEST_VISIBLE_ORBIT_PX = 6;
 const PICK_RADIUS_PX = 14;
 const SCALE_BAR_PX = 120;
+const SCALE_BAR_LIFT_PX = 84;
 
 const pathCache = new WeakMap();
 
@@ -56,7 +57,7 @@ function niceLength(metres) {
 function drawScaleBar(context, camera) {
   const length = niceLength(SCALE_BAR_PX / camera.scale);
   const pixels = length * camera.scale;
-  const y = camera.height - 18;
+  const y = camera.height - SCALE_BAR_LIFT_PX;
   context.strokeStyle = LABEL;
   context.lineWidth = 1;
   context.beginPath();
