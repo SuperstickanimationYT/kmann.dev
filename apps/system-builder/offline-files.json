@@ -1,0 +1,24 @@
+{
+  "bytes": 84520,
+  "files": [
+    "./",
+    "index.html",
+    "js/camera.js",
+    "js/checks.js",
+    "js/main.js",
+    "js/orbits.js",
+    "js/presets.js",
+    "js/render.js",
+    "js/sfs.js",
+    "js/system.js",
+    "js/units.js",
+    "js/zip.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}
