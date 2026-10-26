@@ -17,15 +17,27 @@ const CLICK_SLOP_PX = 5;
 const WHEEL_ZOOM = 1.0015;
 const FOLLOW_ZOOM_RADII = 40;
 const MOST_FRAME_SECONDS = 0.1;
+const CHILD_KIND = { star: 'planet', planet: 'moon', moon: null };
 
 const canvas = document.querySelector('[data-stage]');
 const context = canvas.getContext('2d');
 const clock = document.querySelector('[data-clock]');
+const sheetPanel = document.querySelector('[data-sheet-panel]');
+const sheetTitle = document.querySelector('[data-sheet-title]');
+const sheetSwatch = document.querySelector('[data-sheet-swatch]');
+const sheets = document.querySelectorAll('[data-sheet]');
+const sheetButtons = document.querySelectorAll('[data-open-sheet]');
+const problemCount = document.querySelector('[data-problem-count]');
+const addToggle = document.querySelector('[data-add-toggle]');
+const addMenu = document.querySelector('[data-add-menu]');
 const presetPicker = document.querySelector('[data-preset]');
 const tree = document.querySelector('[data-tree]');
-const addHint = document.querySelector('[data-add-hint]');
-const editor = document.querySelector('[data-editor]');
+const bodySheet = document.querySelector('[data-sheet="body"]');
 const facts = document.querySelector('[data-facts]');
+const bodyProblems = document.querySelector('[data-body-problems]');
+const childrenTitle = document.querySelector('[data-children-title]');
+const childrenList = document.querySelector('[data-children]');
+const addChildButton = document.querySelector('[data-add-child]');
 const checksList = document.querySelector('[data-checks]');
 const playButton = document.querySelector('[data-play]');
 const speedInput = document.querySelector('[data-speed]');
@@ -35,13 +47,15 @@ const scaleInput = document.querySelector('[data-scale]');
 const problemsList = document.querySelector('[data-problems]');
 const exportButton = document.querySelector('[data-export-sfs]');
 const fileStatus = document.querySelector('[data-file-status]');
-const bodyField = (name) => editor.querySelector(`[data-body-field="${name}"]`);
+const bodyField = (name) => bodySheet.querySelector(`[data-body-field="${name}"]`);
 
 const camera = createCamera();
 let system = loadSaved() ?? PRESETS[DEFAULT_PRESET].build();
 let selectedId = null;
+let openSheet = null;
 let seconds = 0;
 let playing = false;
+let findings = [];
 let statusByBody = new Map();
 
 function loadSaved() {
@@ -80,39 +94,43 @@ function option(value, label, isSelected = false) {
   return element('option', { value, textContent: label, selected: isSelected });
 }
 
-function renderTree() {
-  const worst = statusByBody;
-  tree.replaceChildren(...treeOrder(system).map(({ body, depth }) => {
-    const badge = element('span', { className: 'sb-badge' });
-    const level = worst.get(body.id);
-    if (level === 'fail' || level === 'warn') {
-      badge.dataset.level = level;
-      badge.textContent = level === 'fail' ? '✕' : '!';
-    }
-    const button = element('button', { type: 'button' }, [
-      element('span', { className: 'sb-swatch', style: `background:${body.color}` }),
-      element('span', { textContent: body.name || '(no name)' }),
-      badge,
-    ]);
-    button.style.setProperty('--depth', depth);
-    button.dataset.id = body.id;
-    button.setAttribute('aria-current', String(body.id === selectedId));
-    return element('li', {}, [button]);
-  }));
+function bodyButton(body, depth = 0) {
+  const badge = element('span', { className: 'sb-badge' });
+  const level = statusByBody.get(body.id);
+  if (level === 'fail' || level === 'warn') {
+    badge.dataset.level = level;
+    badge.textContent = level === 'fail' ? '✕' : '!';
+  }
+  const button = element('button', { type: 'button' }, [
+    element('span', { className: 'sb-swatch', style: `background:${body.color}` }),
+    element('span', { textContent: body.name || '(no name)' }),
+    badge,
+  ]);
+  button.style.setProperty('--depth', depth);
+  button.dataset.id = body.id;
+  button.setAttribute('aria-current', String(body.id === selectedId));
+  return element('li', {}, [button]);
 }
 
-function renderChecks(findings) {
-  if (!findings.length) {
-    checksList.replaceChildren(element('li', { textContent: 'No problems found.' }));
-    checksList.firstChild.dataset.level = 'ok';
-    return;
+function findingItems(list, emptyText) {
+  if (!list.length) {
+    const item = element('li', { textContent: emptyText });
+    item.dataset.level = 'ok';
+    return [item];
   }
-  checksList.replaceChildren(...findings.map((finding) => {
+  return list.map((finding) => {
     const item = element('li', { textContent: finding.text });
     item.dataset.level = finding.level;
     item.dataset.id = finding.bodies[0];
     return item;
-  }));
+  });
+}
+
+function renderProblemCount() {
+  const serious = findings.filter((finding) => finding.level !== 'info');
+  problemCount.hidden = !serious.length;
+  problemCount.textContent = serious.length;
+  problemCount.dataset.level = serious.some((finding) => finding.level === 'fail') ? 'fail' : 'warn';
 }
 
 function renderExport() {
@@ -125,23 +143,29 @@ function renderExport() {
   exportButton.disabled = problems.length > 0;
 }
 
-function addTarget(kind) {
-  const body = selected();
-  const root = rootOf(system);
-  if (kind === 'star') return root;
-  if (kind === 'moon') {
-    if (!body || body.kind === 'star') return null;
-    return body.kind === 'moon' ? bodyById(system, body.parent) : body;
-  }
-  let host = body ?? root;
+function nearestStar(body) {
+  let host = body ?? rootOf(system);
   while (host.kind !== 'star' && host.parent) host = bodyById(system, host.parent);
   return host;
 }
 
-function renderAddButtons() {
-  const moonHost = addTarget('moon');
-  document.querySelector('[data-add="moon"]').disabled = !moonHost;
-  addHint.textContent = moonHost ? '' : 'Select a planet to give it a moon.';
+function addTarget(kind) {
+  const body = selected();
+  if (kind === 'star') return rootOf(system);
+  if (kind === 'planet') return nearestStar(body);
+  if (!body || body.kind === 'star') return null;
+  return body.kind === 'moon' ? bodyById(system, body.parent) : body;
+}
+
+function renderAddMenu() {
+  for (const button of addMenu.querySelectorAll('[data-add]')) {
+    const kind = button.dataset.add;
+    const target = addTarget(kind);
+    button.disabled = !target;
+    if (kind === 'star') button.textContent = `Companion star for ${target.name}`;
+    else if (target) button.textContent = `${KINDS[kind]} around ${target.name}`;
+    else button.textContent = 'Moon: open a planet first';
+  }
 }
 
 function renderFacts(body) {
@@ -158,18 +182,32 @@ function renderFacts(body) {
   facts.replaceChildren(...rows.flatMap(([term, value]) => [element('dt', { textContent: term }), element('dd', { textContent: value })]));
 }
 
+function renderBodyLive(body) {
+  sheetTitle.textContent = body.name || '(no name)';
+  sheetSwatch.style.background = body.color;
+  renderFacts(body);
+  const own = findings.filter((finding) => finding.bodies.includes(body.id));
+  bodyProblems.replaceChildren(...findingItems(own, 'No problems found.'));
+  const childKind = CHILD_KIND[body.kind];
+  childrenTitle.closest('.sb-group').hidden = !childKind;
+  if (!childKind) return;
+  const children = childrenOf(system, body.id);
+  childrenTitle.textContent = `${KINDS[childKind]}s`;
+  childrenList.replaceChildren(...(children.length
+    ? children.map((child) => bodyButton(child))
+    : [element('li', { className: 'sb-empty', textContent: `No ${childKind}s yet.` })]));
+  addChildButton.textContent = `+ Add ${childKind}`;
+}
+
 const shown = (value) => String(Number(value.toPrecision(6)));
 
-function renderEditor() {
-  const body = selected();
-  editor.hidden = !body;
-  if (!body) return;
+function fillBodyFields(body) {
   const units = UNITS[body.kind];
   bodyField('name').value = body.name;
   bodyField('color').value = body.color;
   bodyField('kind').replaceChildren(...Object.entries(KINDS).map(([value, label]) => option(value, label, value === body.kind)));
-  for (const node of editor.querySelectorAll('[data-orbit-only]')) node.hidden = !body.parent;
-  for (const [field, unit] of Object.entries(units)) editor.querySelector(`[data-unit="${field}"]`).textContent = unit.label;
+  for (const node of bodySheet.querySelectorAll('[data-orbit-only]')) node.hidden = !body.parent;
+  for (const [field, unit] of Object.entries(units)) bodySheet.querySelector(`[data-unit="${field}"]`).textContent = unit.label;
   bodyField('mass').value = shown(body.massKg / units.mass.si);
   bodyField('radius').value = shown(body.radiusM / units.radius.si);
   if (body.parent) {
@@ -180,27 +218,48 @@ function renderEditor() {
     bodyField('a').value = shown(body.orbit.a / units.distance.si);
     for (const field of ['e', 'i', 'node', 'peri', 'meanAnomaly']) bodyField(field).value = shown(body.orbit[field]);
   }
-  editor.querySelector('[data-remove]').disabled = !body.parent;
-  renderFacts(body);
+  bodySheet.querySelector('[data-remove]').disabled = !body.parent;
 }
 
-function refresh({ editor: withEditor = false } = {}) {
-  const findings = checkSystem(system);
+function showSheet(name) {
+  openSheet = name;
+  for (const sheet of sheets) sheet.hidden = sheet.dataset.sheet !== name;
+  for (const button of sheetButtons) button.setAttribute('aria-pressed', String(button.dataset.openSheet === name));
+  sheetPanel.hidden = !name;
+  document.body.classList.toggle('sb-sheet-open', Boolean(name));
+  sheetSwatch.hidden = name !== 'body';
+  if (name && name !== 'body') sheetTitle.textContent = document.querySelector(`[data-sheet="${name}"]`).dataset.title;
+  if (name !== 'body') selectedId = null;
+}
+
+function refresh({ fields = false } = {}) {
+  findings = checkSystem(system);
   statusByBody = worstLevelByBody(findings);
-  renderTree();
-  renderChecks(findings);
+  tree.replaceChildren(...treeOrder(system).map(({ body, depth }) => bodyButton(body, depth)));
+  checksList.replaceChildren(...findingItems(findings, 'No problems found.'));
+  renderProblemCount();
   renderExport();
-  renderAddButtons();
-  if (withEditor) renderEditor();
-  else if (selected()) renderFacts(selected());
+  renderAddMenu();
+  const body = selected();
+  if (body) {
+    if (fields) fillBodyFields(body);
+    renderBodyLive(body);
+  }
   save();
 }
 
-function select(id) {
+function openBody(id) {
+  if (!id) {
+    if (openSheet === 'body') showSheet(null);
+    renderAddMenu();
+    return;
+  }
+  showSheet('body');
   selectedId = id;
+  fillBodyFields(selected());
+  renderBodyLive(selected());
   for (const button of tree.querySelectorAll('button[data-id]')) button.setAttribute('aria-current', String(button.dataset.id === id));
-  renderAddButtons();
-  renderEditor();
+  renderAddMenu();
 }
 
 function overview() {
@@ -218,17 +277,24 @@ function follow(id) {
   fit(camera, placeAt(system, seconds).get(id), reach);
 }
 
+function renderSystemFields() {
+  for (const input of document.querySelectorAll('[data-system-field]')) input.value = system[input.dataset.systemField] ?? '';
+}
+
 function replaceSystem(next) {
   system = next;
-  selectedId = null;
   seconds = 0;
-  refresh({ editor: true });
+  showSheet(null);
+  refresh();
   renderSystemFields();
   overview();
 }
 
-function renderSystemFields() {
-  for (const input of document.querySelectorAll('[data-system-field]')) input.value = system[input.dataset.systemField] ?? '';
+function addAround(kind, parentId) {
+  setAddMenuOpen(false);
+  const body = addBody(system, kind, parentId);
+  refresh();
+  openBody(body.id);
 }
 
 function parsedNumber(input) {
@@ -241,7 +307,7 @@ const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const BODY_FIELD_SETTERS = {
   name: (body, input) => { body.name = input.value; },
   color: (body, input) => { body.color = input.value; },
-  kind: (body, input) => { body.kind = input.value; return { editor: true }; },
+  kind: (body, input) => { body.kind = input.value; return { fields: true }; },
   parent: (body, input) => { body.parent = input.value; },
   mass: (body, input) => {
     const value = parsedNumber(input);
@@ -268,15 +334,15 @@ const BODY_FIELD_SETTERS = {
   meanAnomaly: (body, input) => { body.orbit.meanAnomaly = parsedNumber(input) ?? body.orbit.meanAnomaly; },
 };
 
-editor.addEventListener('input', (event) => {
+bodySheet.addEventListener('input', (event) => {
   const field = event.target.dataset.bodyField;
   const body = selected();
   if (!field || !body) return;
   refresh(BODY_FIELD_SETTERS[field](body, event.target) ?? {});
 });
 
-editor.addEventListener('change', (event) => {
-  if (event.target.dataset.bodyField) renderEditor();
+bodySheet.addEventListener('change', (event) => {
+  if (event.target.dataset.bodyField && selected()) fillBodyFields(selected());
 });
 
 document.querySelectorAll('[data-system-field]').forEach((input) => {
@@ -286,42 +352,63 @@ document.querySelectorAll('[data-system-field]').forEach((input) => {
   });
 });
 
-tree.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-id]');
-  if (button) select(button.dataset.id);
+for (const button of sheetButtons) {
+  button.addEventListener('click', () => {
+    setAddMenuOpen(false);
+    showSheet(openSheet === button.dataset.openSheet ? null : button.dataset.openSheet);
+  });
+}
+
+document.querySelector('[data-close-sheet]').addEventListener('click', () => showSheet(null));
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!addMenu.hidden) setAddMenuOpen(false);
+  else showSheet(null);
 });
 
-tree.addEventListener('dblclick', (event) => {
-  const button = event.target.closest('button[data-id]');
+sheetPanel.addEventListener('click', (event) => {
+  const target = event.target.closest('.sb-tree button[data-id], .sb-checks li[data-id]');
+  if (target) openBody(target.dataset.id);
+});
+
+sheetPanel.addEventListener('dblclick', (event) => {
+  const button = event.target.closest('.sb-tree button[data-id]');
   if (button) follow(button.dataset.id);
 });
 
-checksList.addEventListener('click', (event) => {
-  const item = event.target.closest('li[data-id]');
-  if (item) select(item.dataset.id);
-});
+function setAddMenuOpen(open) {
+  addMenu.hidden = !open;
+  addToggle.setAttribute('aria-expanded', String(open));
+  if (open) renderAddMenu();
+}
 
-document.querySelectorAll('[data-add]').forEach((button) => {
+addToggle.addEventListener('click', () => setAddMenuOpen(addMenu.hidden));
+
+for (const button of addMenu.querySelectorAll('[data-add]')) {
   button.addEventListener('click', () => {
-    const kind = button.dataset.add;
-    const parent = addTarget(kind);
-    if (!parent) return;
-    selectedId = addBody(system, kind, parent.id).id;
-    refresh({ editor: true });
+    const target = addTarget(button.dataset.add);
+    if (target) addAround(button.dataset.add, target.id);
   });
+}
+
+addChildButton.addEventListener('click', () => {
+  const body = selected();
+  if (body && CHILD_KIND[body.kind]) addAround(CHILD_KIND[body.kind], body.id);
 });
 
-editor.querySelector('[data-remove]').addEventListener('click', () => {
+bodySheet.querySelector('[data-remove]').addEventListener('click', () => {
   const body = selected();
   if (!body?.parent) return;
   const doomed = descendantsOf(system, body.id).length;
   if (doomed && !window.confirm(`Delete ${body.name} and the ${doomed} bodies orbiting it?`)) return;
-  selectedId = body.parent;
+  const parentId = body.parent;
   removeBody(system, body.id);
-  refresh({ editor: true });
+  refresh();
+  openBody(parentId);
 });
 
-editor.querySelector('[data-follow]').addEventListener('click', () => {
+bodySheet.querySelector('[data-follow]').addEventListener('click', () => {
   if (selectedId) follow(selectedId);
 });
 
@@ -333,7 +420,7 @@ document.querySelector('[data-load-preset]').addEventListener('click', () => {
 
 homePicker.addEventListener('change', () => {
   system.home = homePicker.value || null;
-  refresh({ editor: true });
+  refresh();
 });
 
 scaleInput.addEventListener('input', () => renderExport());
@@ -356,6 +443,7 @@ document.querySelector('[data-open]').addEventListener('change', async (event) =
   if (!file) return;
   try {
     replaceSystem(parseSystem(await file.text()));
+    showSheet('system');
     fileStatus.textContent = `Opened ${file.name}.`;
   } catch (error) {
     fileStatus.textContent = `Couldn't open ${file.name}: ${error.message}`;
@@ -370,7 +458,8 @@ speedInput.addEventListener('input', renderSpeed);
 
 playButton.addEventListener('click', () => {
   playing = !playing;
-  playButton.textContent = playing ? 'Pause' : 'Play';
+  playButton.innerHTML = playing ? '&#10074;&#10074;' : '&#9654;';
+  playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
 });
 
 document.querySelector('[data-rewind]').addEventListener('click', () => {
@@ -389,6 +478,7 @@ canvas.addEventListener('pointerdown', (event) => {
   dragDistance = 0;
   pinchGap = null;
   canvas.classList.add('sb-dragging');
+  setAddMenuOpen(false);
 });
 
 canvas.addEventListener('pointermove', (event) => {
@@ -413,7 +503,7 @@ function endPointer(event) {
   if (pointers.size === 0) canvas.classList.remove('sb-dragging');
   if (event.type !== 'pointerup' || dragDistance > CLICK_SLOP_PX) return;
   const body = bodyAt(system, placeAt(system, seconds), camera, selectedId, event.offsetX, event.offsetY);
-  select(body ? body.id : null);
+  openBody(body?.id ?? null);
 }
 
 canvas.addEventListener('pointerup', endPointer);
@@ -461,6 +551,6 @@ scaleInput.value = STOCK_SCALE;
 resize();
 renderSpeed();
 renderSystemFields();
-refresh({ editor: true });
+refresh();
 overview();
 requestAnimationFrame(frame);
