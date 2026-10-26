@@ -62,6 +62,12 @@ Apps built around a canvas and a settings panel use the studio layout instead of
 data-studio-panel>` holding a `data-studio-handle` button and a `.studio-panel-body`,
 then load `studio.js` as a module. The Galaxy Photo Generator is the reference.
 
+The studio panel suits one set of settings for the whole canvas. Apps where you
+edit many separate things, such as bodies, parts or nodes, open a menu for the thing
+you click instead, holding only what edits it. Put adding behind a + button and
+other tools behind their own menus, so nobody scrolls one long panel to find a
+field. System Builder is the reference.
+
 ## Offline copies
 
 Every app has a "Save offline" button. It downloads the files listed in the app's
