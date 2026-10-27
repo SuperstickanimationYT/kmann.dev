@@ -66,6 +66,12 @@ const KINDS = {
   'Cone Side': { role: 'structure', mass: (N) => 0.025 * (N.size ?? 2), box: (N) => centred(N.size ?? 2, 0, N.size ?? 2) },
   RCS: { role: 'structure', mass: () => 0.05, box: () => centred(0.5, 0, 0.5) },
   'Landing Leg Big': { role: 'structure', mass: () => 0.75, box: () => centred(1, 0, 1) },
+  Base: {
+    role: 'tank',
+    mass: (N) => TANK_TONS_PER_AREA * (N.width ?? 3) * (N.height ?? 2.5),
+    box: (N) => centred(N.width ?? 3, 0, N.height ?? 2.5),
+  },
+  Strut: { role: 'structure', mass: null, box: (N) => ({ x0: 0, x1: N.size ?? 1, y0: 0, y1: 0.5 }) },
 };
 
 const UNKNOWN_BOX = centred(1, 0, 1);
@@ -88,6 +94,7 @@ export function describePart(raw) {
   }
   const kind = KINDS[raw.n];
   if (!kind) return { role: 'structure', known: false, dryMass: 0, fuel: 0, localBox: UNKNOWN_BOX };
+  if (!kind.mass) return { role: kind.role, known: false, dryMass: 0, fuel: 0, localBox: kind.box(N) };
   const fullMass = kind.mass(N);
   if (kind.role !== 'tank') {
     return { role: kind.role, known: true, dryMass: fullMass, fuel: 0, localBox: kind.box(N) };
