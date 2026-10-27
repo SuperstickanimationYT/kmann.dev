@@ -74,13 +74,30 @@
           <p class="dv-check-line" data-launch></p>
         </div>
         <ul class="dv-warnings" data-warnings></ul>
+        <section class="dv-card" data-orbit>
+          <h3>Getting to orbit</h3>
+          <p class="dv-verdict" data-orbit-verdict></p>
+          <p class="dv-hint" data-orbit-detail></p>
+        </section>
+        <section class="dv-card">
+          <h3>Where it can go</h3>
+          <p class="dv-hint" data-destinations-intro></p>
+          <div class="dv-table-wrap">
+            <table class="dv-table">
+              <thead><tr><th scope="col">Destination</th><th scope="col">Orbit</th><th scope="col">Land</th><th scope="col">Round trip</th></tr></thead>
+              <tbody data-destinations></tbody>
+            </table>
+          </div>
+          <p class="dv-hint">Each number is the Δv needed from low Earth orbit. It assumes you leave at the right time for the transfer, use no gravity assists, and burn fuel well. A round trip lands there and comes back, using air braking at Earth. It doesn't check that the landing stage has enough thrust for the local gravity.</p>
+        </section>
+        <h3 class="dv-section-title">Burns</h3>
         <ol class="dv-timeline" data-timeline></ol>
         <figure class="dv-view">
           <canvas data-rocket role="img" aria-label="The rocket, coloured by the burn after which each part falls away"></canvas>
           <figcaption data-legend></figcaption>
         </figure>
       </div>
-      <p class="dv-note">Δv is the vacuum figure, with no air or gravity losses, the same as burning everything with air and gravity turned off in the cheats. Part masses, thrust and Isp come from the <a href="https://spaceflight-simulator.fandom.com/wiki/Parts">SFS wiki</a>. Parts are counted as attached when their outlines touch, so blueprint-edited rockets can come out wrong.</p>
+      <p class="dv-note">The big Δv number is the vacuum figure, with no air or gravity losses, the same as burning everything with air and gravity turned off in the cheats. The orbit check flies the rocket many times with different turns and keeps the best flight. Its air drag is an estimate, because the game's drag formula isn't public. Part masses, thrust, Isp and planet sizes come from the <a href="https://spaceflight-simulator.fandom.com/wiki/Parts">SFS wiki</a>. Parts are counted as attached when their outlines touch, so blueprint-edited rockets can come out wrong.</p>
     </div>
   </div>
 </main>

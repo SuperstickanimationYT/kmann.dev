@@ -1,5 +1,7 @@
 import { parseBlueprint } from './blueprint.js';
 import { el, find } from './dom.js';
+import { bestAscent, shortfallAtApoapsis } from './ascent.js';
+import { EARTH, PARKING_ORBIT_CLEARANCE, destinations, earthEscape } from './bodies.js';
 import { simulateFlight, stageDoesSomething } from './flight.js';
 import { burnColour, drawRocket, droppedAfterBurn } from './view.js';
 
@@ -101,9 +103,84 @@ function render() {
     : `Launch mass ${tons(result.launchMass)}. No engine is lit at liftoff.`;
 
   find('[data-warnings]').replaceChildren(...warningsFor(result).map((text) => el('li', {}, text)));
+  const ascent = bestAscent(result.timeline.filter((entry) => entry.kind === 'burn'));
+  renderOrbitCheck(result, ascent);
+  renderDestinations(ascent.reached ? result.totalDeltaV - ascent.spent : null);
   find('[data-timeline]').replaceChildren(...result.timeline.map(timelineEntry));
   renderLegend(result);
   drawRocket(canvas, state.rocket, result.droppedAt);
+}
+
+const kilometres = (metres) => `${Math.round(metres / 1000)} km`;
+const PARKING_HEIGHT = EARTH.atmosphere.height + PARKING_ORBIT_CLEARANCE;
+const TIGHT_MARGIN = 150;
+
+function orbitVerdict(result, ascent) {
+  if (ascent.reached) {
+    const left = result.totalDeltaV - ascent.spent;
+    if (left < TIGHT_MARGIN) {
+      return ['dv-close', `Reaches orbit, but only just: ${metresPerSecond(left)} m/s to spare. It takes a near-perfect flight.`];
+    }
+    return ['dv-yes', `Reaches a ${kilometres(PARKING_HEIGHT)} orbit with ${metresPerSecond(left)} m/s to spare.`];
+  }
+  if (ascent.reason === 'weight') {
+    const ratio = result.liftoffThrust / result.launchMass;
+    return ['dv-no', `Can't leave the pad. Thrust / weight is ${ratio.toFixed(2)} and needs to be above 1.`];
+  }
+  const shortBy = shortfallAtApoapsis(ascent);
+  if (shortBy !== null) {
+    return ['dv-no', `Can't reach orbit, even with a perfect flight. It runs out of fuel about ${metresPerSecond(shortBy)} m/s short.`];
+  }
+  return ['dv-no', `Can't reach orbit, even with a perfect flight. The best try tops out at ${kilometres(ascent.maxHeight)} and falls back.`];
+}
+
+function orbitAdvice(result, ascent) {
+  if (ascent.reached) {
+    const orbitalSpeed = ascent.speed;
+    const gravityLoss = Math.max(0, ascent.spent - orbitalSpeed - ascent.dragLoss);
+    return `The best flight uses ${metresPerSecond(ascent.spent)} m/s of Δv: ${metresPerSecond(orbitalSpeed)} m/s of orbital speed, about ${metresPerSecond(gravityLoss)} m/s lost to gravity and ${metresPerSecond(ascent.dragLoss)} m/s to air. It starts tilting right after liftoff and flies sideways by ${kilometres(ascent.turnEndHeight)}. If you can't get to orbit with this rocket, the flight needs work, not the rocket: tilt over gradually, and once the apoapsis is above ${kilometres(EARTH.atmosphere.height)}, coast up to it and burn sideways there.`;
+  }
+  if (ascent.reason === 'weight') {
+    return 'Add engines or take off weight. Around 1.3 or more climbs well, and below that much of the fuel goes into fighting gravity.';
+  }
+  return 'The rocket design is the problem, not the flying. Add fuel or a stage, or give the upper stage a higher-Isp engine such as the Valiant or Frontier.';
+}
+
+function renderOrbitCheck(result, ascent) {
+  const [tone, verdict] = orbitVerdict(result, ascent);
+  const verdictLine = find('[data-orbit-verdict]');
+  verdictLine.className = `dv-verdict ${tone}`;
+  verdictLine.textContent = verdict;
+  find('[data-orbit-detail]').textContent = orbitAdvice(result, ascent);
+}
+
+function destinationCell(needed, available) {
+  if (needed === null) return el('td', {}, '–');
+  const reachable = available !== null && needed <= available;
+  return el(
+    'td',
+    { class: available === null ? '' : reachable ? 'dv-yes' : 'dv-no', title: reachable ? 'Enough Δv' : 'Not enough Δv' },
+    `${reachable ? '✓ ' : ''}${metresPerSecond(needed)}`,
+  );
+}
+
+function renderDestinations(available) {
+  find('[data-destinations-intro]').textContent = available === null
+    ? 'It has to reach orbit first. These are the Δv figures for later.'
+    : `With ${metresPerSecond(available)} m/s left in low Earth orbit, it can do everything marked ✓.`;
+  const escape = earthEscape();
+  const rows = [
+    el('tr', {}, el('td', { class: 'dv-place' }, 'Leave Earth for good'), destinationCell(escape, available), el('td', {}, '–'), el('td', {}, '–')),
+    ...destinations().map((place) => el(
+      'tr',
+      { class: place.parent === 'Sun' ? '' : 'dv-moon' },
+      el('td', { class: 'dv-place' }, place.parent === 'Sun' || place.parent === 'Earth' ? place.name : `${place.name} (${place.parent})`, place.note ? el('small', {}, place.note) : null),
+      destinationCell(place.orbit, available),
+      destinationCell(place.land, available),
+      destinationCell(place.landAndReturn, available),
+    )),
+  ];
+  find('[data-destinations]').replaceChildren(...rows);
 }
 
 function warningsFor(result) {
