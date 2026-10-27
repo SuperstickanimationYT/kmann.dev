@@ -38,6 +38,11 @@ class Flight {
     this.launchMass = this.mass();
   }
 
+  frontalWidth() {
+    const boxes = [...this.alive].map((i) => this.parts[i].box);
+    return Math.max(...boxes.map((b) => b.x1)) - Math.min(...boxes.map((b) => b.x0));
+  }
+
   mass() {
     let total = 0;
     for (const i of this.alive) total += this.dryMass[i] + this.fuel[i];
@@ -130,6 +135,7 @@ class Flight {
     for (const [group, rate] of drain) seconds = Math.min(seconds, this.fuelIn(group) / rate);
 
     const startMass = this.mass();
+    const frontalWidth = this.frontalWidth();
     for (const [group, rate] of drain) {
       const groupFuel = this.fuelIn(group);
       const used = Math.min(groupFuel, rate * seconds);
@@ -150,6 +156,7 @@ class Flight {
       endMass,
       seconds,
       deltaV,
+      frontalWidth,
       burnedOut: countNames(starved.map((e) => shortName(this.parts[e].name))),
     });
     this.burnCount++;
