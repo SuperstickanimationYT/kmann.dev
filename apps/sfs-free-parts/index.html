@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFS Free Parts Converter &mdash; kmann314</title>
+<meta name="description" content="Turn a Spaceflight Simulator Blueprint.txt with DLC parts into one built only from free parts, and see how its mass, thrust and delta-v change.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="../sfs-delta-v/style.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">SFS Free Parts Converter</h2>
+      <span class="wip-tag" title="This app is unfinished. Expect bugs and missing parts.">Work in progress</span>
+    </div>
+  </div>
+
+  <div class="shell dv-app">
+    <form class="dv-form" onsubmit="return false">
+      <fieldset>
+        <legend>Rocket with DLC parts</legend>
+        <label class="dv-drop" data-drop>
+          <input type="file" accept=".txt,text/plain,application/json" data-file hidden>
+          <strong>Choose Blueprint.txt</strong>
+          <span>or drop it here</span>
+        </label>
+        <details class="dv-paste">
+          <summary>Paste the file's text instead</summary>
+          <textarea class="dv-input" rows="6" spellcheck="false" placeholder='{ "center": ..., "parts": [ ... ] }' data-paste></textarea>
+          <button type="button" class="dv-button" data-paste-go>Convert</button>
+        </details>
+        <button type="button" class="dv-button" data-example>Try an example rocket</button>
+        <p class="dv-hint">Each saved rocket has a folder in the game's <code>Saving/Blueprints</code> folder holding its <code>Blueprint.txt</code>.</p>
+      </fieldset>
+    </form>
+
+    <div class="dv-output">
+      <p class="dv-status" data-status role="status">Load a rocket to swap its DLC parts for free ones.</p>
+      <div data-results hidden>
+        <div class="dv-summary">
+          <p class="fp-headline" data-headline></p>
+          <div class="fp-actions" data-actions>
+            <button type="button" class="dv-button" data-download>Download Blueprint.txt</button>
+            <button type="button" class="dv-button" data-copy>Copy the text</button>
+          </div>
+          <p class="dv-check-line">To use it, copy any blueprint folder in <code>Saving/Blueprints</code>, give the copy a new name and replace the <code>Blueprint.txt</code> inside it.</p>
+        </div>
+        <ul class="dv-warnings" data-warnings></ul>
+        <section class="dv-card" data-changes-card>
+          <h3>Swapped parts</h3>
+          <div class="dv-table-wrap">
+            <table class="dv-table fp-changes">
+              <thead><tr><th scope="col">DLC part</th><th scope="col">Free stand-in</th><th scope="col">Count</th></tr></thead>
+              <tbody data-changes></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="dv-card">
+          <h3>Before and after</h3>
+          <div class="dv-table-wrap">
+            <table class="dv-table">
+              <thead><tr><th scope="col"></th><th scope="col">With DLC</th><th scope="col">Free</th><th scope="col">Change</th></tr></thead>
+              <tbody data-compare></tbody>
+            </table>
+          </div>
+          <p class="dv-hint">Δv is the vacuum figure from the <a href="../sfs-delta-v/">SFS Δv Calculator</a>. Parts the calculator has no mass for count as 0 t on both sides.</p>
+        </section>
+        <div class="fp-views">
+          <figure class="dv-view">
+            <canvas data-before role="img" aria-label="The rocket with its DLC parts highlighted"></canvas>
+            <figcaption><span class="dv-legend-item"><i class="fp-paid"></i>DLC part</span></figcaption>
+          </figure>
+          <figure class="dv-view">
+            <canvas data-after role="img" aria-label="The converted rocket with its free stand-ins highlighted"></canvas>
+            <figcaption><span class="dv-legend-item"><i class="fp-stand-in"></i>Free stand-in</span></figcaption>
+          </figure>
+        </div>
+      </div>
+      <p class="dv-note">Each DLC engine becomes a stack of free engines on the same spot, with the free engine whose Isp and mass come closest. Stretching an engine taller in a blueprint raises its thrust by the same factor without changing its Isp, so one engine in each stack is stretched or shrunk to match the thrust. No free engine comes near the ion engine's Isp, so ion rockets lose most of their Δv. DLC tanks become free tanks of the same size. Parts with no free stand-in yet are removed, because the game deletes DLC parts anyway when you don't own the DLC. The result can look a little odd, but it flies like the original.</p>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+      <button type="button" class="save-offline" data-save-offline hidden></button>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>

@@ -20,6 +20,7 @@ export function parseBlueprint(text) {
       index,
       name: raw.n,
       ...part,
+      ...(part.role === 'engine' && { thrust: part.thrust * Math.abs(transform.scaleY) }),
       engineStartsOn: Boolean(raw.B?.engine_on),
       box: transformedBox(part.localBox, transform),
       attachEdge: part.role === 'engine' ? transformedBox({ ...part.localBox, y0: 0, y1: 0 }, transform) : null,
@@ -29,10 +30,16 @@ export function parseBlueprint(text) {
   const stages = (json.stages ?? [])
     .map((stage) => (stage.partIndexes ?? []).filter((i) => i >= 0 && i < parts.length))
     .filter((indexes) => indexes.length > 0);
-  const resizedParts = json.parts.filter((raw) => Math.abs(raw.o?.x ?? 1) !== 1 || Math.abs(raw.o?.y ?? 1) !== 1).length;
+  const resizedParts = json.parts.filter((raw, i) => isResized(raw, parts[i].role === 'engine')).length;
   const links = linkParts(parts);
   const bridgedGaps = joinLoosePieces(parts, links);
   return { parts, stages, links, resizedParts, bridgedGaps };
+}
+
+function isResized(raw, isEngine) {
+  const widened = Math.abs(raw.o?.x ?? 1) !== 1;
+  const stretched = Math.abs(raw.o?.y ?? 1) !== 1;
+  return widened || (stretched && !isEngine);
 }
 
 function nozzleOf(engineBox) {

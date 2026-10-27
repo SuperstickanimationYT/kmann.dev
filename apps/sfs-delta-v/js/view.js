@@ -11,7 +11,7 @@ export function burnColour(burn) {
 
 export const droppedAfterBurn = (droppedAt) => (droppedAt === null ? null : droppedAt - 1);
 
-export function drawRocket(canvas, rocket, droppedAt) {
+export function drawRocket(canvas, rocket, colourOf) {
   const ratio = window.devicePixelRatio || 1;
   const { width, height } = canvas.getBoundingClientRect();
   canvas.width = Math.round(width * ratio);
@@ -39,9 +39,8 @@ export function drawRocket(canvas, rocket, droppedAt) {
   const ordered = [...rocket.parts].sort((a, b) => DRAW_ORDER[a.role] - DRAW_ORDER[b.role]);
   for (const part of ordered) {
     const r = toScreen(part.box);
-    const colour = burnColour(droppedAfterBurn(droppedAt[part.index]));
     context.globalAlpha = part.role === 'fairing' ? 0.35 : 1;
-    context.fillStyle = colour;
+    context.fillStyle = colourOf(part);
     context.strokeStyle = '#060f1c';
     context.lineWidth = 1;
     if (part.role === 'engine') {

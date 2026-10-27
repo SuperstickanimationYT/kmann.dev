@@ -173,6 +173,13 @@ const PROJECTS = [
     status: 'wip',
   },
   {
+    title: 'SFS Free Parts Converter',
+    href: 'apps/sfs-free-parts/',
+    category: 'tools',
+    blurb: 'Swap the DLC parts in a Spaceflight Simulator blueprint for free ones, so anyone can fly it.',
+    status: 'wip',
+  },
+  {
     title: 'Song Studio',
     href: 'apps/song-studio/',
     category: 'tools',
