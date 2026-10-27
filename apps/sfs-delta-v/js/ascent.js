@@ -1,51 +1,16 @@
 import { EARTH, gravitationalParameter, lowOrbitRadius } from './bodies.js';
+import { Flight } from './flight.js';
 import { STANDARD_GRAVITY } from './parts.js';
 
 const STEP = 0.05;
-const TIME_LIMIT = 3600;
+const SLOW_BURN_STEP = 0.25;
+const COAST_STEP = 1;
+const LOW_ACCELERATION = 3;
+const TIME_LIMIT = 20000;
 const DRAG_COEFFICIENT = 0.5;
 const PERIAPSIS_MARGIN = 1000;
 const TURN_END_HEIGHTS = [6000, 10000, 15000, 20000, 27000, 35000, 45000, 60000];
 const TURN_SHAPES = [0.4, 0.6, 0.8];
-
-class Engines {
-  constructor(burns) {
-    this.burns = burns.map((b) => ({ ...b, flow: (b.startMass - b.endMass) / b.seconds }));
-    this.index = 0;
-    this.elapsed = 0;
-    this.restMass = burns.length ? burns[burns.length - 1].endMass : 0;
-  }
-
-  get current() {
-    return this.burns[this.index] ?? null;
-  }
-
-  mass() {
-    const burn = this.current;
-    return burn ? burn.startMass - burn.flow * this.elapsed : this.restMass;
-  }
-
-  thrust() {
-    return this.current?.thrust ?? 0;
-  }
-
-  frontalWidth() {
-    return (this.current ?? this.burns[this.burns.length - 1])?.frontalWidth ?? 2;
-  }
-
-  burn(seconds) {
-    let left = seconds;
-    while (left > 0 && this.current) {
-      const step = Math.min(left, this.current.seconds - this.elapsed);
-      this.elapsed += step;
-      left -= step;
-      if (this.elapsed >= this.current.seconds - 1e-9) {
-        this.index++;
-        this.elapsed = 0;
-      }
-    }
-  }
-}
 
 function airDensity(height) {
   const { height: top, density, curve } = EARTH.atmosphere;
@@ -63,12 +28,17 @@ function orbitOf(mu, x, y, vx, vy) {
   return { energy, semiMajorAxis, apoapsis: semiMajorAxis * (1 + eccentricity), periapsis: semiMajorAxis * (1 - eccentricity) };
 }
 
-function fly(burns, turnEndHeight, turnShape) {
+function stepLength(phase, acceleration, inAir) {
+  if (phase === 'coast' && !inAir) return COAST_STEP;
+  return acceleration < LOW_ACCELERATION ? SLOW_BURN_STEP : STEP;
+}
+
+function fly(rocket, options, turnEndHeight, turnShape) {
   const mu = gravitationalParameter(EARTH);
   const radius = EARTH.radius;
   const airTop = radius + EARTH.atmosphere.height;
   const target = lowOrbitRadius(EARTH);
-  const engines = new Engines(burns);
+  const flight = new Flight(rocket, { ...options, efficientEngines: false });
 
   let x = 0;
   let y = radius;
@@ -79,63 +49,81 @@ function fly(burns, turnEndHeight, turnShape) {
   let dragLoss = 0;
   let maxHeight = 0;
   let phase = 'climb';
+  let inSpace = false;
 
   const finish = (outcome) => {
     const orbit = orbitOf(mu, x, y, vx, vy);
-    return { ...outcome, turnEndHeight, turnShape, spent, dragLoss, time, maxHeight, orbit, speed: Math.hypot(vx, vy), radius: Math.hypot(x, y) };
+    const leftInOrbit = outcome.reached ? (flight.switchToSpaceEngines(), flight.flyToEnd()) : 0;
+    return { ...outcome, turnEndHeight, turnShape, spent, dragLoss, time, maxHeight, orbit, leftInOrbit, speed: Math.hypot(vx, vy) };
   };
+
+  const plan = () => {
+    let current = flight.currentPlan();
+    while (!current && flight.react(null)) current = flight.currentPlan();
+    return current;
+  };
+
+  const liftoff = plan();
+  if (!liftoff || liftoff.thrust * STANDARD_GRAVITY <= flight.mass() * EARTH.gravity) return finish({ reached: false, reason: 'weight' });
 
   while (time < TIME_LIMIT) {
     const r = Math.hypot(x, y);
     const height = r - radius;
     maxHeight = Math.max(maxHeight, height);
+    if (!inSpace && r >= airTop) {
+      inSpace = true;
+      flight.switchToSpaceEngines();
+    }
     const upX = x / r;
     const upY = y / r;
     const eastX = upY;
     const eastY = -upX;
     const climbSpeed = vx * upX + vy * upY;
     const orbit = orbitOf(mu, x, y, vx, vy);
-    const mass = engines.mass();
-    const thrust = engines.thrust();
+    const mass = flight.mass();
+    const current = phase === 'coast' ? flight.currentPlan() : plan();
+    const acceleration = current ? (current.thrust * STANDARD_GRAVITY) / mass : 0;
 
     if (phase === 'climb' && orbit.apoapsis >= target) phase = 'coast';
     if (phase === 'coast' && orbit.apoapsis < target - 500 && r < airTop) phase = 'climb';
     if (phase === 'coast') {
       const apoapsisSpeed = Math.sqrt(Math.max(0, mu * (2 / orbit.apoapsis - 1 / orbit.semiMajorAxis)));
       const needed = Math.sqrt(mu / orbit.apoapsis) - apoapsisSpeed;
-      const burnTime = thrust > 0 ? (needed * mass) / (thrust * STANDARD_GRAVITY) : Infinity;
+      const coastAcceleration = (plan()?.thrust ?? 0) * STANDARD_GRAVITY / mass;
+      const burnTime = coastAcceleration > 0 ? needed / coastAcceleration : Infinity;
       const timeToApoapsis = climbSpeed / (mu / (r * r));
       if (r >= airTop && timeToApoapsis <= burnTime / 2) phase = 'circularise';
     }
     if (phase === 'circularise' && orbit.periapsis >= airTop + PERIAPSIS_MARGIN) return finish({ reached: true });
 
+    const step = stepLength(phase, acceleration, r < airTop);
     let thrustX = 0;
     let thrustY = 0;
     if (phase !== 'coast') {
-      if (!engines.current) return finish({ reached: false, reason: 'fuel' });
+      if (!current) return finish({ reached: false, reason: 'fuel' });
       let pitch = phase === 'climb' ? (Math.PI / 2) * Math.min(1, Math.max(0, height) / turnEndHeight) ** turnShape : Math.PI / 2;
       if (phase === 'circularise' && climbSpeed < 0) pitch = Math.PI / 2 - Math.min(0.5, (-climbSpeed / 200) * 0.5);
-      const acceleration = (thrust * STANDARD_GRAVITY) / mass;
       thrustX = acceleration * (upX * Math.cos(pitch) + eastX * Math.sin(pitch));
       thrustY = acceleration * (upY * Math.cos(pitch) + eastY * Math.sin(pitch));
-      if (time === 0 && acceleration <= EARTH.gravity) return finish({ reached: false, reason: 'weight' });
-      spent += acceleration * STEP;
-      engines.burn(STEP);
+      spent += acceleration * step;
+      const burned = flight.burn(step);
+      if (burned?.starved.length) flight.react(burned);
     }
 
     const gravity = mu / (r * r);
     const speed = Math.hypot(vx, vy);
-    const drag = speed > 0 ? (DRAG_COEFFICIENT * airDensity(height) * speed * speed * engines.frontalWidth()) / mass : 0;
-    dragLoss += drag * STEP;
-    vx += (thrustX - gravity * upX - (speed > 0 ? (drag * vx) / speed : 0)) * STEP;
-    vy += (thrustY - gravity * upY - (speed > 0 ? (drag * vy) / speed : 0)) * STEP;
+    const width = flight.currentPlan()?.frontalWidth ?? 2;
+    const drag = speed > 0 ? (DRAG_COEFFICIENT * airDensity(height) * speed * speed * width) / mass : 0;
+    dragLoss += drag * step;
+    vx += (thrustX - gravity * upX - (speed > 0 ? (drag * vx) / speed : 0)) * step;
+    vy += (thrustY - gravity * upY - (speed > 0 ? (drag * vy) / speed : 0)) * step;
     if (height <= 0 && climbSpeed < 0 && time > 0) {
       vx = 0;
       vy = 0;
     }
-    x += vx * STEP;
-    y += vy * STEP;
-    time += STEP;
+    x += vx * step;
+    y += vy * step;
+    time += step;
 
     if (Math.hypot(x, y) < radius - 1) return finish({ reached: false, reason: 'crash' });
   }
@@ -147,15 +135,14 @@ function progress(attempt) {
   return Number.isFinite(apoapsis) ? periapsis + apoapsis : -Infinity;
 }
 
-export function bestAscent(burns) {
-  if (burns.length === 0) return { reached: false, reason: 'weight', spent: 0 };
+export function bestAscent(rocket, options) {
   let best = null;
   for (const turnEndHeight of TURN_END_HEIGHTS) {
     for (const turnShape of TURN_SHAPES) {
-      const attempt = fly(burns, turnEndHeight, turnShape);
+      const attempt = fly(rocket, options, turnEndHeight, turnShape);
       if (attempt.reason === 'weight') return attempt;
       const better = !best
-        || (attempt.reached && (!best.reached || attempt.spent < best.spent))
+        || (attempt.reached && (!best.reached || attempt.leftInOrbit > best.leftInOrbit))
         || (!attempt.reached && !best.reached && progress(attempt) > progress(best));
       if (better) best = attempt;
     }

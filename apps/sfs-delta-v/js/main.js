@@ -103,9 +103,9 @@ function render() {
     : `Launch mass ${tons(result.launchMass)}. No engine is lit at liftoff.`;
 
   find('[data-warnings]').replaceChildren(...warningsFor(result).map((text) => el('li', {}, text)));
-  const ascent = bestAscent(result.timeline.filter((entry) => entry.kind === 'burn'));
+  const ascent = bestAscent(state.rocket, state);
   renderOrbitCheck(result, ascent);
-  renderDestinations(ascent.reached ? result.totalDeltaV - ascent.spent : null);
+  renderDestinations(ascent.reached ? ascent.leftInOrbit : null);
   find('[data-timeline]').replaceChildren(...result.timeline.map(timelineEntry));
   renderLegend(result);
   drawRocket(canvas, state.rocket, result.droppedAt);
@@ -117,7 +117,7 @@ const TIGHT_MARGIN = 150;
 
 function orbitVerdict(result, ascent) {
   if (ascent.reached) {
-    const left = result.totalDeltaV - ascent.spent;
+    const left = ascent.leftInOrbit;
     if (left < TIGHT_MARGIN) {
       return ['dv-close', `Reaches orbit, but only just: ${metresPerSecond(left)} m/s to spare. It takes a near-perfect flight.`];
     }

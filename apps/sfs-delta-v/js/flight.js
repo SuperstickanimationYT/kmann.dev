@@ -6,8 +6,6 @@ const DETACHING_ROLES = new Set(['separator', 'dockingPort', 'fairing']);
 const LOWEST_ENGINE_REACH = 3;
 const SPLITTING_ROLES = new Set(['separator', 'dockingPort']);
 
-export const shortName = (name) => name.replace(/^Engine /, '');
-
 export function countNames(names) {
   const counts = new Map();
   for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
@@ -15,20 +13,21 @@ export function countNames(names) {
 }
 
 export function simulateFlight(rocket, { useFileStaging, unknownPartMass }) {
-  const flight = new Flight(rocket, unknownPartMass);
-  if (useFileStaging) flight.flyPlayerStaging();
-  else flight.flyWorkedOutStaging();
-  return flight.result(useFileStaging);
+  const flight = new Flight(rocket, { useFileStaging, unknownPartMass, efficientEngines: true });
+  flight.flyToEnd();
+  return flight.result();
 }
 
 export function stageDoesSomething(rocket, partIndexes) {
   return partIndexes.some((i) => STAGE_ACTION_ROLES.has(rocket.parts[i].role));
 }
 
-class Flight {
-  constructor(rocket, unknownPartMass) {
+export class Flight {
+  constructor(rocket, { useFileStaging, unknownPartMass, efficientEngines }) {
     this.rocket = rocket;
     this.parts = rocket.parts;
+    this.useFileStaging = useFileStaging;
+    this.efficientEngines = efficientEngines;
     this.dryMass = this.parts.map((p) => (p.known ? p.dryMass : unknownPartMass[p.name] ?? 0));
     this.fuel = this.parts.map((p) => p.fuel);
     this.alive = new Set(this.parts.map((p) => p.index));
@@ -36,13 +35,31 @@ class Flight {
     this.droppedAt = this.parts.map(() => null);
     this.timeline = [];
     this.burnCount = 0;
+    this.plan = null;
+    this.liftoffThrust = null;
+    this.playerStages = rocket.stages
+      .map((partIndexes, n) => ({ number: n + 1, partIndexes }))
+      .filter((stage) => stageDoesSomething(rocket, stage.partIndexes));
+    this.nextStage = 0;
+    this.fairingsAttached = true;
+    this.workedOutStageNumber = 2;
     this.pruneToRocket();
     this.launchMass = this.mass();
+
+    if (!useFileStaging) {
+      this.igniteOpenEngines();
+      if (this.engineOn.size === 0) this.igniteLowestEngines();
+    }
+    this.logStage('Liftoff', [...this.engineOn], [], []);
+    this.afterStaging();
   }
 
-  frontalWidth() {
-    const boxes = [...this.alive].map((i) => this.parts[i].box);
-    return Math.max(...boxes.map((b) => b.x1)) - Math.min(...boxes.map((b) => b.x0));
+  label(i) {
+    return this.parts[i].label ?? this.parts[i].name;
+  }
+
+  labels(indexes) {
+    return countNames(indexes.map((i) => this.label(i)));
   }
 
   mass() {
@@ -87,6 +104,13 @@ class Flight {
       this.engineOn.delete(i);
       this.droppedAt[i] = this.burnCount;
     }
+    if (indexes.length) this.plan = null;
+  }
+
+  setEngine(engine, on) {
+    if (on) this.engineOn.add(engine);
+    else this.engineOn.delete(engine);
+    this.plan = null;
   }
 
   tankGroups() {
@@ -94,7 +118,7 @@ class Flight {
     const tanks = new Set([...this.alive].filter((i) => this.parts[i].role === 'tank'));
     for (const tank of tanks) {
       if (groupOf.has(tank)) continue;
-      const members = this.reach(tank, tanks);
+      const members = [...this.reach(tank, tanks)];
       for (const member of members) groupOf.set(member, members);
     }
     return groupOf;
@@ -108,61 +132,83 @@ class Flight {
 
   feedsOf(engine, groupOf) {
     const groups = new Set();
-    for (const j of this.rocket.links[engine]) {
-      if (groupOf.has(j)) groups.add(groupOf.get(j));
+    if (this.parts[engine].drawsFromAllTanks) {
+      for (const group of groupOf.values()) groups.add(group);
+    } else {
+      for (const j of this.rocket.links[engine]) {
+        if (groupOf.has(j)) groups.add(groupOf.get(j));
+      }
     }
     return [...groups].filter((g) => this.fuelIn(g) > EMPTY);
   }
 
-  burningEngines(groupOf) {
-    return [...this.engineOn].filter((e) => this.alive.has(e) && this.feedsOf(e, groupOf).length > 0);
-  }
-
-  burnSegment() {
+  currentPlan() {
+    if (this.plan !== null) return this.plan;
     const groupOf = this.tankGroups();
-    const engines = this.burningEngines(groupOf);
-    if (engines.length === 0) return null;
-
-    const drain = new Map();
+    const engines = [...this.engineOn].filter((e) => this.alive.has(e) && this.feedsOf(e, groupOf).length > 0);
+    if (engines.length === 0) {
+      this.plan = undefined;
+      return undefined;
+    }
+    const drains = new Map();
     let thrust = 0;
     let flow = 0;
     for (const e of engines) {
       const { thrust: t, isp } = this.parts[e];
       const feeds = this.feedsOf(e, groupOf);
-      for (const g of feeds) drain.set(g, (drain.get(g) ?? 0) + t / isp / feeds.length);
+      for (const g of feeds) drains.set(g, (drains.get(g) ?? 0) + t / isp / feeds.length);
       thrust += t;
       flow += t / isp;
     }
-    let seconds = Infinity;
-    for (const [group, rate] of drain) seconds = Math.min(seconds, this.fuelIn(group) / rate);
+    const boxes = [...this.alive].map((i) => this.parts[i].box);
+    const frontalWidth = Math.max(...boxes.map((b) => b.x1)) - Math.min(...boxes.map((b) => b.x0));
+    this.plan = { engines, drains: [...drains], thrust, flow, frontalWidth };
+    return this.plan;
+  }
 
+  burn(maxSeconds) {
+    const plan = this.currentPlan();
+    if (!plan) return null;
+    let seconds = maxSeconds;
+    for (const [group, rate] of plan.drains) seconds = Math.min(seconds, this.fuelIn(group) / rate);
     const startMass = this.mass();
-    const frontalWidth = this.frontalWidth();
-    for (const [group, rate] of drain) {
+    let emptied = false;
+    for (const [group, rate] of plan.drains) {
       const groupFuel = this.fuelIn(group);
       const used = Math.min(groupFuel, rate * seconds);
       for (const i of group) this.fuel[i] -= used * (this.fuel[i] / groupFuel);
-      if (this.fuelIn(group) < EMPTY) for (const i of group) this.fuel[i] = 0;
+      if (this.fuelIn(group) < EMPTY) {
+        for (const i of group) this.fuel[i] = 0;
+        emptied = true;
+      }
     }
     const endMass = this.mass();
-    const deltaV = STANDARD_GRAVITY * (thrust / flow) * Math.log(startMass / endMass);
+    const deltaV = endMass < startMass ? STANDARD_GRAVITY * (plan.thrust / plan.flow) * Math.log(startMass / endMass) : 0;
+    let starved = [];
+    if (emptied) {
+      this.plan = null;
+      const groupOf = this.tankGroups();
+      starved = plan.engines.filter((e) => this.feedsOf(e, groupOf).length === 0);
+    }
+    return { plan, seconds, startMass, endMass, deltaV, starved };
+  }
 
-    const afterGroups = this.tankGroups();
-    const starved = engines.filter((e) => this.feedsOf(e, afterGroups).length === 0);
+  burnSegment() {
+    const segment = this.burn(Infinity);
+    if (!segment) return null;
     this.timeline.push({
       kind: 'burn',
       burn: this.burnCount,
-      engines: countNames(engines.map((e) => shortName(this.parts[e].name))),
-      thrust,
-      startMass,
-      endMass,
-      seconds,
-      deltaV,
-      frontalWidth,
-      burnedOut: countNames(starved.map((e) => shortName(this.parts[e].name))),
+      engines: this.labels(segment.plan.engines),
+      thrust: segment.plan.thrust,
+      startMass: segment.startMass,
+      endMass: segment.endMass,
+      seconds: segment.seconds,
+      deltaV: segment.deltaV,
+      burnedOut: this.labels(segment.starved),
     });
     this.burnCount++;
-    return { starved };
+    return segment;
   }
 
   logStage(title, ignited, shutDown, lost) {
@@ -170,8 +216,8 @@ class Flight {
     this.timeline.push({
       kind: 'stage',
       title,
-      ignited: countNames(ignited.map((e) => shortName(this.parts[e].name))),
-      shutDown: countNames(shutDown.map((e) => shortName(this.parts[e].name))),
+      ignited: this.labels(ignited),
+      shutDown: this.labels(shutDown),
       droppedMass: lost.reduce((sum, i) => sum + this.dryMass[i] + this.fuel[i], 0),
       droppedCount: lost.length,
       droppedFuel: lost.reduce((sum, i) => sum + this.fuel[i], 0),
@@ -179,7 +225,38 @@ class Flight {
     return true;
   }
 
-  activate(stageNumber, partIndexes) {
+  afterStaging() {
+    if (this.liftoffThrust === null && this.currentPlan()) this.liftoffThrust = this.plan.thrust;
+    if (this.efficientEngines) this.useMostEfficientEngines();
+  }
+
+  switchToSpaceEngines() {
+    this.efficientEngines = true;
+    this.useMostEfficientEngines();
+  }
+
+  useMostEfficientEngines() {
+    const plan = this.currentPlan();
+    if (!plan) return;
+    const groupOf = this.tankGroups();
+    const feeds = new Map(plan.engines.map((e) => [e, new Set(this.feedsOf(e, groupOf))]));
+    const outclassed = plan.engines.filter((e) => plan.engines.some(
+      (other) => this.parts[other].isp > this.parts[e].isp && [...feeds.get(e)].some((g) => feeds.get(other).has(g)),
+    ));
+    for (const e of outclassed) this.setEngine(e, false);
+    this.logStage('In space, only the most efficient engines fire', [], outclassed, []);
+  }
+
+  react(segment) {
+    const changed = this.useFileStaging ? this.firePlayerStage(segment) : this.stageWhenSpent(segment);
+    if (changed) this.afterStaging();
+    return changed;
+  }
+
+  firePlayerStage(segment) {
+    if (segment && segment.starved.length === 0) return false;
+    if (this.nextStage >= this.playerStages.length) return false;
+    const { number, partIndexes } = this.playerStages[this.nextStage++];
     const ignited = [];
     const shutDown = [];
     const detached = [];
@@ -187,38 +264,43 @@ class Flight {
       if (!this.alive.has(i)) continue;
       const { role } = this.parts[i];
       if (role === 'engine') {
-        if (this.engineOn.has(i)) {
-          this.engineOn.delete(i);
-          shutDown.push(i);
-        } else {
-          this.engineOn.add(i);
-          ignited.push(i);
-        }
+        const on = !this.engineOn.has(i);
+        this.setEngine(i, on);
+        (on ? ignited : shutDown).push(i);
       } else if (DETACHING_ROLES.has(role)) {
         detached.push(i);
       }
     }
     this.dropParts(detached);
     const lost = [...detached, ...this.pruneToRocket()];
-    this.logStage(`Stage ${stageNumber}`, ignited, shutDown, lost);
+    this.logStage(`Stage ${number}`, ignited, shutDown, lost);
+    return true;
   }
 
-  flyPlayerStaging() {
-    const stages = this.rocket.stages
-      .map((partIndexes, n) => ({ number: n + 1, partIndexes }))
-      .filter((stage) => stageDoesSomething(this.rocket, stage.partIndexes));
-    this.logStage('Liftoff', [...this.engineOn], [], []);
-    let next = 0;
+  stageWhenSpent(segment) {
+    const lost = [];
+    if (segment && this.fairingsAttached) {
+      lost.push(...this.dropFairings());
+      this.fairingsAttached = false;
+    }
+    lost.push(...this.dropSpentPieces());
+    let ignited = this.igniteOpenEngines();
+    if (!segment && lost.length === 0 && ignited.length === 0) ignited = this.igniteOpenEngines(Infinity);
+    const changed = this.logStage(`Stage ${this.workedOutStageNumber}`, ignited, [], lost);
+    if (changed) this.workedOutStageNumber++;
+    return changed;
+  }
+
+  flyToEnd() {
+    let deltaV = 0;
     while (true) {
       const segment = this.burnSegment();
-      if (segment && segment.starved.length === 0) continue;
-      if (next >= stages.length) {
-        if (segment) continue;
-        break;
-      }
-      const stage = stages[next++];
-      this.activate(stage.number, stage.partIndexes);
+      if (segment) deltaV += segment.deltaV;
+      const changed = this.react(segment);
+      if (!segment && !changed) break;
     }
+    this.dropTrailingStages();
+    return deltaV;
   }
 
   isCovered(engine) {
@@ -237,7 +319,7 @@ class Flight {
       const part = this.parts[i];
       const nearBottom = part.box.y0 <= bottom + reach;
       if (part.role === 'engine' && nearBottom && !this.engineOn.has(i) && !this.isCovered(i)) {
-        this.engineOn.add(i);
+        this.setEngine(i, true);
         ignited.push(i);
       }
     }
@@ -249,7 +331,7 @@ class Flight {
     if (engines.length === 0) return [];
     const lowest = Math.min(...engines.map((i) => this.parts[i].box.y0));
     const ignited = engines.filter((i) => this.parts[i].box.y0 <= lowest + 0.5);
-    for (const i of ignited) this.engineOn.add(i);
+    for (const i of ignited) this.setEngine(i, true);
     return ignited;
   }
 
@@ -267,12 +349,10 @@ class Flight {
     const separators = new Set([...this.alive].filter((i) => SPLITTING_ROLES.has(this.parts[i].role)));
     const body = new Set([...this.alive].filter((i) => !separators.has(i)));
     const pieceOf = new Map();
-    const pieces = [];
     for (const i of body) {
       if (pieceOf.has(i)) continue;
       const piece = { parts: this.reach(i, body), children: [], linkSeparators: [] };
       for (const member of piece.parts) pieceOf.set(member, piece);
-      pieces.push(piece);
     }
     const root = pieceOf.get(this.rootPart());
     if (!root) return [];
@@ -323,40 +403,16 @@ class Flight {
     return [...fired, ...this.pruneToRocket()];
   }
 
-  flyWorkedOutStaging() {
-    this.igniteOpenEngines();
-    if (this.engineOn.size === 0) this.igniteLowestEngines();
-    this.logStage('Liftoff', [...this.engineOn], [], []);
-    let fairingsAttached = true;
-    let stageNumber = 2;
-    while (true) {
-      const segment = this.burnSegment();
-      const lost = [];
-      if (segment && fairingsAttached) {
-        lost.push(...this.dropFairings());
-        fairingsAttached = false;
-      }
-      lost.push(...this.dropSpentPieces());
-      let ignited = this.igniteOpenEngines();
-      if (!segment && lost.length === 0 && ignited.length === 0) ignited = this.igniteOpenEngines(Infinity);
-      const changed = this.logStage(`Stage ${stageNumber}`, ignited, [], lost);
-      if (changed) stageNumber++;
-      if (!segment && !changed) break;
-    }
-    this.dropTrailingStages();
-  }
-
-  result(useFileStaging) {
+  result() {
     const burns = this.timeline.filter((entry) => entry.kind === 'burn');
-    const firstBurn = burns[0];
     const leftoverFuel = [...this.alive].reduce((sum, i) => sum + this.fuel[i], 0);
     const unknown = countNames(this.parts.filter((p) => !p.known).map((p) => p.name));
     return {
-      usedFileStaging: useFileStaging,
+      usedFileStaging: this.useFileStaging,
       timeline: this.timeline,
       totalDeltaV: burns.reduce((sum, b) => sum + b.deltaV, 0),
       launchMass: this.launchMass,
-      liftoffThrust: firstBurn && firstBurn.burn === 0 ? firstBurn.thrust : 0,
+      liftoffThrust: this.liftoffThrust ?? 0,
       finalMass: this.mass(),
       leftoverFuel,
       droppedAt: this.droppedAt,
