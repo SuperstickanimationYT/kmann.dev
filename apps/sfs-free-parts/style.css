@@ -38,3 +38,15 @@
 .dv-table td.fp-better {
   color: #7fe0a0;
 }
+
+.fp-changes td:nth-child(2),
+.fp-changes th:nth-child(2) {
+  text-align: left;
+  white-space: normal;
+}
+
+@media (max-width: 560px) {
+  .fp-views {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
