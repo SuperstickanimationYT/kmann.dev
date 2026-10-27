@@ -1,0 +1,20 @@
+{
+  "bytes": 55927,
+  "files": [
+    "./",
+    "index.html",
+    "js/blueprint.js",
+    "js/dom.js",
+    "js/flight.js",
+    "js/main.js",
+    "js/parts.js",
+    "js/view.js",
+    "manifest.webmanifest",
+    "samples/side-boosters.txt",
+    "style.css",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}

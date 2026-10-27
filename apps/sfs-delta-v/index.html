@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFS Δv Calculator &mdash; kmann314</title>
+<meta name="description" content="Upload a Spaceflight Simulator Blueprint.txt and get the rocket's delta-v for each stage and in total, with no maths.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/app.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page">
+
+<header class="site-header">
+  <div class="shell">
+    <a class="mark" href="../../" aria-label="Home">
+      <img src="../../assets/img/mark.svg" alt="">
+    </a>
+    <div class="banner">
+      <h1 class="banner-title">kmann314's projects</h1>
+    </div>
+  </div>
+  <div class="header-rule"></div>
+</header>
+
+<main>
+  <div class="shell">
+    <div class="app-bar">
+      <a class="back-link" href="../../">&larr; All projects</a>
+      <h2 class="app-title">SFS Δv Calculator</h2>
+      <span class="wip-tag" title="This app is unfinished. Expect bugs and missing parts.">Work in progress</span>
+    </div>
+  </div>
+
+  <div class="shell dv-app">
+    <form class="dv-form" onsubmit="return false">
+      <fieldset>
+        <legend>Rocket</legend>
+        <label class="dv-drop" data-drop>
+          <input type="file" accept=".txt,text/plain,application/json" data-file hidden>
+          <strong>Choose Blueprint.txt</strong>
+          <span>or drop it here</span>
+        </label>
+        <details class="dv-paste">
+          <summary>Paste the file's text instead</summary>
+          <textarea class="dv-input" rows="6" spellcheck="false" placeholder='{ "center": ..., "parts": [ ... ] }' data-paste></textarea>
+          <button type="button" class="dv-button" data-paste-go>Calculate</button>
+        </details>
+        <button type="button" class="dv-button" data-example>Try an example rocket</button>
+        <p class="dv-hint">Each saved rocket has a folder in the game's <code>Saving/Blueprints</code> folder holding its <code>Blueprint.txt</code>. Share links can't be read here, because the sharing server only answers the game.</p>
+      </fieldset>
+
+      <fieldset data-staging hidden>
+        <legend>Staging</legend>
+        <label class="dv-check"><input type="radio" name="staging" value="file" data-staging-file> Use my stages from the game</label>
+        <label class="dv-check"><input type="radio" name="staging" value="auto" data-staging-auto> Work them out for me</label>
+        <p class="dv-hint" data-staging-hint></p>
+      </fieldset>
+
+      <fieldset data-unknown hidden>
+        <legend>Parts without data</legend>
+        <p class="dv-hint">These parts aren't in the calculator's part list yet. Enter the mass shown in the build screen for one of each.</p>
+        <div class="dv-unknown-list" data-unknown-list></div>
+      </fieldset>
+    </form>
+
+    <div class="dv-output">
+      <p class="dv-status" data-status role="status">Load a rocket to see its Δv.</p>
+      <div data-results hidden>
+        <div class="dv-summary">
+          <p class="dv-total"><span data-total></span> <span class="dv-unit">m/s Δv</span></p>
+          <p class="dv-check-line" data-launch></p>
+        </div>
+        <ul class="dv-warnings" data-warnings></ul>
+        <ol class="dv-timeline" data-timeline></ol>
+        <figure class="dv-view">
+          <canvas data-rocket role="img" aria-label="The rocket, coloured by the burn after which each part falls away"></canvas>
+          <figcaption data-legend></figcaption>
+        </figure>
+      </div>
+      <p class="dv-note">Δv is the vacuum figure, with no air or gravity losses, the same as burning everything with air and gravity turned off in the cheats. Part masses, thrust and Isp come from the <a href="https://spaceflight-simulator.fandom.com/wiki/Parts">SFS wiki</a>. Parts are counted as attached when their outlines touch, so blueprint-edited rockets can come out wrong.</p>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <nav class="footer-links">
+      <a href="../../about.html">About me</a>
+      <button type="button" class="save-offline" data-save-offline hidden></button>
+    </nav>
+    <p class="footer-copy">&copy; 2026 kmann314. All rights reserved.</p>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>

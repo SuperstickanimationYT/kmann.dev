@@ -166,6 +166,13 @@ const PROJECTS = [
     status: 'wip',
   },
   {
+    title: 'SFS Δv Calculator',
+    href: 'apps/sfs-delta-v/',
+    category: 'tools',
+    blurb: 'Upload a Spaceflight Simulator Blueprint.txt and get the Δv of every burn, with staging read from the file or worked out for you.',
+    status: 'wip',
+  },
+  {
     title: 'Song Studio',
     href: 'apps/song-studio/',
     category: 'tools',
