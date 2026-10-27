@@ -4,12 +4,13 @@ const TANK_TONS_PER_AREA = 2.5;
 const TANK_FUEL_SHARE = 0.9;
 
 const ENGINES = {
-  'Engine Titan': { mass: 12, thrust: 400, isp: 240, width: 3, length: 4.5 },
-  'Engine Hawk': { mass: 3.5, thrust: 120, isp: 240, width: 2, length: 3 },
-  'Engine Frontier': { mass: 6, thrust: 100, isp: 290, width: 2.5, length: 3.5 },
-  'Engine Peregrine': { mass: 2, thrust: 75, isp: 180, width: 2, length: 2.5 },
-  'Engine Valiant': { mass: 2, thrust: 40, isp: 280, width: 1.6, length: 2.5 },
-  'Engine Kolibri': { mass: 0.5, thrust: 15, isp: 260, width: 1, length: 1 },
+  'Engine Titan': { label: 'Titan', mass: 12, thrust: 400, isp: 240, width: 3, length: 4.5 },
+  'Engine Hawk': { label: 'Hawk', mass: 3.5, thrust: 120, isp: 240, width: 2, length: 3 },
+  'Engine Frontier': { label: 'Frontier', mass: 6, thrust: 100, isp: 290, width: 2.5, length: 3.5 },
+  'Engine Peregrine': { label: 'Peregrine', mass: 2, thrust: 75, isp: 180, width: 2, length: 2.5 },
+  'Engine Valiant': { label: 'Valiant', mass: 2, thrust: 40, isp: 280, width: 1.6, length: 2.5 },
+  'Engine Kolibri': { label: 'Kolibri', mass: 0.5, thrust: 15, isp: 260, width: 1, length: 1 },
+  'Placeholder ION': { label: 'Ion', mass: 0.5, thrust: 1.5, isp: 1200, width: 1, length: 0.5, drawsFromAllTanks: true },
 };
 
 const centred = (width, bottom, top) => ({ x0: -width / 2, x1: width / 2, y0: bottom, y1: top });
@@ -75,6 +76,8 @@ export function describePart(raw) {
   if (engine) {
     return {
       role: 'engine',
+      label: engine.label,
+      drawsFromAllTanks: Boolean(engine.drawsFromAllTanks),
       known: true,
       dryMass: engine.mass,
       fuel: 0,
