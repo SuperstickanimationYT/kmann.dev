@@ -35,7 +35,7 @@ const KINDS = {
   'Docking Port': {
     role: 'dockingPort',
     mass: (N) => ((N.width ?? 2) <= 1 ? 0.25 : 0.3),
-    box: (N) => centred(N.width ?? 2, 0, 0.5),
+    box: (N) => centred(N.width ?? 2, -0.5, 0),
   },
   Fairing: {
     role: 'fairing',
@@ -64,6 +64,7 @@ const KINDS = {
   'Cone Round': { role: 'structure', mass: (N) => 0.05 * (N.size ?? 2), box: (N) => centred(N.size ?? 2, 0, (N.size ?? 2) / 2) },
   'Cone Side': { role: 'structure', mass: (N) => 0.025 * (N.size ?? 2), box: (N) => centred(N.size ?? 2, 0, N.size ?? 2) },
   RCS: { role: 'structure', mass: () => 0.05, box: () => centred(0.5, 0, 0.5) },
+  'Landing Leg Big': { role: 'structure', mass: () => 0.75, box: () => centred(1, 0, 1) },
 };
 
 const UNKNOWN_BOX = centred(1, 0, 1);

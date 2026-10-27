@@ -3,6 +3,8 @@ import { STAGE_ACTION_ROLES, STANDARD_GRAVITY } from './parts.js';
 
 const EMPTY = 1e-6;
 const DETACHING_ROLES = new Set(['separator', 'dockingPort', 'fairing']);
+const LOWEST_ENGINE_REACH = 3;
+const SPLITTING_ROLES = new Set(['separator', 'dockingPort']);
 
 export const shortName = (name) => name.replace(/^Engine /, '');
 
@@ -205,6 +207,7 @@ class Flight {
     const stages = this.rocket.stages
       .map((partIndexes, n) => ({ number: n + 1, partIndexes }))
       .filter((stage) => stageDoesSomething(this.rocket, stage.partIndexes));
+    this.logStage('Liftoff', [...this.engineOn], [], []);
     let next = 0;
     while (true) {
       const segment = this.burnSegment();
@@ -227,10 +230,13 @@ class Flight {
     return false;
   }
 
-  igniteOpenEngines() {
+  igniteOpenEngines(reach = LOWEST_ENGINE_REACH) {
     const ignited = [];
+    const bottom = Math.min(...[...this.alive].map((i) => this.parts[i].box.y0));
     for (const i of this.alive) {
-      if (this.parts[i].role === 'engine' && !this.engineOn.has(i) && !this.isCovered(i)) {
+      const part = this.parts[i];
+      const nearBottom = part.box.y0 <= bottom + reach;
+      if (part.role === 'engine' && nearBottom && !this.engineOn.has(i) && !this.isCovered(i)) {
         this.engineOn.add(i);
         ignited.push(i);
       }
@@ -258,7 +264,7 @@ class Flight {
   }
 
   dropSpentPieces() {
-    const separators = new Set([...this.alive].filter((i) => this.parts[i].role === 'separator'));
+    const separators = new Set([...this.alive].filter((i) => SPLITTING_ROLES.has(this.parts[i].role)));
     const body = new Set([...this.alive].filter((i) => !separators.has(i)));
     const pieceOf = new Map();
     const pieces = [];
@@ -318,8 +324,9 @@ class Flight {
   }
 
   flyWorkedOutStaging() {
-    const liftoffEngines = this.igniteOpenEngines();
-    this.logStage('Liftoff', liftoffEngines.length ? liftoffEngines : this.igniteLowestEngines(), [], []);
+    this.igniteOpenEngines();
+    if (this.engineOn.size === 0) this.igniteLowestEngines();
+    this.logStage('Liftoff', [...this.engineOn], [], []);
     let fairingsAttached = true;
     let stageNumber = 2;
     while (true) {
@@ -330,7 +337,8 @@ class Flight {
         fairingsAttached = false;
       }
       lost.push(...this.dropSpentPieces());
-      const ignited = this.igniteOpenEngines();
+      let ignited = this.igniteOpenEngines();
+      if (!segment && lost.length === 0 && ignited.length === 0) ignited = this.igniteOpenEngines(Infinity);
       const changed = this.logStage(`Stage ${stageNumber}`, ignited, [], lost);
       if (changed) stageNumber++;
       if (!segment && !changed) break;
