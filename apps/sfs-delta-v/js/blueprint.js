@@ -30,7 +30,9 @@ export function parseBlueprint(text) {
     .map((stage) => (stage.partIndexes ?? []).filter((i) => i >= 0 && i < parts.length))
     .filter((indexes) => indexes.length > 0);
   const resizedParts = json.parts.filter((raw) => Math.abs(raw.o?.x ?? 1) !== 1 || Math.abs(raw.o?.y ?? 1) !== 1).length;
-  return { parts, stages, links: linkParts(parts), resizedParts };
+  const links = linkParts(parts);
+  const bridgedGaps = joinLoosePieces(parts, links);
+  return { parts, stages, links, resizedParts, bridgedGaps };
 }
 
 function nozzleOf(engineBox) {
@@ -99,6 +101,57 @@ function linkParts(parts) {
     }
   }
   return links;
+}
+
+function boxDistance(a, b) {
+  const dx = Math.max(0, gap(a.x0, a.x1, b.x0, b.x1));
+  const dy = Math.max(0, gap(a.y0, a.y1, b.y0, b.y1));
+  return Math.hypot(dx, dy);
+}
+
+function pieceLabels(links) {
+  const label = links.map(() => -1);
+  let count = 0;
+  for (let start = 0; start < links.length; start++) {
+    if (label[start] !== -1) continue;
+    const stack = [start];
+    label[start] = count;
+    while (stack.length) {
+      for (const j of links[stack.pop()]) {
+        if (label[j] === -1) {
+          label[j] = count;
+          stack.push(j);
+        }
+      }
+    }
+    count++;
+  }
+  return { label, count };
+}
+
+function joinLoosePieces(parts, links) {
+  const { label, count } = pieceLabels(links);
+  if (count < 2) return 0;
+  const closest = [];
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j < parts.length; j++) {
+      if (label[i] !== label[j]) closest.push({ i, j, distance: boxDistance(parts[i].box, parts[j].box) });
+    }
+  }
+  closest.sort((a, b) => a.distance - b.distance);
+  const pieceOf = Array.from({ length: count }, (_, n) => n);
+  const root = (n) => (pieceOf[n] === n ? n : (pieceOf[n] = root(pieceOf[n])));
+  let joined = 0;
+  for (const { i, j } of closest) {
+    const a = root(label[i]);
+    const b = root(label[j]);
+    if (a === b) continue;
+    pieceOf[a] = b;
+    links[i].push(j);
+    links[j].push(i);
+    if (++joined === count - 1) break;
+  }
+  return joined;
 }
 
 export function overlapArea(a, b) {

@@ -188,6 +188,9 @@ function warningsFor(result) {
   if (state.rocket.resizedParts > 0) {
     warnings.push(`${state.rocket.resizedParts} parts are resized by blueprint editing. Their attachments may be read wrong, and resized engines and tanks may not weigh or push what the game says.`);
   }
+  if (state.rocket.bridgedGaps > 0) {
+    warnings.push(`${state.rocket.bridgedGaps === 1 ? 'One piece' : `${state.rocket.bridgedGaps} pieces`} didn't seem to touch the rest of the rocket, probably because of a part whose shape the calculator doesn't know. Each was joined to the nearest part.`);
+  }
   if (result.unknown) {
     warnings.push(`No data for: ${result.unknown}. They count as the masses entered on the left, 0 t until you change them.`);
   }
