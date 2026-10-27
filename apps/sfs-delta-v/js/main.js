@@ -24,6 +24,8 @@ const tons = (value) => `${value.toLocaleString(undefined, { maximumFractionDigi
 const metresPerSecond = (value) => Math.round(value).toLocaleString();
 const seconds = (value) => (value >= 100 ? `${Math.round(value)} s` : `${value.toFixed(1)} s`);
 
+const colourByBurn = (droppedAt) => (part) => burnColour(droppedAfterBurn(droppedAt[part.index]));
+
 function showStatus(message, isError = false) {
   statusLine.textContent = message;
   statusLine.classList.toggle('is-error', isError);
@@ -108,7 +110,7 @@ function render() {
   renderDestinations(ascent.reached ? ascent.leftInOrbit : null);
   find('[data-timeline]').replaceChildren(...result.timeline.map(timelineEntry));
   renderLegend(result);
-  drawRocket(canvas, state.rocket, result.droppedAt);
+  drawRocket(canvas, state.rocket, colourByBurn(result.droppedAt));
 }
 
 const kilometres = (metres) => `${Math.round(metres / 1000)} km`;
@@ -186,7 +188,7 @@ function renderDestinations(available) {
 function warningsFor(result) {
   const warnings = [];
   if (state.rocket.resizedParts > 0) {
-    warnings.push(`${state.rocket.resizedParts} parts are resized by blueprint editing. Their attachments may be read wrong, and resized engines and tanks may not weigh or push what the game says.`);
+    warnings.push(`${state.rocket.resizedParts} parts are resized by blueprint editing. Their attachments may be read wrong, and they may not weigh or push what the game says.`);
   }
   if (state.rocket.bridgedGaps > 0) {
     warnings.push(`${state.rocket.bridgedGaps === 1 ? 'One piece' : `${state.rocket.bridgedGaps} pieces`} didn't seem to touch the rest of the rocket, probably because of a part whose shape the calculator doesn't know. Each was joined to the nearest part.`);
@@ -275,5 +277,5 @@ for (const input of [fileStagingInput, autoStagingInput]) {
 }
 
 window.addEventListener('resize', () => {
-  if (state.rocket && state.lastResult) drawRocket(canvas, state.rocket, state.lastResult.droppedAt);
+  if (state.rocket && state.lastResult) drawRocket(canvas, state.rocket, colourByBurn(state.lastResult.droppedAt));
 });

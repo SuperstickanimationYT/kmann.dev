@@ -1,0 +1,40 @@
+.fp-headline {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-strong);
+}
+
+.fp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fp-actions[hidden] {
+  display: none;
+}
+
+.fp-views {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fp-paid {
+  background: #e8794a;
+}
+
+.fp-stand-in {
+  background: #6cc46a;
+}
+
+.dv-table td.fp-worse {
+  color: #ff9b8a;
+}
+
+.dv-table td.fp-better {
+  color: #7fe0a0;
+}

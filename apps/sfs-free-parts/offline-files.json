@@ -1,0 +1,16 @@
+{
+  "bytes": 47312,
+  "files": [
+    "./",
+    "index.html",
+    "js/convert.js",
+    "js/main.js",
+    "samples/mars-lander.txt",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/app.css",
+    "../../assets/js/offline.js"
+  ]
+}
