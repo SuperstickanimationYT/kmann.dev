@@ -265,12 +265,14 @@ function weightedMoments(weighted, columns, rows, kernel, powerAcross, powerDown
   return moments;
 }
 
-function solve3(m, rhs) {
-  const det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+function determinant3(m) {
+  return m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+}
+
+function planeIntercept(normal, rhs) {
+  const det = determinant3(normal);
   if (Math.abs(det) < 1e-12) return null;
-  const replaced = (column) => m.map((value, i) => (i % 3 === column ? rhs[Math.floor(i / 3)] : value));
-  const determinant = (a) => a[0] * (a[4] * a[8] - a[5] * a[7]) - a[1] * (a[3] * a[8] - a[5] * a[6]) + a[2] * (a[3] * a[7] - a[4] * a[6]);
-  return determinant(replaced(0)) / det;
+  return determinant3(normal.map((value, i) => (i % 3 === 0 ? rhs[Math.floor(i / 3)] : value))) / det;
 }
 
 function planeFitGrid(values, isSky, columns, rows, spread) {
@@ -301,7 +303,7 @@ function planeFitGrid(values, isSky, columns, rows, spread) {
     ];
     for (let c = 0; c < 3; c++) {
       const mean = flat[at + c] / weight;
-      const plane = solve3(normal, [flat[at + c], slopeAcross[at + c], slopeDown[at + c]]);
+      const plane = planeIntercept(normal, [flat[at + c], slopeAcross[at + c], slopeDown[at + c]]);
       fitted[cell * 3 + c] = plane === null ? mean : Math.min(PLANE_MAX_RATIO * mean, Math.max(mean / PLANE_MAX_RATIO, plane));
     }
   }
