@@ -1,4 +1,5 @@
 import { decodeJxl } from './jxl.js';
+import { decodeLosslessJpeg } from './ljpeg.js';
 import { inflate } from './png.js';
 
 const TAG = {
@@ -152,6 +153,15 @@ function segmentsOf(ifd, width, height) {
   }));
 }
 
+function halfToFloat(half) {
+  const sign = half & 0x8000 ? -1 : 1;
+  const exponent = (half >> 10) & 0x1f;
+  const fraction = half & 0x3ff;
+  if (exponent === 0) return sign * fraction * 2 ** -24;
+  if (exponent === 31) return fraction ? NaN : sign * Infinity;
+  return sign * (1 + fraction / 1024) * 2 ** (exponent - 15);
+}
+
 function readSamples(bytes, littleEndian, bits, isFloat, count) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (isFloat && bits === 32) {
@@ -159,13 +169,24 @@ function readSamples(bytes, littleEndian, bits, isFloat, count) {
     for (let i = 0; i < count; i++) out[i] = view.getFloat32(i * 4, littleEndian);
     return out;
   }
+  if (isFloat && bits === 16) {
+    const out = new Float32Array(count);
+    for (let i = 0; i < count; i++) out[i] = halfToFloat(view.getUint16(i * 2, littleEndian));
+    return out;
+  }
+  if (!isFloat && bits === 32) {
+    const out = new Uint32Array(count);
+    for (let i = 0; i < count; i++) out[i] = view.getUint32(i * 4, littleEndian);
+    return out;
+  }
+  if (isFloat) throw new Error(`${bits}-bit float samples are not supported yet.`);
   if (bits === 16) {
     const out = new Uint16Array(count);
     for (let i = 0; i < count; i++) out[i] = view.getUint16(i * 2, littleEndian);
     return out;
   }
   if (bits === 8) return Uint16Array.from(bytes.subarray(0, count));
-  throw new Error(`${bits}-bit ${isFloat ? 'float ' : ''}samples are not supported yet.`);
+  throw new Error(`${bits}-bit samples are not supported yet.`);
 }
 
 function undoHorizontalPredictor(samples, segmentWidth, rows, channels) {
@@ -176,6 +197,36 @@ function undoHorizontalPredictor(samples, segmentWidth, rows, channels) {
   }
 }
 
+function undoFloatPredictor(bytes, segmentWidth, rows, channels, bits) {
+  const bytesPerSample = bits / 8;
+  if (bytesPerSample !== 2 && bytesPerSample !== 4) throw new Error(`${bits}-bit float samples are not supported yet.`);
+  const rowSamples = segmentWidth * channels;
+  const rowBytes = rowSamples * bytesPerSample;
+  const out = new Float32Array(rowSamples * rows);
+  const row = new Uint8Array(rowBytes);
+  const sample = new DataView(new ArrayBuffer(4));
+  for (let y = 0; y < rows; y++) {
+    row.set(bytes.subarray(y * rowBytes, (y + 1) * rowBytes));
+    for (let i = channels; i < rowBytes; i++) row[i] = (row[i] + row[i - channels]) & 0xff;
+    for (let i = 0; i < rowSamples; i++) {
+      for (let significance = 0; significance < bytesPerSample; significance++) {
+        sample.setUint8(significance, row[significance * rowSamples + i]);
+      }
+      out[y * rowSamples + i] = bytesPerSample === 4 ? sample.getFloat32(0) : halfToFloat(sample.getUint16(0));
+    }
+  }
+  return out;
+}
+
+function decodeLosslessJpegSegment(raw, segment, format) {
+  const decoded = decodeLosslessJpeg(raw);
+  const rowLength = segment.width * format.channels;
+  if (decoded.width * decoded.channels !== rowLength) {
+    throw new Error('This DNG lays out its lossless JPEG tiles in a way this editor cannot read yet.');
+  }
+  return { samples: decoded.samples, width: segment.width, height: decoded.height, channels: format.channels };
+}
+
 async function decodeSegment(bytes, segment, format) {
   const raw = bytes.subarray(segment.offset, segment.offset + segment.byteCount);
   const count = segment.width * segment.height * format.channels;
@@ -183,17 +234,19 @@ async function decodeSegment(bytes, segment, format) {
     const decoded = await decodeJxl(raw);
     return { samples: decoded.data, width: decoded.width, height: decoded.height, channels: decoded.channels };
   }
+  if (format.compression === COMPRESSION.losslessJpeg) return decodeLosslessJpegSegment(raw, segment, format);
   let plain = raw;
   if (format.compression === COMPRESSION.deflate || format.compression === COMPRESSION.deflateLegacy) {
     plain = await inflate(raw);
-  } else if (format.compression === COMPRESSION.losslessJpeg) {
-    throw new Error('This DNG uses lossless JPEG compression, which this prototype cannot read yet. Samsung Expert RAW and uncompressed DNGs work.');
   } else if (format.compression !== COMPRESSION.none) {
-    throw new Error(`This file uses TIFF compression ${format.compression}, which this prototype cannot read yet.`);
+    throw new Error(`This file uses TIFF compression ${format.compression}, which this editor cannot read yet.`);
+  }
+  if (format.predictor === 3) {
+    const samples = undoFloatPredictor(plain, segment.width, segment.height, format.channels, format.bits);
+    return { samples, width: segment.width, height: segment.height, channels: format.channels };
   }
   const samples = readSamples(plain, format.littleEndian, format.bits, format.isFloat, count);
   if (format.predictor === 2) undoHorizontalPredictor(samples, segment.width, segment.height, format.channels);
-  else if (format.predictor === 3) throw new Error('Floating-point predictor TIFFs are not supported yet.');
   return { samples, width: segment.width, height: segment.height, channels: format.channels };
 }
 
@@ -247,11 +300,19 @@ function superpixelDemosaic(plane, width, height, pattern, blacks, white) {
   return { width: outWidth, height: outHeight, rgb };
 }
 
+function floatFullScale(plane) {
+  let max = 0;
+  for (let i = 0; i < plane.length; i++) if (plane[i] > max) max = plane[i];
+  if (max <= 2) return 1;
+  return max <= 65536 ? 65535 : max;
+}
+
 function normalizedRgb(plane, width, height, channels, blacks, whites, isFloat) {
   const rgb = new Float32Array(width * height * 3);
   const pick = channels >= 3 ? [0, 1, 2] : [0, 0, 0];
   const black = pick.map((channel) => (isFloat ? 0 : levelFor(blacks, channel, 0)));
-  const range = pick.map((channel, i) => (isFloat ? 1 : levelFor(whites, channel, 65535) - black[i]));
+  const fullScale = isFloat ? floatFullScale(plane) : 0;
+  const range = pick.map((channel, i) => (isFloat ? fullScale : levelFor(whites, channel, 65535) - black[i]));
   for (let pixel = 0, n = width * height; pixel < n; pixel++) {
     for (let c = 0; c < 3; c++) rgb[pixel * 3 + c] = (plane[pixel * channels + pick[c]] - black[c]) / range[c];
   }
@@ -322,7 +383,7 @@ export async function decodeTiff(bytes, onStatus = () => {}) {
   if (format.compression === COMPRESSION.jpegXl) onStatus('Decoding JPEG XL (Expert RAW files take about 10 seconds)…');
   else onStatus('Reading pixels…');
 
-  let plane = new (format.isFloat ? Float32Array : Uint16Array)(width * height * channels);
+  let plane = new (format.isFloat || bits > 16 ? Float32Array : Uint16Array)(width * height * channels);
   for (const segment of segmentsOf(main, width, height)) {
     const decoded = await decodeSegment(bytes, segment, format);
     const copyWidth = Math.min(decoded.width, width - segment.x);
@@ -356,11 +417,12 @@ export async function decodeTiff(bytes, onStatus = () => {}) {
   }
 
   const camera = [ifd0.text(TAG.make), ifd0.text(TAG.model)].filter(Boolean).join(' ');
-  const kind = format.compression === COMPRESSION.jpegXl ? 'JPEG XL DNG' : photometric === PHOTOMETRIC.cfa ? 'raw DNG' : 'TIFF';
+  const isRaw = photometric === PHOTOMETRIC.cfa || photometric === PHOTOMETRIC.linearRaw;
+  const kind = format.compression === COMPRESSION.jpegXl ? 'JPEG XL DNG' : isRaw ? 'raw DNG' : 'TIFF';
   const upright = orient(image, ifd0.value(TAG.orientation, 1));
   return {
     ...upright,
-    toLinearSrgb: photometric === PHOTOMETRIC.cfa || photometric === PHOTOMETRIC.linearRaw ? cameraToSrgb(ifd0) : [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    toLinearSrgb: isRaw ? cameraToSrgb(ifd0) : [1, 0, 0, 0, 1, 0, 0, 0, 1],
     description: `${camera ? `${camera} · ` : ''}${kind} · ${upright.width}×${upright.height}`,
   };
 }
