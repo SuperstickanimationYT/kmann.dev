@@ -91,7 +91,10 @@ function engineStandIns(raw) {
   const thrustNeeded = paid.thrust * Math.abs(stretch);
   const name = closestFreeEngine(paid, thrustNeeded);
   const stretches = bestStack(paid, thrustNeeded, ENGINES[name]);
-  const parts = stretches.map((s) => withShape(raw, name, { o: { ...(raw.o ?? { x: 1, z: 0 }), y: Math.sign(stretch) * s } }));
+  const parts = stretches.map((s) => withShape(raw, name, {
+    o: { ...(raw.o ?? { x: 1, z: 0 }), y: Math.sign(stretch) * s },
+    B: { ...raw.B, heat_on__for_creative_use: false },
+  }));
   return { name, stretches, parts };
 }
 
