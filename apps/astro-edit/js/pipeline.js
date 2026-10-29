@@ -13,6 +13,8 @@ const COLOUR_SMOOTHING_CELLS = 1.2;
 const CHROMA_NOISE_RADIUS = 0.0025;
 const LOCAL_CLIP_ROUNDS = 3;
 const LOCAL_CLIP_FRACTION = 0.4;
+const PLANE_RIDGE = 0.05;
+const PLANE_MAX_RATIO = 2;
 
 export const LOCAL_COLUMNS = 120;
 
@@ -250,6 +252,64 @@ function smoothGrid(values, isSky, columns, rows, spread) {
   return { columns, rows, values: smoothed };
 }
 
+function momentKernel(kernel, power) {
+  const reach = (kernel.length - 1) / 2;
+  return kernel.map((weight, i) => weight * (i - reach) ** power);
+}
+
+function weightedMoments(weighted, columns, rows, kernel, powerAcross, powerDown) {
+  const across = new Float32Array(weighted.length);
+  const moments = new Float32Array(weighted.length);
+  convolveLines(weighted, across, columns, rows, momentKernel(kernel, powerAcross), true);
+  convolveLines(across, moments, columns, rows, momentKernel(kernel, powerDown), false);
+  return moments;
+}
+
+function determinant3(m) {
+  return m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+}
+
+function planeIntercept(normal, rhs) {
+  const det = determinant3(normal);
+  if (Math.abs(det) < 1e-12) return null;
+  return determinant3(normal.map((value, i) => (i % 3 === 0 ? rhs[Math.floor(i / 3)] : value))) / det;
+}
+
+function planeFitGrid(values, isSky, columns, rows, spread) {
+  const cells = columns * rows;
+  const weighted = new Float32Array(cells * 4);
+  for (let cell = 0; cell < cells; cell++) {
+    if (!isSky[cell]) continue;
+    for (let c = 0; c < 3; c++) weighted[cell * 4 + c] = values[cell * 3 + c];
+    weighted[cell * 4 + 3] = 1;
+  }
+  const kernel = gaussianKernel(spread);
+  const flat = weightedMoments(weighted, columns, rows, kernel, 0, 0);
+  const slopeAcross = weightedMoments(weighted, columns, rows, kernel, 1, 0);
+  const slopeDown = weightedMoments(weighted, columns, rows, kernel, 0, 1);
+  const spreadAcross = weightedMoments(weighted, columns, rows, kernel, 2, 0);
+  const spreadBoth = weightedMoments(weighted, columns, rows, kernel, 1, 1);
+  const spreadDown = weightedMoments(weighted, columns, rows, kernel, 0, 2);
+  const fitted = new Float32Array(cells * 3);
+  for (let cell = 0; cell < cells; cell++) {
+    const at = cell * 4;
+    const weight = flat[at + 3];
+    if (weight <= 1e-9) continue;
+    const ridge = PLANE_RIDGE * weight * spread * spread;
+    const normal = [
+      weight, slopeAcross[at + 3], slopeDown[at + 3],
+      slopeAcross[at + 3], spreadAcross[at + 3] + ridge, spreadBoth[at + 3],
+      slopeDown[at + 3], spreadBoth[at + 3], spreadDown[at + 3] + ridge,
+    ];
+    for (let c = 0; c < 3; c++) {
+      const mean = flat[at + c] / weight;
+      const plane = planeIntercept(normal, [flat[at + c], slopeAcross[at + c], slopeDown[at + c]]);
+      fitted[cell * 3 + c] = plane === null ? mean : Math.min(PLANE_MAX_RATIO * mean, Math.max(mean / PLANE_MAX_RATIO, plane));
+    }
+  }
+  return { columns, rows, values: fitted };
+}
+
 function colourShiftGrid(cells, isSky, coefficients, terms) {
   const { columns, rows } = gridShape(cells);
   const shifts = new Float32Array(columns * rows * 3);
@@ -288,7 +348,7 @@ export function fitLocalBackground(cells, overrides, blurSize) {
   const values = new Float32Array(cells.length * 3);
   cells.forEach((cell, index) => values.set(cell.values, index * 3));
   let states = cells.map((_, index) => overrides.get(index) ?? CELL_USED);
-  let grid = smoothGrid(values, states.map(isSkyState), columns, rows, spread);
+  let grid = planeFitGrid(values, states.map(isSkyState), columns, rows, spread);
   for (let round = 0; round < LOCAL_CLIP_ROUNDS; round++) {
     states = cells.map((_, index) => {
       if (overrides.has(index)) return overrides.get(index);
@@ -296,7 +356,7 @@ export function fitLocalBackground(cells, overrides, blurSize) {
       const outlier = cells[index].values.some((value, c) => Math.abs(value / Math.max(1e-6, expected[c]) - 1) > LOCAL_CLIP_FRACTION);
       return outlier ? CELL_REJECTED : CELL_USED;
     });
-    grid = smoothGrid(values, states.map(isSkyState), columns, rows, spread);
+    grid = planeFitGrid(values, states.map(isSkyState), columns, rows, spread);
   }
   return {
     kind: 'local',
