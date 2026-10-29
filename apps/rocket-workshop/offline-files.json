@@ -1,5 +1,5 @@
 {
-  "bytes": 248399,
+  "bytes": 287642,
   "files": [
     "./",
     "index.html",
@@ -9,6 +9,7 @@
     "js/looks.js",
     "js/main.js",
     "js/orbit.js",
+    "js/parts.js",
     "js/planets.js",
     "js/presets.js",
     "js/programs.js",
