@@ -1,6 +1,8 @@
 import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, separatorGroupCount, sharedNode, toggleAngleSensor, toggleEngine, toggleGyro, togglePen, toggleRange, toggleSensor, toggleSeparator, toggleTank, toggleWheel, withDefaults } from './design.js';
 import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
 import { PART_LIMITS, PART_NAMES, SIDE_KINDS, assemble, cleanParts, newPart, nextPartId, separatorBelow, tankFuel, tanksBelow } from './parts.js';
+import { Autopilot } from './autopilot.js';
+import { planEditor } from './plan-editor.js';
 import { PRESETS } from './presets.js';
 import { LIBRARY } from './programs.js';
 import { rocketFromText, rocketToText } from './share.js';
@@ -174,6 +176,7 @@ const flightControls = $('[data-flight]');
 const throttleLever = $('[data-throttle]');
 const throttleReadout = $('[data-throttle-readout]');
 const assistButton = $('[data-assist]');
+const autopilotButton = $('[data-autopilot]');
 const motorList = $('[data-motors]');
 const noMotors = $('[data-no-motors]');
 const presetSelect = $('[data-preset]');
@@ -201,6 +204,8 @@ let advanced = loadAdvanced();
 let partTool = 'select';
 let selectedPart = null;
 let partHover = null;
+let autopilot = null;
+let autopilotNote = '';
 let design = loadDesign();
 let committed = cloneDesign(design);
 const undoStack = [];
@@ -968,8 +973,72 @@ function partFields(part) {
     fields.push(partNote(`Key ${separatorGroupOf(part)}, or its button in the Flight panel, fires it by hand at any time.`));
   }
   if (part.kind === 'capsule') fields.push(partSlider(part, 'torque', 'Turning strength', (v) => `${v} kN·m`));
-  if (part.kind === 'computer') fields.push(partNote('Holds the flight computer. Turn on Advanced to write its program.'));
+  if (part.kind === 'computer') fields.push(...planFields(part));
   return fields;
+}
+
+function planFields(part) {
+  const fields = [partCheck(part, 'planOn', 'Fly to orbit by itself')];
+  if (design.program.trim()) fields.push(partNote('This computer has a program from Advanced, so it runs that instead of the plan.'));
+  if (!part.planOn) return [...fields, partNote('With this off, you fly by hand. Turn on Advanced to write a program for the computer instead.')];
+  const km = (v) => `${Math.round(v / 1000)} km`;
+  const sliders = [
+    partSlider(part, 'orbitHeight', 'Orbit height', km),
+    partSlider(part, 'turnStart', 'Straight up until', (v) => km(v * part.orbitHeight)),
+    partSlider(part, 'turnFlat', 'Levels off over', (v) => `${Math.round(v * 100)}% of the way`, true),
+  ];
+  const editor = planEditor(part, {
+    disabled: Boolean(sim),
+    onChange: () => {
+      commit();
+      renderPartPanel();
+    },
+  });
+  for (const slider of sliders) slider.querySelector('input').addEventListener('input', () => editor.redraw());
+  return [
+    ...fields,
+    editor,
+    ...sliders,
+    partNote('Drag the dots or use the sliders. The computer leans the rocket to follow the yellow path, cuts the engines once the top of its path reaches the orbit height, then burns sideways at the top to round out the orbit. Steer or move the throttle to take over, and press Autopilot to hand back.'),
+  ];
+}
+
+function flightPlan() {
+  if (!sim?.cpuGyro || design.program.trim()) return null;
+  return design.parts?.find((part) => part.kind === 'computer' && part.planOn) ?? null;
+}
+
+function engageAutopilot() {
+  const plan = flightPlan();
+  if (!plan) return;
+  autopilot = new Autopilot(plan, sim);
+  autopilotNote = '';
+  if (Number(warpSelect.value) > FULL_PHYSICS_WARP) setWarp(FULL_PHYSICS_WARP);
+  renderAutopilot();
+}
+
+function takeOver() {
+  if (!autopilot) return;
+  autopilot = null;
+  sim.input.aim = null;
+  say('You have control. Press Autopilot to hand the plan back to the computer.');
+  renderAutopilot();
+}
+
+function renderAutopilot() {
+  autopilotButton.hidden = !flightPlan();
+  autopilotButton.setAttribute('aria-pressed', String(Boolean(autopilot)));
+}
+
+function flyByPlan() {
+  const command = autopilot.update(sim);
+  pilot.throttle = command.throttle;
+  sim.input.throttle = command.throttle;
+  sim.input.aim = command.aim;
+  if (command.note !== autopilotNote) {
+    autopilotNote = command.note;
+    say(`Autopilot: ${command.note}. Steer or move the throttle to take over.`);
+  }
 }
 
 function partButtons(part) {
@@ -1033,6 +1102,8 @@ function startRun() {
   if (design.cpu && !compiled.ok) say(`Running with the CPU off, because line ${compiled.error.line} of the program has an error.`);
   else say(design.engines.length ? 'Flying. Z full throttle, X cut, W and S change it, A and D steer, T toggles stability assist, number keys fire separators.' : 'Flying, but with no engine. Add one with the Engine tool.');
   partHover = null;
+  engageAutopilot();
+  renderAutopilot();
   renderControls();
   renderMotors();
   renderEngines();
@@ -1044,6 +1115,8 @@ function startRun() {
 
 function stopRun() {
   sim = null;
+  autopilot = null;
+  renderAutopilot();
   prediction = null;
   camera.rotation = 0;
   say(currentHint());
@@ -1404,7 +1477,10 @@ function advance(seconds) {
   sim.input.steer = (pilot.right ? 1 : 0) - (pilot.left ? 1 : 0);
   sim.input.assist = pilot.assist;
   const warp = Number(warpSelect.value);
-  if (warp > FULL_PHYSICS_WARP) {
+  if (autopilot && warp > FULL_PHYSICS_WARP) {
+    setWarp(FULL_PHYSICS_WARP);
+    say(`The autopilot needs full physics, so time runs at most ${FULL_PHYSICS_WARP}× while it flies.`);
+  } else if (warp > FULL_PHYSICS_WARP) {
     const blocker = sim.railsBlocker();
     if (blocker) {
       const fallback = blocker === ENGINE_FIRING ? 1 : FULL_PHYSICS_WARP;
@@ -1424,12 +1500,14 @@ function advance(seconds) {
   accumulator += seconds * Number(warpSelect.value);
   let steps = 0;
   while (accumulator >= STEP_SECONDS && steps < MAX_STEPS_PER_FRAME) {
+    if (autopilot) flyByPlan();
     sim.step(STEP_SECONDS);
     recordTrails();
     accumulator -= STEP_SECONDS;
     steps += 1;
   }
   if (steps === MAX_STEPS_PER_FRAME) accumulator = 0;
+  if (autopilot) setThrottle(pilot.throttle);
 
   if (sim.broken) {
     stopRun();
@@ -2616,13 +2694,18 @@ window.addEventListener('blur', () => {
   pilot.left = false;
   pilot.right = false;
 });
-throttleLever.addEventListener('input', () => setThrottle(Number(throttleLever.value) / 100));
+throttleLever.addEventListener('input', () => {
+  takeOver();
+  setThrottle(Number(throttleLever.value) / 100);
+});
+autopilotButton.addEventListener('click', () => (autopilot ? takeOver() : engageAutopilot()));
 throttleLever.addEventListener('change', () => throttleLever.blur());
 assistButton.addEventListener('click', () => setAssist(!pilot.assist));
 for (const button of document.querySelectorAll('[data-steer]')) {
   const side = button.dataset.steer;
   const hold = (held) => (event) => {
     event.preventDefault();
+    if (held) takeOver();
     pilot[side] = held;
   };
   button.addEventListener('pointerdown', hold(true));
@@ -2660,11 +2743,13 @@ window.addEventListener('keydown', (event) => {
     sim.fireSeparators(Number(key));
   } else if (sim && THROTTLE_KEYS[key] !== undefined) {
     event.preventDefault();
+    takeOver();
     setThrottle(THROTTLE_KEYS[key](pilot.throttle));
   } else if (sim && key === 't') {
     setAssist(!pilot.assist);
   } else if (sim && STEER_KEYS[key]) {
     event.preventDefault();
+    takeOver();
     pilot[STEER_KEYS[key]] = true;
   } else if (!sim && !advanced && key >= '1' && key <= String(partToolButtons.length)) {
     setPartTool(partToolButtons[Number(key) - 1].dataset.partTool);

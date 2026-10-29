@@ -23,6 +23,15 @@ body.rw-advanced [data-simple-only] {
   display: none;
 }
 
+.rw-plan {
+  display: block;
+  width: 100%;
+  height: 190px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  touch-action: none;
+}
+
 .rw-overlay {
   position: absolute;
   top: 10px;
