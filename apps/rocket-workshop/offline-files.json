@@ -1,8 +1,9 @@
 {
-  "bytes": 287642,
+  "bytes": 302635,
   "files": [
     "./",
     "index.html",
+    "js/autopilot.js",
     "js/cpu.js",
     "js/design.js",
     "js/exhaust.js",
@@ -10,6 +11,7 @@
     "js/main.js",
     "js/orbit.js",
     "js/parts.js",
+    "js/plan-editor.js",
     "js/planets.js",
     "js/presets.js",
     "js/programs.js",

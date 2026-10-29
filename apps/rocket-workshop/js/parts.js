@@ -15,7 +15,7 @@ export const PART_NAMES = {
 
 export const PART_DEFAULTS = {
   capsule: { width: 2, torque: 10 },
-  computer: { width: 2 },
+  computer: { width: 2, planOn: true, orbitHeight: 50000, turnStart: 0.5, turnFlat: 0.35 },
   tank: { width: 2, height: 4, fins: false, legs: false },
   engine: { width: 2, thrust: 60, gimbal: 5, limit: 1, startsOn: true },
   separator: { width: 2, stageWhen: 'fuel', fuelTank: null, stageHeight: 10000, lightsAbove: true },
@@ -29,6 +29,9 @@ export const PART_LIMITS = {
   limit: { min: 0, max: 1, step: 0.05 },
   torque: { min: 1, max: 100, step: 1 },
   stageHeight: { min: 100, max: 100000, step: 100 },
+  orbitHeight: { min: 40000, max: 200000, step: 1000 },
+  turnStart: { min: 0.05, max: 0.95, step: 0.01 },
+  turnFlat: { min: 0.05, max: 0.95, step: 0.01 },
 };
 
 export const STAGE_WHEN = ['fuel', 'height', 'hand'];

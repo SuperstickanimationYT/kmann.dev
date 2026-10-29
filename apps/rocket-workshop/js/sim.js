@@ -67,7 +67,7 @@ export class Simulation {
     this.vx = new Float64Array(count).fill(launchPad.vx);
     this.vy = new Float64Array(count).fill(launchPad.vy);
     this.time = 0;
-    this.input = { steer: 0, throttle: 0, assist: true };
+    this.input = { steer: 0, throttle: 0, assist: true, aim: null };
     const mass = new Float64Array(count).fill(WORLD.pinKg);
     const beams = beamMap(design);
     const beamIndex = new Map(design.beams.map((beam, i) => [beam.id, i]));
@@ -463,7 +463,8 @@ export class Simulation {
   }
 
   turnCommand(actuator, beam) {
-    if (this.input.steer !== 0 || !this.input.assist || this.programSteers) {
+    if (this.input.aim !== null && this.input.steer === 0 && !this.programSteers) actuator.holdAngle = this.input.aim;
+    else if (this.input.steer !== 0 || !this.input.assist || this.programSteers) {
       actuator.holdAngle = null;
       return -this.input.steer;
     }

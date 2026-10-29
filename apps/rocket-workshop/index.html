@@ -76,6 +76,7 @@
     </label>
     <button type="button" data-steer="right" aria-label="Steer clockwise (D)">&#9654;</button>
     <button type="button" class="rw-assist" data-assist aria-pressed="true" title="Stability assist: holds the rocket still when you are not steering (T)">Assist</button>
+    <button type="button" class="rw-assist" data-autopilot aria-pressed="false" title="The computer flies the plan set in its Configure panel" hidden>Autopilot</button>
   </div>
   <p class="rw-hud" data-hud hidden></p>
   <p class="rw-status" data-status></p>
@@ -204,7 +205,7 @@ if fuel &lt; 1 then sep1.fire = 1 end</pre>
     <section class="rw-section">
       <h2>Building</h2>
       <label class="rw-check" data-advanced-only><input type="checkbox" data-snap checked> Snap joints to a 50 cm grid</label>
-      <p class="rw-note" data-simple-only>Parts stack in one column, bottom to top. Engines burn fuel from the nearest tank still attached to them. The capsule has a reaction wheel, so A and D turn the rocket even with the engines off. <strong>Advanced</strong> shows the beams and joints each part is made of, and lets you program the computer.</p>
+      <p class="rw-note" data-simple-only>Parts stack in one column, bottom to top. Engines burn fuel from the nearest tank still attached to them. The capsule has a reaction wheel, so A and D turn the rocket even with the engines off. A computer can fly the rocket to orbit along a path you draw in its Configure panel. <strong>Advanced</strong> shows the beams and joints each part is made of, and lets you program the computer.</p>
       <p class="rw-note">The whole Solar System is here at 1/20 of real size and distance, with real surface gravity: the Sun, eight planets, Pluto and the main moons, all moving in their orbits. Low Earth orbit takes about 1.7 km/s, Earth's year lasts about 82 days, and every launch starts with the planets in the same places, so waiting on the pad with fast warp sets up a transfer window. Beams are rigid and pass through each other, and only joints touch the ground. Air thins out above the launch pad and is gone at 35 km. Layers only organise the build. Drag with the right mouse button or two fingers to pan, and scroll or pinch to zoom out as far as Neptune.</p>
     </section>
 
