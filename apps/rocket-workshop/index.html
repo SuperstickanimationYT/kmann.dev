@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rocket Workshop &mdash; kmann314</title>
-<meta name="description" content="Build rockets from beams, joints, engines, fuel tanks and separators, program their flight computer, and fly them through a 1/20 scale Solar System. Prototype.">
+<meta name="description" content="Stack capsules, fuel tanks, engines and separators into a rocket, set when each stage drops, and fly it through a 1/20 scale Solar System. Advanced mode builds from beams and programs the flight computer. Prototype.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="../../assets/css/site.css">
@@ -22,10 +22,20 @@
 </header>
 
 <main class="studio-stage">
-  <canvas data-stage aria-label="Launch pad. Drag between points to add beams, add engines, tanks and a CPU, then press Run to fly."></canvas>
+  <canvas data-stage aria-label="Launch pad. Pick a part above the board and tap the rocket to add it, then press Run to fly."></canvas>
   <div class="rw-overlay">
     <div class="rw-toolbar" role="toolbar" aria-label="Tools">
-      <div class="rw-group" role="group" aria-label="Tool" data-tools>
+      <div class="rw-group" role="group" aria-label="Part" data-part-tools data-simple-only>
+        <button type="button" data-part-tool="select" title="Tap a part to set it up (1)">Select</button>
+        <button type="button" data-part-tool="capsule" title="Tap the rocket where the capsule goes (2)">Capsule</button>
+        <button type="button" data-part-tool="computer" title="Tap the rocket where the computer goes (3)">Computer</button>
+        <button type="button" data-part-tool="tank" title="Tap the rocket where the fuel tank goes (4)">Fuel</button>
+        <button type="button" data-part-tool="engine" title="Tap the rocket where the engine goes (5)">Engine</button>
+        <button type="button" data-part-tool="separator" title="Tap the rocket where the stages split (6)">Separator</button>
+        <button type="button" data-part-tool="fins" title="Tap a fuel tank to add or remove fins (7)">Fins</button>
+        <button type="button" data-part-tool="legs" title="Tap a fuel tank to add or remove landing legs (8)">Legs</button>
+      </div>
+      <div class="rw-group" role="group" aria-label="Tool" data-tools data-advanced-only>
         <button type="button" data-tool="beam" title="Drag between two points to add a beam (1)">Beam</button>
         <button type="button" data-tool="engine" title="Tap a beam near the nozzle end to add an engine (2)">Engine</button>
         <button type="button" data-tool="tank" title="Tap a beam to make it a fuel tank (3)">Tank</button>
@@ -41,9 +51,10 @@
       <button type="button" data-undo title="Undo (Ctrl+Z)">Undo</button>
       <button type="button" data-redo title="Redo (Ctrl+Y)">Redo</button>
       <button type="button" data-fit title="Show the whole rocket (F)">Fit</button>
+      <button type="button" data-advanced title="Build from beams and joints and program the computer">Advanced</button>
       <button type="button" class="rw-primary" data-run title="Launch or stop (Space)">Run</button>
     </div>
-    <div class="rw-layers" role="toolbar" aria-label="Layers" data-layers></div>
+    <div class="rw-layers" role="toolbar" aria-label="Layers" data-layers data-advanced-only></div>
     <div class="rw-layers" role="group" aria-label="Sensor kind" data-sensor-kinds hidden>
       <button type="button" data-sensor-kind="touch" title="Tap a joint: reads 1 while it touches the ground">Touch</button>
       <button type="button" data-sensor-kind="gyro" title="Tap a beam: reads its tilt and spin">Gyro</button>
@@ -73,6 +84,12 @@
 <aside class="studio-panel" data-studio-panel aria-label="Rocket">
   <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Rocket</button>
   <div class="studio-panel-body">
+    <section class="rw-section" data-simple-only>
+      <h2 data-part-title>Configure</h2>
+      <div class="rw-part" data-part-body></div>
+      <p class="rw-note" data-no-part>Tap a part to set it up. To add one, pick it above the board and tap the rocket where it goes: the top half of a part puts the new one above it, the bottom half below it.</p>
+    </section>
+
     <section class="rw-section">
       <h2>Flight</h2>
       <dl class="rw-stats">
@@ -98,27 +115,27 @@
       </div>
     </section>
 
-    <section class="rw-section">
+    <section class="rw-section" data-advanced-only>
       <h2>Engines</h2>
       <ul class="rw-motors" data-engines></ul>
       <p class="rw-note" data-no-engines>No engines yet. Pick the <strong>Engine</strong> tool and tap a beam near the end where the nozzle goes. The engine pushes toward the other end, and burns fuel from the nearest tank still attached to it.</p>
       <p class="rw-note">While flying, the throttle lever drives every engine the CPU doesn't, up to each engine's thrust limit. A and D tilt each engine's thrust across its gimbal range. <strong>Stability assist</strong> (the Assist button, or T) stops the rocket turning when you let go and holds it there with gimbals and reaction wheels. It waits while a program steers. You can still build your own gimbal from a motor instead.</p>
     </section>
 
-    <section class="rw-section">
+    <section class="rw-section" data-advanced-only>
       <h2>Reaction wheels</h2>
       <ul class="rw-motors" data-wheels></ul>
       <p class="rw-note" data-no-wheels>No reaction wheels yet. Pick the <strong>Wheel</strong> tool and tap a beam. A reaction wheel twists its beam by spinning a flywheel the other way, so it steers even with the engine off, and stability assist uses it to hold still.</p>
       <p class="rw-note">A wheel stores everything it absorbs. Once full (the disc fills up) it can't twist further that way until you twist back. Fighting the air with it fills it fast.</p>
     </section>
 
-    <section class="rw-section">
+    <section class="rw-section" data-advanced-only>
       <h2>Motors</h2>
       <ul class="rw-motors" data-motors></ul>
       <p class="rw-note" data-no-motors>No motors yet. Pick the <strong>Motor</strong> tool, tap the beam that should turn, then tap a beam joined to it at the same joint. A motor between an engine and its tank steers the thrust.</p>
     </section>
 
-    <section class="rw-section">
+    <section class="rw-section" data-advanced-only>
       <h2>CPU</h2>
       <p class="rw-note" data-no-cpu>No CPU yet. Pick the <strong>CPU</strong> tool and tap a beam to mount one. Then write a program here that reads sensors and drives engines and motors, or load a ready-made one from the program library, such as an autopilot that flies to orbit.</p>
       <div data-cpu-body hidden>
@@ -186,7 +203,8 @@ if fuel &lt; 1 then sep1.fire = 1 end</pre>
 
     <section class="rw-section">
       <h2>Building</h2>
-      <label class="rw-check"><input type="checkbox" data-snap checked> Snap joints to a 50 cm grid</label>
+      <label class="rw-check" data-advanced-only><input type="checkbox" data-snap checked> Snap joints to a 50 cm grid</label>
+      <p class="rw-note" data-simple-only>Parts stack in one column, bottom to top. Engines burn fuel from the nearest tank still attached to them. The capsule has a reaction wheel, so A and D turn the rocket even with the engines off. <strong>Advanced</strong> shows the beams and joints each part is made of, and lets you program the computer.</p>
       <p class="rw-note">The whole Solar System is here at 1/20 of real size and distance, with real surface gravity: the Sun, eight planets, Pluto and the main moons, all moving in their orbits. Low Earth orbit takes about 1.7 km/s, Earth's year lasts about 82 days, and every launch starts with the planets in the same places, so waiting on the pad with fast warp sets up a transfer window. Beams are rigid and pass through each other, and only joints touch the ground. Air thins out above the launch pad and is gone at 35 km. Layers only organise the build. Drag with the right mouse button or two fingers to pan, and scroll or pinch to zoom out as far as Neptune.</p>
     </section>
 

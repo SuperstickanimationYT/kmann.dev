@@ -78,9 +78,10 @@ export class Simulation {
       const b = index.get(beam.b);
       const length = Math.hypot(this.x[b] - this.x[a], this.y[b] - this.y[a]);
       const kgPerMeter = tankBeams.has(beam.id) ? TANK.dryKgPerMeter : WORLD.beamKgPerMeter;
-      mass[a] += (length * kgPerMeter) / 2;
-      mass[b] += (length * kgPerMeter) / 2;
-      return { a, b, length, active: true, width: tankBeams.has(beam.id) ? TANK.width : WORLD.beamWidth };
+      const kg = beam.kg ?? length * kgPerMeter;
+      mass[a] += kg / 2;
+      mass[b] += kg / 2;
+      return { a, b, length, active: true, width: beam.width ?? (tankBeams.has(beam.id) ? TANK.width : WORLD.beamWidth) };
     });
 
     const gyroOn = (beamId, kg) => {
@@ -132,7 +133,7 @@ export class Simulation {
 
     this.tanks = (design.tanks ?? []).map((beamId) => {
       const beam = this.beams[beamIndex.get(beamId)];
-      const capacity = beam.length * TANK.fuelKgPerMeter;
+      const capacity = beams.get(beamId).fuel ?? beam.length * TANK.fuelKgPerMeter;
       return { a: beam.a, b: beam.b, capacity, fuel: capacity };
     });
     this.engines = (design.engines ?? []).map((settings) => {
@@ -140,13 +141,20 @@ export class Simulation {
       mass[nozzle] += ENGINE.kg;
       const back = otherEndOf(settings.beam, settings.nozzle);
       const byDistance = [...this.tanks].sort((p, q) => this.distanceTo(nozzle, p) - this.distanceTo(nozzle, q));
-      return { settings, nozzle, back, tanksNearestFirst: byDistance, cpuThrottle: 0, cpuControlled: false, cpuGimbal: 0, cpuSteers: false, firing: 0, tilt: 0, holdAngle: null };
+      return { settings, nozzle, back, tanksNearestFirst: byDistance, lit: settings.lit ?? true, cpuThrottle: 0, cpuControlled: false, cpuGimbal: 0, cpuSteers: false, firing: 0, tilt: 0, holdAngle: null };
     });
     this.separatorGroups = new Map();
     for (const { beam, group } of design.separators ?? []) {
       if (!this.separatorGroups.has(group)) this.separatorGroups.set(group, { beams: [], fired: false });
       this.separatorGroups.get(group).beams.push(beamIndex.get(beam));
     }
+    const tankIndex = new Map((design.tanks ?? []).map((beamId, i) => [beamId, i]));
+    const engineIndex = new Map((design.engines ?? []).map((engine, i) => [engine.beam, i]));
+    this.stageRules = (design.stages ?? []).map((rule) => ({
+      ...rule,
+      tanks: (rule.tanks ?? []).map((id) => this.tanks[tankIndex.get(id)]).filter(Boolean),
+      lights: (rule.lights ?? []).map((id) => this.engines[engineIndex.get(id)]).filter(Boolean),
+    }));
 
     if (design.cpu) {
       this.cpuGyro = gyroOn(design.cpu.beam, WORLD.cpuKg);
@@ -384,6 +392,9 @@ export class Simulation {
     const separators = this.separatorGroups.get(group);
     if (!separators || separators.fired) return;
     separators.fired = true;
+    for (const rule of this.stageRules) {
+      if (rule.group === group) for (const engine of rule.lights) engine.lit = true;
+    }
     for (const beamIndex of separators.beams) {
       const beam = this.beams[beamIndex];
       beam.active = false;
@@ -399,6 +410,18 @@ export class Simulation {
     this.findPieces();
   }
 
+  stageRuleMet(rule) {
+    if (rule.when === 'fuel') return rule.tanks.length > 0 && rule.tanks.every((tank) => tank.fuel <= 0);
+    if (rule.when === 'height') return this.telemetry().altitude >= rule.height;
+    return false;
+  }
+
+  checkStageRules() {
+    for (const rule of this.stageRules) {
+      if (!this.separatorGroups.get(rule.group)?.fired && this.stageRuleMet(rule)) this.fireSeparators(rule.group);
+    }
+  }
+
   engineThrottle(engine) {
     return engine.cpuControlled ? engine.cpuThrottle : engine.settings.limit * this.input.throttle;
   }
@@ -409,7 +432,7 @@ export class Simulation {
       const throttle = this.engineThrottle(engine);
       engine.firing = 0;
       const piece = this.pieceOf(engine.nozzle);
-      const tank = throttle > 0 && engine.tanksNearestFirst.find((t) => t.fuel > 0 && this.piece[t.a] === piece);
+      const tank = engine.lit && throttle > 0 && engine.tanksNearestFirst.find((t) => t.fuel > 0 && this.piece[t.a] === piece);
       if (!tank) {
         engine.holdAngle = null;
         continue;
@@ -770,6 +793,7 @@ export class Simulation {
       this.time += h;
     }
     for (const range of this.ranges) this.measureRange(range);
+    this.checkStageRules();
     this.broken = !x.every(Number.isFinite) || !y.every(Number.isFinite);
   }
 }

@@ -1,4 +1,5 @@
 import { addBeam, addMotor, addNode, emptyDesign, mountCpu, toggleEngine, toggleRange, toggleSeparator, toggleTank, toggleWheel } from './design.js';
+import { assemble, starterParts } from './parts.js';
 import { LAUNCH_PROGRAM } from './programs.js';
 
 const HOPPER_PROGRAM = `# Hop: climb for 5 seconds, coast up and fall back, then land
@@ -133,9 +134,11 @@ function autoOrbiter() {
 }
 
 export const PRESETS = {
+  partsTwoStage: { name: 'Two-stage rocket', build: () => assemble(starterParts()), parts: true },
+  partsEmpty: { name: 'Empty pad', build: () => assemble([]), parts: true },
   hopper: { name: 'Hopper that lands itself', build: hopper },
   twoStage: { name: 'Two-stage rocket you fly', build: twoStage },
   orbiter: { name: 'Orbiter with a reaction wheel', build: orbiter },
   autoOrbiter: { name: 'Orbiter that flies itself to orbit', build: autoOrbiter },
-  empty: { name: 'Empty', build: emptyDesign },
+  empty: { name: 'Empty (beams)', build: emptyDesign },
 };

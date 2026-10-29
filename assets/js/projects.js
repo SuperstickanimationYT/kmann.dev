@@ -162,7 +162,7 @@ const PROJECTS = [
     title: 'Rocket Workshop',
     href: 'apps/rocket-workshop/',
     category: 'simulations',
-    blurb: 'Build rockets from beams, joints, engines, fuel tanks and separators, program their flight computer, and fly them through a 1/20 scale Solar System.',
+    blurb: 'Stack capsules, fuel tanks, engines and separators into a rocket, set when each stage drops, and fly it through a 1/20 scale Solar System. Advanced mode builds from beams and programs the flight computer.',
     status: 'wip',
   },
   {

@@ -1,7 +1,7 @@
 {
   "name": "Rocket Workshop",
   "short_name": "Rocket Workshop",
-  "description": "Build rockets from beams, joints, engines, fuel tanks and separators, program their flight computer, and fly them through a 1/20 scale Solar System. Prototype.",
+  "description": "Stack capsules, fuel tanks, engines and separators into a rocket, set when each stage drops, and fly it through a 1/20 scale Solar System. Advanced mode builds from beams and programs the flight computer. Prototype.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

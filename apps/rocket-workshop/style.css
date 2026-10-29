@@ -8,6 +8,21 @@
   display: none !important;
 }
 
+body:not(.rw-advanced) [data-advanced-only],
+body.rw-advanced [data-simple-only] {
+  display: none !important;
+}
+
+.rw-part {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rw-part:empty {
+  display: none;
+}
+
 .rw-overlay {
   position: absolute;
   top: 10px;
@@ -22,6 +37,7 @@
 
 .rw-toolbar {
   display: flex;
+  max-width: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
@@ -110,9 +126,14 @@
 
 .rw-group {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .rw-group button {
+  flex: none;
   border-radius: 0;
 }
 

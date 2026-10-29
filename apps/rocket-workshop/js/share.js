@@ -1,4 +1,5 @@
 import { CPU_CLOCKS, ENGINE_DEFAULTS, MOTOR_DEFAULTS, PEN_COLORS, WHEEL_DEFAULTS, sharedNode } from './design.js';
+import { assemble, cleanParts } from './parts.js';
 
 const FORMAT = 'rocket-workshop';
 const VERSION = 1;
@@ -12,6 +13,7 @@ function roundTo(value, places) {
 }
 
 export function rocketToText(design) {
+  if (design.parts) return JSON.stringify({ format: FORMAT, version: VERSION, parts: design.parts, program: design.program, cpu: design.cpu && { clock: design.cpu.clock } });
   const nodes = design.nodes.map(({ id, x, y }) => ({ id, x: roundTo(x, 4), y: roundTo(y, 4) }));
   return JSON.stringify({ format: FORMAT, version: VERSION, ...design, nodes });
 }
@@ -42,8 +44,10 @@ function parseRocket(text) {
   } catch {
     throw new RocketTextError("That isn't rocket text. Copy a rocket with Copy rocket and paste all of it.");
   }
-  if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.nodes) || (data.format !== undefined && data.format !== FORMAT)) throw new RocketTextError("That text isn't a Rocket Workshop rocket.");
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !(Array.isArray(data.nodes) || Array.isArray(data.parts)) || (data.format !== undefined && data.format !== FORMAT)) throw new RocketTextError("That text isn't a Rocket Workshop rocket.");
   if (data.version > VERSION) throw new RocketTextError('That rocket comes from a newer version of Rocket Workshop. Reload the page and try again.');
+  const parts = cleanParts(data.parts);
+  if (parts?.length) return assemble(parts, { program: typeof data.program === 'string' ? data.program : '', clock: data.cpu?.clock });
 
   const nodes = list(data.nodes, 'nodes');
   const nodeIds = uniqueIds(nodes, 'nodes');

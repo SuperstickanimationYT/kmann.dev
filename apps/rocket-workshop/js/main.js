@@ -1,5 +1,6 @@
 import { CPU_CLOCKS, addBeam, addLayer, addMotor, addNode, beamMap, cloneDesign, isDesign, motorLayer, motorPivot, mountCpu, nodeLayers, nodeMap, removeBeam, removeMotor, removeNode, separatorGroupCount, sharedNode, toggleAngleSensor, toggleEngine, toggleGyro, togglePen, toggleRange, toggleSensor, toggleSeparator, toggleTank, toggleWheel, withDefaults } from './design.js';
 import { BUILTINS, CPU_READINGS, DEVICES, compile } from './cpu.js';
+import { PART_LIMITS, PART_NAMES, SIDE_KINDS, assemble, cleanParts, newPart, nextPartId, separatorBelow, tankFuel, tanksBelow } from './parts.js';
 import { PRESETS } from './presets.js';
 import { LIBRARY } from './programs.js';
 import { rocketFromText, rocketToText } from './share.js';
@@ -69,6 +70,25 @@ const TOOL_HINTS = {
   pen: 'Tap a joint, or the middle of a beam, to give it a pen. While the rocket flies, the pen draws its path.',
   move: 'Drag a joint to move it. Drag empty space to pan.',
   erase: 'Tap a joint or a beam to remove it.',
+};
+
+const PART_HINTS = {
+  select: 'Tap a part to set it up in the Configure panel. Pick a part above the board to add one.',
+  capsule: 'Tap the rocket where the capsule goes. Tap the top half of a part to put it above, the bottom half to put it below.',
+  computer: 'Tap the rocket where the computer goes. It runs the program you write in Advanced.',
+  tank: 'Tap the rocket where the fuel tank goes. Set its size in the Configure panel.',
+  engine: 'Tap the rocket where the engine goes. It burns fuel from the nearest tank attached to it.',
+  separator: 'Tap the rocket where the stages split. Set when it fires in the Configure panel.',
+  fins: 'Tap a fuel tank to add fins to its sides, or tap again to remove them. Fins low on the rocket keep it pointing forward in the air.',
+  legs: 'Tap a fuel tank to add landing legs to its sides, or tap again to remove them.',
+};
+const BEAM_ROCKET_NOTE = 'This rocket is built from beams. Turn on Advanced to edit it, or load a parts rocket from the Rockets panel.';
+const ADVANCED_KEY = 'rocket-workshop:advanced';
+const PART_SHADES = {
+  capsule: { dark: '#5d6873', mid: '#cfd8e1', light: '#ffffff' },
+  computer: { dark: '#0b2a1f', mid: '#1c5c40', light: '#3f9a6c' },
+  engine: { dark: '#2a3038', mid: '#69737e', light: '#aab4be' },
+  fins: { dark: '#7a2a1c', mid: '#c8553d', light: '#f08a6e' },
 };
 
 const MOTOR_FIELDS = [
@@ -171,7 +191,16 @@ const reference = $('[data-reference]');
 const librarySelect = $('[data-library]');
 const libraryNeeds = $('[data-library-needs]');
 const stats = Object.fromEntries([...document.querySelectorAll('[data-stat]')].map((el) => [el.dataset.stat, el]));
+const partToolButtons = [...document.querySelectorAll('[data-part-tool]')];
+const advancedButton = $('[data-advanced]');
+const partTitle = $('[data-part-title]');
+const partBody = $('[data-part-body]');
+const noPart = $('[data-no-part]');
 
+let advanced = loadAdvanced();
+let partTool = 'select';
+let selectedPart = null;
+let partHover = null;
 let design = loadDesign();
 let committed = cloneDesign(design);
 const undoStack = [];
@@ -204,12 +233,22 @@ let sunlight = { x: 0, y: -1 };
 let drivenKey = '';
 let lastWatch = 0;
 
+function loadAdvanced() {
+  try {
+    return localStorage.getItem(ADVANCED_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
 function loadDesign() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const parts = cleanParts(stored?.parts);
+    if (parts) return assemble(parts, { program: stored.program, clock: stored.cpu?.clock });
     if (isDesign(stored)) return withDefaults(stored);
   } catch {}
-  return PRESETS.hopper.build();
+  return PRESETS.partsTwoStage.build();
 }
 
 function save() {
@@ -222,7 +261,11 @@ function say(text) {
   statusLine.textContent = text;
 }
 
-function commit() {
+function commit({ keepParts = false } = {}) {
+  if (advanced && design.parts && !keepParts) {
+    design.parts = null;
+    design.outlines = null;
+  }
   undoStack.push(committed);
   if (undoStack.length > UNDO_LIMIT) undoStack.shift();
   redoStack.length = 0;
@@ -244,6 +287,8 @@ function restore(from, to) {
   refreshProgram();
   renderCpu();
   renderMotors();
+  renderStages();
+  renderPartPanel();
   renderControls();
   renderLayers();
 }
@@ -578,6 +623,8 @@ canvas.addEventListener('pointerdown', (event) => {
   if (pointers.size > 2) return;
   if (event.button === 1 || event.button === 2 || sim) {
     gesture = { kind: 'pan', last: point };
+  } else if (!advanced) {
+    gesture = { kind: 'tap', start: point, last: point };
   } else if (tool === 'beam') {
     const end = beamEndAt(point);
     gesture = { kind: 'beam', from: end, to: end };
@@ -593,7 +640,8 @@ canvas.addEventListener('pointermove', (event) => {
   const point = localPoint(event);
   if (pointers.has(event.pointerId)) pointers.set(event.pointerId, point);
   if (!gesture) {
-    hover = sim ? null : hoverAt(point);
+    hover = sim || !advanced ? null : hoverAt(point);
+    partHover = sim || advanced ? null : partHoverAt(point);
     return;
   }
   if (gesture.kind === 'pinch' && pointers.size === 2) {
@@ -618,6 +666,11 @@ function endGesture(event) {
   pointers.delete(event.pointerId);
   if (!gesture) return;
   const point = localPoint(event);
+  if (gesture.kind === 'tap' && !advanced) {
+    tapPart(point);
+    gesture = null;
+    return;
+  }
   if (gesture.kind === 'beam') finishBeam(gesture);
   if (gesture.kind === 'move' && gesture.moved) commit();
   if (gesture.kind === 'tap' && tool === 'motor') tapMotor(point);
@@ -636,6 +689,7 @@ canvas.addEventListener('pointerup', endGesture);
 canvas.addEventListener('pointercancel', endGesture);
 canvas.addEventListener('pointerleave', () => {
   if (!gesture) hover = null;
+  partHover = null;
 });
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 canvas.addEventListener('wheel', (event) => {
@@ -663,6 +717,300 @@ function setTool(next) {
   renderControls();
 }
 
+function currentHint() {
+  if (advanced) return tool === 'sensor' ? SENSOR_HINTS[sensorKind] : TOOL_HINTS[tool];
+  return design.parts ? PART_HINTS[partTool] : BEAM_ROCKET_NOTE;
+}
+
+function setPartTool(next) {
+  partTool = next;
+  partHover = null;
+  say(currentHint());
+  renderControls();
+}
+
+function setAdvanced(on) {
+  advanced = on;
+  try {
+    localStorage.setItem(ADVANCED_KEY, on ? 'on' : 'off');
+  } catch {}
+  hover = null;
+  partHover = null;
+  pendingBeam = null;
+  document.body.classList.toggle('rw-advanced', on);
+  say(on && design.parts ? 'Advanced shows the beams and joints inside each part. Changing a beam turns the rocket into plain beams for good, and Undo turns it back into parts.' : currentHint());
+  renderPresets();
+  renderControls();
+  renderPartPanel();
+  renderCpu();
+}
+
+function stackOutlines() {
+  return design.outlines?.slice(0, design.parts.length) ?? [];
+}
+
+function partById(id) {
+  return design.parts?.find((part) => part.id === id) ?? null;
+}
+
+function outlineScreenPoints(outline, nodes = positions()) {
+  return outline.nodes.map((id) => {
+    const p = nodes.get(id);
+    return toScreen(p.x, p.y);
+  });
+}
+
+function insidePolygon(point, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const a = polygon[i];
+    const b = polygon[j];
+    if (a.y > point.y !== b.y > point.y && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function outlineAt(point) {
+  const nodes = positions();
+  return [...(design.outlines ?? [])].reverse().find((outline) => insidePolygon(point, outlineScreenPoints(outline, nodes))) ?? null;
+}
+
+function insertionAt(point) {
+  const world = toWorld(point);
+  const nodes = positions();
+  const stack = stackOutlines();
+  if (!stack.length) return { index: 0, y: 0 };
+  const yOf = (id) => nodes.get(id).y;
+  for (let i = stack.length - 1; i >= 0; i -= 1) {
+    const bottom = yOf(stack[i].bottom);
+    const top = yOf(stack[i].top);
+    if (world.y >= bottom && world.y <= top) return world.y > (bottom + top) / 2 ? { index: i + 1, y: top } : { index: i, y: bottom };
+  }
+  return world.y > yOf(stack[stack.length - 1].top) ? { index: stack.length, y: yOf(stack[stack.length - 1].top) } : { index: 0, y: yOf(stack[0].bottom) };
+}
+
+function partHoverAt(point) {
+  if (!design.parts) return null;
+  if (partTool === 'select' || SIDE_KINDS.includes(partTool)) {
+    const outline = outlineAt(point);
+    return outline && { part: outline.part };
+  }
+  return { insert: insertionAt(point) };
+}
+
+function rebuildParts() {
+  design = assemble(design.parts, { program: design.program, clock: design.cpu?.clock });
+}
+
+function changeParts(change) {
+  change(design.parts);
+  rebuildParts();
+  commit();
+  renderStages();
+  renderPartPanel();
+}
+
+function tapPart(point) {
+  if (!design.parts) {
+    say(BEAM_ROCKET_NOTE);
+    return;
+  }
+  if (partTool === 'select') {
+    selectedPart = outlineAt(point)?.part ?? null;
+    renderPartPanel();
+    return;
+  }
+  if (SIDE_KINDS.includes(partTool)) {
+    const host = partById(outlineAt(point)?.part);
+    if (host?.kind !== 'tank') {
+      say(`Tap a fuel tank. ${PART_NAMES[partTool]} go on its sides.`);
+      return;
+    }
+    const kind = partTool;
+    selectedPart = host.id;
+    changeParts(() => {
+      host[kind] = !host[kind];
+    });
+    say(`${PART_NAMES[kind]} ${host[kind] ? 'added to' : 'removed from'} ${partLabel(host)}.`);
+    return;
+  }
+  const { index } = insertionAt(point);
+  const neighbor = design.parts[index - 1] ?? design.parts[index];
+  const settings = { width: neighbor?.width ?? 2 };
+  if (partTool === 'engine') settings.startsOn = !separatorBelow(design.parts, index);
+  const part = newPart(partTool, nextPartId(design.parts), settings);
+  selectedPart = part.id;
+  changeParts((parts) => parts.splice(index, 0, part));
+  say(`${partLabel(part)} added. Set it up in the Configure panel, or tap the rocket again to add another.`);
+}
+
+function partLabel(part) {
+  const sameKind = design.parts.filter((other) => other.kind === part.kind);
+  return sameKind.length > 1 ? `${PART_NAMES[part.kind]} ${sameKind.indexOf(part) + 1}` : PART_NAMES[part.kind];
+}
+
+function separatorGroupOf(part) {
+  return design.parts.filter((other) => other.kind === 'separator').indexOf(part) + 1;
+}
+
+function partSlider(part, key, label, format, percent = false) {
+  const limits = PART_LIMITS[key];
+  const scale = percent ? 100 : 1;
+  const wrap = document.createElement('label');
+  wrap.className = 'rw-slider';
+  const name = document.createElement('span');
+  name.textContent = label;
+  const output = document.createElement('output');
+  output.textContent = format(part[key]);
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = limits.min * scale;
+  input.max = limits.max * scale;
+  input.step = limits.step * scale;
+  input.value = part[key] * scale;
+  input.disabled = Boolean(sim);
+  input.addEventListener('input', () => {
+    part[key] = Number(input.value) / scale;
+    output.textContent = format(part[key]);
+    rebuildParts();
+  });
+  input.addEventListener('change', () => {
+    commit();
+    renderPartPanel();
+  });
+  wrap.append(name, output, input);
+  return wrap;
+}
+
+function partCheck(part, key, label) {
+  const wrap = document.createElement('label');
+  wrap.className = 'rw-check';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = part[key];
+  input.disabled = Boolean(sim);
+  input.addEventListener('change', () => changeParts(() => {
+    part[key] = input.checked;
+  }));
+  wrap.append(input, ` ${label}`);
+  return wrap;
+}
+
+function partNote(text) {
+  const note = document.createElement('p');
+  note.className = 'rw-note';
+  note.textContent = text;
+  return note;
+}
+
+function stageWhenField(part) {
+  const index = design.parts.indexOf(part);
+  const below = tanksBelow(design.parts, index);
+  const wrap = document.createElement('label');
+  wrap.className = 'rw-field';
+  const name = document.createElement('span');
+  name.textContent = 'Fires when';
+  const select = document.createElement('select');
+  select.disabled = Boolean(sim);
+  for (const tank of below) select.add(new Option(`${partLabel(tank)} runs out`, `fuel:${tank.id}`));
+  if (!below.length) select.add(new Option('A fuel tank below it runs out', 'fuel:'));
+  select.add(new Option('The rocket reaches a height', 'height'));
+  select.add(new Option('You press its key', 'hand'));
+  select.value = part.stageWhen === 'fuel' ? `fuel:${below.some((tank) => tank.id === part.fuelTank) ? part.fuelTank : (below[0]?.id ?? '')}` : part.stageWhen;
+  select.addEventListener('change', () => changeParts(() => {
+    const [when, tank] = select.value.split(':');
+    part.stageWhen = when;
+    if (when === 'fuel') part.fuelTank = tank ? Number(tank) : null;
+  }));
+  wrap.append(name, select);
+  return wrap;
+}
+
+function stageHeightField(part) {
+  const wrap = document.createElement('label');
+  wrap.className = 'rw-field';
+  const name = document.createElement('span');
+  name.textContent = 'Height in km';
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = PART_LIMITS.stageHeight.min / 1000;
+  input.max = PART_LIMITS.stageHeight.max / 1000;
+  input.step = 0.1;
+  input.value = part.stageHeight / 1000;
+  input.disabled = Boolean(sim);
+  input.addEventListener('change', () => changeParts(() => {
+    const { min, max } = PART_LIMITS.stageHeight;
+    part.stageHeight = Math.max(min, Math.min(max, (Number(input.value) || 0) * 1000));
+  }));
+  wrap.append(name, input);
+  return wrap;
+}
+
+function partFields(part) {
+  const meters = (v) => `${v} m`;
+  const fields = [partSlider(part, 'width', 'Width', meters)];
+  if (part.kind === 'tank') {
+    fields.push(partSlider(part, 'height', 'Height', meters));
+    fields.push(partNote(`Holds ${Math.round(tankFuel(part)).toLocaleString('en')} kg of fuel.`));
+    fields.push(partCheck(part, 'fins', 'Fins on its sides'), partCheck(part, 'legs', 'Landing legs on its sides'));
+  }
+  if (part.kind === 'engine') {
+    fields.push(partCheck(part, 'startsOn', 'On at launch'));
+    if (!part.startsOn) fields.push(partNote('It lights when a separator below it fires with "Light the engines above it" ticked.'));
+    fields.push(partSlider(part, 'thrust', 'Full thrust', (v) => `${v} kN`));
+    fields.push(partSlider(part, 'gimbal', 'Gimbal (A and D tilt the thrust)', (v) => `±${v}°`));
+    fields.push(partSlider(part, 'limit', 'Thrust limit', (v) => `${Math.round(v * 100)}%`, true));
+  }
+  if (part.kind === 'separator') {
+    fields.push(stageWhenField(part));
+    if (part.stageWhen === 'height') fields.push(stageHeightField(part));
+    fields.push(partCheck(part, 'lightsAbove', 'Light the engines above it'));
+    fields.push(partNote(`Key ${separatorGroupOf(part)}, or its button in the Flight panel, fires it by hand at any time.`));
+  }
+  if (part.kind === 'capsule') fields.push(partSlider(part, 'torque', 'Turning strength', (v) => `${v} kN·m`));
+  if (part.kind === 'computer') fields.push(partNote('Holds the flight computer. Turn on Advanced to write its program.'));
+  return fields;
+}
+
+function partButtons(part) {
+  const row = document.createElement('div');
+  row.className = 'rw-row';
+  const index = design.parts.indexOf(part);
+  const button = (text, disabled, onClick) => {
+    const element = document.createElement('button');
+    element.type = 'button';
+    element.textContent = text;
+    element.disabled = Boolean(sim) || disabled;
+    element.addEventListener('click', onClick);
+    return element;
+  };
+  const swap = (other) => changeParts((parts) => {
+    [parts[index], parts[other]] = [parts[other], parts[index]];
+  });
+  row.append(
+    button('Move up', index === design.parts.length - 1, () => swap(index + 1)),
+    button('Move down', index === 0, () => swap(index - 1)),
+    button('Remove', false, () => removeSelectedPart()),
+  );
+  return row;
+}
+
+function removeSelectedPart() {
+  const part = partById(selectedPart);
+  if (!part) return;
+  selectedPart = null;
+  changeParts((parts) => parts.splice(parts.indexOf(part), 1));
+  say(`${PART_NAMES[part.kind]} removed. Undo brings it back.`);
+}
+
+function renderPartPanel() {
+  const part = partById(selectedPart);
+  if (!part) selectedPart = null;
+  partTitle.textContent = part ? `Configure: ${partLabel(part)}` : 'Configure';
+  noPart.hidden = Boolean(part);
+  partBody.replaceChildren(...(part ? [...partFields(part), partButtons(part)] : []));
+}
+
 function startRun() {
   if (!design.nodes.length) {
     say('Build something first. Drag on the board with the Beam tool.');
@@ -684,19 +1032,21 @@ function startRun() {
   pendingBeam = null;
   if (design.cpu && !compiled.ok) say(`Running with the CPU off, because line ${compiled.error.line} of the program has an error.`);
   else say(design.engines.length ? 'Flying. Z full throttle, X cut, W and S change it, A and D steer, T toggles stability assist, number keys fire separators.' : 'Flying, but with no engine. Add one with the Engine tool.');
+  partHover = null;
   renderControls();
   renderMotors();
   renderEngines();
   renderWheels();
   renderStages();
   renderCpu();
+  renderPartPanel();
 }
 
 function stopRun() {
   sim = null;
   prediction = null;
   camera.rotation = 0;
-  say(TOOL_HINTS[tool]);
+  say(currentHint());
   fit();
   renderControls();
   renderMotors();
@@ -704,6 +1054,7 @@ function stopRun() {
   renderWheels();
   renderStages();
   renderCpu();
+  renderPartPanel();
 }
 
 function hardware() {
@@ -847,6 +1198,12 @@ function renderControls() {
   separatorGroupBar.hidden = tool !== 'separator' || Boolean(sim);
   for (const button of separatorGroupButtons) button.setAttribute('aria-pressed', String(Number(button.dataset.separatorGroup) === separatorGroup));
   for (const button of sensorKindButtons) button.setAttribute('aria-pressed', String(button.dataset.sensorKind === sensorKind));
+  for (const button of partToolButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.partTool === partTool && !sim));
+    button.disabled = Boolean(sim);
+  }
+  advancedButton.setAttribute('aria-pressed', String(advanced));
+  advancedButton.disabled = Boolean(sim);
   renderLayers();
   stats.mass.textContent = design.nodes.length ? `${Math.round(new Simulation(design).totalMass).toLocaleString('en')} kg` : '–';
 }
@@ -1673,10 +2030,10 @@ function beamGone(index) {
 
 function drawTanks(nodes) {
   const tankIds = new Set(design.tanks);
-  const width = px(TANK.width, 8);
   context.lineCap = 'butt';
   design.beams.forEach((beam, index) => {
     if (!tankIds.has(beam.id) || beamGone(index)) return;
+    const width = beam.width === undefined ? px(TANK.width, 8) : px(beam.width * 4, 4);
     const a = nodes.get(beam.a);
     const b = nodes.get(beam.b);
     const meters = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -1797,7 +2154,7 @@ function drawEngines(nodes) {
     const firing = live?.firing ?? 0;
     if (firing > 0) drawFlame(mouth, u, v, bell, firing, airAround(nozzleAt.x, nozzleAt.y, sim.time)?.thickness ?? 0);
     drawBell(nozzle, mouth, u, v, bell, firing);
-    if (camera.scale >= LABEL_MIN_SCALE) drawLabel(`engine${i + 1}`, nozzle.x + bell + 4, nozzle.y, COLORS.engine);
+    if (advanced && camera.scale >= LABEL_MIN_SCALE) drawLabel(`engine${i + 1}`, nozzle.x + bell + 4, nozzle.y, COLORS.engine);
   });
 }
 
@@ -1924,6 +2281,159 @@ function drawRanges(nodes) {
   });
 }
 
+function tracePolygon(points) {
+  context.beginPath();
+  points.forEach((s, k) => (k === 0 ? context.moveTo(s.x, s.y) : context.lineTo(s.x, s.y)));
+  context.closePath();
+}
+
+function separatorFired(part) {
+  return Boolean(sim?.separatorGroups.get(separatorGroupOf(part))?.fired);
+}
+
+function tankFill(outline) {
+  if (!sim) return 1;
+  let fuel = 0;
+  let capacity = 0;
+  const beams = beamMap(design);
+  design.tanks.forEach((id, i) => {
+    const beam = beams.get(id);
+    if (beam.a !== outline.center && beam.b !== outline.center) return;
+    fuel += sim.tanks[i].fuel;
+    capacity += sim.tanks[i].capacity;
+  });
+  return capacity ? fuel / capacity : 0;
+}
+
+function drawLeg(outline, nodes) {
+  const [rootBottom, foot, ...rest] = outline.nodes.map((id) => nodes.get(id));
+  const rootTop = rest[rest.length - 1];
+  const width = px(0.18, 2);
+  for (const root of [rootBottom, rootTop]) drawSegment(root, foot, COLORS.beamShadow, width + 3);
+  for (const root of [rootBottom, rootTop]) drawShaded(root, foot, width, METAL);
+  const s = toScreen(foot.x, foot.y);
+  context.fillStyle = METAL.mid;
+  context.beginPath();
+  context.arc(s.x, s.y, px(0.2, 3), 0, Math.PI * 2);
+  context.fill();
+}
+
+function drawPartBody(outline, part, points, nodes) {
+  if (outline.kind === 'legs') {
+    drawLeg(outline, nodes);
+    return;
+  }
+  const axis = outline.bottom ? [toScreen(nodes.get(outline.bottom).x, nodes.get(outline.bottom).y), toScreen(nodes.get(outline.top).x, nodes.get(outline.top).y)] : null;
+  const middle = { x: points.reduce((sum, p) => sum + p.x, 0) / points.length, y: points.reduce((sum, p) => sum + p.y, 0) / points.length };
+  const across = axis ? litSide(axis[0], axis[1]) : { x: 1, y: 0 };
+  const width = px(part.width, 6);
+  if (outline.kind === 'engine') {
+    const center = nodes.get(outline.center);
+    const [left, right] = [outline.topLeft, outline.topRight].map((id) => toScreen(nodes.get(id).x, nodes.get(id).y));
+    tracePolygon([left, right, toScreen(center.x, center.y)]);
+  } else {
+    tracePolygon(points);
+  }
+  if (outline.kind === 'separator') {
+    context.fillStyle = COLORS.separator;
+    context.fill();
+    context.save();
+    context.clip();
+    context.strokeStyle = COLORS.hazard;
+    context.lineWidth = Math.max(2, width / 10);
+    const reach = width;
+    for (let k = -reach; k < reach; k += Math.max(6, width / 5)) {
+      context.beginPath();
+      context.moveTo(middle.x + k - reach, middle.y + reach);
+      context.lineTo(middle.x + k + reach, middle.y - reach);
+      context.stroke();
+    }
+    context.restore();
+  } else {
+    context.fillStyle = acrossShading(middle, across, width, outline.kind === 'tank' ? TANK_SHADES : (PART_SHADES[outline.kind] ?? METAL));
+    context.fill();
+  }
+  context.strokeStyle = COLORS.beamShadow;
+  context.lineWidth = 1.5;
+  tracePolygon(points);
+  context.stroke();
+  if (outline.kind === 'tank' && axis) {
+    const band = 0.08;
+    const start = pointAlong(axis[0], axis[1], band);
+    const end = pointAlong(axis[0], axis[1], 1 - band);
+    context.lineCap = 'butt';
+    context.strokeStyle = COLORS.fuelTrack;
+    context.lineWidth = width * 0.12;
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+    const fill = pointAlong(start, end, tankFill(outline));
+    context.strokeStyle = COLORS.fuel;
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(fill.x, fill.y);
+    context.stroke();
+    context.lineCap = 'round';
+  }
+  if (outline.kind === 'capsule') {
+    const porthole = pointAlong(middle, axis[1], 0.1);
+    context.fillStyle = '#1d3a5c';
+    context.strokeStyle = METAL.dark;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(porthole.x, porthole.y, width * 0.12, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+  }
+  if (outline.kind === 'computer' && camera.scale >= LABEL_MIN_SCALE) {
+    context.fillStyle = COLORS.chipEdge;
+    context.font = `700 ${Math.round(Math.min(14, px(0.3, 8)))}px "Trebuchet MS", system-ui, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('CPU', middle.x, middle.y);
+  }
+}
+
+function drawParts(nodes) {
+  context.lineJoin = 'round';
+  const outlines = design.outlines;
+  const sideFirst = [...outlines.slice(design.parts.length), ...outlines.slice(0, design.parts.length)];
+  for (const outline of sideFirst) {
+    const part = partById(outline.part);
+    if (!part || (outline.kind === 'separator' && separatorFired(part))) continue;
+    const points = outlineScreenPoints(outline, nodes);
+    drawPartBody(outline, part, points, nodes);
+  }
+  if (sim) return;
+  const marked = [[selectedPart, COLORS.hover, 3], [partHover?.part, 'rgba(95, 227, 255, 0.6)', 2]];
+  for (const [id, color, width] of marked) {
+    if (id === null || id === undefined) continue;
+    context.strokeStyle = color;
+    context.lineWidth = width;
+    for (const outline of outlines) {
+      if (outline.part !== id) continue;
+      tracePolygon(outlineScreenPoints(outline, nodes));
+      context.stroke();
+    }
+  }
+}
+
+function drawInsertPreview() {
+  const insert = partHover?.insert;
+  if (!insert || sim) return;
+  const reach = Math.max(1.5, ...(design.parts ?? []).map((part) => part.width / 2 + 0.5));
+  context.setLineDash([8, 6]);
+  drawSegment({ x: -reach, y: insert.y }, { x: reach, y: insert.y }, COLORS.hover, 2);
+  context.setLineDash([]);
+  const s = toScreen(reach, insert.y);
+  context.fillStyle = COLORS.hover;
+  context.font = '13px "Trebuchet MS", system-ui, sans-serif';
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.fillText(`+ ${PART_NAMES[partTool]}`, s.x + 8, s.y);
+}
+
 function drawBeamPreview() {
   if (gesture?.kind !== 'beam') return;
   const { from, to } = gesture;
@@ -1952,6 +2462,12 @@ function draw() {
   aimSunlight();
   drawSmoke();
   const nodes = positions();
+  if (!advanced && design.outlines) {
+    drawParts(nodes);
+    drawEngines(nodes);
+    drawInsertPreview();
+    return;
+  }
   drawTanks(nodes);
   drawStructure();
   drawEngines(nodes);
@@ -2010,14 +2526,21 @@ redoButton.addEventListener('click', () => restore(redoStack, undoStack));
 $('[data-fit]').addEventListener('click', fit);
 runButton.addEventListener('click', () => (sim ? stopRun() : startRun()));
 
-for (const [key, preset] of Object.entries(PRESETS)) presetSelect.add(new Option(preset.name, key));
+function renderPresets() {
+  const shown = Object.entries(PRESETS).filter(([, preset]) => advanced || preset.parts);
+  presetSelect.replaceChildren(...shown.map(([key, preset]) => new Option(preset.name, key)));
+}
+
 function replaceDesign(next) {
   if (sim) stopRun();
   design = next;
   activeLayer = 0;
   focused = false;
   pendingBeam = null;
-  commit();
+  selectedPart = null;
+  commit({ keepParts: true });
+  renderPartPanel();
+  say(currentHint());
   renderLayers();
   renderCpu();
   renderMotors();
@@ -2127,6 +2650,10 @@ window.addEventListener('keydown', (event) => {
   } else if (key === 'escape') {
     pendingBeam = null;
     gesture = null;
+    selectedPart = null;
+    renderPartPanel();
+  } else if (!sim && !advanced && (key === 'delete' || key === 'backspace')) {
+    removeSelectedPart();
   } else if (key === '.' || key === ',') {
     stepWarp(key === '.' ? 1 : -1);
   } else if (sim && key >= '1' && key <= '9') {
@@ -2139,6 +2666,8 @@ window.addEventListener('keydown', (event) => {
   } else if (sim && STEER_KEYS[key]) {
     event.preventDefault();
     pilot[STEER_KEYS[key]] = true;
+  } else if (!sim && !advanced && key >= '1' && key <= String(partToolButtons.length)) {
+    setPartTool(partToolButtons[Number(key) - 1].dataset.partTool);
   } else if (!sim && key >= '1' && key <= String(Math.min(9, toolButtons.length))) {
     setTool(toolButtons[Number(key) - 1].dataset.tool);
   }
@@ -2147,7 +2676,7 @@ window.addEventListener('keydown', (event) => {
 for (const clock of CPU_CLOCKS) clockSelect.add(new Option(`${clock.toLocaleString('en')} ops a second`, String(clock)));
 clockSelect.addEventListener('change', () => {
   design.cpu.clock = Number(clockSelect.value);
-  commit();
+  commit({ keepParts: true });
 });
 
 let compileTimer = 0;
@@ -2161,7 +2690,7 @@ codeBox.addEventListener('input', () => {
 });
 codeBox.addEventListener('change', () => {
   clearTimeout(compileTimer);
-  commit();
+  commit({ keepParts: true });
 });
 codeBox.addEventListener('keydown', (event) => {
   if (event.key !== 'Tab' || event.shiftKey || codeBox.readOnly) return;
@@ -2190,7 +2719,7 @@ showLibraryNeeds();
 $('[data-library-load]').addEventListener('click', () => {
   const entry = LIBRARY.find((program) => program.id === librarySelect.value);
   design.program = entry.code;
-  commit();
+  commit({ keepParts: true });
   renderCpu();
   say(compiled.ok ? `Loaded "${entry.name}". Undo brings your old program back.` : `Loaded "${entry.name}", but line ${compiled.error.line} needs a part this rocket doesn't have: ${compiled.error.message}`);
 });
@@ -2210,7 +2739,7 @@ renderLayers();
 renderMotors();
 renderEngines();
 renderStages();
-renderCpu();
-renderControls();
-say(TOOL_HINTS[tool]);
+for (const button of partToolButtons) button.addEventListener('click', () => setPartTool(button.dataset.partTool));
+advancedButton.addEventListener('click', () => setAdvanced(!advanced));
+setAdvanced(advanced);
 requestAnimationFrame(frame);
