@@ -4,7 +4,7 @@ const TANK_TONS_PER_AREA = 2.5;
 const TANK_FUEL_SHARE = 0.9;
 
 export const ENGINES = {
-  'Engine Titan': { label: 'Titan', mass: 12, thrust: 400, isp: 240, width: 3, length: 4.5 },
+  'Engine Titan': { label: 'Titan', mass: 12, thrust: 400, isp: 240, width: 3, length: 4 },
   'Engine Hawk': { label: 'Hawk', mass: 3.5, thrust: 120, isp: 240, width: 2, length: 3 },
   'Engine Frontier': { label: 'Frontier', mass: 6, thrust: 100, isp: 290, width: 2.5, length: 3.5 },
   'Engine Peregrine': { label: 'Peregrine', mass: 2, thrust: 75, isp: 180, width: 2, length: 2.5 },

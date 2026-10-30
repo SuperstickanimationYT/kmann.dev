@@ -23,7 +23,8 @@ export function parseBlueprint(text) {
       ...(part.role === 'engine' && { thrust: part.thrust * Math.abs(transform.scaleY) }),
       engineStartsOn: Boolean(raw.B?.engine_on),
       box: transformedBox(part.localBox, transform),
-      attachEdge: part.role === 'engine' ? transformedBox({ ...part.localBox, y0: 0, y1: 0 }, transform) : null,
+      feedEdge: part.role === 'engine' ? transformedBox({ ...part.localBox, y0: 0, y1: 0 }, transform) : null,
+      mountEdge: part.role === 'engine' ? transformedBox({ ...part.localBox, y1: part.localBox.y0 }, transform) : null,
       nozzleBox: part.role === 'engine' ? transformedBox(nozzleOf(part.localBox), transform) : null,
     };
   });
@@ -33,7 +34,8 @@ export function parseBlueprint(text) {
   const resizedParts = json.parts.filter((raw, i) => isResized(raw, parts[i].role === 'engine')).length;
   const links = linkParts(parts);
   const bridgedGaps = joinLoosePieces(parts, links);
-  return { parts, stages, links, resizedParts, bridgedGaps };
+  const feedLinks = links.map((list, i) => list.filter((j) => !hangsBelowEngine(parts[j], parts[i])));
+  return { parts, stages, links, feedLinks, resizedParts, bridgedGaps };
 }
 
 function isResized(raw, isEngine) {
@@ -90,10 +92,17 @@ function edgeMeetsBox(edge, box) {
   return edgeIsLevel ? dy <= TOUCH_GAP && dx < -MIN_SHARED_EDGE : dx <= TOUCH_GAP && dy < -MIN_SHARED_EDGE;
 }
 
+const engineHolds = (engine, part) => edgeMeetsBox(engine.feedEdge, part.box) || edgeMeetsBox(engine.mountEdge, part.box);
+
+function hangsBelowEngine(part, engine) {
+  if (engine.role !== 'engine' || part.role === 'engine') return false;
+  return edgeMeetsBox(engine.mountEdge, part.box) && !edgeMeetsBox(engine.feedEdge, part.box);
+}
+
 function partsAttach(a, b) {
   if (a.role === 'engine' && b.role === 'engine') return false;
-  if (a.role === 'engine') return edgeMeetsBox(a.attachEdge, b.box);
-  if (b.role === 'engine') return edgeMeetsBox(b.attachEdge, a.box);
+  if (a.role === 'engine') return engineHolds(a, b);
+  if (b.role === 'engine') return engineHolds(b, a);
   return boxesTouch(a.box, b.box);
 }
 
