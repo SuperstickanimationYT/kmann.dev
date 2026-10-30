@@ -31,11 +31,13 @@ const TAG = {
   asShotNeutral: 50728,
   activeArea: 50829,
   forwardMatrix1: 50964,
+  opcodeList2: 51009,
 };
 
 const COMPRESSION = { none: 1, deflate: 8, deflateLegacy: 32946, jpegXl: 52546, losslessJpeg: 7 };
 const PHOTOMETRIC = { gray: 1, rgb: 2, cfa: 32803, linearRaw: 34892 };
 const TYPE_BYTES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4 };
+const OPCODE_GAIN_MAP = 9;
 const CFA_RED = 0;
 const CFA_GREEN = 1;
 const CFA_BLUE = 2;
@@ -274,7 +276,66 @@ function levelFor(levels, index, fallback) {
   return levels[index % levels.length];
 }
 
-function superpixelDemosaic(plane, width, height, pattern, blacks, white) {
+function readGainMaps(list) {
+  if (!list) return [];
+  const bytes = Uint8Array.from(list);
+  const view = new DataView(bytes.buffer);
+  const maps = [];
+  let at = 4;
+  for (let i = 0, count = view.getUint32(0); i < count; i++) {
+    const id = view.getUint32(at);
+    const byteCount = view.getUint32(at + 12);
+    const p = at + 16;
+    at = p + byteCount;
+    if (id !== OPCODE_GAIN_MAP) continue;
+    const pointsV = view.getUint32(p + 32);
+    const pointsH = view.getUint32(p + 36);
+    const mapPlanes = view.getUint32(p + 72);
+    const gains = new Float32Array(pointsV * pointsH * mapPlanes);
+    for (let g = 0; g < gains.length; g++) gains[g] = view.getFloat32(p + 76 + g * 4);
+    if (gains.every((gain) => gain === 1)) continue;
+    maps.push({
+      top: view.getUint32(p), left: view.getUint32(p + 4), bottom: view.getUint32(p + 8), right: view.getUint32(p + 12),
+      plane: view.getUint32(p + 16), planes: view.getUint32(p + 20),
+      rowPitch: view.getUint32(p + 24), colPitch: view.getUint32(p + 28),
+      pointsV, pointsH,
+      spacingV: view.getFloat64(p + 40), spacingH: view.getFloat64(p + 48),
+      originV: view.getFloat64(p + 56), originH: view.getFloat64(p + 64),
+      mapPlanes, gains,
+    });
+  }
+  return maps;
+}
+
+function interpolatedGain(map, u, v, mapPlane) {
+  const clamp = (value, max) => Math.min(max, Math.max(0, value));
+  const row = clamp((v - map.originV) / map.spacingV, map.pointsV - 1);
+  const col = clamp((u - map.originH) / map.spacingH, map.pointsH - 1);
+  const r0 = Math.floor(row);
+  const c0 = Math.floor(col);
+  const r1 = Math.min(r0 + 1, map.pointsV - 1);
+  const c1 = Math.min(c0 + 1, map.pointsH - 1);
+  const at = (r, c) => map.gains[(r * map.pointsH + c) * map.mapPlanes + mapPlane];
+  const top = at(r0, c0) + (at(r0, c1) - at(r0, c0)) * (col - c0);
+  const bottom = at(r1, c0) + (at(r1, c1) - at(r1, c0)) * (col - c0);
+  return top + (bottom - top) * (row - r0);
+}
+
+function lensShading(maps, width, height) {
+  if (!maps.length) return () => 1;
+  return (x, y, plane) => {
+    let gain = 1;
+    for (const map of maps) {
+      if (y < map.top || y >= map.bottom || x < map.left || x >= map.right) continue;
+      if ((y - map.top) % map.rowPitch || (x - map.left) % map.colPitch) continue;
+      if (plane < map.plane || plane >= map.plane + map.planes) continue;
+      gain *= interpolatedGain(map, x / width, y / height, Math.min(plane - map.plane, map.mapPlanes - 1));
+    }
+    return gain;
+  };
+}
+
+function superpixelDemosaic(plane, width, height, pattern, blacks, white, shading) {
   const outWidth = width >> 1;
   const outHeight = height >> 1;
   const rgb = new Float32Array(outWidth * outHeight * 3);
@@ -288,7 +349,7 @@ function superpixelDemosaic(plane, width, height, pattern, blacks, white) {
         const sourceX = 2 * x + (position & 1);
         const sourceY = 2 * y + (position >> 1);
         const color = colorAt[position];
-        sums[color] += (plane[sourceY * width + sourceX] - levelFor(blacks, position, 0)) * scale[position];
+        sums[color] += (plane[sourceY * width + sourceX] - levelFor(blacks, position, 0)) * scale[position] * shading(sourceX, sourceY, 0);
         counts[color]++;
       }
       const at = (y * outWidth + x) * 3;
@@ -307,14 +368,16 @@ function floatFullScale(plane) {
   return max <= 65536 ? 65535 : max;
 }
 
-function normalizedRgb(plane, width, height, channels, blacks, whites, isFloat) {
+function normalizedRgb(plane, width, height, channels, blacks, whites, isFloat, shading) {
   const rgb = new Float32Array(width * height * 3);
   const pick = channels >= 3 ? [0, 1, 2] : [0, 0, 0];
   const black = pick.map((channel) => (isFloat ? 0 : levelFor(blacks, channel, 0)));
   const fullScale = isFloat ? floatFullScale(plane) : 0;
   const range = pick.map((channel, i) => (isFloat ? fullScale : levelFor(whites, channel, 65535) - black[i]));
   for (let pixel = 0, n = width * height; pixel < n; pixel++) {
-    for (let c = 0; c < 3; c++) rgb[pixel * 3 + c] = (plane[pixel * channels + pick[c]] - black[c]) / range[c];
+    const x = pixel % width;
+    const y = (pixel - x) / width;
+    for (let c = 0; c < 3; c++) rgb[pixel * 3 + c] = (plane[pixel * channels + pick[c]] - black[c]) / range[c] * shading(x, y, pick[c]);
   }
   return { width, height, rgb };
 }
@@ -407,13 +470,14 @@ export async function decodeTiff(bytes, onStatus = () => {}) {
   onStatus('Converting colour…');
   const blacks = main.values(TAG.blackLevel);
   const whites = main.values(TAG.whiteLevel) ?? [2 ** bits - 1];
+  const shading = lensShading(readGainMaps(main.values(TAG.opcodeList2)), planeWidth, planeHeight);
   let image;
   if (photometric === PHOTOMETRIC.cfa) {
     const repeat = main.values(TAG.cfaRepeat) ?? [2, 2];
     if (repeat[0] !== 2 || repeat[1] !== 2) throw new Error('Only 2×2 colour filter patterns are supported.');
-    image = superpixelDemosaic(plane, planeWidth, planeHeight, main.values(TAG.cfaPattern), blacks, whites[0]);
+    image = superpixelDemosaic(plane, planeWidth, planeHeight, main.values(TAG.cfaPattern), blacks, whites[0], shading);
   } else {
-    image = normalizedRgb(plane, planeWidth, planeHeight, channels, blacks, whites, format.isFloat);
+    image = normalizedRgb(plane, planeWidth, planeHeight, channels, blacks, whites, format.isFloat, shading);
   }
 
   const camera = [ifd0.text(TAG.make), ifd0.text(TAG.model)].filter(Boolean).join(' ');
