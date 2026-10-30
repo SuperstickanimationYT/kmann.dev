@@ -41,19 +41,31 @@ function pointAtEccentricAnomaly(orbit, E) {
   return perifocalToReference(orbit, orbit.a * (Math.cos(E) - orbit.e), semiMinor * Math.sin(E));
 }
 
-export function offsetAt(orbit, mu, seconds) {
+export function eccentricAnomalyAt(orbit, mu, seconds) {
   const turns = seconds / orbitalPeriod(orbit.a, mu);
   const meanAnomaly = orbit.meanAnomaly * DEG + TURN * (turns - Math.floor(turns));
-  return pointAtEccentricAnomaly(orbit, eccentricAnomaly(meanAnomaly, orbit.e));
+  return eccentricAnomaly(meanAnomaly, orbit.e);
 }
 
-export function orbitPath(orbit, segments = 240) {
-  const points = [];
-  for (let step = 0; step <= segments; step += 1) {
-    points.push(pointAtEccentricAnomaly(orbit, (TURN * step) / segments));
+export const offsetAt = (orbit, mu, seconds) => pointAtEccentricAnomaly(orbit, eccentricAnomalyAt(orbit, mu, seconds));
+
+const COARSE_SEGMENTS = 240;
+const REFINEMENT_HALVINGS = 24;
+
+function anomaliesRefinedAround(throughE) {
+  const coarseStep = TURN / COARSE_SEGMENTS;
+  const centre = ((throughE % TURN) + TURN) % TURN;
+  const anomalies = [centre];
+  for (let step = 0; step <= COARSE_SEGMENTS; step += 1) anomalies.push(step * coarseStep);
+  for (let halving = 1; halving <= REFINEMENT_HALVINGS; halving += 1) {
+    const gap = coarseStep / 2 ** halving;
+    anomalies.push(centre - gap, centre + gap);
   }
-  return points;
+  return anomalies.sort((first, second) => first - second);
 }
+
+export const orbitPathThrough = (orbit, throughE) =>
+  anomaliesRefinedAround(throughE).map((E) => pointAtEccentricAnomaly(orbit, E));
 
 function orbitNormal(orbit) {
   const node = orbit.node * DEG;

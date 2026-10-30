@@ -542,7 +542,7 @@ function frame(now) {
   if (playing) seconds += elapsed * 10 ** Number(speedInput.value) * DAY;
   const placed = placeAt(system, seconds);
   followTarget(camera, placed);
-  drawSystem(context, { system, placed, camera, selectedId, statusByBody });
+  drawSystem(context, { system, placed, seconds, camera, selectedId, statusByBody });
   clock.textContent = seconds ? `+${duration(seconds)}` : 'Start';
   requestAnimationFrame(frame);
 }
