@@ -33,7 +33,7 @@ body = {
   massKg,
   radiusM,
   color,          // map colour
-  atmosphere,     // null, or { heightM, surfaceDensity }
+  atmosphere,     // null, or { surfacePressurePa, scaleHeightM }; pressure 0 means none
   orbit: {        // null for the root
     a,            // semi-major axis, m
     e,
@@ -92,6 +92,19 @@ The export divides every length by one scale factor k and keeps surface gravity.
 
 The difficulty multipliers (`smaDifficultyScale`, `radiusDifficultyScale` and so on) are left empty.
 
+## Atmospheres
+
+Bodies store real quantities: surface pressure and scale height. Each game gets its own mapping, so KSP can later use the same data. Only bodies with a solid surface use them. Gas giants export the stock Jupiter atmosphere.
+
+The SFS mapping is fitted to the stock `Example` pack:
+
+- `density` = 0.005 × (p / 1 atm)^0.357. This matches stock Earth, Mars and Venus to within 1%.
+- `height` is the depth down to 1 Pa, H × ln(p / 1 Pa), scaled so that Earth at k = 20 gets stock Earth's 30 km. It shrinks with k like every other length. Below 1 Pa, the body exports airless.
+- `curve` is 10, as for stock Earth.
+- The gradient texture is the stock atmosphere nearest the body's map colour: Earth, Mars, Venus or Titan.
+
+The thick atmospheres come out deeper than stock: Venus 78 km against 40, Titan 77 against 40. They follow the real ratios. Stock squeezes them for gameplay.
+
 ## Flattening to 2D
 
 SFS has one orbital plane, so the export drops inclination:
@@ -131,6 +144,7 @@ The checks also tag near mean-motion resonances such as 2:1 and 3:2, for informa
 - Which sections a body needs to load and render. The `Galaxy` pack leaves out the difficulty-scale keys, which suggests they are optional. The plan is to write `BASE_DATA`, `ORBIT_DATA`, `ACHIEVEMENT_DATA`, an empty `LANDMARKS`, and a stock `TERRAIN_DATA` per kind: rocky, icy or gas. Stars get no terrain, like the stock Sun.
 - How to pick `timewarpHeight` and `multiplierSOI`. Stock values: Earth 25 km on a 315 km radius, Moon 5 km on 86.5 km, Sun 500 km. SOI multipliers are 2.5 for Earth and 1.35 for the Moon.
 - Whether SFS computes GM as gravity × radius².
+- How SFS shapes density with height from `density`, `curve` and `height`. The mapping assumes an exponential falloff.
 - How the pack reaches the game. Desktop takes a folder. Mobile is to be found out. The likely answer is a zip, written by a small store-only zip writer so no dependency is added.
 
 ## Later

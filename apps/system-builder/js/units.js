@@ -7,6 +7,9 @@ export const SUN_MASS = 1.98847e30;
 export const SUN_RADIUS = 6.957e8;
 export const EARTH_MASS = 5.9722e24;
 export const EARTH_RADIUS = 6.371e6;
+export const STANDARD_GRAVITY = 9.80665;
+export const ATM = 101325;
+export const EARTH_SCALE_HEIGHT = 8.5 * KM;
 
 export const KINDS = {
   star: 'Star',

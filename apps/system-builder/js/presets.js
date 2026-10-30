@@ -1,5 +1,14 @@
-import { AU, KM, EARTH_MASS, EARTH_RADIUS, SUN_MASS, SUN_RADIUS } from './units.js';
+import { AU, ATM, KM, EARTH_MASS, EARTH_RADIUS, EARTH_SCALE_HEIGHT, SUN_MASS, SUN_RADIUS } from './units.js';
 import { createSystem } from './system.js';
+
+const SOLAR_ATMOSPHERES = {
+  Venus: { surfacePressurePa: 92 * ATM, scaleHeightM: 15.9 * KM },
+  Earth: { surfacePressurePa: ATM, scaleHeightM: EARTH_SCALE_HEIGHT },
+  Mars: { surfacePressurePa: 610, scaleHeightM: 11.1 * KM },
+  Pluto: { surfacePressurePa: 1, scaleHeightM: 50 * KM },
+  Titan: { surfacePressurePa: 1.45 * ATM, scaleHeightM: 21 * KM },
+  Triton: { surfacePressurePa: 1.4, scaleHeightM: 14 * KM },
+};
 
 const planetFromMeanElements = (name, massKg, radiusM, color, [a, e, i, meanLongitude, periapsisLongitude, node]) => ({
   id: name,
@@ -9,6 +18,7 @@ const planetFromMeanElements = (name, massKg, radiusM, color, [a, e, i, meanLong
   massKg,
   radiusM,
   color,
+  atmosphere: SOLAR_ATMOSPHERES[name] ?? null,
   orbit: { a: a * AU, e, i, node, peri: periapsisLongitude - node, meanAnomaly: meanLongitude - periapsisLongitude },
 });
 
@@ -20,6 +30,7 @@ const moon = (name, parent, massKg, radiusKm, color, { aKm, e, i, node, peri = 0
   massKg,
   radiusM: radiusKm * KM,
   color,
+  atmosphere: SOLAR_ATMOSPHERES[name] ?? null,
   orbit: { a: aKm * KM, e, i, node, peri, meanAnomaly },
 });
 

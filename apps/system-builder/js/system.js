@@ -1,4 +1,4 @@
-import { G, AU, KM, EARTH_MASS, EARTH_RADIUS, SUN_MASS, SUN_RADIUS, KINDS } from './units.js';
+import { G, AU, ATM, KM, EARTH_MASS, EARTH_RADIUS, EARTH_SCALE_HEIGHT, STANDARD_GRAVITY, SUN_MASS, SUN_RADIUS, KINDS } from './units.js';
 import { offsetAt, apoapsis, periapsis } from './orbits.js';
 
 const SUB_NEPTUNE_RADIUS = 1.6 * EARTH_RADIUS;
@@ -38,6 +38,10 @@ export const surfaceGravity = (body) => (G * body.massKg) / body.radiusM ** 2;
 export const density = (body) => body.massKg / ((4 / 3) * Math.PI * body.radiusM ** 3);
 
 export const hasSurface = (body) => body.kind !== 'star' && body.radiusM < SUB_NEPTUNE_RADIUS;
+
+export const hasAtmosphere = (body) => hasSurface(body) && body.atmosphere?.surfacePressurePa > 0;
+
+export const scaleHeightForGravity = (body) => (EARTH_SCALE_HEIGHT * STANDARD_GRAVITY) / surfaceGravity(body);
 
 export function hillRadius(system, body) {
   if (!body.parent) return Infinity;
@@ -82,7 +86,7 @@ function firstFreeOrbit(system, parent, kind, massKg) {
 
 const BODY_TEMPLATES = {
   star: { massKg: 0.5 * SUN_MASS, radiusM: 0.5 * SUN_RADIUS, color: '#ffcf8a' },
-  planet: { massKg: EARTH_MASS, radiusM: EARTH_RADIUS },
+  planet: { massKg: EARTH_MASS, radiusM: EARTH_RADIUS, atmosphere: { surfacePressurePa: ATM, scaleHeightM: EARTH_SCALE_HEIGHT } },
   moon: { massKg: 0.0123 * EARTH_MASS, radiusM: 1737 * KM },
 };
 
@@ -97,6 +101,7 @@ export function addBody(system, kind, parentId) {
     massKg: template.massKg,
     radiusM: template.radiusM,
     color: template.color ?? PALETTE[system.bodies.length % PALETTE.length],
+    atmosphere: template.atmosphere ? { ...template.atmosphere } : null,
     orbit: { a: firstFreeOrbit(system, parent, kind, template.massKg), e: 0, i: 0, node: 0, peri: 0, meanAnomaly: Math.random() * 360 },
   };
   system.bodies.push(body);
@@ -144,6 +149,10 @@ export function parseSystem(text) {
     if (!KINDS[body.kind]) throw new Error(`${body.name} has an unknown kind, "${body.kind}".`);
     assertFinite(body.massKg, `${body.name}'s mass`);
     assertFinite(body.radiusM, `${body.name}'s radius`);
+    if (body.atmosphere) {
+      assertFinite(body.atmosphere.surfacePressurePa, `${body.name}'s surface pressure`);
+      assertFinite(body.atmosphere.scaleHeightM, `${body.name}'s scale height`);
+    }
     if (!body.parent) continue;
     if (!ids.has(body.parent)) throw new Error(`${body.name} orbits a body that isn't in the file.`);
     for (const field of ORBIT_FIELDS) assertFinite(body.orbit?.[field], `${body.name}'s orbit ${field}`);

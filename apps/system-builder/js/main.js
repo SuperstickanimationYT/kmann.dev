@@ -6,9 +6,9 @@ import { bodyAt, drawSystem } from './render.js';
 import { exportProblems, sfsPack, STOCK_SCALE } from './sfs.js';
 import {
   addBody, bodyById, childrenOf, density, descendantsOf, gravitationalParameter, hasSurface,
-  hillRadius, parseSystem, placeAt, removeBody, rootOf, surfaceGravity, treeOrder,
+  hillRadius, parseSystem, placeAt, removeBody, rootOf, scaleHeightForGravity, surfaceGravity, treeOrder,
 } from './system.js';
-import { DAY, KINDS, UNITS, distance, duration, significant } from './units.js';
+import { ATM, DAY, KINDS, KM, UNITS, distance, duration, significant } from './units.js';
 import { storedZip } from './zip.js';
 
 const STORAGE_KEY = 'system-builder:system';
@@ -199,6 +199,8 @@ function renderBodyLive(body) {
   addChildButton.textContent = `+ Add ${childKind}`;
 }
 
+const atmosphereOf = (body) => body.atmosphere ?? { surfacePressurePa: 0, scaleHeightM: scaleHeightForGravity(body) };
+
 const shown = (value) => String(Number(value.toPrecision(6)));
 
 function fillBodyFields(body) {
@@ -210,6 +212,10 @@ function fillBodyFields(body) {
   for (const [field, unit] of Object.entries(units)) bodySheet.querySelector(`[data-unit="${field}"]`).textContent = unit.label;
   bodyField('mass').value = shown(body.massKg / units.mass.si);
   bodyField('radius').value = shown(body.radiusM / units.radius.si);
+  for (const node of bodySheet.querySelectorAll('[data-atmosphere-only]')) node.hidden = !hasSurface(body);
+  const atmosphere = atmosphereOf(body);
+  bodyField('pressure').value = shown(atmosphere.surfacePressurePa / ATM);
+  bodyField('scaleHeight').value = shown(atmosphere.scaleHeightM / KM);
   if (body.parent) {
     const excluded = new Set([body.id, ...descendantsOf(system, body.id).map((other) => other.id)]);
     bodyField('parent').replaceChildren(...system.bodies
@@ -316,6 +322,14 @@ const BODY_FIELD_SETTERS = {
   radius: (body, input) => {
     const value = parsedNumber(input);
     if (value > 0) body.radiusM = value * UNITS[body.kind].radius.si;
+  },
+  pressure: (body, input) => {
+    const value = parsedNumber(input);
+    if (value >= 0) body.atmosphere = { ...atmosphereOf(body), surfacePressurePa: value * ATM };
+  },
+  scaleHeight: (body, input) => {
+    const value = parsedNumber(input);
+    if (value > 0) body.atmosphere = { ...atmosphereOf(body), scaleHeightM: value * KM };
   },
   a: (body, input) => {
     const value = parsedNumber(input);
