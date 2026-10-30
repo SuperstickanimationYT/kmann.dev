@@ -12,6 +12,7 @@ const SETTING_FORMATS = {
   boost: (value) => `${Math.round(value * 100)}%`,
   saturation: (value) => `${Math.round(value * 100)}%`,
   noise: (value) => `${Math.round(value * 100)}%`,
+  blotches: (value) => `${Math.round(value * 100)}%`,
 };
 
 const stage = document.querySelector('[data-stage]');
@@ -50,6 +51,7 @@ function readSettings() {
     boost: number('boost'),
     saturation: number('saturation'),
     noise: number('noise'),
+    blotches: number('blotches'),
   };
 }
 
