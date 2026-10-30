@@ -1,4 +1,5 @@
-import { bodyById, hasSurface, surfaceGravity, treeOrder } from './system.js';
+import { bodyById, hasAtmosphere, hasSurface, surfaceGravity, treeOrder } from './system.js';
+import { ATM, EARTH_SCALE_HEIGHT } from './units.js';
 import { flattenedOrbit } from './orbits.js';
 
 export const STOCK_SCALE = 20;
@@ -15,6 +16,9 @@ const STOCK_SURFACES = [
   ['Europa', '#d9c7a7'], ['Io', '#e8d36a'], ['Callisto', '#7f7468'], ['Triton', '#d6d2cc'],
   ['Venus', '#e6c98f'], ['Earth_WithOceans', '#73adff'],
 ];
+const STOCK_ATMOSPHERES = [
+  ['Atmo_Earth', '#73adff'], ['Atmo_Mars', '#d3734f'], ['Atmo_Venus', '#e6c98f'], ['Atmo_Titan', '#e0a95a'],
+];
 const STOCK_GAS_GIANTS = [
   ['Atmo_Jupiter', '#e0b58c'], ['Atmo_Saturn', '#ead6a4'], ['Atmo_Uranus', '#a6e1e8'], ['Atmo_Neptune', '#5d84e8'],
 ];
@@ -26,6 +30,14 @@ const GAS_GIANT_LOOK = [
   { height: 30000.0, shadowIntensity: 1.35, starIntensity: 0.0, hueShift: 0.0, saturation: 0.95, contrast: 1.1, red: 1.0, green: 1.0, blue: 1.0 },
   { height: 100000.0, shadowIntensity: 1.75, starIntensity: 1.0, hueShift: 0.0, saturation: 0.95, contrast: 1.2, red: 1.0, green: 1.0, blue: 1.0 },
 ];
+
+const STOCK_EARTH_AIR = { density: 0.005, height: 30000.0, curve: 10.0 };
+const PRESSURE_TO_DENSITY_EXPONENT = 0.357;
+const AIR_TOP_PRESSURE_PA = 1;
+
+const airDepth = ({ surfacePressurePa, scaleHeightM }) => scaleHeightM * Math.log(surfacePressurePa / AIR_TOP_PRESSURE_PA);
+const EARTH_AIR_DEPTH = airDepth({ surfacePressurePa: ATM, scaleHeightM: EARTH_SCALE_HEIGHT });
+const exportsAir = (body) => hasAtmosphere(body) && body.atmosphere.surfacePressurePa > AIR_TOP_PRESSURE_PA;
 
 const SOI_MULTIPLIER = { star: 1.0, planet: 2.0, moon: 1.35 };
 
@@ -91,6 +103,24 @@ function gasGiantSections(body) {
   };
 }
 
+function airSections(body, scale) {
+  const density = STOCK_EARTH_AIR.density * (body.atmosphere.surfacePressurePa / ATM) ** PRESSURE_TO_DENSITY_EXPONENT;
+  const height = STOCK_EARTH_AIR.height * (airDepth(body.atmosphere) / EARTH_AIR_DEPTH) * (STOCK_SCALE / scale);
+  const look = (keyHeight, shadowIntensity, starIntensity) => ({ ...AIRLESS_LOOK[0], height: round(keyHeight, 3), shadowIntensity, starIntensity });
+  return {
+    ATMOSPHERE_PHYSICS_DATA: {
+      height: round(height, 3), density: round(density, 4), curve: STOCK_EARTH_AIR.curve, curveScale: {}, parachuteMultiplier: 1.0,
+      upperAtmosphere: 0.333, heightDifficultyScale: {}, shockwaveIntensity: round(Math.min(1, density / STOCK_EARTH_AIR.density), 3), minHeatingVelocityMultiplier: 1.0,
+    },
+    ATMOSPHERE_VISUALS_DATA: {
+      GRADIENT: { positionZ: 4000, height: round(height * 1.5, 3), heightDifficultyScale: {}, texture: nearestStock(STOCK_ATMOSPHERES, body.color) },
+      CLOUDS: { texture: 'None', startHeight: 0.0, width: 0.0, height: 0.0, alpha: 0.0, velocity: 0.0 },
+      FOG: { keys: [] },
+    },
+    POST_PROCESSING: { keys: [look(0, 1.35, 0.0), look(height, 1.75, 0.0), look(height * 1.5, 1.75, 1.0)] },
+  };
+}
+
 function craterFormula(radius) {
   const circumference = 2 * Math.PI * radius;
   const relief = Math.min(1, radius / 120000);
@@ -102,8 +132,9 @@ function craterFormula(radius) {
   ];
 }
 
-function surfaceSections(body, radius, isHome) {
+function surfaceSections(body, radius, isHome, scale) {
   return {
+    ...(exportsAir(body) ? airSections(body, scale) : { POST_PROCESSING: { keys: AIRLESS_LOOK } }),
     TERRAIN_DATA: {
       TERRAIN_TEXTURE_DATA: {
         planetTexture: nearestStock(STOCK_SURFACES, body.color),
@@ -129,7 +160,6 @@ function surfaceSections(body, radius, isHome) {
       flatZones: isHome ? [LAUNCH_PAD_FLAT_ZONE] : [],
       flatZonesDifficulties: {},
     },
-    POST_PROCESSING: { keys: AIRLESS_LOOK },
   };
 }
 
@@ -152,7 +182,7 @@ function achievements(body) {
   return {
     Landed: surfaced,
     Takeoff: surfaced,
-    Atmosphere: body.kind !== 'star' && !surfaced,
+    Atmosphere: body.kind !== 'star' && (!surfaced || exportsAir(body)),
     Orbit: true,
     Crash: surfaced,
   };
@@ -161,7 +191,7 @@ function achievements(body) {
 function planetFile(system, body, scale) {
   const radius = body.radiusM / scale;
   const looks = body.kind === 'star' ? starSections(radius)
-    : hasSurface(body) ? surfaceSections(body, radius, body.id === system.home)
+    : hasSurface(body) ? surfaceSections(body, radius, body.id === system.home, scale)
     : gasGiantSections(body);
   const file = { version: FORMAT_VERSION, BASE_DATA: baseData(body, radius), ...looks };
   if (body.parent) file.ORBIT_DATA = orbitData(system, body, scale);
