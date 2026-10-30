@@ -1,6 +1,6 @@
 import { toScreen } from './camera.js';
-import { apoapsis, orbitPath } from './orbits.js';
-import { hillRadius, treeOrder } from './system.js';
+import { apoapsis, eccentricAnomalyAt, orbitPathThrough } from './orbits.js';
+import { gravitationalParameter, hillRadius, treeOrder } from './system.js';
 import { AU, KM, distance } from './units.js';
 
 const BACKGROUND = '#03080f';
@@ -11,17 +11,6 @@ const SMALLEST_VISIBLE_ORBIT_PX = 6;
 const PICK_RADIUS_PX = 14;
 const SCALE_BAR_PX = 120;
 const SCALE_BAR_LIFT_PX = 84;
-
-const pathCache = new WeakMap();
-
-function cachedPath(orbit) {
-  const key = JSON.stringify(orbit);
-  const cached = pathCache.get(orbit);
-  if (cached?.key === key) return cached.points;
-  const points = orbitPath(orbit);
-  pathCache.set(orbit, { key, points });
-  return points;
-}
 
 export function visibleBodies(system, camera, selectedId) {
   return treeOrder(system)
@@ -72,11 +61,11 @@ function drawScaleBar(context, camera) {
   context.fillText(distance(length), 16, y - 6);
 }
 
-function drawOrbit(context, camera, body, origin, colour, width) {
+function drawOrbit(context, camera, path, origin, colour, width) {
   context.strokeStyle = colour;
   context.lineWidth = width;
   context.beginPath();
-  cachedPath(body.orbit).forEach((offset, index) => {
+  path.forEach((offset, index) => {
     const point = toScreen(camera, { x: origin.x + offset.x, y: origin.y + offset.y });
     if (index === 0) context.moveTo(point.x, point.y);
     else context.lineTo(point.x, point.y);
@@ -94,7 +83,7 @@ function ring(context, point, radius, colour, width, dash = []) {
   context.setLineDash([]);
 }
 
-export function drawSystem(context, { system, placed, camera, selectedId, statusByBody }) {
+export function drawSystem(context, { system, placed, seconds, camera, selectedId, statusByBody }) {
   context.fillStyle = BACKGROUND;
   context.fillRect(0, 0, camera.width, camera.height);
   const bodies = visibleBodies(system, camera, selectedId);
@@ -104,7 +93,8 @@ export function drawSystem(context, { system, placed, camera, selectedId, status
     const status = STATUS_COLOURS[statusByBody.get(body.id)];
     const selected = body.id === selectedId;
     const colour = status ?? (selected ? 'rgba(214, 228, 245, 0.8)' : 'rgba(120, 160, 210, 0.28)');
-    drawOrbit(context, camera, body, placed.get(body.parent), colour, selected ? 1.6 : 1);
+    const bodyE = eccentricAnomalyAt(body.orbit, gravitationalParameter(system, body), seconds);
+    drawOrbit(context, camera, orbitPathThrough(body.orbit, bodyE), placed.get(body.parent), colour, selected ? 1.6 : 1);
   }
 
   context.font = '12px system-ui, sans-serif';
