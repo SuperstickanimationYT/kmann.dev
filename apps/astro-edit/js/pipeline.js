@@ -11,6 +11,7 @@ const HALO_DAMPING = 0.25;
 const VIGNETTE_FLOOR = 0.5;
 const COLOUR_SMOOTHING_CELLS = 1.2;
 const CHROMA_NOISE_RADIUS = 0.0025;
+const BLOTCH_RADIUS = 0.012;
 const LOCAL_CLIP_ROUNDS = 3;
 const LOCAL_CLIP_FRACTION = 0.4;
 const PLANE_RIDGE = 0.05;
@@ -35,9 +36,10 @@ export const DEFAULT_SETTINGS = {
   boost: 0.5,
   saturation: 1.25,
   noise: 0.4,
+  blotches: 0.7,
 };
 
-export const PLAIN_STRETCH = { removeBackground: false, boost: 0, saturation: 1, noise: 0 };
+export const PLAIN_STRETCH = { removeBackground: false, boost: 0, saturation: 1, noise: 0, blotches: 0 };
 
 function luma(r, g, b) {
   return LUMA[0] * r + LUMA[1] * g + LUMA[2] * b;
@@ -485,6 +487,37 @@ function lumaPlane(rgb, pixels) {
   return plane;
 }
 
+function weightedBlur(values, weights, width, height, radius) {
+  const weighted = Float32Array.from(values, (value, i) => value * weights[i]);
+  const blurredValues = blur(weighted, width, height, radius);
+  const blurredWeights = blur(weights, width, height, radius);
+  return blurredValues.map((value, i) => (blurredWeights[i] > 1e-4 ? value / blurredWeights[i] : 0));
+}
+
+function evenOutBlotches(rgb, width, height, settings) {
+  const pixels = width * height;
+  const brightness = lumaPlane(rgb, pixels);
+  const sky = settings.background;
+  const skyWeights = brightness.map((y) => 1 - smoothstep(sky, sky + 0.1, y));
+  const redDifference = new Float32Array(pixels);
+  const blueDifference = new Float32Array(pixels);
+  for (let pixel = 0; pixel < pixels; pixel++) {
+    redDifference[pixel] = rgb[pixel * 3] - brightness[pixel];
+    blueDifference[pixel] = rgb[pixel * 3 + 2] - brightness[pixel];
+  }
+  const radius = Math.max(1, Math.round(BLOTCH_RADIUS * Math.max(width, height)));
+  const redTint = weightedBlur(redDifference, skyWeights, width, height, radius);
+  const blueTint = weightedBlur(blueDifference, skyWeights, width, height, radius);
+  for (let pixel = 0; pixel < pixels; pixel++) {
+    const y = brightness[pixel];
+    const r = rgb[pixel * 3] - settings.blotches * redTint[pixel];
+    const b = rgb[pixel * 3 + 2] - settings.blotches * blueTint[pixel];
+    rgb[pixel * 3] = Math.max(0, r);
+    rgb[pixel * 3 + 1] = Math.max(0, (y - LUMA[0] * r - LUMA[2] * b) / LUMA[1]);
+    rgb[pixel * 3 + 2] = Math.max(0, b);
+  }
+}
+
 function reduceNoise(rgb, width, height, settings) {
   const pixels = width * height;
   const longEdge = Math.max(width, height);
@@ -550,6 +583,7 @@ export function render(image, model, settings) {
   const pixels = width * height;
   const rgb = settings.removeBackground && model ? removeModel(image, model, settings) : Float32Array.from(image.rgb);
   stretch(rgb, pixels, measureLevels(rgb, pixels), settings);
+  if (settings.blotches > 0) evenOutBlotches(rgb, width, height, settings);
   if (settings.noise > 0) reduceNoise(rgb, width, height, settings);
   enhance(rgb, width, height, settings);
   const rgba = new Uint8ClampedArray(pixels * 4);
