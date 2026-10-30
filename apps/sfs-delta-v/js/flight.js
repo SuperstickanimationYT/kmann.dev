@@ -135,7 +135,7 @@ export class Flight {
     if (this.parts[engine].drawsFromAllTanks) {
       for (const group of groupOf.values()) groups.add(group);
     } else {
-      for (const j of this.rocket.links[engine]) {
+      for (const j of this.rocket.feedLinks[engine]) {
         if (groupOf.has(j)) groups.add(groupOf.get(j));
       }
     }
