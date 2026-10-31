@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal Playground &mdash; kmann314</title>
+<meta name="description" content="Build portals of any shape, move them around and throw things through. Portals behave like a doorway split in two, so moving an end over an object sends it flying.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Portal Playground</h1>
+  <span class="wip-tag" title="This app is unfinished. Expect bugs and missing parts.">Work in progress</span>
+</header>
+
+<main class="studio-stage">
+  <canvas data-stage data-tool="grab" aria-label="Portal sandbox. Drag objects to throw them, drag portal ends to move them."></canvas>
+  <div class="pp-overlay">
+    <div class="pp-toolbar" role="toolbar" aria-label="Tools">
+      <div class="pp-tools" role="group" aria-label="Tool">
+        <button type="button" data-tool="grab" aria-pressed="true" title="Drag objects to throw them, drag portal ends to move them (1)">Grab</button>
+        <button type="button" data-tool="box" aria-pressed="false" title="Tap to drop a box, drag to throw one (2)">Box</button>
+        <button type="button" data-tool="ball" aria-pressed="false" title="Tap to drop a ball, drag to throw one (3)">Ball</button>
+        <button type="button" data-tool="wedge" aria-pressed="false" title="Tap to drop a wedge, drag to throw one (4)">Wedge</button>
+        <button type="button" data-tool="portal" aria-pressed="false" title="Drag from where one end goes to where the other goes (5)">Portal</button>
+        <button type="button" data-tool="wall" aria-pressed="false" title="Drag to draw a wall (6)">Wall</button>
+        <button type="button" data-tool="laser" aria-pressed="false" title="Tap to place a laser, drag to aim it (7)">Laser</button>
+      </div>
+      <button type="button" class="pp-primary" data-pause>Pause</button>
+      <button type="button" data-speed title="Simulation speed">1&times;</button>
+      <select data-scene aria-label="Scene"></select>
+    </div>
+  </div>
+  <p class="pp-status" data-status></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
+    <form class="pp-panel" data-controls>
+
+      <fieldset class="pp-selected" data-portal-panel hidden>
+        <legend>Portal pair</legend>
+        <label class="pp-field">
+          <span>Shape</span>
+          <select name="shape"></select>
+        </label>
+        <label class="pp-field">
+          <span>Size <output data-width-label></output></span>
+          <input type="range" name="width" min="0.8" max="5" step="0.1">
+        </label>
+        <label class="pp-field" data-kind-field>
+          <span>Faces</span>
+          <select name="kind">
+            <option value="open">Open: both faces lead through</option>
+            <option value="wall">On a wall: solid back</option>
+          </select>
+        </label>
+        <label class="pp-toggle"><input type="checkbox" name="mirror"> Mirror: things come out reflected</label>
+
+        <div class="pp-ends" role="group" aria-label="End">
+          <button type="button" data-end="0" aria-pressed="true">End A</button>
+          <button type="button" data-end="1" aria-pressed="false">End B</button>
+        </div>
+        <label class="pp-field">
+          <span>Motion</span>
+          <select name="motion"></select>
+        </label>
+        <label class="pp-field" data-motion-param="slide orbit">
+          <span>Distance <output data-distance-label></output></span>
+          <input type="range" name="distance" min="0.2" max="6" step="0.1">
+        </label>
+        <label class="pp-field" data-motion-param="slide">
+          <span>Direction <output data-direction-label></output></span>
+          <input type="range" name="direction" min="0" max="355" step="5">
+        </label>
+        <label class="pp-field" data-motion-param="swing">
+          <span>Swing <output data-swing-label></output></span>
+          <input type="range" name="swing" min="5" max="180" step="5">
+        </label>
+        <label class="pp-field" data-motion-param="slide swing spin orbit">
+          <span>Period <output data-period-label></output></span>
+          <input type="range" name="period" min="0.5" max="12" step="0.1">
+        </label>
+        <div class="pp-actions">
+          <button type="button" data-turn>Turn around</button>
+          <button type="button" data-delete>Delete pair</button>
+          <button type="button" data-deselect>Done</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="pp-selected" data-object-panel hidden>
+        <legend data-object-legend>Selected</legend>
+        <div class="pp-actions">
+          <button type="button" data-delete>Delete</button>
+          <button type="button" data-deselect>Done</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Scene</legend>
+        <p class="pp-note" data-scene-note></p>
+        <label class="pp-field">
+          <span>Gravity <output data-gravity-label></output></span>
+          <input type="range" name="gravity" min="0" max="20" step="0.1" value="9.8">
+        </label>
+        <div class="pp-actions">
+          <button type="button" data-reload>Reload scene</button>
+          <button type="button" data-clear>Clear objects</button>
+        </div>
+      </fieldset>
+
+      <details class="pp-help">
+        <summary>How these portals work</summary>
+        <p>A pair of portal ends is one doorway sliced through the middle, with the two halves carried apart. Looking into one end, you see what is behind the other end because it really is right there, on the far side of the doorway.</p>
+        <p>That settles what happens when an end moves. Only movement relative to the doorway counts: an object resting in place while an end sweeps over it is, from the doorway's point of view, an object moving into it. It comes out the other end with that speed, so a falling or sliding end throws things.</p>
+        <p>An object part-way through is in both places at once. Its front half sits beyond the far end and can bump into things there, and its back half still rests on whatever is under it here.</p>
+        <p>Both ends of a pair are always the same shape. On a curved end, an object passes wherever it crosses the curve. Ring and square-frame ends connect outside to inside.</p>
+      </details>
+
+      <details class="pp-help">
+        <summary>Controls</summary>
+        <ul>
+          <li>Grab: drag an object to carry it and let go to throw it. Drag a portal end to move it: it keeps whatever speed you give it while dragging, so sweeping an end over a resting object launches it. Drag the white knob to turn an end. Tap a portal end, wall or laser to edit it.</li>
+          <li>Box, Ball, Wedge: tap to drop one; drag to throw one in the direction you drag.</li>
+          <li>Portal: drag from where end A goes to where end B goes, or tap for a pair side by side.</li>
+          <li>Wall: drag to draw one. Laser: tap to place, drag to aim.</li>
+          <li>Each object carries a flag, so you can tell when a mirror portal has flipped it.</li>
+          <li>Keys: <kbd>1</kbd>&ndash;<kbd>7</kbd> tools, <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>Esc</kbd> deselect.</li>
+        </ul>
+      </details>
+    </form>
+
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
