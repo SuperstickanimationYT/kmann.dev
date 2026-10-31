@@ -1,0 +1,18 @@
+{
+  "name": "Portal Playground",
+  "short_name": "Portal Playground",
+  "description": "Build portals of any shape, move them around and throw things through. Portals behave like a doorway split in two, so moving an end over an object sends it flying.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

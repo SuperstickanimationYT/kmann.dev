@@ -151,6 +151,13 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Portal Playground',
+    href: 'apps/portal-playground/',
+    category: 'simulations',
+    blurb: 'Build portals of any shape, set them moving and throw things through. Each pair is one doorway split in two, so an end swept over a resting box sends it flying.',
+    status: 'wip',
+  },
+  {
     title: 'Robot Workshop',
     href: 'apps/robot-workshop/',
     category: 'simulations',
