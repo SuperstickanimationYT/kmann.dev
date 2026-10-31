@@ -65,6 +65,10 @@
           </select>
         </label>
         <label class="pp-toggle"><input type="checkbox" name="mirror"> Mirror: things come out reflected</label>
+        <label class="pp-field">
+          <span>Time shift <output data-delay-label></output></span>
+          <input type="range" name="delay" min="0" max="6" step="0.25">
+        </label>
 
         <div class="pp-ends" role="group" aria-label="End">
           <button type="button" data-end="0" aria-pressed="true">End A</button>
@@ -105,6 +109,25 @@
         </div>
       </fieldset>
 
+      <fieldset data-time-panel hidden>
+        <legend>Time travel</legend>
+        <p class="pp-note">A portal here moves through time, so nothing runs live: what happens now depends on what comes back from the future. Set things up, then Solve to search for histories that agree with themselves.</p>
+        <label class="pp-field">
+          <span>Search window <output data-window-label></output></span>
+          <input type="range" name="window" min="3" max="12" step="0.5" value="7">
+        </label>
+        <div class="pp-actions">
+          <button type="button" class="pp-primary" data-solve>Solve</button>
+          <button type="button" data-edit-setup hidden>Edit setup</button>
+        </div>
+        <p class="pp-note" data-solve-status aria-live="polite"></p>
+        <div class="pp-actions pp-histories" role="group" aria-label="Histories" data-histories></div>
+        <label class="pp-field" data-scrub-field hidden>
+          <span>Time <output data-scrub-label></output></span>
+          <input type="range" name="scrub" min="0" max="7" step="any" value="0">
+        </label>
+      </fieldset>
+
       <fieldset>
         <legend>Scene</legend>
         <p class="pp-note" data-scene-note></p>
@@ -127,13 +150,21 @@
       </details>
 
       <details class="pp-help">
+        <summary>How time travel works</summary>
+        <p>Give a pair a time shift and end A leads into the past: whatever goes in at one moment comes out of end B that many seconds earlier. Going in through B takes you forward. End A stays shut until the shift has passed, so nothing can arrive from before the start.</p>
+        <p>A history counts only if it agrees with itself: everything that comes out of B must be exactly what later goes into A. The solver guesses what arrives, simulates, compares what leaves with what it guessed, and corrects the guess until the two match. Some setups have one answer, some several, and paradoxes may have none it can find.</p>
+        <p>Objects with a dashed outline came from the future. To keep the search workable, time-travel runs have no friction, overlapping objects are pushed apart without gaining speed, an object part-way through a time portal only collides on its own side, lasers ignore time portals, and nothing is assumed to come back from after the search window ends.</p>
+      </details>
+
+      <details class="pp-help">
         <summary>Controls</summary>
         <ul>
           <li>Grab: drag an object to carry it and let go to throw it. Drag a portal end to move it: it keeps whatever speed you give it while dragging, so sweeping an end over a resting object launches it. Drag the white knob to turn an end. Tap a portal end, wall or laser to edit it.</li>
           <li>Box, Ball, Wedge: tap to drop one; drag to throw one in the direction you drag.</li>
           <li>Portal: drag from where end A goes to where end B goes, or tap for a pair side by side.</li>
           <li>Wall: drag to draw one. Laser: tap to place, drag to aim.</li>
-          <li>Each object carries a flag, so you can tell when a mirror portal has flipped it.</li>
+          <li>Wedges are the only lopsided objects, so they're the ones that show when a mirror portal has flipped something.</li>
+          <li>Time travel setup: drag objects to place them, and use the Box, Ball or Wedge tool to add one already moving. Arrows show starting speeds.</li>
           <li>Keys: <kbd>1</kbd>&ndash;<kbd>7</kbd> tools, <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>Esc</kbd> deselect.</li>
         </ul>
       </details>

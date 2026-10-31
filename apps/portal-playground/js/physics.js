@@ -64,19 +64,36 @@ function makeBody(fields) {
 export function makeBox(x, y, w, h, color = '#d9a35b') {
   const verts = boxVerts(w, h);
   const { mass, inertia } = polygonMass(verts, 1);
-  return makeBody({ kind: 'box', size: Math.max(w, h), x, y, verts, r: Math.hypot(w, h) / 2, mass, inertia, color });
+  const spec = { kind: 'box', w, h, color };
+  return makeBody({ kind: 'box', spec, size: Math.max(w, h), x, y, verts, r: Math.hypot(w, h) / 2, mass, inertia, color });
 }
 
 export function makeBall(x, y, r, color = '#7fc8ff') {
   const mass = Math.PI * r * r;
-  return makeBody({ kind: 'ball', size: r * 2, x, y, radius: r, r, mass, inertia: (mass * r * r) / 2, color, restitution: 0.45 });
+  const spec = { kind: 'ball', r, color };
+  return makeBody({ kind: 'ball', spec, size: r * 2, x, y, radius: r, r, mass, inertia: (mass * r * r) / 2, color, restitution: 0.45 });
 }
 
 export function makeWedge(x, y, size, color = '#c98bff') {
   const raw = [V(0, 0), V(size, 0), V(0, size * 0.75)];
   const { mass, inertia, centroid } = polygonMass(raw, 1);
   const verts = raw.map((v) => sub(v, centroid));
-  return makeBody({ kind: 'wedge', size, x, y, verts, r: Math.max(...verts.map(len)), mass, inertia, color });
+  const spec = { kind: 'wedge', size, color };
+  return makeBody({ kind: 'wedge', spec, size, x, y, verts, r: Math.max(...verts.map(len)), mass, inertia, color });
+}
+
+export function makeFromSpec(spec, x, y) {
+  if (spec.kind === 'ball') return makeBall(x, y, spec.r, spec.color);
+  if (spec.kind === 'wedge') return makeWedge(x, y, spec.size, spec.color);
+  return makeBox(x, y, spec.w, spec.h, spec.color);
+}
+
+export function sameSpec(a, b) {
+  return a.kind === b.kind && a.r === b.r && a.w === b.w && a.h === b.h && a.size === b.size;
+}
+
+export function isOpen(end, time) {
+  return !(end.pair.delay > 0 && end.index === 0 && time < end.pair.delay - 1e-9);
 }
 
 export function makeWall(x, y, length, thickness, angle = 0) {
@@ -134,11 +151,13 @@ export function buildCopies(world, body, h = 0) {
   const copies = [home];
   for (const pair of world.pairs) {
     for (const end of pair.ends) {
+      if (!isOpen(end, world.time)) continue;
       const q = query(end, c);
       if (q.dist >= reach || !q.interior || !isPassable(end, q.side)) continue;
       const T = pairTransform(end);
       const to = partner(end);
       home.straddles.push({ end, side: q.side });
+      if (pair.delay > 0) continue;
       copies.push({ body, T, from: end, to, homeSide: q.side, exitSide: -query(to, apply(T, c)).side, straddles: [] });
     }
   }
@@ -265,12 +284,16 @@ function contactSide(copy, kinematic, q, n) {
   };
 }
 
-const velocityAt = (s) => (s.body ? add(V(s.body.vx, s.body.vy), spinVelocity(s.body.w, s.r)) : ZERO);
+const MOTION = { x: 'vx', y: 'vy', w: 'w' };
+const NUDGE = { x: 'nx', y: 'ny', w: 'nw' };
 
-function relative(c, which) {
+const velocityAt = (s, f) => (s.body ? add(V(s.body[f.x], s.body[f.y]), spinVelocity(s.body[f.w], s.r)) : ZERO);
+
+function relative(c, which, f = MOTION) {
   const key = which === 'n' ? 'n' : 't';
   const dir = which === 'n' ? c.n : perp(c.n);
-  return dot(velocityAt(c.b), c.b[key]) - dot(velocityAt(c.a), c.a[key]) + dot(sub(c.b.k, c.a.k), dir);
+  const carried = f === MOTION ? dot(sub(c.b.k, c.a.k), dir) : 0;
+  return dot(velocityAt(c.b, f), c.b[key]) - dot(velocityAt(c.a, f), c.a[key]) + carried;
 }
 
 function effectiveMass(c, key) {
@@ -283,15 +306,15 @@ function effectiveMass(c, key) {
   return k > 0 ? 1 / k : 0;
 }
 
-function applyImpulse(c, key, amount) {
-  if (c.b.body) push(c.b.body, c.b.r, mul(c.b[key], amount));
-  if (c.a.body) push(c.a.body, c.a.r, mul(c.a[key], -amount));
+function applyImpulse(c, key, amount, f = MOTION) {
+  if (c.b.body) push(c.b.body, c.b.r, mul(c.b[key], amount), f);
+  if (c.a.body) push(c.a.body, c.a.r, mul(c.a[key], -amount), f);
 }
 
-function push(body, r, impulse) {
-  body.vx += impulse.x * body.invMass;
-  body.vy += impulse.y * body.invMass;
-  body.w += body.invInertia * cross(r, impulse);
+function push(body, r, impulse, f) {
+  body[f.x] += impulse.x * body.invMass;
+  body[f.y] += impulse.y * body.invMass;
+  body[f.w] += body.invInertia * cross(r, impulse);
 }
 
 function addContacts(out, copyA, kinA, shapeA, copyB, kinB, shapeB, h) {
@@ -301,14 +324,15 @@ function addContacts(out, copyA, kinA, shapeA, copyB, kinB, shapeB, h) {
     const b = contactSide(copyB, kinB, raw.p, raw.n);
     const bodies = [copyA?.body, copyB?.body].filter(Boolean);
     const c = {
-      a, b, n: raw.n, depth: raw.depth, Pn: 0, Pt: 0,
+      a, b, n: raw.n, depth: raw.depth, Pn: 0, Pt: 0, Pd: 0,
       friction: Math.sqrt(bodies.reduce((f, body) => f * body.friction, 1)),
       restitution: Math.max(...bodies.map((body) => body.restitution)),
     };
     c.massN = effectiveMass(c, 'n');
     c.massT = effectiveMass(c, 't');
     const vn = relative(c, 'n');
-    c.bias = Math.max((BAUMGARTE / h) * Math.max(0, c.depth - SLOP), vn < -1 ? -c.restitution * vn : 0);
+    c.drift = (BAUMGARTE / h) * Math.max(0, c.depth - SLOP);
+    c.bounce = vn < -1 ? -c.restitution * vn : 0;
     out.push(c);
   }
 }
@@ -316,6 +340,7 @@ function addContacts(out, copyA, kinA, shapeA, copyB, kinB, shapeB, h) {
 function kinematicColliders(world) {
   const out = [];
   for (const end of allEnds(world)) {
+    if (!isOpen(end, world.time)) continue;
     const velocity = (q) => frameVelocity(end, q);
     for (const c of postPoints(end)) {
       const shape = { type: 'circle', c, r: POST_RADIUS };
@@ -395,7 +420,7 @@ function prepareEnds(world, t1, frac, h) {
 function teleport(world, body, before, after) {
   const c0 = before.center, c1 = V(body.x, body.y);
   for (const end of allEnds(world)) {
-    if (end.pair.ends.length < 2) continue;
+    if (!isOpen(end, world.time)) continue;
     const l0 = apply(before.ends.get(end), c0);
     const l1 = apply(end.Tinv, c1);
     if (!crossesLocal(end, l0, l1)) continue;
@@ -414,8 +439,19 @@ function teleport(world, body, before, after) {
     body.flip = body.flip !== mirrored;
     body.angle = Math.atan2(turned.c, turned.a);
     if (world.grab && world.grab.body === body) world.grab = null;
+    if (end.pair.delay > 0) body.timeJump = { shift: end.index === 0 ? -end.pair.delay : end.pair.delay, exit: to };
     after?.(body, end, to);
     return;
+  }
+}
+
+function nudgeApart(contacts) {
+  for (let it = 0; it < ITERATIONS; it++) {
+    for (const c of contacts) {
+      const Pd = Math.max(c.Pd + c.massN * (c.drift - relative(c, 'n', NUDGE)), 0);
+      applyImpulse(c, 'n', Pd - c.Pd, NUDGE);
+      c.Pd = Pd;
+    }
   }
 }
 
@@ -431,22 +467,26 @@ export function step(world, dt, substeps, onTeleport) {
       body.vy -= world.gravity * h;
     }
 
+    const separate = !world.idealized;
     for (let it = 0; it < ITERATIONS; it++) {
       for (const c of contacts) {
         const vn = relative(c, 'n');
-        let dPn = c.massN * (c.bias - vn);
+        let dPn = c.massN * ((separate ? Math.max(c.drift, c.bounce) : c.bounce) - vn);
         const Pn = Math.max(c.Pn + dPn, 0);
         dPn = Pn - c.Pn;
         c.Pn = Pn;
         applyImpulse(c, 'n', dPn);
 
         const vt = relative(c, 't');
-        const limit = c.friction * c.Pn;
+        const limit = world.idealized ? 0 : c.friction * c.Pn;
         const Pt = Math.max(-limit, Math.min(limit, c.Pt - c.massT * vt));
         applyImpulse(c, 't', Pt - c.Pt);
         c.Pt = Pt;
       }
     }
+
+    for (const body of world.bodies) Object.assign(body, { nx: 0, ny: 0, nw: 0 });
+    if (world.idealized) nudgeApart(contacts);
 
     const before = new Map();
     const oldEnds = new Map(allEnds(world).map((e) => [e, e.Tinv]));
@@ -454,9 +494,9 @@ export function step(world, dt, substeps, onTeleport) {
       const speed = Math.hypot(body.vx, body.vy);
       if (speed > MAX_SPEED) { body.vx *= MAX_SPEED / speed; body.vy *= MAX_SPEED / speed; }
       before.set(body, { center: V(body.x, body.y), ends: oldEnds });
-      body.x += body.vx * h;
-      body.y += body.vy * h;
-      body.angle += body.w * h;
+      body.x += (body.vx + body.nx) * h;
+      body.y += (body.vy + body.ny) * h;
+      body.angle += (body.w + body.nw) * h;
     }
 
     for (const end of allEnds(world)) {
@@ -465,6 +505,10 @@ export function step(world, dt, substeps, onTeleport) {
     }
     for (const body of world.bodies) teleport(world, body, before.get(body), onTeleport);
     world.time = t1;
+    for (const body of world.bodies.filter((b) => b.timeJump)) {
+      world.bodies = world.bodies.filter((b) => b !== body);
+      world.onTimeJump?.(body, t1 + body.timeJump.shift);
+    }
   }
   for (const end of allEnds(world)) {
     if (end.dragTo) { Object.assign(end.base, end.dragTo); end.dragTo = null; }
@@ -547,20 +591,21 @@ export function castLaser(world, laser, maxHops = 16) {
       const t = rayShape(origin, dir, copy.shape);
       if (t !== null && t < best && isValidPoint(copy, add(origin, mul(dir, t + 1e-3)))) { best = t; hitEnd = null; }
     }
-    for (const end of allEnds(world)) {
+    const openEnds = allEnds(world).filter((end) => isOpen(end, world.time));
+    for (const end of openEnds) {
       for (const c of postPoints(end)) {
         const t = rayShape(origin, dir, { type: 'circle', c, r: POST_RADIUS });
         if (t !== null && t < best) { best = t; hitEnd = null; }
       }
     }
-    for (const end of allEnds(world)) {
+    for (const end of openEnds) {
       const t = rayEnd(origin, dir, end);
       if (t === null || t - 2e-3 >= best) continue;
       const side = query(end, origin).side;
       const hit = add(origin, mul(dir, t));
       if (!query(end, hit).interior && !end.closed) continue;
       best = t;
-      hitEnd = isPassable(end, side) ? end : null;
+      hitEnd = isPassable(end, side) && !(end.pair.delay > 0) ? end : null;
     }
     const hit = add(origin, mul(dir, best));
     path.push([origin, hit]);

@@ -107,7 +107,7 @@ export const SCENES = [
   {
     id: 'mirror',
     title: 'Mirror portal',
-    note: 'This pair reflects everything on the way through, so each lap of the fall flips the wedges and the flags on them, along with their spin and sideways drift. In 2D the reflection always runs along the portal: an upright mirror end turns things upside down.',
+    note: 'This pair reflects everything on the way through, so each lap of the fall flips which way the wedges lean, along with their spin and sideways drift. In 2D the reflection always runs along the portal: an upright mirror end turns things upside down.',
     build() {
       const world = room();
       world.pairs.push(makePair({
@@ -155,6 +155,42 @@ export const SCENES = [
       }));
       world.lasers.push(makeLaser(2, 3, 0), makeLaser(2, 2.4, 0, '#5fe3ff'));
       world.bodies.push(makeBox(20, 0.5, 1, 1), makeBox(20.2, 1.5, 1, 1, '#e07a5f'));
+      return world;
+    },
+  },
+  {
+    id: 'knock-in',
+    title: 'Time travel: knock yourself in',
+    gravity: 0,
+    note: 'No gravity. The ball rolls under the right-hand end and misses it. Going into that end sends you 3 seconds back, out of the bottom end. Press Solve: one history has nothing come back, and in another the older ball flies up out of the floor end and knocks it into the portal.',
+    build() {
+      const world = room();
+      world.pairs.push(makePair({
+        width: 2.4, delay: 3,
+        a: { x: 16, y: 6, angle: FACING_LEFT },
+        b: { x: 9.3, y: 1, angle: DOWN },
+      }));
+      const ball = makeBall(4, 4, 0.3);
+      ball.vx = 3;
+      world.bodies.push(ball);
+      return world;
+    },
+  },
+  {
+    id: 'paradox',
+    title: 'Time travel: billiard paradox',
+    gravity: 0,
+    note: 'No gravity. The ball heads straight into the right-hand end, which sends it 3¼ seconds back, out of the top end and down across its own path. Hit head-on, the younger ball would be knocked away and never go back. Press Solve to look for a history where the collision works out.',
+    build() {
+      const world = room();
+      world.pairs.push(makePair({
+        width: 2.4, delay: 3.25,
+        a: { x: 16, y: 6, angle: FACING_LEFT },
+        b: { x: 11, y: 10, angle: UP },
+      }));
+      const ball = makeBall(4, 6, 0.3);
+      ball.vx = 3;
+      world.bodies.push(ball);
       return world;
     },
   },

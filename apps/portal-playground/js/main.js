@@ -6,6 +6,7 @@ import {
 } from './physics.js';
 import { SCENES, loadScene } from './scenes.js';
 import { fitView, toWorld, render } from './render.js';
+import { toData, fromData, placeBody } from './snapshot.js';
 
 const canvas = document.querySelector('[data-stage]');
 const ctx = canvas.getContext('2d');
@@ -16,6 +17,12 @@ const statusLine = document.querySelector('[data-status]');
 const sceneSelect = document.querySelector('[data-scene]');
 const pauseButton = document.querySelector('[data-pause]');
 const speedButton = document.querySelector('[data-speed]');
+const timePanel = document.querySelector('[data-time-panel]');
+const solveButton = document.querySelector('[data-solve]');
+const editSetupButton = document.querySelector('[data-edit-setup]');
+const solveStatus = document.querySelector('[data-solve-status]');
+const historyList = document.querySelector('[data-histories]');
+const scrubField = document.querySelector('[data-scrub-field]');
 
 const SPEEDS = [
   [1, '1×'],
@@ -24,6 +31,9 @@ const SPEEDS = [
   [0.1, '⅒×'],
 ];
 const MAX_SUBSTEP = 1 / 240;
+const SOLVE_ATTEMPTS = 16;
+const SETUP_HINT = 'Time travel setup: nothing moves until you Solve. Drag objects to place them.';
+const PLAYBACK_HINT = 'Watching a history. Press Edit setup to change things.';
 const FACING_RIGHT = -Math.PI / 2;
 const TOOL_HINTS = {
   grab: 'Drag objects to throw them. Drag a portal end to move it, or tap it to edit it.',
@@ -48,19 +58,136 @@ let speedIndex = 0;
 let selected = null;
 let drag = null;
 let view = fitView(canvas);
+let solver = null;
+let playback = null;
 
 for (const scene of SCENES) sceneSelect.add(new Option(scene.title, scene.id));
 for (const [id, shape] of Object.entries(SHAPES)) form.shape.add(new Option(shape.label, id));
 for (const [id, label] of Object.entries(MOTIONS)) form.motion.add(new Option(label, id));
 
 function setScene(id) {
+  const scene = SCENES.find((s) => s.id === id);
   sceneId = id;
   world = loadScene(id);
+  form.gravity.value = scene.gravity ?? form.gravity.defaultValue;
   world.gravity = Number(form.gravity.value);
   sceneSelect.value = id;
-  document.querySelector('[data-scene-note]').textContent = SCENES.find((s) => s.id === id).note;
+  document.querySelector('[data-scene-note]').textContent = scene.note;
+  syncLabels();
   select(null);
   drag = null;
+  solveStatus.textContent = '';
+  editSetup();
+}
+
+const timeTravelling = () => world.pairs.some((p) => p.delay > 0);
+
+function syncTimePanel() {
+  const active = timeTravelling();
+  timePanel.hidden = !active;
+  if (!active) {
+    stopSolving();
+    playback = null;
+  }
+  statusLine.textContent = !active ? TOOL_HINTS[tool] : playback ? PLAYBACK_HINT : SETUP_HINT;
+}
+
+function rewindSetup() {
+  world.time = 0;
+  for (const pair of world.pairs) refreshEnds(pair);
+}
+
+function stopSolving() {
+  solver?.terminate();
+  solver = null;
+  solveButton.textContent = 'Solve';
+}
+
+function solve() {
+  if (solver) {
+    stopSolving();
+    solveStatus.textContent = 'Stopped.';
+    return;
+  }
+  editSetup();
+  const setup = toData(world);
+  const duration = Number(form.window.value);
+  solver = new Worker(new URL('./solver-worker.js', import.meta.url), { type: 'module' });
+  solveButton.textContent = 'Stop';
+  solveStatus.textContent = 'Searching…';
+  solver.onmessage = ({ data }) => {
+    if (data.type === 'progress') solveStatus.textContent = `Searching… try ${data.done + 1} of ${data.total}, ${data.found} found so far.`;
+    else if (data.type === 'found') addHistory(data.history, setup, duration);
+    else {
+      stopSolving();
+      solveStatus.textContent = data.found
+        ? `Found ${data.found} consistent ${data.found === 1 ? 'history' : 'histories'} in ${data.runs} simulations.`
+        : `No consistent history found in ${data.runs} simulations. That doesn't prove there is none: Solve again to keep looking.`;
+    }
+  };
+  solver.postMessage({ world: setup, duration, attempts: SOLVE_ATTEMPTS });
+}
+
+function describeHistory(history) {
+  const count = history.arrivals.length;
+  if (count === 0) return 'Nothing comes back';
+  const kinds = new Set(history.arrivals.map((a) => a.spec.kind));
+  const noun = kinds.size === 1 ? [...kinds][0] : 'object';
+  return `${count} ${noun}${count > 1 ? 's' : ''} from the future`;
+}
+
+function addHistory(history, setup, duration) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = describeHistory(history);
+  if (history.arrivals.length) button.title = `What arrives matches what leaves to within ${(history.mismatch * 100).toFixed(1)} cm`;
+  button.addEventListener('click', () => watch(history, setup, duration, button));
+  historyList.append(button);
+  if (!playback) watch(history, setup, duration, button);
+}
+
+function watch(history, setup, duration, button) {
+  for (const b of historyList.children) b.setAttribute('aria-pressed', String(b === button));
+  const stage = fromData(setup);
+  stage.bodies = [];
+  playback = { history, stage, duration, t: 0, bodies: new Map() };
+  form.scrub.max = duration;
+  scrubField.hidden = false;
+  editSetupButton.hidden = false;
+  select(null);
+  paused = false;
+  pauseButton.textContent = 'Pause';
+  syncTimePanel();
+  showFrame(0);
+}
+
+function showFrame(t) {
+  playback.t = t;
+  const { history, stage, bodies } = playback;
+  const frames = history.frames;
+  const frame = frames[Math.min(frames.length - 1, Math.round((t / playback.duration) * (frames.length - 1)))];
+  stage.time = frame.t;
+  stage.bodies = frame.bodies.map((state) => {
+    const body = bodies.get(state.key) ?? placeBody({ bodies: [] }, state);
+    bodies.set(state.key, body);
+    return Object.assign(body, { x: state.x, y: state.y, angle: state.angle, flip: state.flip, generation: state.generation });
+  });
+  allEnds(stage).forEach((end, i) => {
+    Object.assign(end.pose, frame.ends[i]);
+    refreshTransform(end);
+  });
+  form.scrub.value = t;
+  document.querySelector('[data-scrub-label]').textContent = `${t.toFixed(2)} s`;
+}
+
+function editSetup() {
+  stopSolving();
+  playback = null;
+  historyList.replaceChildren();
+  scrubField.hidden = true;
+  editSetupButton.hidden = true;
+  if (timeTravelling()) rewindSetup();
+  syncTimePanel();
 }
 
 function setTool(next) {
@@ -69,7 +196,7 @@ function setTool(next) {
   for (const b of document.querySelectorAll('[data-tool]')) {
     if (b.tagName === 'BUTTON') b.setAttribute('aria-pressed', String(b.dataset.tool === next));
   }
-  statusLine.textContent = TOOL_HINTS[next];
+  syncTimePanel();
 }
 
 function select(thing) {
@@ -88,6 +215,7 @@ function syncPanel() {
     form.kind.value = pair.kind;
     form.kind.disabled = SHAPES[pair.shape].closed;
     form.mirror.checked = pair.mirror;
+    form.delay.value = pair.delay;
     for (const b of portalPanel.querySelectorAll('[data-end]')) {
       const ofEnd = Number(b.dataset.end) === end.index;
       b.setAttribute('aria-pressed', String(ofEnd));
@@ -117,6 +245,9 @@ function syncLabels() {
   label('swing', `±${form.swing.value}°`);
   label('period', `${Number(form.period.value).toFixed(1)} s`);
   label('gravity', `${Number(form.gravity.value).toFixed(1)} m/s²`);
+  const delay = Number(form.delay.value);
+  label('delay', delay ? `${delay} s` : 'Off');
+  label('window', `${Number(form.window.value).toFixed(1)} s`);
 }
 
 function refreshEnds(pair) {
@@ -136,6 +267,14 @@ form.addEventListener('input', (e) => {
   const name = e.target.name;
   syncLabels();
   if (name === 'gravity') { world.gravity = Number(form.gravity.value); return; }
+  if (name === 'window') return;
+  if (name === 'scrub') {
+    if (!playback) return;
+    paused = true;
+    pauseButton.textContent = 'Play';
+    showFrame(Number(form.scrub.value));
+    return;
+  }
   const end = selected?.end;
   if (!end) return;
   const pair = end.pair;
@@ -157,6 +296,11 @@ form.addEventListener('input', (e) => {
     keepPhase(m, Number(form.period.value));
   } else if (name === 'distance' || name === 'direction' || name === 'swing') {
     m[name] = Number(form[name].value);
+  } else if (name === 'delay') {
+    const wasTimeTravelling = timeTravelling();
+    pair.delay = Number(form.delay.value);
+    if (!wasTimeTravelling && timeTravelling()) rewindSetup();
+    syncTimePanel();
   }
 });
 form.addEventListener('submit', (e) => e.preventDefault());
@@ -178,6 +322,8 @@ document.querySelector('[data-clear]').addEventListener('click', () => {
   if (selected?.body) select(null);
 });
 sceneSelect.addEventListener('change', () => setScene(sceneSelect.value));
+solveButton.addEventListener('click', solve);
+editSetupButton.addEventListener('click', editSetup);
 for (const b of document.querySelectorAll('button[data-tool]')) b.addEventListener('click', () => setTool(b.dataset.tool));
 pauseButton.addEventListener('click', togglePause);
 speedButton.addEventListener('click', () => {
@@ -192,7 +338,10 @@ function togglePause() {
 
 function deleteSelected() {
   if (!selected) return;
-  if (selected.end) world.pairs = world.pairs.filter((p) => p !== selected.end.pair);
+  if (selected.end) {
+    world.pairs = world.pairs.filter((p) => p !== selected.end.pair);
+    syncTimePanel();
+  }
   if (selected.body) {
     world.bodies = world.bodies.filter((b) => b !== selected.body);
     if (world.grab?.body === selected.body) world.grab = null;
@@ -230,6 +379,7 @@ function hitTest(p) {
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
+  if (playback) return;
   canvas.setPointerCapture(e.pointerId);
   const p = pointerWorld(e);
   if (tool !== 'grab') {
@@ -245,6 +395,9 @@ canvas.addEventListener('pointerdown', (e) => {
   } else if (hit.type === 'turn-laser' || hit.type === 'laser') {
     select({ laser: hit.laser });
     drag = { type: hit.type, laser: hit.laser, last: p };
+  } else if (hit.type === 'body' && timeTravelling()) {
+    select({ body: hit.body });
+    drag = { type: 'place', body: hit.body, offset: sub(p, V(hit.body.x, hit.body.y)) };
   } else if (hit.type === 'body') {
     select({ body: hit.body });
     world.grab = { body: hit.body, local: grabLocal(hit.body, p), target: p };
@@ -264,6 +417,10 @@ canvas.addEventListener('pointermove', (e) => {
     const c = drag.end.pose;
     drag.target = { ...drag.end.base, angle: Math.atan2(p.y - c.y, p.x - c.x) - Math.PI / 2 - (c.angle - drag.end.base.angle) };
   } else if (drag.type === 'body' && world.grab) world.grab.target = p;
+  else if (drag.type === 'place') {
+    drag.body.x = p.x - drag.offset.x;
+    drag.body.y = p.y - drag.offset.y;
+  }
   else if (drag.type === 'wall' || drag.type === 'laser') {
     const thing = drag.wall ?? drag.laser;
     thing.x += p.x - drag.last.x;
@@ -316,7 +473,7 @@ canvas.addEventListener('wheel', (e) => {
   if (!end) return;
   e.preventDefault();
   end.base.angle -= Math.sign(e.deltaY) * (Math.PI / 36);
-  if (paused) refreshEnds(end.pair);
+  if (paused || timeTravelling()) refreshEnds(end.pair);
 }, { passive: false });
 
 window.addEventListener('keydown', (e) => {
@@ -327,7 +484,24 @@ window.addEventListener('keydown', (e) => {
   else if (/^[1-7]$/.test(e.key)) setTool(Object.keys(TOOL_HINTS)[Number(e.key) - 1]);
 });
 
+function drawArrow(c, from, v, px) {
+  const tip = V(from.x + v.x * 0.35, from.y + v.y * 0.35);
+  const a = Math.atan2(v.y, v.x);
+  c.beginPath();
+  c.moveTo(from.x, from.y);
+  c.lineTo(tip.x, tip.y);
+  c.moveTo(tip.x - Math.cos(a - 0.5) * 8 * px, tip.y - Math.sin(a - 0.5) * 8 * px);
+  c.lineTo(tip.x, tip.y);
+  c.lineTo(tip.x - Math.cos(a + 0.5) * 8 * px, tip.y - Math.sin(a + 0.5) * 8 * px);
+  c.lineWidth = 2 * px;
+  c.strokeStyle = 'rgba(255,255,255,0.8)';
+  c.stroke();
+}
+
 function previewCreate(c, px) {
+  if (timeTravelling()) {
+    for (const body of world.bodies) if (Math.hypot(body.vx, body.vy) > 0.05) drawArrow(c, V(body.x, body.y), V(body.vx, body.vy), px);
+  }
   if (drag?.type !== 'create') return;
   const { start, current } = drag;
   c.beginPath();
@@ -346,7 +520,18 @@ function frame(now) {
   last = now;
   view = fitView(canvas);
   const dragged = (drag?.type === 'end' || drag?.type === 'turn-end') && drag.target ? drag.end : null;
-  if (!paused) {
+  if (playback) {
+    if (!paused) showFrame((playback.t + dt * SPEEDS[speedIndex][0]) % playback.duration);
+    render(ctx, view, playback.stage, { selected: null });
+    requestAnimationFrame(frame);
+    return;
+  }
+  if (timeTravelling()) {
+    if (dragged) {
+      Object.assign(dragged.base, drag.target);
+      refreshEnds(dragged.pair);
+    }
+  } else if (!paused) {
     if (dragged) dragged.dragTo = drag.target;
     const simDt = dt * SPEEDS[speedIndex][0];
     step(world, simDt, Math.max(1, Math.ceil(simDt / MAX_SUBSTEP)));

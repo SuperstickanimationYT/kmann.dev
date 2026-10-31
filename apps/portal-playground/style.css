@@ -223,6 +223,14 @@
   background: var(--accent);
 }
 
+.pp-histories {
+  flex-direction: column;
+}
+
+.pp-histories:empty {
+  display: none;
+}
+
 .pp-note {
   margin: 0;
   font-size: 12px;

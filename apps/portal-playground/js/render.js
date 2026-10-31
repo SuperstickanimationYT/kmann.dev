@@ -1,6 +1,6 @@
 import { V, add, mul } from './geom.js';
-import { POST_RADIUS, regionPath, worldCurve, postPoints, handlePoint, isPassable } from './portals.js';
-import { allEnds, buildCopies, bodyMatrix, castLaser } from './physics.js';
+import { POST_RADIUS, regionPath, worldCurve, postPoints, handlePoint, isPassable, frontNormal } from './portals.js';
+import { allEnds, buildCopies, bodyMatrix, castLaser, isOpen } from './physics.js';
 
 export const ROOM = { width: 24, height: 13.5 };
 const BIG = 1e4;
@@ -48,14 +48,11 @@ function drawBodyShape(ctx, body, px) {
   ctx.lineWidth = 2 * px;
   ctx.strokeStyle = 'rgba(0,0,0,0.45)';
   ctx.stroke();
-  const s = body.size * 0.22;
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.4, -s);
-  ctx.lineTo(-s * 0.4, s);
-  ctx.lineTo(s * 0.7, s * 0.55);
-  ctx.lineTo(-s * 0.4, s * 0.1);
-  ctx.fillStyle = 'rgba(0,0,0,0.38)';
-  ctx.fill();
+  if (body.generation > 0) {
+    ctx.setLineDash([4 * px, 3 * px]);
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -86,9 +83,28 @@ function drawBody(ctx, world, body, px, selected) {
   }
 }
 
-function drawEnd(ctx, end, px, selected) {
+function drawLabel(ctx, text, at, px, color) {
+  ctx.save();
+  ctx.translate(at.x, at.y);
+  ctx.scale(px, -px);
+  ctx.font = '700 12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+function timeLabel(end) {
+  const shift = end.pair.delay;
+  return `${end.index === 0 ? '−' : '+'}${shift} s`;
+}
+
+function drawEnd(ctx, end, px, selected, time) {
   const color = end.pair.colors[end.index];
   const curve = worldCurve(end);
+  ctx.save();
+  if (!isOpen(end, time)) ctx.globalAlpha = 0.3;
   for (const side of [1, -1]) {
     if (!isPassable(end, side)) continue;
     const region = regionPath(end, side, 0.35);
@@ -127,6 +143,8 @@ function drawEnd(ctx, end, px, selected) {
     ctx.fillStyle = '#e8eef5';
     ctx.fill();
   }
+  ctx.restore();
+  if (end.pair.delay > 0) drawLabel(ctx, timeLabel(end), add(handlePoint(end), mul(frontNormal(end), 0.9)), px, color);
   if (selected) {
     ctx.beginPath();
     tracePath(ctx, curve, end.closed);
@@ -228,7 +246,7 @@ export function render(ctx, view, world, ui) {
     }
   }
 
-  for (const end of allEnds(world)) drawEnd(ctx, end, px, ui.selected?.end === end);
+  for (const end of allEnds(world)) drawEnd(ctx, end, px, ui.selected?.end === end, world.time);
 
   if (ui.preview) ui.preview(ctx, px);
 }

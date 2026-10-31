@@ -69,7 +69,7 @@ export function defaultMotion() {
   return { type: 'none', distance: 1.5, swing: 45, period: 4, direction: 90, phase: 0 };
 }
 
-export function makePair({ shape = 'straight', width = 2, kind = 'open', mirror = false, colorIndex, a, b }) {
+export function makePair({ shape = 'straight', width = 2, kind = 'open', mirror = false, delay = 0, colorIndex, colors, a, b }) {
   const id = nextPairId++;
   const pair = {
     id,
@@ -77,7 +77,8 @@ export function makePair({ shape = 'straight', width = 2, kind = 'open', mirror 
     width,
     kind,
     mirror,
-    colors: PAIR_COLORS[(colorIndex ?? id - 1) % PAIR_COLORS.length],
+    delay,
+    colors: colors ?? PAIR_COLORS[(colorIndex ?? id - 1) % PAIR_COLORS.length],
     ends: [],
   };
   pair.ends = [a, b].map((spec, index) => {
