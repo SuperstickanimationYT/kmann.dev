@@ -1,7 +1,7 @@
 {
   "name": "Portal Playground",
   "short_name": "Portal Playground",
-  "description": "Build portals of any shape, move them around and throw things through.",
+  "description": "Build portals of any shape, move them around and throw things through. Portals behave like a doorway split in two, so moving an end over an object sends it flying.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
