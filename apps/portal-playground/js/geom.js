@@ -65,7 +65,7 @@ export function segmentsCross(p, q, a, b) {
   const ap = sub(a, p);
   const t = cross(ap, s) / denom;
   const u = cross(ap, r) / denom;
-  return t >= 0 && t <= 1 && u >= 0 && u < 1 ? t : null;
+  return t > 0 && t <= 1 && u >= 0 && u < 1 ? t : null;
 }
 
 export function pointInPolygon(p, pts) {
