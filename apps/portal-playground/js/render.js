@@ -5,6 +5,7 @@ import { allEnds, buildCopies, bodyMatrix, castLaser, isOpen } from './physics.j
 
 export const ROOM = { width: 24, height: 13.5 };
 const BIG = 1e4;
+const POCKET_GRID = 80;
 
 export function fitView(canvas) {
   const dpr = window.devicePixelRatio || 1;
@@ -57,8 +58,9 @@ function drawBodyShape(ctx, body, px) {
   ctx.restore();
 }
 
-function drawBody(ctx, world, body, px, selected) {
+function drawBody(ctx, world, body, px, selected, level) {
   for (const copy of buildCopies(world, body)) {
+    if (copy.level !== level) continue;
     const grown = scaleOf(copy.T);
     ctx.save();
     if (copy.from) {
@@ -205,10 +207,25 @@ function drawGrid(ctx) {
   ctx.stroke();
 }
 
-function drawScene(ctx, world, ui, px) {
-  drawGrid(ctx);
+function drawPocket(ctx) {
+  ctx.fillStyle = '#100c24';
+  ctx.fillRect(-BIG, -BIG, 2 * BIG, 2 * BIG);
+  ctx.beginPath();
+  for (let i = -POCKET_GRID; i <= POCKET_GRID; i += 2) {
+    ctx.moveTo(i, -POCKET_GRID); ctx.lineTo(i, POCKET_GRID);
+    ctx.moveTo(-POCKET_GRID, i); ctx.lineTo(POCKET_GRID, i);
+  }
+  ctx.lineWidth = 0.015;
+  ctx.strokeStyle = 'rgba(190,150,255,0.08)';
+  ctx.stroke();
+}
+
+function drawScene(ctx, world, ui, px, level) {
+  if (level === 0) drawGrid(ctx);
+  else drawPocket(ctx);
 
   for (const wall of world.walls) {
+    if (wall.level !== level) continue;
     ctx.beginPath();
     tracePath(ctx, wall.shape.v);
     ctx.fillStyle = ui.selected?.wall === wall ? '#3f5f80' : '#24384d';
@@ -218,11 +235,13 @@ function drawScene(ctx, world, ui, px) {
     ctx.stroke();
   }
 
-  for (const body of world.bodies) drawBody(ctx, world, body, px, ui.selected?.body === body);
+  for (const body of world.bodies) drawBody(ctx, world, body, px, ui.selected?.body === body, level);
 
   for (const laser of world.lasers) {
     ctx.beginPath();
-    for (const [a, b] of castLaser(world, laser)) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+    for (const [a, b, at] of castLaser(world, laser)) {
+      if (at === level) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+    }
     ctx.lineCap = 'round';
     ctx.shadowColor = laser.color;
     ctx.shadowBlur = 10;
@@ -230,6 +249,7 @@ function drawScene(ctx, world, ui, px) {
     ctx.strokeStyle = laser.color;
     ctx.stroke();
     ctx.shadowBlur = 0;
+    if (laser.level !== level) continue;
     ctx.save();
     ctx.translate(laser.x, laser.y);
     ctx.rotate(laser.angle);
@@ -244,8 +264,10 @@ function drawScene(ctx, world, ui, px) {
 
 }
 
-function drawEnds(ctx, world, ui, px) {
-  for (const end of allEnds(world)) drawEnd(ctx, end, px, ui.selected?.end === end, world.time);
+function drawEnds(ctx, world, ui, px, level, cameFrom) {
+  for (const end of allEnds(world)) {
+    if (end.level === level && end !== cameFrom) drawEnd(ctx, end, px, ui.selected?.end === end, world.time);
+  }
 }
 
 function drawEye(ctx, eye, px) {
@@ -275,10 +297,10 @@ export function render(ctx, view, world, ui) {
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   const layers = [];
-  if (ui.eye) eachLayer(world, ui.eye, (layer) => layers.push(layer));
-  else layers.push({ map: IDENTITY, depth: 0, clips: [] });
+  if (ui.eye) eachLayer(world, ui.eye, ui.eyeLevel, (layer) => layers.push(layer));
+  else layers.push({ map: IDENTITY, depth: 0, clips: [], level: 0 });
   for (const pass of [drawScene, drawEnds]) {
-    for (const { map, depth, clips } of layers) {
+    for (const { map, depth, clips, level, cameFrom } of layers) {
       ctx.save();
       for (const clip of clips) {
         toScreen(clip.map);
@@ -291,7 +313,7 @@ export function render(ctx, view, world, ui) {
         ctx.fillStyle = '#03080f';
         ctx.fillRect(-BIG, -BIG, 2 * BIG, 2 * BIG);
       }
-      pass(ctx, world, ui, px / scaleOf(map));
+      pass(ctx, world, ui, px / scaleOf(map), level, cameFrom);
       ctx.restore();
     }
   }

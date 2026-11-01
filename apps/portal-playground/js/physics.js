@@ -4,7 +4,7 @@ import {
 } from './geom.js';
 import {
   POST_RADIUS, partner, isPassable, refreshTransform, poseAt, pairTransform, frameVelocity,
-  query, queryLocal, crossesLocal, postPoints,
+  query, queryLocal, crossesLocal, postPoints, rebuildPair,
 } from './portals.js';
 
 const ITERATIONS = 10;
@@ -16,8 +16,10 @@ const MAX_SPEED = 45;
 let nextId = 1;
 
 export function createWorld() {
-  return { bodies: [], walls: [], pairs: [], lasers: [], time: 0, gravity: 9.8, grab: null };
+  return { bodies: [], walls: [], pairs: [], lasers: [], time: 0, gravity: 9.8, grab: null, levelCount: 1 };
 }
+
+const gravityOn = (world, body) => (body.level === 0 ? world.gravity : 0);
 
 export function allEnds(world) {
   return world.pairs.flatMap((p) => p.ends);
@@ -52,7 +54,7 @@ function polygonMass(verts, density) {
 
 function makeBody(fields) {
   const body = {
-    id: nextId++, x: 0, y: 0, angle: 0, flip: false, vx: 0, vy: 0, w: 0,
+    id: nextId++, level: 0, x: 0, y: 0, angle: 0, flip: false, vx: 0, vy: 0, w: 0,
     friction: 0.5, restitution: 0.15, ...fields,
   };
   body.invMass = 1 / body.mass;
@@ -115,7 +117,7 @@ export function isOpen(end, time) {
 }
 
 export function makeWall(x, y, length, thickness, angle = 0) {
-  const wall = { id: nextId++, x, y, length, thickness, angle };
+  const wall = { id: nextId++, level: 0, x, y, length, thickness, angle };
   refreshWall(wall);
   return wall;
 }
@@ -128,7 +130,7 @@ export function refreshWall(wall) {
 }
 
 export function makeLaser(x, y, angle, color = '#ff4d4d') {
-  return { id: nextId++, x, y, angle, color };
+  return { id: nextId++, level: 0, x, y, angle, color };
 }
 
 export function bodyMatrix(body) {
@@ -165,18 +167,18 @@ const overlaps = (a, b) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 
 export function buildCopies(world, body, h = 0) {
   const c = V(body.x, body.y);
   const reach = body.r + 2 * h * Math.hypot(body.vx, body.vy) + 0.05;
-  const home = { body, T: IDENTITY, from: null, to: null, straddles: [] };
+  const home = { body, level: body.level, T: IDENTITY, from: null, to: null, straddles: [] };
   const copies = [home];
   for (const pair of world.pairs) {
     for (const end of pair.ends) {
-      if (!isOpen(end, world.time)) continue;
+      if (end.level !== body.level || !isOpen(end, world.time)) continue;
       const q = query(end, c);
       if (q.dist >= reach || !q.interior || !isPassable(end, q.side)) continue;
       const T = pairTransform(end);
       const to = partner(end);
       home.straddles.push({ end, side: q.side });
       if (pair.delay > 0) continue;
-      copies.push({ body, T, from: end, to, homeSide: q.side, exitSide: -query(to, apply(T, c)).side, straddles: [] });
+      copies.push({ body, level: to.level, T, from: end, to, homeSide: q.side, exitSide: -query(to, apply(T, c)).side, straddles: [] });
     }
   }
   for (const copy of copies) {
@@ -365,14 +367,14 @@ function kinematicColliders(world) {
     const velocity = (q) => frameVelocity(end, q);
     for (const c of postPoints(end)) {
       const shape = { type: 'circle', c, r: POST_RADIUS };
-      out.push({ shape, box: shapeBounds(shape), velocity, end: null });
+      out.push({ shape, box: shapeBounds(shape), velocity, end: null, level: end.level });
     }
     if (end.closed || end.pair.kind !== 'wall') continue;
     for (let i = 0; i < end.curve.length - 1; i++) {
       const p = apply(end.T, end.curve[i]);
       const q = apply(end.T, end.curve[i + 1]);
       const shape = polygonFrom([p, q]);
-      out.push({ shape, box: boundsOf([p, q], 0.02), velocity, end });
+      out.push({ shape, box: boundsOf([p, q], 0.02), velocity, end, level: end.level });
     }
   }
   return out;
@@ -389,16 +391,16 @@ function gatherContacts(world, h) {
   for (let i = 0; i < world.bodies.length; i++) {
     for (const copy of copiesOf[i]) {
       for (const wall of world.walls) {
-        if (overlaps(copy.box, wall.box)) addContacts(contacts, null, null, wall.shape, copy, null, copy.shape, h);
+        if (wall.level === copy.level && overlaps(copy.box, wall.box)) addContacts(contacts, null, null, wall.shape, copy, null, copy.shape, h);
       }
       for (const kin of kinematics) {
-        if (kin.end && passesThrough(copiesOf[i][0], copy, kin.end)) continue;
+        if (kin.level !== copy.level || (kin.end && passesThrough(copiesOf[i][0], copy, kin.end))) continue;
         if (overlaps(copy.box, kin.box)) addContacts(contacts, null, kin.velocity, kin.shape, copy, null, copy.shape, h);
       }
       for (let j = 0; j < world.bodies.length; j++) {
         if (j === i || (!copy.from && j < i)) continue;
         const other = copiesOf[j][0];
-        if (overlaps(copy.box, other.box)) addContacts(contacts, copy, null, copy.shape, other, null, other.shape, h);
+        if (other.level === copy.level && overlaps(copy.box, other.box)) addContacts(contacts, copy, null, copy.shape, other, null, other.shape, h);
       }
     }
   }
@@ -425,7 +427,7 @@ function pullGrab(world, h) {
   if (speed > 30) want = mul(want, 30 / speed);
   push(body, r, mul(sub(want, vp), body.mass * 0.3));
   body.w *= 0.97;
-  body.vy += world.gravity * h;
+  body.vy += gravityOn(world, body) * h;
 }
 
 function prepareEnds(world, t1, frac, h) {
@@ -441,7 +443,7 @@ function prepareEnds(world, t1, frac, h) {
 function teleport(world, body, before, after) {
   const c0 = before.center, c1 = V(body.x, body.y);
   for (const end of allEnds(world)) {
-    if (!isOpen(end, world.time)) continue;
+    if (end.level !== body.level || !isOpen(end, world.time)) continue;
     const l0 = apply(before.ends.get(end), c0);
     const l1 = apply(end.Tinv, c1);
     if (!crossesLocal(end, l0, l1)) continue;
@@ -455,6 +457,7 @@ function teleport(world, body, before, after) {
     const m = bodyMatrix(body);
     const turned = { a: T.a * m.a + T.b * m.c, c: T.c * m.a + T.d * m.c };
     body.x = c2.x; body.y = c2.y;
+    body.level = to.level;
     body.vx = vOut.x; body.vy = vOut.y;
     body.w = to.vel.w + (mirrored ? -1 : 1) * (body.w - end.vel.w);
     body.flip = body.flip !== mirrored;
@@ -465,6 +468,39 @@ function teleport(world, body, before, after) {
     after?.(body, end, to);
     return;
   }
+}
+
+export function carryEnds(world, before) {
+  for (const end of allEnds(world)) {
+    const c0 = before.get(end);
+    if (!c0) continue;
+    const c1 = V(end.pose.x, end.pose.y);
+    const gate = allEnds(world).find((g) => g !== end && g.level === end.level && g.pair.delay === 0
+      && isOpen(g, world.time) && end.reach < g.reach
+      && crossesLocal(g, apply(g.Tinv, c0), apply(g.Tinv, c1))
+      && isPassable(g, query(g, c0).side));
+    if (gate) passEnd(world, end, gate);
+  }
+}
+
+function passEnd(world, end, gate) {
+  const T = pairTransform(gate);
+  const s = scaleOf(T);
+  const level = partner(gate) === end ? world.levelCount++ : partner(gate).level;
+  for (const pose of [end.base, end.pose]) {
+    const c = apply(T, V(pose.x, pose.y));
+    const front = applyLinear(T, V(-Math.sin(pose.angle), Math.cos(pose.angle)));
+    Object.assign(pose, { x: c.x, y: c.y, angle: Math.atan2(-front.x, front.y) });
+  }
+  const pair = end.pair;
+  if (det(T) < 0) pair.mirror = !pair.mirror;
+  if (end.index === 0) { pair.width *= s; pair.scale /= s; } else pair.scale *= s;
+  rebuildPair(pair);
+  end.motion.distance *= s;
+  end.level = level;
+  end.dragTo = null;
+  end.jumps++;
+  refreshTransform(end);
 }
 
 function nudgeApart(contacts) {
@@ -486,7 +522,7 @@ export function step(world, dt, substeps, onTeleport) {
 
     for (const body of world.bodies) {
       if (world.grab?.body === body) pullGrab(world, h);
-      body.vy -= world.gravity * h;
+      body.vy -= gravityOn(world, body) * h;
     }
 
     const separate = !world.idealized;
@@ -521,10 +557,12 @@ export function step(world, dt, substeps, onTeleport) {
       body.angle += (body.w + body.nw) * h;
     }
 
+    const endsBefore = new Map(allEnds(world).map((e) => [e, V(e.pose.x, e.pose.y)]));
     for (const end of allEnds(world)) {
       Object.assign(end.pose, end.next);
       refreshTransform(end);
     }
+    carryEnds(world, endsBefore);
     for (const body of world.bodies) teleport(world, body, before.get(body), onTeleport);
     world.time = t1;
     for (const body of world.bodies.filter((b) => b.timeJump)) {
@@ -602,10 +640,12 @@ export function castLaser(world, laser, maxHops = 16) {
   const path = [];
   let origin = V(laser.x, laser.y);
   let dir = V(Math.cos(laser.angle), Math.sin(laser.angle));
-  const bodyCopies = world.bodies.flatMap((b) => buildCopies(world, b));
+  let level = laser.level;
+  const allCopies = world.bodies.flatMap((b) => buildCopies(world, b));
   for (let hop = 0; hop <= maxHops; hop++) {
     let best = 60, hitEnd = null;
-    for (const wall of world.walls) {
+    const bodyCopies = allCopies.filter((copy) => copy.level === level);
+    for (const wall of world.walls.filter((w) => w.level === level)) {
       const t = rayShape(origin, dir, wall.shape);
       if (t !== null && t < best) { best = t; hitEnd = null; }
     }
@@ -613,7 +653,7 @@ export function castLaser(world, laser, maxHops = 16) {
       const t = rayShape(origin, dir, copy.shape);
       if (t !== null && t < best && isValidPoint(copy, add(origin, mul(dir, t + 1e-3)))) { best = t; hitEnd = null; }
     }
-    const openEnds = allEnds(world).filter((end) => isOpen(end, world.time));
+    const openEnds = allEnds(world).filter((end) => end.level === level && isOpen(end, world.time));
     for (const end of openEnds) {
       for (const c of postPoints(end)) {
         const t = rayShape(origin, dir, { type: 'circle', c, r: POST_RADIUS });
@@ -630,8 +670,9 @@ export function castLaser(world, laser, maxHops = 16) {
       hitEnd = isPassable(end, side) && !(end.pair.delay > 0) ? end : null;
     }
     const hit = add(origin, mul(dir, best));
-    path.push([origin, hit]);
+    path.push([origin, hit, level]);
     if (!hitEnd) break;
+    level = partner(hitEnd).level;
     const T = pairTransform(hitEnd);
     origin = apply(T, hit);
     dir = normalize(applyLinear(T, dir));

@@ -1,11 +1,11 @@
 import { V, sub, len, apply, compose, scaleOf, IDENTITY } from './geom.js';
 import { SHAPES, MOTIONS, makePair, rebuildPair, refreshTransform, poseAt, query, handlePoint, endSize } from './portals.js';
 import {
-  step, allEnds, makeBox, makeBall, makeWedge, makeWall, makeLaser, refreshWall,
+  step, allEnds, carryEnds, makeBox, makeBall, makeWedge, makeWall, makeLaser, refreshWall,
   pointInBody, pointInWall, grabLocal,
 } from './physics.js';
 import { SCENES, loadScene } from './scenes.js';
-import { fitView, toWorld, render } from './render.js';
+import { fitView, toWorld, render, ROOM } from './render.js';
 import { toData, fromData, placeBody } from './snapshot.js';
 import { seenAt, moveEye, easeCamera, toEyeSpace } from './view.js';
 
@@ -39,6 +39,7 @@ const PLAYBACK_HINT = 'Watching a history. Press Edit setup to change things.';
 const EYE_HINT = 'Eye view: you see what the eye sees, through portals too. Drag the eye through a portal to go with it.';
 const EYE_START = V(3, 9);
 const CAMERA_EASE = 2.5;
+const POCKET_FOCUS = V(ROOM.width / 2, ROOM.height / 2);
 const FACING_RIGHT = -Math.PI / 2;
 const TOOL_HINTS = {
   grab: 'Drag objects to throw them. Drag a portal end to move it, or tap it to edit it.',
@@ -66,6 +67,8 @@ let view = fitView(canvas);
 let solver = null;
 let playback = null;
 let eye = null;
+let eyeLevel = 0;
+let panelJumps = 0;
 let camera = IDENTITY;
 
 for (const scene of SCENES) sceneSelect.add(new Option(scene.title, scene.id));
@@ -84,6 +87,7 @@ function setScene(id) {
   select(null);
   drag = null;
   solveStatus.textContent = '';
+  if (eye) setEye(true);
   editSetup();
 }
 
@@ -217,6 +221,7 @@ function syncPanel() {
   objectPanel.hidden = !selected || !!end;
   if (end) {
     const pair = end.pair;
+    panelJumps = end.jumps;
     form.shape.value = pair.shape;
     form.width.value = endSize(end);
     form.kind.value = pair.kind;
@@ -246,7 +251,8 @@ function syncPanel() {
 
 function syncLabels() {
   const label = (name, text) => { document.querySelector(`[data-${name}-label]`).textContent = text; };
-  label('width', `${Number(form.width.value).toFixed(1)} m`);
+  const width = Number(form.width.value);
+  label('width', `${width.toFixed(width < 1 ? 2 : 1)} m`);
   label('distance', `${Number(form.distance.value).toFixed(1)} m`);
   label('direction', `${form.direction.value}°`);
   label('swing', `±${form.swing.value}°`);
@@ -375,18 +381,20 @@ const shownWorld = () => (playback ? playback.stage : world);
 
 function setEye(on) {
   eye = on ? EYE_START : null;
+  eyeLevel = 0;
   camera = IDENTITY;
   eyeButton.setAttribute('aria-pressed', String(on));
   syncTimePanel();
 }
 
 function carryEye(target, framesBefore) {
-  const moved = moveEye(shownWorld(), eye, target, framesBefore);
+  const moved = moveEye(shownWorld(), eye, eyeLevel, target, framesBefore);
   eye = moved.eye;
+  eyeLevel = moved.level;
   if (moved.back) camera = compose(camera, moved.back);
 }
 
-function hitTest(p) {
+function hitTest(p, level) {
   const tol = 14 / view.scale;
   if (selected?.end && len(sub(handlePoint(selected.end), p)) < tol) return { type: 'turn-end', end: selected.end };
   const laser = selected?.laser;
@@ -395,15 +403,17 @@ function hitTest(p) {
   }
   let nearest = null;
   for (const end of allEnds(world)) {
+    if (end.level !== level) continue;
     const d = query(end, p).dist;
     if (d < tol && (!nearest || d < nearest.d)) nearest = { d, end };
   }
   if (nearest) return { type: 'end', end: nearest.end };
-  for (const l of world.lasers) if (len(sub(V(l.x, l.y), p)) < Math.max(tol, 0.35)) return { type: 'laser', laser: l };
+  for (const l of world.lasers) if (l.level === level && len(sub(V(l.x, l.y), p)) < Math.max(tol, 0.35)) return { type: 'laser', laser: l };
   for (let i = world.bodies.length - 1; i >= 0; i--) {
-    if (pointInBody(world.bodies[i], p)) return { type: 'body', body: world.bodies[i] };
+    const body = world.bodies[i];
+    if (body.level === level && pointInBody(body, p)) return { type: 'body', body };
   }
-  for (const wall of world.walls) if (!wall.fixed && pointInWall(wall, p)) return { type: 'wall', wall };
+  for (const wall of world.walls) if (wall.level === level && !wall.fixed && pointInWall(wall, p)) return { type: 'wall', wall };
   return null;
 }
 
@@ -417,18 +427,18 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   if (playback) return;
   canvas.setPointerCapture(e.pointerId);
-  const map = eye ? seenAt(world, eye, seen) : IDENTITY;
+  const { map, level } = eye ? seenAt(world, eye, eyeLevel, seen) : { map: IDENTITY, level: 0 };
   const p = apply(map, seen);
   if (tool !== 'grab') {
-    drag = { type: 'create', start: p, current: p, map, shown: [seen, seen] };
+    drag = { type: 'create', start: p, current: p, map, level, shown: [seen, seen] };
     return;
   }
-  const hit = hitTest(p);
+  const hit = hitTest(p, level);
   if (!hit) { select(null); drag = null; return; }
   if (hit.type === 'turn-end' || hit.type === 'end') {
     const end = hit.end;
     select({ end });
-    drag = { type: hit.type, end, map, offset: sub(p, V(end.base.x, end.base.y)), target: { ...end.base } };
+    drag = { type: hit.type, end, map, jumps: end.jumps, offset: sub(p, V(end.base.x, end.base.y)), target: { ...end.base } };
   } else if (hit.type === 'turn-laser' || hit.type === 'laser') {
     select({ laser: hit.laser });
     drag = { type: hit.type, map, laser: hit.laser, last: p };
@@ -471,28 +481,32 @@ canvas.addEventListener('pointermove', (e) => {
   }
 });
 
-function finishCreate(start, end) {
+function finishCreate(start, end, level) {
   const d = sub(end, start);
   const tapped = len(d) < 10 / view.scale;
   if (SPAWNERS[tool]) {
     const body = SPAWNERS[tool](start);
+    body.level = level;
     if (!tapped) { body.vx = d.x * 3; body.vy = d.y * 3; }
     world.bodies.push(body);
   } else if (tool === 'portal') {
     const b = tapped ? V(start.x + 4, start.y) : end;
     const pair = makePair({
       colorIndex: world.pairs.length,
-      a: { x: start.x, y: start.y, angle: FACING_RIGHT },
-      b: { x: b.x, y: b.y, angle: FACING_RIGHT },
+      a: { x: start.x, y: start.y, angle: FACING_RIGHT, level },
+      b: { x: b.x, y: b.y, angle: FACING_RIGHT, level },
     });
     world.pairs.push(pair);
     for (const e of pair.ends) e.motion.phase = (-2 * Math.PI * world.time) / e.motion.period;
     setTool('grab');
     select({ end: pair.ends[0] });
   } else if (tool === 'wall' && !tapped) {
-    world.walls.push(makeWall((start.x + end.x) / 2, (start.y + end.y) / 2, len(d), 0.3, Math.atan2(d.y, d.x)));
+    const wall = makeWall((start.x + end.x) / 2, (start.y + end.y) / 2, len(d), 0.3, Math.atan2(d.y, d.x));
+    wall.level = level;
+    world.walls.push(wall);
   } else if (tool === 'laser') {
     const laser = makeLaser(start.x, start.y, tapped ? 0 : Math.atan2(d.y, d.x));
+    laser.level = level;
     world.lasers.push(laser);
     setTool('grab');
     select({ laser });
@@ -500,7 +514,7 @@ function finishCreate(start, end) {
 }
 
 function endDrag() {
-  if (drag?.type === 'create') finishCreate(drag.start, drag.current);
+  if (drag?.type === 'create') finishCreate(drag.start, drag.current, drag.level);
   world.grab = null;
   drag = null;
 }
@@ -554,24 +568,30 @@ function previewCreate(c, px) {
   c.setLineDash([]);
 }
 
+function placeDragged(end) {
+  const before = new Map([[end, V(end.pose.x, end.pose.y)]]);
+  Object.assign(end.base, drag.target);
+  refreshEnds(end.pair);
+  carryEnds(world, before);
+}
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   view = fitView(canvas);
+  if ((drag?.type === 'end' || drag?.type === 'turn-end') && drag.end.jumps !== drag.jumps) drag = null;
+  if (selected?.end && selected.end.jumps !== panelJumps) syncPanel();
   const dragged = (drag?.type === 'end' || drag?.type === 'turn-end') && drag.target ? drag.end : null;
   if (playback) {
     if (!paused) showFrame((playback.t + dt * SPEEDS[speedIndex][0]) % playback.duration);
-    if (eye) camera = easeCamera(camera, dt * CAMERA_EASE);
-    render(ctx, view, playback.stage, { selected: null, eye, camera });
+    if (eye) camera = easeCamera(camera, dt * CAMERA_EASE, eye, eyeLevel === 0 ? eye : POCKET_FOCUS);
+    render(ctx, view, playback.stage, { selected: null, eye, eyeLevel, camera });
     requestAnimationFrame(frame);
     return;
   }
   if (timeTravelling()) {
-    if (dragged) {
-      Object.assign(dragged.base, drag.target);
-      refreshEnds(dragged.pair);
-    }
+    if (dragged) placeDragged(dragged);
   } else if (!paused) {
     if (dragged) dragged.dragTo = drag.target;
     const simDt = dt * SPEEDS[speedIndex][0];
@@ -579,11 +599,10 @@ function frame(now) {
     step(world, simDt, Math.max(1, Math.ceil(simDt / MAX_SUBSTEP)));
     if (eye) carryEye(eye, framesBefore);
   } else if (dragged) {
-    Object.assign(dragged.base, drag.target);
-    refreshEnds(dragged.pair);
+    placeDragged(dragged);
   }
-  if (eye) camera = easeCamera(camera, dt * CAMERA_EASE);
-  render(ctx, view, world, { selected, preview: previewCreate, eye, camera });
+  if (eye) camera = easeCamera(camera, dt * CAMERA_EASE, eye, eyeLevel === 0 ? eye : POCKET_FOCUS);
+  render(ctx, view, world, { selected, preview: previewCreate, eye, eyeLevel, camera });
   requestAnimationFrame(frame);
 }
 

@@ -91,6 +91,8 @@ export function makePair({ shape = 'straight', width = 2, scale = 1, kind = 'ope
       pose: { ...base },
       vel: { x: 0, y: 0, w: 0 },
       motion: { ...defaultMotion(), ...spec.motion },
+      level: spec.level ?? 0,
+      jumps: 0,
       dragTo: null,
     };
   });
