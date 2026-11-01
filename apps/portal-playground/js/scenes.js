@@ -159,6 +159,22 @@ export const SCENES = [
     },
   },
   {
+    id: 'sizes',
+    title: 'Big end, small end',
+    note: 'The orange end on the floor is 2½ times smaller than the blue end on the wall. Balls dropped into the small end come out of the big one 2½ times bigger and 2½ times faster. Throw them back into the big end and they shrink again.',
+    build() {
+      const world = room();
+      world.pairs.push(makePair({
+        width: 1.2, scale: 2.5,
+        a: { x: 5, y: 0, angle: DOWN },
+        b: { x: 23.9, y: 4, angle: FACING_LEFT },
+      }));
+      for (const [x, y] of [[5, 1.5], [5, 3], [5.1, 4.5]]) world.bodies.push(makeBall(x, y, 0.25));
+      world.bodies.push(makeBox(12, 0.35, 0.7, 0.7));
+      return world;
+    },
+  },
+  {
     id: 'knock-in',
     title: 'Time travel: knock yourself in',
     gravity: 0,

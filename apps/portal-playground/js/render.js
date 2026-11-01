@@ -1,4 +1,4 @@
-import { V, add, mul } from './geom.js';
+import { V, add, mul, scaleOf } from './geom.js';
 import { POST_RADIUS, regionPath, worldCurve, postPoints, handlePoint, isPassable, frontNormal } from './portals.js';
 import { allEnds, buildCopies, bodyMatrix, castLaser, isOpen } from './physics.js';
 
@@ -58,14 +58,15 @@ function drawBodyShape(ctx, body, px) {
 
 function drawBody(ctx, world, body, px, selected) {
   for (const copy of buildCopies(world, body)) {
+    const grown = scaleOf(copy.T);
     ctx.save();
     if (copy.from) {
-      clipTo(ctx, regionPath(copy.to, copy.exitSide, body.r * 3), false);
+      clipTo(ctx, regionPath(copy.to, copy.exitSide, body.r * 3 * grown), false);
       ctx.transform(copy.T.a, copy.T.c, copy.T.b, copy.T.d, copy.T.x, copy.T.y);
     } else {
       for (const { end, side } of copy.straddles) clipTo(ctx, regionPath(end, -side, body.r * 3), true);
     }
-    drawBodyShape(ctx, body, px);
+    drawBodyShape(ctx, body, px / grown);
     if (selected) {
       ctx.save();
       const m = bodyMatrix(body);

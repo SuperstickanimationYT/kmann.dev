@@ -1,6 +1,6 @@
 import {
   V, add, sub, mul, dot, len, perp, normalize, lerp, wrapAngle, spinVelocity,
-  poseTransform, diagonal, compose, invertRigid, apply, closestOnSegment, segmentsCross, pointInPolygon,
+  poseTransform, diagonal, compose, invertRigid, invert, apply, closestOnSegment, segmentsCross, pointInPolygon,
 } from './geom.js';
 
 export const POST_RADIUS = 0.07;
@@ -69,12 +69,13 @@ export function defaultMotion() {
   return { type: 'none', distance: 1.5, swing: 45, period: 4, direction: 90, phase: 0 };
 }
 
-export function makePair({ shape = 'straight', width = 2, kind = 'open', mirror = false, delay = 0, colorIndex, colors, a, b }) {
+export function makePair({ shape = 'straight', width = 2, scale = 1, kind = 'open', mirror = false, delay = 0, colorIndex, colors, a, b }) {
   const id = nextPairId++;
   const pair = {
     id,
     shape,
     width,
+    scale,
     kind,
     mirror,
     delay,
@@ -103,7 +104,16 @@ export function makePair({ shape = 'straight', width = 2, kind = 'open', mirror 
 
 export function gluing(pair) {
   const wall = pair.kind === 'wall' && !SHAPES[pair.shape].closed;
-  return diagonal((wall ? -1 : 1) * (pair.mirror ? -1 : 1), wall ? -1 : 1);
+  return diagonal((wall ? -1 : 1) * (pair.mirror ? -1 : 1) * pair.scale, (wall ? -1 : 1) * pair.scale);
+}
+
+export function gluingFrom(end) {
+  const g = gluing(end.pair);
+  return end.index === 0 ? g : invert(g);
+}
+
+export function endSize(end) {
+  return end.pair.width * (end.index === 0 ? 1 : end.pair.scale);
 }
 
 export function rebuildPair(pair) {
@@ -177,7 +187,7 @@ export function poseAt(end, t, frac) {
 
 export function pairTransform(end) {
   const to = partner(end);
-  return compose(to.T, compose(gluing(end.pair), end.Tinv));
+  return compose(to.T, compose(gluingFrom(end), end.Tinv));
 }
 
 export function frameVelocity(end, q) {

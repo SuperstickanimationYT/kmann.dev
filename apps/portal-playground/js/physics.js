@@ -1,6 +1,6 @@
 import {
   V, ZERO, add, sub, mul, dot, cross, len, perp, normalize, wrapAngle, spinVelocity,
-  apply, applyLinear, applyLinearInverse, det, invertRigid,
+  apply, applyLinear, applyLinearInverse, det, invertRigid, invert, scaleOf,
 } from './geom.js';
 import {
   POST_RADIUS, partner, isPassable, refreshTransform, poseAt, pairTransform, frameVelocity,
@@ -83,13 +83,32 @@ export function makeWedge(x, y, size, color = '#c98bff') {
 }
 
 export function makeFromSpec(spec, x, y) {
-  if (spec.kind === 'ball') return makeBall(x, y, spec.r, spec.color);
-  if (spec.kind === 'wedge') return makeWedge(x, y, spec.size, spec.color);
-  return makeBox(x, y, spec.w, spec.h, spec.color);
+  const body = spec.kind === 'ball' ? makeBall(x, y, spec.r, spec.color)
+    : spec.kind === 'wedge' ? makeWedge(x, y, spec.size, spec.color)
+      : makeBox(x, y, spec.w, spec.h, spec.color);
+  if (spec.mass) setMass(body, spec.mass, body.inertia * (spec.mass / body.mass));
+  body.spec = spec;
+  return body;
+}
+
+function setMass(body, mass, inertia) {
+  Object.assign(body, { mass, inertia, invMass: 1 / mass, invInertia: 1 / inertia });
 }
 
 export function sameSpec(a, b) {
-  return a.kind === b.kind && a.r === b.r && a.w === b.w && a.h === b.h && a.size === b.size;
+  const near = (x, y) => (x === undefined ? y === undefined : Math.abs(x - y) < 1e-6);
+  return a.kind === b.kind && near(a.r, b.r) && near(a.w, b.w) && near(a.h, b.h) && near(a.size, b.size);
+}
+
+function rescale(body, s) {
+  const spec = { ...body.spec, mass: body.mass };
+  for (const key of ['r', 'w', 'h', 'size']) if (spec[key] !== undefined) spec[key] *= s;
+  body.spec = spec;
+  body.size *= s;
+  body.r *= s;
+  if (body.radius) body.radius *= s;
+  if (body.verts) body.verts = body.verts.map((v) => mul(v, s));
+  setMass(body, body.mass, body.inertia * s * s);
 }
 
 export function isOpen(end, time) {
@@ -121,7 +140,7 @@ export function bodyMatrix(body) {
 
 export function bodyShape(body, t = IDENTITY) {
   const m = bodyMatrix(body);
-  if (body.kind === 'ball') return { type: 'circle', c: apply(t, V(body.x, body.y)), r: body.radius };
+  if (body.kind === 'ball') return { type: 'circle', c: apply(t, V(body.x, body.y)), r: body.radius * scaleOf(t) };
   let verts = body.verts.map((v) => apply(t, apply(m, v)));
   if ((det(m) < 0) !== (det(t) < 0)) verts = verts.reverse();
   return polygonFrom(verts);
@@ -271,15 +290,18 @@ function collideShapes(a, b) {
 }
 
 function contactSide(copy, kinematic, q, n) {
-  if (!copy) return { body: null, r: ZERO, n, t: perp(n), k: kinematic ? kinematic(q) : ZERO };
+  if (!copy) return { body: null, r: ZERO, n, t: perp(n), pn: n, pt: perp(n), k: kinematic ? kinematic(q) : ZERO };
   const body = copy.body;
-  const p = apply(invertRigid(copy.T), q);
+  const p = apply(invert(copy.T), q);
   const k = copy.from ? sub(frameVelocity(copy.to, q), applyLinear(copy.T, frameVelocity(copy.from, p))) : ZERO;
+  const sensed = { n: applyLinearInverse(copy.T, n), t: applyLinearInverse(copy.T, perp(n)) };
+  const shrink = 1 / Math.abs(det(copy.T));
   return {
     body,
     r: sub(p, V(body.x, body.y)),
-    n: applyLinearInverse(copy.T, n),
-    t: applyLinearInverse(copy.T, perp(n)),
+    ...sensed,
+    pn: mul(sensed.n, shrink),
+    pt: mul(sensed.t, shrink),
     k,
   };
 }
@@ -300,15 +322,15 @@ function effectiveMass(c, key) {
   let k = 0;
   for (const s of [c.a, c.b]) {
     if (!s.body) continue;
-    const rn = cross(s.r, s[key]);
-    k += s.body.invMass + s.body.invInertia * rn * rn;
+    const pushed = s['p' + key];
+    k += s.body.invMass * dot(s[key], pushed) + s.body.invInertia * cross(s.r, s[key]) * cross(s.r, pushed);
   }
   return k > 0 ? 1 / k : 0;
 }
 
 function applyImpulse(c, key, amount, f = MOTION) {
-  if (c.b.body) push(c.b.body, c.b.r, mul(c.b[key], amount), f);
-  if (c.a.body) push(c.a.body, c.a.r, mul(c.a[key], -amount), f);
+  if (c.b.body) push(c.b.body, c.b.r, mul(c.b['p' + key], amount), f);
+  if (c.a.body) push(c.a.body, c.a.r, mul(c.a['p' + key], -amount), f);
 }
 
 function push(body, r, impulse, f = MOTION) {
@@ -438,6 +460,7 @@ function teleport(world, body, before, after) {
     body.w = to.vel.w + (mirrored ? -1 : 1) * (body.w - end.vel.w);
     body.flip = body.flip !== mirrored;
     body.angle = Math.atan2(turned.c, turned.a);
+    if (Math.abs(scaleOf(T) - 1) > 1e-9) rescale(body, scaleOf(T));
     if (world.grab && world.grab.body === body) world.grab = null;
     if (end.pair.delay > 0) body.timeJump = { shift: end.index === 0 ? -end.pair.delay : end.pair.delay, exit: to };
     after?.(body, end, to);

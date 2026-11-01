@@ -272,7 +272,7 @@ function stranger(ctx) {
     end: 1,
     u: [
       random(0, Math.max(0, ctx.duration - pair.delay)),
-      random(-0.4, 0.4) * pair.width,
+      random(-0.4, 0.4) * pair.width * pair.scale,
       speed * Math.sin(heading),
       outward * speed * Math.cos(heading),
       0,
