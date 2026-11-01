@@ -175,6 +175,21 @@ export const SCENES = [
     },
   },
   {
+    id: 'pocket',
+    title: 'Pocket universe',
+    note: 'Drag the small blue end down into the big orange end it leads to. Once it is all the way through it has nowhere left to be in this room, so it ends up in a new, empty space of its own: a pocket universe that only the orange end leads into. Turn on Eye view and drag the eye into the orange end to visit. Throw things in: a pocket has no gravity.',
+    build() {
+      const world = room();
+      world.pairs.push(makePair({
+        width: 3, scale: 0.4,
+        a: { x: 8, y: 0, angle: UP },
+        b: { x: 8, y: 3, angle: UP },
+      }));
+      world.bodies.push(makeBall(14, 0.3, 0.3), makeBox(16, 0.35, 0.7, 0.7));
+      return world;
+    },
+  },
+  {
     id: 'knock-in',
     title: 'Time travel: knock yourself in',
     gravity: 0,
