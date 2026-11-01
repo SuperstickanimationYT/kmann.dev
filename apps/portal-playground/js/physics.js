@@ -1,5 +1,5 @@
 import {
-  V, ZERO, add, sub, mul, dot, cross, len, perp, normalize, wrapAngle, spinVelocity,
+  V, ZERO, IDENTITY, add, sub, mul, dot, cross, len, perp, normalize, wrapAngle, spinVelocity,
   apply, applyLinear, applyLinearInverse, det, invertRigid, invert, scaleOf,
 } from './geom.js';
 import {
@@ -12,7 +12,6 @@ const BAUMGARTE = 0.2;
 const SLOP = 0.005;
 const SURFACE_EPS = 0.01;
 const MAX_SPEED = 45;
-const IDENTITY = { a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 };
 
 let nextId = 1;
 

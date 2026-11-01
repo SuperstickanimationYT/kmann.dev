@@ -1,5 +1,5 @@
 {
-  "bytes": 120172,
+  "bytes": 129860,
   "files": [
     "./",
     "index.html",
@@ -12,6 +12,7 @@
     "js/snapshot.js",
     "js/solver-worker.js",
     "js/timetravel.js",
+    "js/view.js",
     "manifest.webmanifest",
     "style.css",
     "../../assets/img/mark.svg",

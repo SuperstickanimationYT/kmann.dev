@@ -1,5 +1,6 @@
 export const V = (x, y) => ({ x, y });
 export const ZERO = V(0, 0);
+export const IDENTITY = { a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 };
 export const add = (a, b) => V(a.x + b.x, a.y + b.y);
 export const sub = (a, b) => V(a.x - b.x, a.y - b.y);
 export const mul = (a, s) => V(a.x * s, a.y * s);

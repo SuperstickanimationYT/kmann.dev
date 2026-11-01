@@ -1,4 +1,4 @@
-import { V, sub, len } from './geom.js';
+import { V, sub, len, apply, compose, scaleOf, IDENTITY } from './geom.js';
 import { SHAPES, MOTIONS, makePair, rebuildPair, refreshTransform, poseAt, query, handlePoint, endSize } from './portals.js';
 import {
   step, allEnds, makeBox, makeBall, makeWedge, makeWall, makeLaser, refreshWall,
@@ -7,6 +7,7 @@ import {
 import { SCENES, loadScene } from './scenes.js';
 import { fitView, toWorld, render } from './render.js';
 import { toData, fromData, placeBody } from './snapshot.js';
+import { seenAt, moveEye, easeCamera, toEyeSpace } from './view.js';
 
 const canvas = document.querySelector('[data-stage]');
 const ctx = canvas.getContext('2d');
@@ -17,6 +18,7 @@ const statusLine = document.querySelector('[data-status]');
 const sceneSelect = document.querySelector('[data-scene]');
 const pauseButton = document.querySelector('[data-pause]');
 const speedButton = document.querySelector('[data-speed]');
+const eyeButton = document.querySelector('[data-eye]');
 const timePanel = document.querySelector('[data-time-panel]');
 const solveButton = document.querySelector('[data-solve]');
 const editSetupButton = document.querySelector('[data-edit-setup]');
@@ -34,6 +36,9 @@ const MAX_SUBSTEP = 1 / 240;
 const SOLVE_ATTEMPTS = 16;
 const SETUP_HINT = 'Time travel setup: nothing moves until you Solve. Drag objects to place them.';
 const PLAYBACK_HINT = 'Watching a history. Press Edit setup to change things.';
+const EYE_HINT = 'Eye view: you see what the eye sees, through portals too. Drag the eye through a portal to go with it.';
+const EYE_START = V(3, 9);
+const CAMERA_EASE = 2.5;
 const FACING_RIGHT = -Math.PI / 2;
 const TOOL_HINTS = {
   grab: 'Drag objects to throw them. Drag a portal end to move it, or tap it to edit it.',
@@ -60,6 +65,8 @@ let drag = null;
 let view = fitView(canvas);
 let solver = null;
 let playback = null;
+let eye = null;
+let camera = IDENTITY;
 
 for (const scene of SCENES) sceneSelect.add(new Option(scene.title, scene.id));
 for (const [id, shape] of Object.entries(SHAPES)) form.shape.add(new Option(shape.label, id));
@@ -89,7 +96,7 @@ function syncTimePanel() {
     stopSolving();
     playback = null;
   }
-  statusLine.textContent = !active ? TOOL_HINTS[tool] : playback ? PLAYBACK_HINT : SETUP_HINT;
+  statusLine.textContent = active ? (playback ? PLAYBACK_HINT : SETUP_HINT) : eye ? EYE_HINT : TOOL_HINTS[tool];
 }
 
 function rewindSetup() {
@@ -333,6 +340,7 @@ solveButton.addEventListener('click', solve);
 editSetupButton.addEventListener('click', editSetup);
 for (const b of document.querySelectorAll('button[data-tool]')) b.addEventListener('click', () => setTool(b.dataset.tool));
 pauseButton.addEventListener('click', togglePause);
+eyeButton.addEventListener('click', () => setEye(!eye));
 speedButton.addEventListener('click', () => {
   speedIndex = (speedIndex + 1) % SPEEDS.length;
   speedButton.textContent = SPEEDS[speedIndex][1];
@@ -358,9 +366,24 @@ function deleteSelected() {
   select(null);
 }
 
-function pointerWorld(e) {
+function pointerSeen(e) {
   const rect = canvas.getBoundingClientRect();
-  return toWorld(view, e.clientX - rect.left, e.clientY - rect.top);
+  return toEyeSpace(camera, toWorld(view, e.clientX - rect.left, e.clientY - rect.top));
+}
+
+const shownWorld = () => (playback ? playback.stage : world);
+
+function setEye(on) {
+  eye = on ? EYE_START : null;
+  camera = IDENTITY;
+  eyeButton.setAttribute('aria-pressed', String(on));
+  syncTimePanel();
+}
+
+function carryEye(target, framesBefore) {
+  const moved = moveEye(shownWorld(), eye, target, framesBefore);
+  eye = moved.eye;
+  if (moved.back) camera = compose(camera, moved.back);
 }
 
 function hitTest(p) {
@@ -386,11 +409,18 @@ function hitTest(p) {
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
+  const seen = pointerSeen(e);
+  if (eye && len(sub(seen, eye)) < 16 / (view.scale * scaleOf(camera))) {
+    canvas.setPointerCapture(e.pointerId);
+    drag = { type: 'eye' };
+    return;
+  }
   if (playback) return;
   canvas.setPointerCapture(e.pointerId);
-  const p = pointerWorld(e);
+  const map = eye ? seenAt(world, eye, seen) : IDENTITY;
+  const p = apply(map, seen);
   if (tool !== 'grab') {
-    drag = { type: 'create', start: p, current: p };
+    drag = { type: 'create', start: p, current: p, map, shown: [seen, seen] };
     return;
   }
   const hit = hitTest(p);
@@ -398,27 +428,29 @@ canvas.addEventListener('pointerdown', (e) => {
   if (hit.type === 'turn-end' || hit.type === 'end') {
     const end = hit.end;
     select({ end });
-    drag = { type: hit.type, end, offset: sub(p, V(end.base.x, end.base.y)), target: { ...end.base } };
+    drag = { type: hit.type, end, map, offset: sub(p, V(end.base.x, end.base.y)), target: { ...end.base } };
   } else if (hit.type === 'turn-laser' || hit.type === 'laser') {
     select({ laser: hit.laser });
-    drag = { type: hit.type, laser: hit.laser, last: p };
+    drag = { type: hit.type, map, laser: hit.laser, last: p };
   } else if (hit.type === 'body' && timeTravelling()) {
     select({ body: hit.body });
-    drag = { type: 'place', body: hit.body, offset: sub(p, V(hit.body.x, hit.body.y)) };
+    drag = { type: 'place', map, body: hit.body, offset: sub(p, V(hit.body.x, hit.body.y)) };
   } else if (hit.type === 'body') {
     select({ body: hit.body });
     world.grab = { body: hit.body, local: grabLocal(hit.body, p), target: p };
-    drag = { type: 'body' };
+    drag = { type: 'body', map };
   } else if (hit.type === 'wall') {
     select({ wall: hit.wall });
-    drag = { type: 'wall', wall: hit.wall, last: p };
+    drag = { type: 'wall', map, wall: hit.wall, last: p };
   }
 });
 
 canvas.addEventListener('pointermove', (e) => {
   if (!drag) return;
-  const p = pointerWorld(e);
-  if (drag.type === 'create') drag.current = p;
+  const seen = pointerSeen(e);
+  if (drag.type === 'eye') { carryEye(seen); return; }
+  const p = apply(drag.map, seen);
+  if (drag.type === 'create') { drag.current = p; drag.shown[1] = seen; }
   else if (drag.type === 'end') drag.target = { x: p.x - drag.offset.x, y: p.y - drag.offset.y, angle: drag.end.base.angle };
   else if (drag.type === 'turn-end') {
     const c = drag.end.pose;
@@ -488,6 +520,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === ' ') { e.preventDefault(); togglePause(); }
   else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
   else if (e.key === 'Escape') select(null);
+  else if (e.key === 'e' || e.key === 'E') setEye(!eye);
   else if (/^[1-7]$/.test(e.key)) setTool(Object.keys(TOOL_HINTS)[Number(e.key) - 1]);
 });
 
@@ -510,7 +543,7 @@ function previewCreate(c, px) {
     for (const body of world.bodies) if (Math.hypot(body.vx, body.vy) > 0.05) drawArrow(c, V(body.x, body.y), V(body.vx, body.vy), px);
   }
   if (drag?.type !== 'create') return;
-  const { start, current } = drag;
+  const [start, current] = drag.shown;
   c.beginPath();
   c.moveTo(start.x, start.y);
   c.lineTo(current.x, current.y);
@@ -529,7 +562,8 @@ function frame(now) {
   const dragged = (drag?.type === 'end' || drag?.type === 'turn-end') && drag.target ? drag.end : null;
   if (playback) {
     if (!paused) showFrame((playback.t + dt * SPEEDS[speedIndex][0]) % playback.duration);
-    render(ctx, view, playback.stage, { selected: null });
+    if (eye) camera = easeCamera(camera, dt * CAMERA_EASE);
+    render(ctx, view, playback.stage, { selected: null, eye, camera });
     requestAnimationFrame(frame);
     return;
   }
@@ -541,12 +575,15 @@ function frame(now) {
   } else if (!paused) {
     if (dragged) dragged.dragTo = drag.target;
     const simDt = dt * SPEEDS[speedIndex][0];
+    const framesBefore = new Map(allEnds(world).map((end) => [end, end.Tinv]));
     step(world, simDt, Math.max(1, Math.ceil(simDt / MAX_SUBSTEP)));
+    if (eye) carryEye(eye, framesBefore);
   } else if (dragged) {
     Object.assign(dragged.base, drag.target);
     refreshEnds(dragged.pair);
   }
-  render(ctx, view, world, { selected, preview: previewCreate });
+  if (eye) camera = easeCamera(camera, dt * CAMERA_EASE);
+  render(ctx, view, world, { selected, preview: previewCreate, eye, camera });
   requestAnimationFrame(frame);
 }
 
