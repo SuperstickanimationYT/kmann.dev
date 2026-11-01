@@ -311,7 +311,7 @@ function applyImpulse(c, key, amount, f = MOTION) {
   if (c.a.body) push(c.a.body, c.a.r, mul(c.a[key], -amount), f);
 }
 
-function push(body, r, impulse, f) {
+function push(body, r, impulse, f = MOTION) {
   body[f.x] += impulse.x * body.invMass;
   body[f.y] += impulse.y * body.invMass;
   body[f.w] += body.invInertia * cross(r, impulse);
