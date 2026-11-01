@@ -34,6 +34,7 @@
         <button type="button" data-tool="wall" aria-pressed="false" title="Drag to draw a wall (6)">Wall</button>
         <button type="button" data-tool="laser" aria-pressed="false" title="Tap to place a laser, drag to aim it (7)">Laser</button>
       </div>
+      <button type="button" data-eye aria-pressed="false" title="See the room from an eye you can drag, looking through portals (E)">Eye view</button>
       <button type="button" class="pp-primary" data-pause>Pause</button>
       <button type="button" data-speed title="Simulation speed">1&times;</button>
       <select data-scene aria-label="Scene"></select>
@@ -147,6 +148,7 @@
         <p>That settles what happens when an end moves. Only movement relative to the doorway counts: an object resting in place while an end sweeps over it is, from the doorway's point of view, an object moving into it. It comes out the other end with that speed, so a falling or sliding end throws things.</p>
         <p>An object part-way through is in both places at once. Its front half sits beyond the far end and can bump into things there, and its back half still rests on whatever is under it here.</p>
         <p>Both ends of a pair are always the same shape. On a curved end, an object passes wherever it crosses the curve. Ring and square-frame ends connect outside to inside.</p>
+        <p>Eye view shows the room the way someone standing in it would see it: past each portal end you see what is beyond the other end, shrunk or grown to match, portals within portals included. Drag the eye through an end and the view goes with it. Clicks and drags reach through portals too, onto whatever you see there.</p>
         <p>The two ends can be different sizes. Picture the doorway with everything on the far side scaled to match: seen from a small end, the world past a big end is shrunk to fit. Something going from a small end to one twice as big comes out twice as big and twice as fast. It's the same object, so its mass stays the same, which makes it lighter for its size.</p>
       </details>
 
@@ -166,7 +168,7 @@
           <li>Wall: drag to draw one. Laser: tap to place, drag to aim.</li>
           <li>Wedges are the only lopsided objects, so they're the ones that show when a mirror portal has flipped something.</li>
           <li>Time travel setup: drag objects to place them, and use the Box, Ball or Wedge tool to add one already moving. Arrows show starting speeds.</li>
-          <li>Keys: <kbd>1</kbd>&ndash;<kbd>7</kbd> tools, <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>Esc</kbd> deselect.</li>
+          <li>Keys: <kbd>1</kbd>&ndash;<kbd>7</kbd> tools, <kbd>E</kbd> eye view, <kbd>Space</kbd> pause, <kbd>Delete</kbd> remove selected, <kbd>Esc</kbd> deselect.</li>
         </ul>
       </details>
     </form>

@@ -1,4 +1,5 @@
-import { V, add, mul, scaleOf } from './geom.js';
+import { V, add, mul, scaleOf, IDENTITY } from './geom.js';
+import { eachLayer } from './view.js';
 import { POST_RADIUS, regionPath, worldCurve, postPoints, handlePoint, isPassable, frontNormal } from './portals.js';
 import { allEnds, buildCopies, bodyMatrix, castLaser, isOpen } from './physics.js';
 
@@ -204,13 +205,7 @@ function drawGrid(ctx) {
   ctx.stroke();
 }
 
-export function render(ctx, view, world, ui) {
-  const { dpr, scale, ox, oy } = view;
-  const px = 1 / scale;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#03080f';
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.setTransform(dpr * scale, 0, 0, -dpr * scale, dpr * ox, dpr * oy);
+function drawScene(ctx, world, ui, px) {
   drawGrid(ctx);
 
   for (const wall of world.walls) {
@@ -247,7 +242,61 @@ export function render(ctx, view, world, ui) {
     }
   }
 
-  for (const end of allEnds(world)) drawEnd(ctx, end, px, ui.selected?.end === end, world.time);
+}
 
+function drawEnds(ctx, world, ui, px) {
+  for (const end of allEnds(world)) drawEnd(ctx, end, px, ui.selected?.end === end, world.time);
+}
+
+function drawEye(ctx, eye, px) {
+  ctx.beginPath();
+  ctx.ellipse(eye.x, eye.y, 13 * px, 8 * px, 0, 0, 2 * Math.PI);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(eye.x, eye.y, 4.5 * px, 0, 2 * Math.PI);
+  ctx.fillStyle = '#0a1826';
+  ctx.fill();
+}
+
+const transformBy = (ctx, m) => ctx.transform(m.a, m.c, m.b, m.d, m.x, m.y);
+
+export function render(ctx, view, world, ui) {
+  const { dpr, scale, ox, oy } = view;
+  const camera = ui.camera ?? IDENTITY;
+  const px = 1 / (scale * scaleOf(camera));
+  const toScreen = (map) => {
+    ctx.setTransform(dpr * scale, 0, 0, -dpr * scale, dpr * ox, dpr * oy);
+    transformBy(ctx, camera);
+    transformBy(ctx, map);
+  };
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#03080f';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  const layers = [];
+  if (ui.eye) eachLayer(world, ui.eye, (layer) => layers.push(layer));
+  else layers.push({ map: IDENTITY, depth: 0, clips: [] });
+  for (const pass of [drawScene, drawEnds]) {
+    for (const { map, depth, clips } of layers) {
+      ctx.save();
+      for (const clip of clips) {
+        toScreen(clip.map);
+        ctx.beginPath();
+        tracePath(ctx, clip.region);
+        ctx.clip();
+      }
+      toScreen(map);
+      if (depth > 0 && pass === drawScene) {
+        ctx.fillStyle = '#03080f';
+        ctx.fillRect(-BIG, -BIG, 2 * BIG, 2 * BIG);
+      }
+      pass(ctx, world, ui, px / scaleOf(map));
+      ctx.restore();
+    }
+  }
+
+  toScreen(IDENTITY);
+  if (ui.eye) drawEye(ctx, ui.eye, px);
   if (ui.preview) ui.preview(ctx, px);
 }
