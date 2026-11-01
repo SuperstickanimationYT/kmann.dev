@@ -4,7 +4,7 @@ import {
 } from './geom.js';
 import {
   POST_RADIUS, partner, isPassable, refreshTransform, poseAt, pairTransform, frameVelocity,
-  query, queryLocal, crossesLocal, postPoints, rebuildPair,
+  query, queryLocal, crossesLocal, postPoints, rebuildPair, motionOffset,
 } from './portals.js';
 
 const ITERATIONS = 10;
@@ -470,7 +470,7 @@ function teleport(world, body, before, after) {
   }
 }
 
-export function carryEnds(world, before) {
+export function carryEnds(world, before, time) {
   for (const end of allEnds(world)) {
     const c0 = before.get(end);
     if (!c0) continue;
@@ -479,24 +479,25 @@ export function carryEnds(world, before) {
       && isOpen(g, world.time) && end.reach < g.reach
       && crossesLocal(g, apply(g.Tinv, c0), apply(g.Tinv, c1))
       && isPassable(g, query(g, c0).side));
-    if (gate) passEnd(world, end, gate);
+    if (gate) passEnd(world, end, gate, time);
   }
 }
 
-function passEnd(world, end, gate) {
+function passEnd(world, end, gate, time) {
   const T = pairTransform(gate);
   const s = scaleOf(T);
   const level = partner(gate) === end ? world.levelCount++ : partner(gate).level;
-  for (const pose of [end.base, end.pose]) {
-    const c = apply(T, V(pose.x, pose.y));
-    const front = applyLinear(T, V(-Math.sin(pose.angle), Math.cos(pose.angle)));
-    Object.assign(pose, { x: c.x, y: c.y, angle: Math.atan2(-front.x, front.y) });
-  }
+  const { pose } = end;
+  const c = apply(T, V(pose.x, pose.y));
+  const front = applyLinear(T, V(-Math.sin(pose.angle), Math.cos(pose.angle)));
+  Object.assign(pose, { x: c.x, y: c.y, angle: Math.atan2(-front.x, front.y) });
   const pair = end.pair;
   if (det(T) < 0) pair.mirror = !pair.mirror;
   if (end.index === 0) { pair.width *= s; pair.scale /= s; } else pair.scale *= s;
   rebuildPair(pair);
   end.motion.distance *= s;
+  const off = motionOffset(end.motion, time);
+  Object.assign(end.base, { x: pose.x - off.x, y: pose.y - off.y, angle: pose.angle - off.angle });
   end.level = level;
   end.dragTo = null;
   end.jumps++;
@@ -562,7 +563,7 @@ export function step(world, dt, substeps, onTeleport) {
       Object.assign(end.pose, end.next);
       refreshTransform(end);
     }
-    carryEnds(world, endsBefore);
+    carryEnds(world, endsBefore, t1);
     for (const body of world.bodies) teleport(world, body, before.get(body), onTeleport);
     world.time = t1;
     for (const body of world.bodies.filter((b) => b.timeJump)) {
