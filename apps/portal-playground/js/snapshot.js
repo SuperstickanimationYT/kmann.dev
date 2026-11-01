@@ -10,6 +10,7 @@ export function toData(world) {
     pairs: world.pairs.map((p) => ({
       shape: p.shape,
       width: p.width,
+      scale: p.scale,
       kind: p.kind,
       mirror: p.mirror,
       delay: p.delay,

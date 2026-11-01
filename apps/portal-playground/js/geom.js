@@ -49,6 +49,13 @@ export const apply = (t, p) => V(t.a * p.x + t.b * p.y + t.x, t.c * p.x + t.d * 
 export const applyLinear = (t, v) => V(t.a * v.x + t.b * v.y, t.c * v.x + t.d * v.y);
 export const applyLinearInverse = (t, v) => V(t.a * v.x + t.c * v.y, t.b * v.x + t.d * v.y);
 export const det = (t) => t.a * t.d - t.b * t.c;
+export const scaleOf = (t) => Math.sqrt(Math.abs(det(t)));
+
+export function invert(t) {
+  const k = det(t);
+  const a = t.d / k, b = -t.b / k, c = -t.c / k, d = t.a / k;
+  return { a, b, c, d, x: -(a * t.x + b * t.y), y: -(c * t.x + d * t.y) };
+}
 
 export function closestOnSegment(p, a, b) {
   const ab = sub(b, a);

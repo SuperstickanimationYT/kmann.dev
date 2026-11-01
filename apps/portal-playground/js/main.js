@@ -1,5 +1,5 @@
 import { V, sub, len } from './geom.js';
-import { SHAPES, MOTIONS, makePair, rebuildPair, refreshTransform, poseAt, query, handlePoint } from './portals.js';
+import { SHAPES, MOTIONS, makePair, rebuildPair, refreshTransform, poseAt, query, handlePoint, endSize } from './portals.js';
 import {
   step, allEnds, makeBox, makeBall, makeWedge, makeWall, makeLaser, refreshWall,
   pointInBody, pointInWall, grabLocal,
@@ -211,7 +211,7 @@ function syncPanel() {
   if (end) {
     const pair = end.pair;
     form.shape.value = pair.shape;
-    form.width.value = pair.width;
+    form.width.value = endSize(end);
     form.kind.value = pair.kind;
     form.kind.disabled = SHAPES[pair.shape].closed;
     form.mirror.checked = pair.mirror;
@@ -257,6 +257,13 @@ function refreshEnds(pair) {
   }
 }
 
+function resizeEnd(end, size) {
+  const pair = end.pair;
+  const other = endSize(pair.ends[1 - end.index]);
+  pair.width = end.index === 0 ? size : other;
+  pair.scale = end.index === 0 ? other / size : size / other;
+}
+
 function keepPhase(motion, newPeriod) {
   const angle = (2 * Math.PI * world.time) / motion.period + motion.phase;
   motion.phase = angle - (2 * Math.PI * world.time) / newPeriod;
@@ -281,7 +288,7 @@ form.addEventListener('input', (e) => {
   const m = end.motion;
   if (name === 'shape' || name === 'width' || name === 'kind' || name === 'mirror') {
     pair.shape = form.shape.value;
-    pair.width = Number(form.width.value);
+    resizeEnd(end, Number(form.width.value));
     pair.kind = form.kind.value;
     pair.mirror = form.mirror.checked;
     rebuildPair(pair);
