@@ -104,6 +104,10 @@
   cursor: pointer;
 }
 
+.pc-link-button {
+  text-decoration: none;
+}
+
 .pc-button:hover {
   background: #133659;
 }
