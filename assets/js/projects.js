@@ -23,6 +23,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Biosphere Calculator',
+    href: 'apps/biosphere-calculator/',
+    category: 'tools',
+    poster: 'assets/img/posters/biosphere-calculator.webp',
+    blurb: 'Pair it with Planet Calculator: see how much food each zone of a world makes, how long its food chains run and which body plans its gravity, air and light allow.',
+    status: 'live',
+  },
+  {
     title: 'Block Text',
     href: 'apps/blocktext/',
     category: 'tools',

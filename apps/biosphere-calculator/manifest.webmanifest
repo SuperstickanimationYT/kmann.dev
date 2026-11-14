@@ -1,0 +1,18 @@
+{
+  "name": "Biosphere Calculator",
+  "short_name": "Biosphere Calculator",
+  "description": "Pick a planet and its air, get what kinds of life its energy and physics could support: food made per zone, food-chain length, size limits and which body plans work.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

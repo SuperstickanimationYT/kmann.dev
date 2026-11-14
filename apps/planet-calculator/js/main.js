@@ -111,12 +111,14 @@ function loadHash() {
 }
 
 function saveHash() {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams(window.location.hash.slice(1));
   params.set(HASH_KEYS.star, starSelect.value);
   for (const key of Object.keys(FIELDS)) params.set(HASH_KEYS[key], inputs[key].value);
   params.set(HASH_KEYS.locked, lockedInput.checked ? '1' : '0');
   if (nameInput.value.trim()) params.set(HASH_KEYS.name, nameInput.value.trim());
+  else params.delete(HASH_KEYS.name);
   window.history.replaceState(null, '', `#${params}`);
+  find('[data-life-link]').href = `../biosphere-calculator/#${params}`;
 }
 
 function readWorld() {
