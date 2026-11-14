@@ -35,7 +35,7 @@ const LOVE_NUMBER_K2 = 0.3;
 const UNIFORM_SPHERE_INERTIA = 0.4;
 const RESONANCE_RATHER_THAN_LOCK_FROM_ECCENTRICITY = 0.1;
 
-const EXOSPHERE_HEAT_OVER_EQUILIBRIUM = 4;
+const EARTH_EXOSPHERE_UV_HEATING_K = 750;
 const ESCAPE_OVER_THERMAL_SPEED_TO_HOLD_FOR_BILLIONS_OF_YEARS = 6;
 export const GASES = [
   { name: 'Hydrogen', formula: 'H₂', mass: 2 },
@@ -153,7 +153,7 @@ export function describeWorld({ star, ageGyr, planet, orbit, rotation }) {
   const lockYears = tidalLockSeconds(starKg, planetKg, planetRadiusM, distanceM) / SECONDS_PER_YEAR;
   const tidesWon = lockYears < ageGyr * 1e9;
 
-  const exosphereK = equilibriumK * EXOSPHERE_HEAT_OVER_EQUILIBRIUM;
+  const exosphereK = equilibriumK + EARTH_EXOSPHERE_UV_HEATING_K * Math.sqrt(starlightEarth);
   const gases = GASES.map((gas) => ({
     ...gas,
     held: escapeKms * 1000 > ESCAPE_OVER_THERMAL_SPEED_TO_HOLD_FOR_BILLIONS_OF_YEARS * thermalSpeed(gas.mass, exosphereK),
