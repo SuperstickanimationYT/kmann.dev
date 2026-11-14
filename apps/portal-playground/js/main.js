@@ -572,7 +572,7 @@ function placeDragged(end) {
   const before = new Map([[end, V(end.pose.x, end.pose.y)]]);
   Object.assign(end.base, drag.target);
   refreshEnds(end.pair);
-  carryEnds(world, before);
+  carryEnds(world, before, world.time);
 }
 
 let last = performance.now();
