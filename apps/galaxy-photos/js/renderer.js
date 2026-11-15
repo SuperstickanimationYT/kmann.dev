@@ -154,6 +154,8 @@ export function createRenderer(canvas) {
       uPsfSigma: Math.max(0.7, telescope.psfSigma * height),
       uHaloRadius: Math.max(1.5, telescope.haloRadius * height),
       uHaloFraction: telescope.haloFraction,
+      uWingRadius: Math.max(3, telescope.wingRadius * height),
+      uWingFraction: telescope.wingFraction,
       uSpikeLength: telescope.spikeLength * height,
       uSpikeWidth: Math.max(0.45, telescope.spikeWidth * height),
       uSpikeStrength: telescope.spikeStrength,
