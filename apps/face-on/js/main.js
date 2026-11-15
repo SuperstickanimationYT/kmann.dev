@@ -180,7 +180,7 @@ function describeStars(layers) {
   if (!setting('removeStars')) return 'Stars stay in the disk and get stretched with it.';
   const found = `Found ${layers.count.toLocaleString()} stars.`;
   if (state.starWidth === null) return found;
-  return `${found} Typical star is ${state.starWidth.toFixed(1)} px wide at half brightness, so the size was set to ${layers.radius}.`;
+  return `${found} The widest stars are about ${state.starWidth.toFixed(1)} px across at half brightness, so the largest size was set to ${layers.radius}.`;
 }
 
 async function findStars({ measure = false } = {}) {

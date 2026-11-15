@@ -67,7 +67,9 @@ export function measureStarSize(image) {
   const widths = peaks.slice(0, SIZE_PROBE_PEAKS)
     .map((i) => 2 * halfWidth(tophat, width, height, i % width, Math.floor(i / width)))
     .filter((w) => Number.isFinite(w) && w > 0);
-  return widths.length >= 5 ? median(widths) : 3;
+  if (widths.length < 5) return 3;
+  widths.sort((a, b) => a - b);
+  return widths[Math.floor(widths.length * 0.75)];
 }
 
 export function radiusForStarWidth(fullWidth) {
@@ -77,7 +79,7 @@ export function radiusForStarWidth(fullWidth) {
 const MIN_ROUNDNESS = 0.5;
 const RAYS = 16;
 const RING_SAMPLES = 32;
-const MAX_STARS = 20000;
+const MAX_STARS = 50000;
 
 function isPlateauOrPeak(values, width, i) {
   const v = values[i];
@@ -209,34 +211,52 @@ function brightestBlurredSpot(light, width, height, reach) {
   return spot;
 }
 
-export function removeStars(image, { radius, sensitivity }) {
-  const { width, height } = image;
-  const light = luminance(image);
+const SMALLEST_SCALE = 2;
+const HALO_MARGIN = 1.2;
+
+function starScales(largest) {
+  const scales = [];
+  for (let r = largest; r > SMALLEST_SCALE; r = Math.round(r / 2)) scales.push(r);
+  scales.push(SMALLEST_SCALE);
+  return scales;
+}
+
+function removeAtScale(starless, nucleus, radius, sensitivity, guard) {
+  const { width, height } = starless;
+  const light = luminance(starless);
   const background = open(light, width, height, radius);
   const tophat = new Float32Array(light.length);
   for (let i = 0; i < light.length; i += 1) tophat[i] = light[i] - background[i];
   const { middle, spread } = noiseLevels(tophat);
-  const strong = middle + spread * (11 - sensitivity);
-  const nucleus = brightestBlurredSpot(light, width, height, 2 * radius);
-  const starless = { width, height, r: Float32Array.from(image.r), g: Float32Array.from(image.g), b: Float32Array.from(image.b) };
+  const strong = middle + spread * (11 - sensitivity) * Math.sqrt(radius / SMALLEST_SCALE);
   const covered = new Uint8Array(light.length);
   let count = 0;
   for (const i of peaksAbove(tophat, strong, width, height)) {
     if (covered[i]) continue;
     const { x, y } = plateauCentre(light, width, height, i % width, Math.floor(i / width), radius, spread);
-    if (Math.hypot(x - nucleus.x, y - nucleus.y) <= 2 * radius) continue;
+    if (Math.hypot(x - nucleus.x, y - nucleus.y) <= guard) continue;
     const extent = starExtent(light, width, height, x, y, background[y * width + x] + spread * 1.5, spread * 2, radius * 3);
     if (!extent) {
       markCovered(covered, width, height, i % width, Math.floor(i / width), 2);
       continue;
     }
-    paintOver(starless, { cx: x, cy: y }, extent);
-    markCovered(covered, width, height, x, y, extent + 1);
+    const reach = extent * HALO_MARGIN + 1;
+    paintOver(starless, { cx: x, cy: y }, reach);
+    markCovered(covered, width, height, x, y, reach + 1);
     count += 1;
   }
+  return count;
+}
+
+export function removeStars(image, { radius, sensitivity }) {
+  const { width, height } = image;
+  const nucleus = brightestBlurredSpot(luminance(image), width, height, 2 * radius);
+  const starless = { width, height, r: Float32Array.from(image.r), g: Float32Array.from(image.g), b: Float32Array.from(image.b) };
+  let count = 0;
+  for (const scale of starScales(radius)) count += removeAtScale(starless, nucleus, scale, sensitivity, 2 * radius);
   const stars = { width, height };
   for (const key of CHANNELS) {
-    const out = new Float32Array(light.length);
+    const out = new Float32Array(width * height);
     for (let i = 0; i < out.length; i += 1) out[i] = Math.max(0, image[key][i] - starless[key][i]);
     stars[key] = out;
   }

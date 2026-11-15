@@ -58,7 +58,7 @@ export function demoGalaxy(width = 1200, height = 900) {
     }
   }
   const image = new ImageData(pixels, width, height);
-  for (let n = 0; n < 260; n += 1) addStar(image, rand() * width, rand() * height, 0.15 + rand() ** 4 * 2.5, 1.2 + rand() * 3, rand());
+  for (let n = 0; n < 260; n += 1) addStar(image, rand() * width, rand() * height, 0.15 + rand() ** 4 * 2.5, 0.7 + rand() ** 2 * 4, rand());
   return image;
 }
 

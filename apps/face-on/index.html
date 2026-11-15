@@ -56,7 +56,7 @@
           <span>Remove stars before stretching</span>
         </label>
         <label class="fo-field">
-          <span>Star size (px) <output></output></span>
+          <span>Largest star (px) <output></output></span>
           <input type="range" name="starSize" min="1" max="30" step="1" value="4">
         </label>
         <label class="fo-field">
@@ -64,7 +64,7 @@
           <input type="range" name="sensitivity" min="1" max="10" step="1" value="6">
         </label>
         <p class="fo-hint" data-star-count></p>
-        <p class="fo-hint">Star size is measured from each photo. If stars leave soft rings, raise it; if it erases bright knots in the arms, lower it or the sensitivity.</p>
+        <p class="fo-hint">Stars are removed largest first, then smaller and smaller down to 2 px. The largest size is measured from each photo. If big stars leave rings, raise it; if it erases bright knots in the arms, lower the sensitivity.</p>
       </fieldset>
 
       <fieldset>
@@ -133,8 +133,8 @@
     <details class="fo-about">
       <summary>How it works, and where it fails</summary>
       <p>
-        Stars are found as bright spots no wider than the star size, which is measured from the photo, then
-        painted over out to where their glow fades, using the light around them. The outline is an ellipse fitted to the galaxy's glow. A round disk seen at a
+        Stars are found as round bright spots, widest first and then down to the smallest, and each one is
+        painted over out to where its glow fades, using the light around it. The outline is an ellipse fitted to the galaxy's glow. A round disk seen at a
         tilt looks like an ellipse whose short axis shrinks by the cosine of the tilt, so stretching the short
         axis back out shows the disk face-on. Real disks have thickness, so a disk seen edge-on still looks
         about 20% as wide as it is long; the thickness setting accounts for that. Stars are put back unstretched,
