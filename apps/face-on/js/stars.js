@@ -252,7 +252,9 @@ const SPIKE_CANDIDATES = 300;
 const SPIKE_TEACHERS = 20;
 const SPIKED_HALO = 4;
 
-const HALO_LIMIT = 12;
+const HALO_LIMIT = 20;
+const HALO_FLAT = 0.25;
+const HALO_TAIL = 1.5;
 const HALO_STEP = 4;
 const HALO_SAMPLES = 64;
 
@@ -275,6 +277,31 @@ function haloReach(layer, x, y, start, limit, tolerance) {
     inner = outer;
   }
   return limit;
+}
+
+function subtractHalo(layer, x, y, inner, outer) {
+  const { width, height } = layer;
+  for (const key of CHANNELS) {
+    const channel = layer[key];
+    const profile = [];
+    for (let r = inner; r <= outer; r += 1) {
+      const level = ringMedian(channel, width, height, x, y, r);
+      profile.push(Math.min(level, profile.length ? profile[profile.length - 1] : level));
+    }
+    const floor = profile[profile.length - 1];
+    for (let py = Math.max(0, Math.floor(y - outer)); py <= Math.min(height - 1, Math.ceil(y + outer)); py += 1) {
+      for (let px = Math.max(0, Math.floor(x - outer)); px <= Math.min(width - 1, Math.ceil(x + outer)); px += 1) {
+        const distance = Math.hypot(px - x, py - y);
+        if (distance < inner || distance > outer) continue;
+        const step = distance - inner;
+        const below = Math.floor(step);
+        const above = Math.min(profile.length - 1, below + 1);
+        const level = profile[below] + (profile[above] - profile[below]) * (step - below);
+        const i = py * width + px;
+        channel[i] = Math.max(channel[i] - (level - floor), Math.min(channel[i], floor));
+      }
+    }
+  }
 }
 
 function removeSpikedStars(starless, light, nucleus, radius, sensitivity, guard) {
@@ -301,8 +328,11 @@ function removeSpikedStars(starless, light, nucleus, radius, sensitivity, guard)
   for (const { x, y, core } of candidates) {
     if (covered[y * width + x] || !hasSpikes(light, width, height, x, y, core, angles)) continue;
     const { reaches } = rayReaches(light, width, height, x, y, background[y * width + x] + spread * 1.5, spread * 2, radius * 6);
-    const reach = haloReach(starless, x, y, reaches[RAYS >> 1], radius * HALO_LIMIT, spread * 2) * HALO_MARGIN + 1;
+    const coreReach = reaches[RAYS >> 1];
+    const halo = haloReach(starless, x, y, coreReach, radius * HALO_LIMIT, spread * HALO_FLAT);
+    const reach = coreReach * HALO_MARGIN + 1;
     paintSpikes(starless, light, x, y, reach, core, angles, spread);
+    subtractHalo(starless, x, y, Math.ceil(reach), Math.ceil(halo * HALO_TAIL));
     paintOver(starless, { cx: x, cy: y }, reach);
     markCovered(covered, width, height, x, y, reach + 1);
     count += 1;
