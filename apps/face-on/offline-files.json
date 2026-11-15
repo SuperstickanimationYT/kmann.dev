@@ -1,5 +1,5 @@
 {
-  "bytes": 79990,
+  "bytes": 85642,
   "files": [
     "./",
     "index.html",
@@ -7,6 +7,7 @@
     "js/filters.js",
     "js/geometry.js",
     "js/main.js",
+    "js/spikes.js",
     "js/stars.js",
     "js/worker.js",
     "manifest.webmanifest",
