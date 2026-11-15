@@ -63,6 +63,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Face-On Galaxy',
+    href: 'apps/face-on/',
+    category: 'tools',
+    poster: 'assets/img/posters/face-on.webp',
+    blurb: 'Open a photo of a tilted spiral galaxy, like M33 or NGC 6744, and see how it would look face-on: stars removed, disk stretched round, stars put back.',
+    status: 'live',
+  },
+  {
     title: 'Find Home',
     href: 'apps/find-home/',
     category: 'games',

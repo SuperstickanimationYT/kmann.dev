@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face-On Galaxy &mdash; kmann314</title>
+<meta name="description" content="Turn a photo of a tilted spiral galaxy into an estimate of how it looks face-on: remove the stars, fit the disk's outline, stretch it into a circle and put the stars back.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Face-On Galaxy</h1>
+</header>
+
+<main class="studio-stage" data-stage>
+  <canvas data-view></canvas>
+  <div class="fo-views" role="group" aria-label="Show" data-views hidden>
+    <button type="button" data-view-mode="photo" aria-pressed="true">Photo</button>
+    <button type="button" data-view-mode="starless" aria-pressed="false">No stars</button>
+    <button type="button" data-view-mode="stars" aria-pressed="false">Stars</button>
+    <button type="button" data-view-mode="face-on" aria-pressed="false">Face-on</button>
+  </div>
+  <div class="fo-empty" data-empty>
+    <p>Drop a photo of a spiral galaxy here, paste one, or open a file.</p>
+    <p class="fo-hint">Works best when the whole disk fits in the photo with some dark sky around it. Close-ups of the core give the fit too little to go on.</p>
+    <div class="fo-actions">
+      <button type="button" class="fo-primary" data-open>Open photo</button>
+      <button type="button" data-demo>Try a generated galaxy</button>
+    </div>
+  </div>
+  <p class="fo-status" data-status hidden></p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Settings">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Settings</button>
+  <div class="studio-panel-body">
+    <form class="fo-panel" data-controls>
+      <div class="fo-actions">
+        <button type="button" class="fo-primary" data-open>Open photo</button>
+        <button type="button" data-demo>Generated galaxy</button>
+      </div>
+      <input type="file" accept="image/*" data-file hidden>
+
+      <fieldset>
+        <legend>Stars</legend>
+        <label class="fo-check">
+          <input type="checkbox" name="removeStars" checked>
+          <span>Remove stars before stretching</span>
+        </label>
+        <label class="fo-field">
+          <span>Largest star (px) <output></output></span>
+          <input type="range" name="starSize" min="1" max="14" step="1" value="4">
+        </label>
+        <label class="fo-field">
+          <span>Sensitivity <output></output></span>
+          <input type="range" name="sensitivity" min="1" max="10" step="1" value="6">
+        </label>
+        <p class="fo-hint" data-star-count></p>
+        <p class="fo-hint">If it erases bright knots in the arms, lower the sensitivity or the largest star size.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Disk outline</legend>
+        <p class="fo-hint">Drag the dots on the photo: the middle one moves it, the outer ones set the long and short axes.</p>
+        <label class="fo-field">
+          <span>Trace out to (% of peak) <output></output></span>
+          <input type="range" name="reach" min="2" max="40" step="1" value="6">
+        </label>
+        <div class="fo-actions">
+          <button type="button" data-fit>Fit outline again</button>
+        </div>
+        <label class="fo-field">
+          <span>Known galaxy</span>
+          <select data-preset>
+            <option value="">Use the outline</option>
+          </select>
+        </label>
+        <label class="fo-field">
+          <span>Tilt (&deg;) <output></output></span>
+          <input type="range" name="tilt" min="0" max="80" step="0.5" value="0">
+        </label>
+        <label class="fo-field">
+          <span>Long axis (&deg; clockwise from horizontal) <output></output></span>
+          <input type="range" name="angle" min="0" max="179.5" step="0.5" value="0">
+        </label>
+        <p class="fo-hint fo-warn" data-warning hidden></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Face-on view</legend>
+        <label class="fo-field">
+          <span>Disk thickness (% of width) <output></output></span>
+          <input type="range" name="thickness" min="0" max="40" step="1" value="20">
+        </label>
+        <label class="fo-field">
+          <span>Keep bulge round (% of radius) <output></output></span>
+          <input type="range" name="bulge" min="0" max="50" step="1" value="0">
+        </label>
+        <label class="fo-field">
+          <span>Frame (% of disk) <output></output></span>
+          <input type="range" name="field" min="100" max="220" step="5" value="140">
+        </label>
+        <label class="fo-field">
+          <span>Spin (&deg;) <output></output></span>
+          <input type="range" name="spin" min="0" max="359" step="1" value="0">
+        </label>
+        <label class="fo-check">
+          <input type="checkbox" name="mirror">
+          <span>View from the other side</span>
+        </label>
+        <label class="fo-field">
+          <span>Stars back on top (%) <output></output></span>
+          <input type="range" name="starsBack" min="0" max="100" step="5" value="100">
+        </label>
+      </fieldset>
+    </form>
+
+    <div class="fo-export">
+      <div class="fo-actions">
+        <button type="button" data-download="face-on" disabled>Download face-on PNG</button>
+        <button type="button" data-download="starless" disabled>Download starless PNG</button>
+      </div>
+    </div>
+
+    <details class="fo-about">
+      <summary>How it works, and where it fails</summary>
+      <p>
+        Stars are found as bright spots smaller than the largest-star size, then painted over with the
+        light around them. The outline is an ellipse fitted to the galaxy's glow. A round disk seen at a
+        tilt looks like an ellipse whose short axis shrinks by the cosine of the tilt, so stretching the short
+        axis back out shows the disk face-on. Real disks have thickness, so a disk seen edge-on still looks
+        about 20% as wide as it is long; the thickness setting accounts for that. Stars are put back unstretched,
+        since they sit in front of the galaxy, not in its disk.
+      </p>
+      <p>
+        A bulge is roughly a ball, so stretching it turns it into a fake bar; keep it round with the bulge
+        setting. Dust lanes on the near side get stretched into streaks. Above about 70&deg; the far side of the
+        disk is hidden behind the near side, and no stretch brings it back. A photo can't tell which face of the
+        disk points at us, so the spiral may wind the wrong way; flip it with "View from the other side".
+        Tilts for known galaxies come from published measurements and are rounded.
+      </p>
+      <p>Your photo never leaves your device.</p>
+    </details>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
