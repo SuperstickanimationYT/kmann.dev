@@ -136,7 +136,8 @@ async function load(imageData) {
   empty.hidden = true;
   viewBar.hidden = false;
   downloadButtons.forEach((button) => { button.disabled = false; });
-  if (!(await findStars())) return;
+  state.starWidth = null;
+  if (!(await findStars({ measure: true }))) return;
   fit();
   presetSelect.value = '';
   setMode('photo');
@@ -175,18 +176,31 @@ function starsInWorker(image, options) {
   });
 }
 
-async function findStars() {
+function describeStars(layers) {
+  if (!setting('removeStars')) return 'Stars stay in the disk and get stretched with it.';
+  const found = `Found ${layers.count.toLocaleString()} stars.`;
+  if (state.starWidth === null) return found;
+  return `${found} Typical star is ${state.starWidth.toFixed(1)} px wide at half brightness, so the size was set to ${layers.radius}.`;
+}
+
+async function findStars({ measure = false } = {}) {
   showStatus(setting('removeStars') ? 'Removing stars…' : 'Preparing…');
   const layers = await starsInWorker(state.image, {
     remove: setting('removeStars'),
+    measure,
     radius: setting('starSize'),
     sensitivity: setting('sensitivity'),
   });
   if (!layers) return false;
   state.layers = layers;
+  if (measure) {
+    state.starWidth = layers.starWidth;
+    form.elements.starSize.value = String(layers.radius);
+    refreshOutputs();
+  }
   state.canvases.starless = layerCanvas(state.layers.starless);
   state.canvases.stars = layerCanvas(state.layers.stars, 1.6);
-  starCount.textContent = setting('removeStars') ? `Found ${state.layers.count.toLocaleString()} stars.` : 'Stars stay in the disk and get stretched with it.';
+  starCount.textContent = describeStars(layers);
   showStatus('');
   invalidateFaceOn();
   return true;
@@ -490,6 +504,7 @@ form.addEventListener('change', async (event) => {
   const { name } = event.target;
   if (!state.outline) return;
   if (STAR_FIELDS.has(name)) {
+    if (name === 'starSize') state.starWidth = null;
     await findStars();
     scheduleDraw();
   } else if (name === 'reach') {
