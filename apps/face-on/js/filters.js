@@ -146,3 +146,9 @@ export function sampleEvery(length, count) {
   for (let i = 0; i < length; i += step) picks.push(i);
   return picks;
 }
+
+export function nearest(channel, width, height, x, y) {
+  const sx = Math.min(width - 1, Math.max(0, Math.round(x)));
+  const sy = Math.min(height - 1, Math.max(0, Math.round(y)));
+  return channel[sy * width + sx];
+}

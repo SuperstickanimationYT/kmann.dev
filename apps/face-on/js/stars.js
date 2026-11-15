@@ -1,4 +1,5 @@
-import { boxBlur, median, open, sampleEvery } from './filters.js';
+import { boxBlur, median, nearest, open, sampleEvery } from './filters.js';
+import { hasSpikes, learnSpikeAngles, paintSpikes } from './spikes.js';
 
 const CHANNELS = ['r', 'g', 'b'];
 
@@ -116,7 +117,7 @@ function peaksAbove(tophat, strong, width, height) {
   return peaks.slice(0, MAX_STARS);
 }
 
-function starExtent(light, width, height, x0, y0, floor, tolerance, limit) {
+function rayReaches(light, width, height, x0, y0, floor, tolerance, limit) {
   const peak = light[y0 * width + x0];
   const halfway = floor + (peak - floor) / 2;
   const reaches = [];
@@ -140,8 +141,13 @@ function starExtent(light, width, height, x0, y0, floor, tolerance, limit) {
     if (reach === limit) unbounded += 1;
     reaches.push(reach);
   }
-  if (unbounded > RAYS / 2) return 0;
   reaches.sort((a, b) => a - b);
+  return { reaches, unbounded };
+}
+
+function starExtent(light, width, height, x0, y0, floor, tolerance, limit) {
+  const { reaches, unbounded } = rayReaches(light, width, height, x0, y0, floor, tolerance, limit);
+  if (unbounded > RAYS / 2) return 0;
   const inner = reaches[Math.floor(RAYS * 0.25)];
   const outer = reaches[Math.floor(RAYS * 0.75)];
   if (inner / outer < MIN_ROUNDNESS) return 0;
@@ -156,12 +162,6 @@ function markCovered(covered, width, height, cx, cy, radius) {
   }
 }
 
-function sample(channel, width, height, x, y) {
-  const sx = Math.min(width - 1, Math.max(0, Math.round(x)));
-  const sy = Math.min(height - 1, Math.max(0, Math.round(y)));
-  return channel[sy * width + sx];
-}
-
 function paintOver(layer, star, radius) {
   const { width, height } = layer;
   const ringRadius = radius + 1.5;
@@ -172,7 +172,7 @@ function paintOver(layer, star, radius) {
     ringX.push(star.cx + ringRadius * Math.cos(angle));
     ringY.push(star.cy + ringRadius * Math.sin(angle));
   }
-  const ring = CHANNELS.map((key) => ringX.map((x, k) => sample(layer[key], width, height, x, ringY[k])));
+  const ring = CHANNELS.map((key) => ringX.map((x, k) => nearest(layer[key], width, height, x, ringY[k])));
   const edge = radius + 1.5;
   for (let y = Math.max(0, Math.floor(star.cy - edge)); y <= Math.min(height - 1, Math.ceil(star.cy + edge)); y += 1) {
     for (let x = Math.max(0, Math.floor(star.cx - edge)); x <= Math.min(width - 1, Math.ceil(star.cx + edge)); x += 1) {
@@ -248,11 +248,46 @@ function removeAtScale(starless, nucleus, radius, sensitivity, guard) {
   return count;
 }
 
+const SPIKE_CANDIDATES = 300;
+const SPIKE_TEACHERS = 20;
+
+function removeSpikedStars(starless, light, nucleus, radius, sensitivity, guard) {
+  const { width, height } = starless;
+  const background = open(light, width, height, 2 * radius);
+  const tophat = new Float32Array(light.length);
+  for (let i = 0; i < light.length; i += 1) tophat[i] = light[i] - background[i];
+  const { middle, spread } = noiseLevels(tophat);
+  const strong = middle + spread * (11 - sensitivity) * 2;
+  const candidates = [];
+  for (const i of peaksAbove(tophat, strong, width, height).slice(0, SPIKE_CANDIDATES)) {
+    const { x, y } = plateauCentre(light, width, height, i % width, Math.floor(i / width), radius, spread);
+    if (Math.hypot(x - nucleus.x, y - nucleus.y) <= guard) continue;
+    if (candidates.some((other) => Math.hypot(other.x - x, other.y - y) < radius * 2)) continue;
+    const core = Math.max(1.5, halfWidth(tophat, width, height, x, y));
+    if (Number.isFinite(core)) candidates.push({ x, y, core });
+  }
+  const angles = learnSpikeAngles(light, width, height, candidates.slice(0, SPIKE_TEACHERS));
+  if (!angles.length) return { angles, count: 0 };
+  const covered = new Uint8Array(light.length);
+  let count = 0;
+  for (const { x, y, core } of candidates) {
+    if (covered[y * width + x] || !hasSpikes(light, width, height, x, y, core, angles)) continue;
+    const { reaches } = rayReaches(light, width, height, x, y, background[y * width + x] + spread * 1.5, spread * 2, radius * 6);
+    const reach = reaches[RAYS >> 1] * HALO_MARGIN + 1;
+    paintSpikes(starless, light, x, y, reach, core, angles, spread);
+    paintOver(starless, { cx: x, cy: y }, reach);
+    markCovered(covered, width, height, x, y, reach + 1);
+    count += 1;
+  }
+  return { angles, count };
+}
+
 export function removeStars(image, { radius, sensitivity }) {
   const { width, height } = image;
   const nucleus = brightestBlurredSpot(luminance(image), width, height, 2 * radius);
   const starless = { width, height, r: Float32Array.from(image.r), g: Float32Array.from(image.g), b: Float32Array.from(image.b) };
-  let count = 0;
+  const spiked = removeSpikedStars(starless, luminance(image), nucleus, radius, sensitivity, 2 * radius);
+  let count = spiked.count;
   for (const scale of starScales(radius)) count += removeAtScale(starless, nucleus, scale, sensitivity, 2 * radius);
   const stars = { width, height };
   for (const key of CHANNELS) {
@@ -260,11 +295,11 @@ export function removeStars(image, { radius, sensitivity }) {
     for (let i = 0; i < out.length; i += 1) out[i] = Math.max(0, image[key][i] - starless[key][i]);
     stars[key] = out;
   }
-  return { starless, stars, count };
+  return { starless, stars, count, spikeAngles: spiked.angles };
 }
 
 export function keepStars(image) {
   const { width, height } = image;
   const empty = () => new Float32Array(width * height);
-  return { starless: image, stars: { width, height, r: empty(), g: empty(), b: empty() }, count: 0 };
+  return { starless: image, stars: { width, height, r: empty(), g: empty(), b: empty() }, count: 0, spikeAngles: [] };
 }

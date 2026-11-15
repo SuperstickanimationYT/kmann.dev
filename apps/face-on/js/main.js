@@ -178,7 +178,10 @@ function starsInWorker(image, options) {
 
 function describeStars(layers) {
   if (!setting('removeStars')) return 'Stars stay in the disk and get stretched with it.';
-  const found = `Found ${layers.count.toLocaleString()} stars.`;
+  const spikes = layers.spikeAngles.length
+    ? ` Diffraction spikes run at ${layers.spikeAngles.map((a) => `${a}°`).join(' and ')}, so bright stars with them are removed whatever their size.`
+    : '';
+  const found = `Found ${layers.count.toLocaleString()} stars.${spikes}`;
   if (state.starWidth === null) return found;
   return `${found} The widest stars are about ${state.starWidth.toFixed(1)} px across at half brightness, so the largest size was set to ${layers.radius}.`;
 }

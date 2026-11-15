@@ -11,6 +11,18 @@ function random(seed) {
 
 export const DEMO_TRUTH = { tilt: 60, angleDegrees: 32 };
 
+const COMPANION = { x: 0.78, y: 0.78, scale: 13, ratio: 0.7, angle: 0.6, brightness: 1.3 };
+const SPIKE_ANGLES = [0.2, 0.2 + Math.PI / 2];
+const SPIKY_BRIGHTNESS = 2;
+
+function companionLight(x, y, width, height) {
+  const dx = x - COMPANION.x * width;
+  const dy = y - COMPANION.y * height;
+  const along = dx * Math.cos(COMPANION.angle) + dy * Math.sin(COMPANION.angle);
+  const across = (-dx * Math.sin(COMPANION.angle) + dy * Math.cos(COMPANION.angle)) / COMPANION.ratio;
+  return COMPANION.brightness * Math.exp(-Math.hypot(along, across) / COMPANION.scale);
+}
+
 function galaxyLight(gx, gy, gz) {
   const r = Math.hypot(gx, gy);
   const phi = Math.atan2(gy, gx);
@@ -49,6 +61,10 @@ export function demoGalaxy(width = 1200, height = 900) {
         g += light.g / 3;
         b += light.b / 3;
       }
+      const companion = companionLight(x, y, width, height);
+      r += companion;
+      g += companion * 0.9;
+      b += companion * 0.75;
       const noise = (rand() - 0.5) * 0.03;
       const o = (y * width + x) * 4;
       pixels[o] = 255 * tone(r + 0.02 + noise);
@@ -62,13 +78,27 @@ export function demoGalaxy(width = 1200, height = 900) {
   return image;
 }
 
+function starGlow(dx, dy, brightness, sigma) {
+  const core = brightness * Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+  if (brightness < SPIKY_BRIGHTNESS) return core;
+  const length = 25 * brightness;
+  let spikes = 0;
+  for (const angle of SPIKE_ANGLES) {
+    const along = Math.abs(dx * Math.cos(angle) + dy * Math.sin(angle));
+    const across = -dx * Math.sin(angle) + dy * Math.cos(angle);
+    spikes += 0.25 * brightness * Math.exp(-along / length) * Math.exp(-(across * across) / 0.9);
+  }
+  return core + spikes;
+}
+
 function addStar(image, sx, sy, brightness, sigma, hue) {
   const { width, height, data } = image;
-  const reach = Math.ceil(sigma * 4);
+  const reach = brightness < SPIKY_BRIGHTNESS ? Math.ceil(sigma * 4) : Math.ceil(100 * brightness);
   const tint = [1, 0.9 + hue * 0.1, 0.75 + hue * 0.3];
   for (let y = Math.max(0, Math.floor(sy - reach)); y < Math.min(height, sy + reach); y += 1) {
     for (let x = Math.max(0, Math.floor(sx - reach)); x < Math.min(width, sx + reach); x += 1) {
-      const glow = brightness * Math.exp(-((x - sx) ** 2 + (y - sy) ** 2) / (2 * sigma * sigma));
+      const glow = starGlow(x - sx, y - sy, brightness, sigma);
+      if (glow < 0.002) continue;
       const o = (y * width + x) * 4;
       for (let k = 0; k < 3; k += 1) {
         const base = data[o + k] / 255;

@@ -134,7 +134,9 @@
       <summary>How it works, and where it fails</summary>
       <p>
         Stars are found as round bright spots, widest first and then down to the smallest, and each one is
-        painted over out to where its glow fades, using the light around it. The outline is an ellipse fitted to the galaxy's glow. A round disk seen at a
+        painted over out to where its glow fades, using the light around it. If the brightest stars show diffraction spikes,
+        their angles are learned from the photo, and any bright spot with spikes at those angles is removed as
+        a star along with its spikes, however big it looks; a small galaxy has no spikes and stays. The outline is an ellipse fitted to the galaxy's glow. A round disk seen at a
         tilt looks like an ellipse whose short axis shrinks by the cosine of the tilt, so stretching the short
         axis back out shows the disk face-on. Real disks have thickness, so a disk seen edge-on still looks
         about 20% as wide as it is long; the thickness setting accounts for that. Stars are put back unstretched,
