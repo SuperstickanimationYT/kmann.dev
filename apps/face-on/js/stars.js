@@ -221,7 +221,31 @@ function starScales(largest) {
   return scales;
 }
 
-function removeAtScale(starless, nucleus, radius, sensitivity, guard) {
+const PINK_SHARE = 0.04;
+const PINK_FLOOR = 5 / 255;
+
+function colourExcess(layer, x, y, reach) {
+  const { width, height } = layer;
+  return CHANNELS.map((key) => {
+    const channel = layer[key];
+    let core = 0;
+    for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) core += nearest(channel, width, height, x + dx, y + dy);
+    const ring = [];
+    for (let k = 0; k < RING_SAMPLES; k += 1) {
+      const angle = (2 * Math.PI * k) / RING_SAMPLES;
+      ring.push(nearest(channel, width, height, x + (reach + 1.5) * Math.cos(angle), y + (reach + 1.5) * Math.sin(angle)));
+    }
+    return core / 9 - median(ring);
+  });
+}
+
+function looksLikeGlowingGas(layer, x, y, reach) {
+  const [r, g, b] = colourExcess(layer, x, y, reach);
+  const greenDeficit = (r + b) / 2 - g;
+  return greenDeficit >= PINK_FLOOR && greenDeficit >= PINK_SHARE * (r + g + b);
+}
+
+function removeAtScale(starless, nucleus, radius, sensitivity, guard, knots) {
   const { width, height } = starless;
   const light = luminance(starless);
   const background = open(light, width, height, radius);
@@ -241,6 +265,11 @@ function removeAtScale(starless, nucleus, radius, sensitivity, guard) {
       continue;
     }
     const reach = extent * HALO_MARGIN + 1;
+    if (knots && looksLikeGlowingGas(starless, x, y, reach)) {
+      knots.push({ x, y, reach });
+      markCovered(covered, width, height, x, y, reach + 1);
+      continue;
+    }
     paintOver(starless, { cx: x, cy: y }, reach);
     markCovered(covered, width, height, x, y, reach + 1);
     count += 1;
@@ -340,24 +369,25 @@ function removeSpikedStars(starless, light, nucleus, radius, sensitivity, guard)
   return { angles, count };
 }
 
-export function removeStars(image, { radius, sensitivity }) {
+export function removeStars(image, { radius, sensitivity, keepPink }) {
   const { width, height } = image;
   const nucleus = brightestBlurredSpot(luminance(image), width, height, 2 * radius);
   const starless = { width, height, r: Float32Array.from(image.r), g: Float32Array.from(image.g), b: Float32Array.from(image.b) };
   const spiked = removeSpikedStars(starless, luminance(image), nucleus, radius, sensitivity, 2 * radius);
   let count = spiked.count;
-  for (const scale of starScales(radius)) count += removeAtScale(starless, nucleus, scale, sensitivity, 2 * radius);
+  const knots = keepPink ? [] : null;
+  for (const scale of starScales(radius)) count += removeAtScale(starless, nucleus, scale, sensitivity, 2 * radius, knots);
   const stars = { width, height };
   for (const key of CHANNELS) {
     const out = new Float32Array(width * height);
     for (let i = 0; i < out.length; i += 1) out[i] = Math.max(0, image[key][i] - starless[key][i]);
     stars[key] = out;
   }
-  return { starless, stars, count, spikeAngles: spiked.angles.toSorted((a, b) => a - b) };
+  return { starless, stars, count, knots: knots ?? [], spikeAngles: spiked.angles.toSorted((a, b) => a - b) };
 }
 
 export function keepStars(image) {
   const { width, height } = image;
   const empty = () => new Float32Array(width * height);
-  return { starless: image, stars: { width, height, r: empty(), g: empty(), b: empty() }, count: 0, spikeAngles: [] };
+  return { starless: image, stars: { width, height, r: empty(), g: empty(), b: empty() }, count: 0, knots: [], spikeAngles: [] };
 }
