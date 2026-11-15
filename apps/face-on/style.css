@@ -1,0 +1,233 @@
+.fo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fo-about a {
+  color: var(--link);
+}
+
+.fo-panel fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+}
+
+.fo-panel legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.fo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.fo-field > span {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-strong);
+}
+
+.fo-panel [hidden] {
+  display: none;
+}
+
+.fo-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.fo-field output {
+  font-variant-numeric: tabular-nums;
+  color: var(--link);
+}
+
+.fo-panel input[type="range"] {
+  width: 100%;
+  accent-color: var(--edge-bright);
+}
+
+.studio-panel select,
+.fo-panel input[type="number"] {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font: inherit;
+}
+
+.fo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fo-actions button {
+  flex: 1 1 auto;
+  padding: 9px 14px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fo-actions button:hover:not(:disabled) {
+  background: #133659;
+}
+
+.fo-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fo-actions .fo-primary {
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.fo-actions .fo-primary:hover {
+  background: var(--accent);
+}
+
+.studio-panel :focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.fo-status {
+  position: absolute;
+  inset: auto 0 16px;
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.fo-export {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--edge);
+}
+
+.fo-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.fo-check input {
+  accent-color: var(--edge-bright);
+}
+
+.fo-warn {
+  color: #ffc56b;
+}
+
+.fo-about {
+  margin: 18px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.fo-about summary {
+  cursor: pointer;
+  color: var(--link);
+}
+
+.studio-stage canvas {
+  touch-action: none;
+}
+
+.fo-views {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  max-width: calc(100% - 32px);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(3, 8, 15, 0.82);
+  transform: translateX(-50%);
+}
+
+.fo-views button {
+  padding: 7px 12px;
+  border: 0;
+  border-right: 1px solid var(--edge);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fo-views button:last-child {
+  border-right: 0;
+}
+
+.fo-views button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--text-strong);
+}
+
+.fo-views [hidden],
+.fo-views[hidden],
+.fo-empty[hidden] {
+  display: none;
+}
+
+.fo-empty {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 360px;
+  padding: 0 16px;
+  text-align: center;
+  color: var(--text);
+}
+
+.fo-empty p {
+  margin: 0;
+}
+
+.fo-dragging {
+  outline: 2px dashed var(--link);
+  outline-offset: -10px;
+}
+
+@media (max-width: 480px) {
+  .fo-views button {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+}

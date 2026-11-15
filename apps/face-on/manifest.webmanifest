@@ -1,0 +1,18 @@
+{
+  "name": "Face-On Galaxy",
+  "short_name": "Face-On Galaxy",
+  "description": "Turn a photo of a tilted spiral galaxy into an estimate of how it looks face-on: remove the stars, fit the disk's outline, stretch it into a circle and put the stars back.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#03080f",
+  "theme_color": "#071627",
+  "icons": [
+    {
+      "src": "../../assets/img/mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
