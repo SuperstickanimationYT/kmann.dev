@@ -40,6 +40,7 @@ can be lifted out later without untangling the rest.
      title: 'Wave Tank',
      href: 'apps/wave-tank/',
      category: 'simulations',
+     tags: ['Simulation', 'Vibecoded'],
      poster: 'assets/img/posters/wave-tank.webp',
      blurb: 'One line, shown on hover.',
      status: 'live',
@@ -47,7 +48,8 @@ can be lifted out later without untangling the rest.
    ```
 
 `category` is the `id` of one of the `CATEGORIES` at the top of the same file; the home
-page groups cards under those headings, and its search bar matches titles and blurbs.
+page groups cards under those headings. `tags` show on the card, any mix of Game, Simulation,
+Generator, Tool, Vibecoded and Manually coded. The search bar matches titles, blurbs and tags.
 
 `status: 'planned'` renders a dashed placeholder card and ignores `href`.
 
