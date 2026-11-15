@@ -245,7 +245,7 @@ function looksLikeGlowingGas(layer, x, y, reach) {
   return greenDeficit >= PINK_FLOOR && greenDeficit >= PINK_SHARE * (r + g + b);
 }
 
-function removeAtScale(starless, nucleus, radius, sensitivity, guard, keepPink) {
+function removeAtScale(starless, nucleus, radius, sensitivity, guard, knots) {
   const { width, height } = starless;
   const light = luminance(starless);
   const background = open(light, width, height, radius);
@@ -265,7 +265,8 @@ function removeAtScale(starless, nucleus, radius, sensitivity, guard, keepPink) 
       continue;
     }
     const reach = extent * HALO_MARGIN + 1;
-    if (keepPink && looksLikeGlowingGas(starless, x, y, reach)) {
+    if (knots && looksLikeGlowingGas(starless, x, y, reach)) {
+      knots.push({ x, y, reach });
       markCovered(covered, width, height, x, y, reach + 1);
       continue;
     }
@@ -374,18 +375,19 @@ export function removeStars(image, { radius, sensitivity, keepPink }) {
   const starless = { width, height, r: Float32Array.from(image.r), g: Float32Array.from(image.g), b: Float32Array.from(image.b) };
   const spiked = removeSpikedStars(starless, luminance(image), nucleus, radius, sensitivity, 2 * radius);
   let count = spiked.count;
-  for (const scale of starScales(radius)) count += removeAtScale(starless, nucleus, scale, sensitivity, 2 * radius, keepPink);
+  const knots = keepPink ? [] : null;
+  for (const scale of starScales(radius)) count += removeAtScale(starless, nucleus, scale, sensitivity, 2 * radius, knots);
   const stars = { width, height };
   for (const key of CHANNELS) {
     const out = new Float32Array(width * height);
     for (let i = 0; i < out.length; i += 1) out[i] = Math.max(0, image[key][i] - starless[key][i]);
     stars[key] = out;
   }
-  return { starless, stars, count, spikeAngles: spiked.angles.toSorted((a, b) => a - b) };
+  return { starless, stars, count, knots: knots ?? [], spikeAngles: spiked.angles.toSorted((a, b) => a - b) };
 }
 
 export function keepStars(image) {
   const { width, height } = image;
   const empty = () => new Float32Array(width * height);
-  return { starless: image, stars: { width, height, r: empty(), g: empty(), b: empty() }, count: 0, spikeAngles: [] };
+  return { starless: image, stars: { width, height, r: empty(), g: empty(), b: empty() }, count: 0, knots: [], spikeAngles: [] };
 }

@@ -10,6 +10,8 @@ const HANDLE_RADIUS = 7;
 const HANDLE_REACH = 18;
 const STEEP_TILT = 70;
 const DAB_SPACING = 0.4;
+const KNOT_SETTLE_MS = 200;
+const CHANNELS = ['r', 'g', 'b'];
 
 const KNOWN_GALAXIES = [
   ['M33, Triangulum', 55],
@@ -225,12 +227,34 @@ function paintDabs(layer, dabs) {
   for (const { x, y, radius } of dabs) paintOver(layer, { cx: x, cy: y }, radius);
 }
 
+function insideOutline({ x, y }) {
+  const { cx, cy, a, ratio, angle } = state.outline;
+  const dx = x - cx;
+  const dy = y - cy;
+  const along = dx * Math.cos(angle) + dy * Math.sin(angle);
+  const across = -dx * Math.sin(angle) + dy * Math.cos(angle);
+  return (along / a) ** 2 + (across / (a * ratio)) ** 2 <= 1;
+}
+
+function withoutStrayKnots() {
+  const { removal } = state;
+  const starless = copyLayer(removal.starless);
+  const strays = state.outline ? removal.knots.filter((knot) => !insideOutline(knot)) : [];
+  if (!strays.length) return { starless, stars: removal.stars };
+  for (const { x, y, reach } of strays) paintOver(starless, { cx: x, cy: y }, reach);
+  const stars = copyLayer(removal.stars);
+  for (const key of CHANNELS) {
+    for (let i = 0; i < starless[key].length; i += 1) stars[key][i] += removal.starless[key][i] - starless[key][i];
+  }
+  return { starless, stars };
+}
+
 function applyStrokes() {
-  const starless = copyLayer(state.removal.starless);
+  const { starless, stars } = withoutStrayKnots();
   for (const stroke of state.strokes) paintDabs(starless, stroke);
-  state.layers = { ...state.removal, starless };
+  state.layers = { ...state.removal, starless, stars };
   state.canvases.starless = layerCanvas(starless);
-  state.canvases.stars = layerCanvas(state.removal.stars, 1.6);
+  state.canvases.stars = layerCanvas(stars, 1.6);
   undoButton.disabled = !state.strokes.length;
   clearButton.disabled = !state.strokes.length;
   invalidateFaceOn();
@@ -259,6 +283,13 @@ function repaintStarless(dabs) {
   state.canvases.starless.getContext('2d').putImageData(patch, left, top);
 }
 
+let knotTimer = 0;
+function outlineMoved() {
+  if (!state.removal?.knots.length) return;
+  window.clearTimeout(knotTimer);
+  knotTimer = window.setTimeout(applyStrokes, KNOT_SETTLE_MS);
+}
+
 function fit() {
   const result = fitOutline(state.layers.starless, setting('reach') / 100);
   state.outline = refineOutline(state.layers.starless, result.outline, thickness());
@@ -269,6 +300,7 @@ function fit() {
       : '';
   syncOutlineFields();
   invalidateFaceOn();
+  outlineMoved();
 }
 
 function normalisedAngle(angle) {
@@ -510,6 +542,7 @@ function dragTo(point) {
   state.fitNote = '';
   syncOutlineFields();
   invalidateFaceOn();
+  outlineMoved();
 }
 
 let stroke = null;
@@ -617,10 +650,12 @@ form.addEventListener('input', (event) => {
     presetSelect.value = '';
     syncOutlineFields();
     invalidateFaceOn();
+    outlineMoved();
   } else if (name === 'angle') {
     state.outline.angle = (Number(event.target.value) * Math.PI) / 180;
     syncOutlineFields();
     invalidateFaceOn();
+    outlineMoved();
   } else if (name === 'thickness') {
     syncOutlineFields();
     invalidateFaceOn();
@@ -662,6 +697,7 @@ presetSelect.addEventListener('change', () => {
   state.fitNote = '';
   syncOutlineFields();
   invalidateFaceOn();
+  outlineMoved();
 });
 
 document.querySelector('[data-fit]').addEventListener('click', () => {
