@@ -6,6 +6,8 @@ const MOST_FIELD_STARS = 260;
 const MOST_BACKGROUND_GALAXIES = 900;
 const STAR_COUNT_SLOPE = 0.32;
 const FAINTEST_STAR = 0.0000025;
+const MOST_MAGNITUDES_BRIGHTER = 8.5;
+const DETECTOR_WHITE_SHARE = 0.4;
 
 function blackbodyColour(kelvin) {
   const t = kelvin / 100;
@@ -20,13 +22,13 @@ function fieldStars(random, amount) {
   const count = Math.round(MOST_FIELD_STARS * amount ** 1.5);
   const stars = [];
   for (let i = 0; i < count; i++) {
-    const magnitudesBrighter = Math.min(7.5, -Math.log10(Math.max(random.next(), 1e-9)) / STAR_COUNT_SLOPE);
+    const magnitudesBrighter = Math.min(MOST_MAGNITUDES_BRIGHTER, -Math.log10(Math.max(random.next(), 1e-9)) / STAR_COUNT_SLOPE);
     const flux = FAINTEST_STAR * 10 ** (0.4 * magnitudesBrighter);
     const kelvin = random.pick([[3400, 2], [4300, 4], [5200, 5], [6000, 4], [7500, 2], [11000, 1]]) * random.between(0.9, 1.1);
     stars.push({
       place: [random.between(-0.5, 0.5) * ASPECT, random.between(-0.5, 0.5)],
       flux,
-      colour: blackbodyColour(kelvin),
+      colour: blackbodyColour(kelvin).map((channel) => DETECTOR_WHITE_SHARE + (1 - DETECTOR_WHITE_SHARE) * channel),
     });
   }
   return stars;

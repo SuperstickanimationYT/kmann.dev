@@ -1,5 +1,7 @@
 import { NOISE } from './noise.js';
 
+const SPIKE_SPREAD = '25.0';
+
 const QUAD_CORNER = `
 vec2 quadCorner() {
   return vec2(gl_VertexID & 1, gl_VertexID >> 1) * 2.0 - 1.0;
@@ -14,6 +16,8 @@ const PSF = `
 uniform float uPsfSigma;
 uniform float uHaloRadius;
 uniform float uHaloFraction;
+uniform float uWingRadius;
+uniform float uWingFraction;
 
 const vec3 WAVELENGTH = vec3(1.22, 1.0, 0.8);
 
@@ -23,7 +27,10 @@ vec3 psfCore(vec2 offset) {
   vec3 haloRadius = uHaloRadius * WAVELENGTH;
   vec3 haloSpread = 1.0 + dot(offset, offset) / (haloRadius * haloRadius);
   vec3 halo = 1.0 / (haloSpread * haloSpread * 3.1415927 * haloRadius * haloRadius);
-  return (1.0 - uHaloFraction) * core + uHaloFraction * halo;
+  vec3 wingRadius = uWingRadius * WAVELENGTH;
+  vec3 wingSpread = 1.0 + dot(offset, offset) / (wingRadius * wingRadius);
+  vec3 wing = 0.5 / (wingSpread * sqrt(wingSpread) * 3.1415927 * wingRadius * wingRadius);
+  return (1.0 - uHaloFraction - uWingFraction) * core + uHaloFraction * halo + uWingFraction * wing;
 }
 `;
 
@@ -38,7 +45,10 @@ uniform vec2 uResolution;
 uniform float uPsfSigma;
 uniform float uHaloRadius;
 uniform float uHaloFraction;
+uniform float uWingRadius;
+uniform float uWingFraction;
 uniform float uSpikeLength;
+uniform float uSpikeWidth;
 uniform float uSpikeStrength;
 uniform float uFluxScale;
 
@@ -51,9 +61,10 @@ ${QUAD_CORNER}
 void main() {
   const float faintest = 0.002;
   float flux = aFlux * uFluxScale;
-  float spikeReach = uSpikeStrength > 0.0 ? uSpikeLength * sqrt(flux * uSpikeStrength / faintest) : 0.0;
+  float spikeReach = uSpikeStrength > 0.0 ? uSpikeLength * pow(flux * uSpikeStrength / (faintest * uSpikeLength * uSpikeWidth * ${SPIKE_SPREAD}), 2.0 / 3.0) : 0.0;
   float haloReach = uHaloRadius * pow(flux * uHaloFraction / (faintest * 3.1415927 * uHaloRadius * uHaloRadius), 0.25);
-  float extent = min(max(max(5.0 * uPsfSigma, spikeReach), haloReach) * 1.3, 0.7 * uResolution.y);
+  float wingReach = uWingRadius * pow(0.5 * flux * uWingFraction / (faintest * 3.1415927 * uWingRadius * uWingRadius), 1.0 / 3.0);
+  float extent = min(max(max(5.0 * uPsfSigma, spikeReach), max(haloReach, wingReach)) * 1.3, 0.7 * uResolution.y);
   vec2 centre = (aPlace * uResolution.y) + 0.5 * uResolution;
   vOffset = quadCorner() * extent;
   vFlux = flux;
@@ -83,11 +94,11 @@ vec3 spike(vec2 offset, float angle) {
   vec2 along = vec2(cos(angle), sin(angle));
   float distanceAlong = abs(dot(offset, along));
   float distanceAcross = dot(offset, vec2(-along.y, along.x));
-  vec3 width = uSpikeWidth * WAVELENGTH;
+  float width = uSpikeWidth;
   vec3 reach = uSpikeLength * WAVELENGTH;
-  vec3 falloff = 1.0 / pow(1.0 + distanceAlong / reach, vec3(2.0));
-  vec3 ripple = 0.8 + 0.2 * cos(distanceAlong / (WAVELENGTH * 1.7));
-  return exp(-distanceAcross * distanceAcross / (2.0 * width * width)) * falloff * ripple / (reach * width * 5.0);
+  vec3 falloff = 1.0 / pow(1.0 + distanceAlong / reach, vec3(1.5));
+  vec3 ripple = 0.94 + 0.06 * cos(distanceAlong / (WAVELENGTH * 1.7));
+  return exp(-distanceAcross * distanceAcross / (2.0 * width * width)) * falloff * ripple / (reach * width * ${SPIKE_SPREAD});
 }
 
 void main() {

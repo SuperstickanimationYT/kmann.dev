@@ -7,22 +7,22 @@ const share = (value) => value / 100;
 
 export const TELESCOPES = {
   hubble: {
-    psfSigma: 0.0011, haloRadius: 0.004, haloFraction: 0.07,
+    psfSigma: 0.0011, haloRadius: 0.004, haloFraction: 0.07, wingRadius: 0.009, wingFraction: 0.14,
     spikeLength: 0.003, spikeWidth: 0.0008, spikeStrength: 0.6, spikeDirections: 2, crossbar: 0,
     seeing: 0.0007, sky: 0.01, noise: 1,
   },
   jwst: {
-    psfSigma: 0.001, haloRadius: 0.0035, haloFraction: 0.1,
+    psfSigma: 0.001, haloRadius: 0.0035, haloFraction: 0.1, wingRadius: 0.008, wingFraction: 0.14,
     spikeLength: 0.004, spikeWidth: 0.0007, spikeStrength: 0.9, spikeDirections: 3, crossbar: 0.35,
     seeing: 0.0006, sky: 0.008, noise: 0.8,
   },
   roman: {
-    psfSigma: 0.0013, haloRadius: 0.004, haloFraction: 0.07,
+    psfSigma: 0.0013, haloRadius: 0.004, haloFraction: 0.07, wingRadius: 0.009, wingFraction: 0.14,
     spikeLength: 0.003, spikeWidth: 0.0008, spikeStrength: 0.5, spikeDirections: 3, crossbar: 0,
     seeing: 0.0009, sky: 0.01, noise: 1,
   },
   ground: {
-    psfSigma: 0.0032, haloRadius: 0.012, haloFraction: 0.16,
+    psfSigma: 0.0032, haloRadius: 0.012, haloFraction: 0.16, wingRadius: 0.02, wingFraction: 0.06,
     spikeLength: 0, spikeWidth: 0, spikeStrength: 0, spikeDirections: 0, crossbar: 0,
     seeing: 0.0028, sky: 0.03, noise: 1.9,
   },
