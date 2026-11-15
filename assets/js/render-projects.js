@@ -22,6 +22,18 @@ function createTitle(project) {
   return title;
 }
 
+function createTagList(project) {
+  const list = document.createElement('span');
+  list.className = 'card-tags';
+  for (const tag of project.tags ?? []) {
+    const chip = document.createElement('span');
+    chip.className = 'card-tag';
+    chip.textContent = tag;
+    list.append(chip);
+  }
+  return list;
+}
+
 function createLiveCard(project) {
   const card = document.createElement('a');
   card.className = 'card';
@@ -29,7 +41,7 @@ function createLiveCard(project) {
   if (project.blurb) {
     card.title = project.blurb;
   }
-  card.append(createPoster(project), createTitle(project));
+  card.append(createPoster(project), createTitle(project), createTagList(project));
   return card;
 }
 
@@ -47,7 +59,7 @@ function createPlannedCard(project) {
 
 function createCard(project) {
   const item = document.createElement('li');
-  item.dataset.searchText = `${project.title} ${project.blurb ?? ''}`.toLowerCase();
+  item.dataset.searchText = [project.title, project.blurb, ...(project.tags ?? [])].join(' ').toLowerCase();
   item.append(project.status === 'planned' ? createPlannedCard(project) : createLiveCard(project));
   return item;
 }
