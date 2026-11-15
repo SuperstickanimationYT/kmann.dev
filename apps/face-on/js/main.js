@@ -201,6 +201,7 @@ async function findStars({ measure = false } = {}) {
     measure,
     radius: setting('starSize'),
     sensitivity: setting('sensitivity'),
+    keepPink: setting('keepPink'),
   });
   if (!layers) return false;
   state.removal = layers;
@@ -604,7 +605,7 @@ function endDrag() {
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
 
-const STAR_FIELDS = new Set(['removeStars', 'starSize', 'sensitivity']);
+const STAR_FIELDS = new Set(['removeStars', 'starSize', 'sensitivity', 'keepPink']);
 const VIEW_FIELDS = new Set(['field', 'spin', 'mirror', 'bulge', 'starsBack']);
 
 form.addEventListener('input', (event) => {
