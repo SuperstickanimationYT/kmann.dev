@@ -1,5 +1,6 @@
 import { demoGalaxy } from './demo.js';
 import { faceOnSpan, fitOutline, ratioFromTilt, refineOutline, renderFaceOn, tiltFromRatio } from './geometry.js';
+import { paintOver } from './stars.js';
 
 const WORK_SIZE = 2048;
 const FULL_SIZE = 2048;
@@ -8,6 +9,7 @@ const INSET_SIZE = 200;
 const HANDLE_RADIUS = 7;
 const HANDLE_REACH = 18;
 const STEEP_TILT = 70;
+const DAB_SPACING = 0.4;
 
 const KNOWN_GALAXIES = [
   ['M33, Triangulum', 55],
@@ -37,10 +39,15 @@ const starCount = document.querySelector('[data-star-count]');
 const warning = document.querySelector('[data-warning]');
 const presetSelect = document.querySelector('[data-preset]');
 const downloadButtons = document.querySelectorAll('[data-download]');
+const undoButton = document.querySelector('[data-undo-stroke]');
+const clearButton = document.querySelector('[data-clear-strokes]');
 
 const state = {
   source: null,
   image: null,
+  removal: null,
+  strokes: [],
+  hover: null,
   layers: null,
   outline: null,
   mode: 'photo',
@@ -132,6 +139,7 @@ async function load(imageData) {
   state.image = toFloat(imageData);
   state.canvases = { photo: imageCanvas(imageData) };
   state.outline = null;
+  state.strokes = [];
   setMode('photo');
   empty.hidden = true;
   viewBar.hidden = false;
@@ -195,18 +203,59 @@ async function findStars({ measure = false } = {}) {
     sensitivity: setting('sensitivity'),
   });
   if (!layers) return false;
-  state.layers = layers;
+  state.removal = layers;
   if (measure) {
     state.starWidth = layers.starWidth;
     form.elements.starSize.value = String(layers.radius);
     refreshOutputs();
   }
-  state.canvases.starless = layerCanvas(state.layers.starless);
-  state.canvases.stars = layerCanvas(state.layers.stars, 1.6);
+  applyStrokes();
   starCount.textContent = describeStars(layers);
   showStatus('');
-  invalidateFaceOn();
   return true;
+}
+
+function copyLayer(layer) {
+  const { width, height } = layer;
+  return { width, height, r: Float32Array.from(layer.r), g: Float32Array.from(layer.g), b: Float32Array.from(layer.b) };
+}
+
+function paintDabs(layer, dabs) {
+  for (const { x, y, radius } of dabs) paintOver(layer, { cx: x, cy: y }, radius);
+}
+
+function applyStrokes() {
+  const starless = copyLayer(state.removal.starless);
+  for (const stroke of state.strokes) paintDabs(starless, stroke);
+  state.layers = { ...state.removal, starless };
+  state.canvases.starless = layerCanvas(starless);
+  state.canvases.stars = layerCanvas(state.removal.stars, 1.6);
+  undoButton.disabled = !state.strokes.length;
+  clearButton.disabled = !state.strokes.length;
+  invalidateFaceOn();
+}
+
+function repaintStarless(dabs) {
+  const { starless } = state.layers;
+  const { width, height } = starless;
+  const reach = Math.max(...dabs.map((dab) => dab.radius)) + 3;
+  const left = Math.max(0, Math.floor(Math.min(...dabs.map((dab) => dab.x)) - reach));
+  const top = Math.max(0, Math.floor(Math.min(...dabs.map((dab) => dab.y)) - reach));
+  const right = Math.min(width, Math.ceil(Math.max(...dabs.map((dab) => dab.x)) + reach));
+  const bottom = Math.min(height, Math.ceil(Math.max(...dabs.map((dab) => dab.y)) + reach));
+  if (right <= left || bottom <= top) return;
+  const patch = new ImageData(right - left, bottom - top);
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      const i = y * width + x;
+      const o = ((y - top) * patch.width + (x - left)) * 4;
+      patch.data[o] = 255 * starless.r[i];
+      patch.data[o + 1] = 255 * starless.g[i];
+      patch.data[o + 2] = 255 * starless.b[i];
+      patch.data[o + 3] = 255;
+    }
+  }
+  state.canvases.starless.getContext('2d').putImageData(patch, left, top);
 }
 
 function fit() {
@@ -391,6 +440,17 @@ function draw() {
     drawOutline(place);
     drawInset();
   }
+  if (state.mode === 'starless' && state.hover) drawBrush(place);
+}
+
+function drawBrush(place) {
+  context.save();
+  context.beginPath();
+  context.arc(place.x + state.hover.x * place.scale, place.y + state.hover.y * place.scale, setting('brush') * place.scale, 0, Math.PI * 2);
+  context.lineWidth = 1.5;
+  context.strokeStyle = 'rgba(95, 227, 255, 0.9)';
+  context.stroke();
+  context.restore();
 }
 
 function setMode(mode) {
@@ -398,7 +458,7 @@ function setMode(mode) {
   for (const button of viewBar.querySelectorAll('[data-view-mode]')) {
     button.setAttribute('aria-pressed', String(button.dataset.viewMode === mode));
   }
-  canvas.style.cursor = '';
+  canvas.style.cursor = mode === 'starless' ? 'crosshair' : '';
   scheduleDraw();
 }
 
@@ -451,6 +511,71 @@ function dragTo(point) {
   invalidateFaceOn();
 }
 
+let stroke = null;
+
+function dabsTowards(point) {
+  const radius = setting('brush');
+  const last = stroke.at(-1);
+  if (!last) return [{ x: point.x, y: point.y, radius }];
+  const steps = Math.floor(Math.hypot(point.x - last.x, point.y - last.y) / (radius * DAB_SPACING));
+  return Array.from({ length: steps }, (_, k) => {
+    const t = (k + 1) / steps;
+    return { x: last.x + (point.x - last.x) * t, y: last.y + (point.y - last.y) * t, radius };
+  });
+}
+
+function brushTo(point) {
+  const dabs = dabsTowards(point);
+  if (!dabs.length) return;
+  stroke.push(...dabs);
+  paintDabs(state.layers.starless, dabs);
+  repaintStarless(dabs);
+}
+
+function endStroke() {
+  if (!stroke) return;
+  state.strokes.push(stroke);
+  stroke = null;
+  undoButton.disabled = false;
+  clearButton.disabled = false;
+  invalidateFaceOn();
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+  if (state.outline && state.mode === 'starless') {
+    stroke = [];
+    brushTo(pointerInImage(event));
+    canvas.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    scheduleDraw();
+  }
+});
+
+canvas.addEventListener('pointermove', (event) => {
+  if (!state.outline || state.mode !== 'starless') return;
+  state.hover = pointerInImage(event);
+  if (stroke) brushTo(state.hover);
+  scheduleDraw();
+});
+
+canvas.addEventListener('pointerleave', () => {
+  state.hover = null;
+  scheduleDraw();
+});
+
+canvas.addEventListener('pointerup', endStroke);
+canvas.addEventListener('pointercancel', endStroke);
+
+undoButton.addEventListener('click', () => {
+  state.strokes.pop();
+  applyStrokes();
+});
+
+clearButton.addEventListener('click', () => {
+  state.strokes = [];
+  applyStrokes();
+});
+
 canvas.addEventListener('pointerdown', (event) => {
   if (!state.outline || state.mode !== 'photo') return;
   const point = pointerInImage(event);
@@ -500,6 +625,8 @@ form.addEventListener('input', (event) => {
     invalidateFaceOn();
   } else if (VIEW_FIELDS.has(name)) {
     invalidateFaceOn();
+  } else if (name === 'brush') {
+    scheduleDraw();
   }
 });
 

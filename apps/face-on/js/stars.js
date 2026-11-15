@@ -162,7 +162,7 @@ function markCovered(covered, width, height, cx, cy, radius) {
   }
 }
 
-function paintOver(layer, star, radius) {
+export function paintOver(layer, star, radius) {
   const { width, height } = layer;
   const ringRadius = radius + 1.5;
   const ringX = [];

@@ -68,6 +68,19 @@
       </fieldset>
 
       <fieldset>
+        <legend>Touch up</legend>
+        <p class="fo-hint">In the No stars view, click or drag over anything left behind to paint it out with the light around it. What you paint out is gone from the face-on view too, even with stars put back.</p>
+        <label class="fo-field">
+          <span>Brush size (px) <output></output></span>
+          <input type="range" name="brush" min="2" max="100" step="1" value="14">
+        </label>
+        <div class="fo-actions">
+          <button type="button" data-undo-stroke disabled>Undo</button>
+          <button type="button" data-clear-strokes disabled>Clear all</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>Disk outline</legend>
         <p class="fo-hint">Drag the dots on the photo: the middle one moves it, the outer ones set the long and short axes.</p>
         <label class="fo-field">
