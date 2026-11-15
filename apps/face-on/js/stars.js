@@ -250,22 +250,50 @@ function removeAtScale(starless, nucleus, radius, sensitivity, guard) {
 
 const SPIKE_CANDIDATES = 300;
 const SPIKE_TEACHERS = 20;
+const SPIKED_HALO = 4;
+
+const HALO_LIMIT = 12;
+const HALO_STEP = 4;
+const HALO_SAMPLES = 64;
+
+function ringMedian(channel, width, height, x, y, r) {
+  const values = [];
+  for (let k = 0; k < HALO_SAMPLES; k += 1) {
+    const angle = (2 * Math.PI * k) / HALO_SAMPLES;
+    values.push(nearest(channel, width, height, x + r * Math.cos(angle), y + r * Math.sin(angle)));
+  }
+  return median(values);
+}
+
+function haloReach(layer, x, y, start, limit, tolerance) {
+  const { width, height } = layer;
+  const brightest = (r) => Math.max(...CHANNELS.map((key) => ringMedian(layer[key], width, height, x, y, r)));
+  let inner = brightest(start);
+  for (let r = start + HALO_STEP; r <= limit; r += HALO_STEP) {
+    const outer = brightest(r);
+    if (inner - outer < tolerance) return r - HALO_STEP;
+    inner = outer;
+  }
+  return limit;
+}
 
 function removeSpikedStars(starless, light, nucleus, radius, sensitivity, guard) {
   const { width, height } = starless;
-  const background = open(light, width, height, 2 * radius);
+  const background = open(light, width, height, SPIKED_HALO * radius);
   const tophat = new Float32Array(light.length);
   for (let i = 0; i < light.length; i += 1) tophat[i] = light[i] - background[i];
   const { middle, spread } = noiseLevels(tophat);
   const strong = middle + spread * (11 - sensitivity) * 2;
-  const candidates = [];
-  for (const i of peaksAbove(tophat, strong, width, height).slice(0, SPIKE_CANDIDATES)) {
+  const claimed = new Uint8Array(light.length);
+  const found = [];
+  for (const i of peaksAbove(tophat, strong, width, height)) {
     const { x, y } = plateauCentre(light, width, height, i % width, Math.floor(i / width), radius, spread);
-    if (Math.hypot(x - nucleus.x, y - nucleus.y) <= guard) continue;
-    if (candidates.some((other) => Math.hypot(other.x - x, other.y - y) < radius * 2)) continue;
+    if (claimed[y * width + x] || Math.hypot(x - nucleus.x, y - nucleus.y) <= guard) continue;
+    markCovered(claimed, width, height, x, y, radius * 2);
     const core = Math.max(1.5, halfWidth(tophat, width, height, x, y));
-    if (Number.isFinite(core)) candidates.push({ x, y, core });
+    if (Number.isFinite(core)) found.push({ x, y, core, glow: tophat[y * width + x] * core * core });
   }
+  const candidates = found.sort((a, b) => b.glow - a.glow).slice(0, SPIKE_CANDIDATES);
   const angles = learnSpikeAngles(light, width, height, candidates.slice(0, SPIKE_TEACHERS));
   if (!angles.length) return { angles, count: 0 };
   const covered = new Uint8Array(light.length);
@@ -273,7 +301,7 @@ function removeSpikedStars(starless, light, nucleus, radius, sensitivity, guard)
   for (const { x, y, core } of candidates) {
     if (covered[y * width + x] || !hasSpikes(light, width, height, x, y, core, angles)) continue;
     const { reaches } = rayReaches(light, width, height, x, y, background[y * width + x] + spread * 1.5, spread * 2, radius * 6);
-    const reach = reaches[RAYS >> 1] * HALO_MARGIN + 1;
+    const reach = haloReach(starless, x, y, reaches[RAYS >> 1], radius * HALO_LIMIT, spread * 2) * HALO_MARGIN + 1;
     paintSpikes(starless, light, x, y, reach, core, angles, spread);
     paintOver(starless, { cx: x, cy: y }, reach);
     markCovered(covered, width, height, x, y, reach + 1);
@@ -295,7 +323,7 @@ export function removeStars(image, { radius, sensitivity }) {
     for (let i = 0; i < out.length; i += 1) out[i] = Math.max(0, image[key][i] - starless[key][i]);
     stars[key] = out;
   }
-  return { starless, stars, count, spikeAngles: spiked.angles };
+  return { starless, stars, count, spikeAngles: spiked.angles.toSorted((a, b) => a - b) };
 }
 
 export function keepStars(image) {

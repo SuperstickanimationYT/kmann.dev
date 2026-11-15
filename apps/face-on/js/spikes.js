@@ -13,30 +13,31 @@ const SPIKE_HIT = 2.5;
 const SPIKE_MEAN = 3.5;
 const MISSES_TO_END = 8;
 
+const LINE_SIDE = 3;
+
 function ringStart(core) {
-  return 2.5 * core + 2;
+  return core + 2;
 }
 
 function ringEnd(core) {
-  return ringStart(core) + Math.max(15, 8 * core);
+  return ringStart(core) + Math.max(20, 3 * core);
 }
 
-function angularProfile(light, width, height, x, y, inner, outer) {
+function lineContrast(light, width, height, x, y, inner, outer) {
   const profile = new Float32Array(BINS);
   for (let bin = 0; bin < BINS; bin += 1) {
     const angle = (bin * Math.PI) / HALF;
-    const dx = Math.cos(angle);
-    const dy = Math.sin(angle);
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
     let sum = 0;
-    let n = 0;
     for (let r = inner; r <= outer; r += 1) {
-      const sx = Math.round(x + dx * r);
-      const sy = Math.round(y + dy * r);
-      if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
-      sum += light[sy * width + sx];
-      n += 1;
+      const px = x + ux * r;
+      const py = y + uy * r;
+      const on = nearest(light, width, height, px, py);
+      const beside = (nearest(light, width, height, px - uy * LINE_SIDE, py + ux * LINE_SIDE) + nearest(light, width, height, px + uy * LINE_SIDE, py - ux * LINE_SIDE)) / 2;
+      sum += on - beside;
     }
-    profile[bin] = n ? sum / n : NaN;
+    profile[bin] = sum / (outer - inner + 1);
   }
   return profile;
 }
@@ -65,7 +66,7 @@ export function learnSpikeAngles(light, width, height, stars) {
   let used = 0;
   for (const { x, y, core } of stars) {
     if (!fits(width, height, x, y, ringEnd(core))) continue;
-    const z = standardised(angularProfile(light, width, height, x, y, ringStart(core), ringEnd(core)));
+    const z = standardised(lineContrast(light, width, height, x, y, ringStart(core), ringEnd(core)));
     const paired = Array.from({ length: HALF }, (_, bin) => Math.min(z[bin], z[bin + HALF]));
     if (Math.max(...paired) < TEACHER_PEAK) continue;
     for (let bin = 0; bin < HALF; bin += 1) folded[bin] += paired[bin];
@@ -101,7 +102,7 @@ function strongestNear(z, bin) {
 }
 
 export function hasSpikes(light, width, height, x, y, core, angles) {
-  const z = standardised(angularProfile(light, width, height, x, y, ringStart(core), ringEnd(core)));
+  const z = standardised(lineContrast(light, width, height, x, y, ringStart(core), ringEnd(core)));
   const strengths = angles.flatMap((angle) => [strongestNear(z, angle), strongestNear(z, angle + HALF)]);
   const hits = strengths.filter((v) => v > SPIKE_HIT).length;
   const mean = strengths.reduce((sum, v) => sum + v, 0) / strengths.length;
