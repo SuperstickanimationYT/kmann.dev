@@ -23,12 +23,19 @@
 
 <main class="studio-stage">
   <canvas class="stp-view" data-view aria-label="3D view of the trajectory. Drag to turn, scroll or pinch to zoom."></canvas>
+  <p class="stp-verdict" data-verdict hidden></p>
   <p class="stp-view-hint">Drag to turn &middot; scroll or pinch to zoom</p>
 </main>
 
 <aside class="studio-panel" data-studio-panel aria-label="Mission">
   <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Mission</button>
   <div class="studio-panel-body">
+    <div class="stp-tabs" role="tablist" aria-label="Mission parts">
+      <button type="button" role="tab" id="stp-tab-trajectory" aria-controls="stp-trajectory" aria-selected="true" data-tab="trajectory">Trajectory</button>
+      <button type="button" role="tab" id="stp-tab-rocket" aria-controls="stp-rocket" aria-selected="false" data-tab="rocket">Rocket</button>
+    </div>
+
+    <div class="stp-tab-panel" role="tabpanel" id="stp-trajectory" aria-labelledby="stp-tab-trajectory" data-tab-panel="trajectory">
     <form class="stp-panel" data-controls>
       <div class="stp-row">
         <label class="stp-field">
@@ -90,6 +97,59 @@
         <button type="button" data-best>Cheapest launch</button>
       </div>
     </section>
+    </div>
+
+    <div class="stp-tab-panel" role="tabpanel" id="stp-rocket" aria-labelledby="stp-tab-rocket" data-tab-panel="rocket" hidden>
+      <section class="stp-report" data-report aria-label="Mission result"></section>
+
+      <form class="stp-panel" data-rocket>
+        <label class="stp-field">
+          <span>Launcher</span>
+          <select name="launcher" data-launcher-picker></select>
+        </label>
+        <label class="stp-field">
+          <span>Spacecraft dry mass (kg)</span>
+          <input type="number" name="payload" min="1" max="100000" step="1" required>
+        </label>
+
+        <fieldset>
+          <legend>Stages, first to fire on top</legend>
+          <ol class="stp-stages" data-stages></ol>
+          <div class="stp-actions">
+            <button type="button" data-add-stage="liquid">+ Liquid stage</button>
+            <button type="button" data-add-stage="solid">+ Solid motor</button>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>At the target</legend>
+          <label class="stp-field">
+            <span>Goal</span>
+            <select name="goal">
+              <option value="orbit">Enter orbit</option>
+              <option value="flyby">Fly past</option>
+            </select>
+          </label>
+          <div class="stp-row" data-orbit-only>
+            <label class="stp-field">
+              <span>Lowest point (km)</span>
+              <input type="number" name="periapsisAltitude" min="50" max="10000000" step="1" required>
+            </label>
+            <label class="stp-field">
+              <span>Highest point (km)</span>
+              <input type="number" name="apoapsisAltitude" min="50" max="100000000" step="1" required>
+            </label>
+          </div>
+        </fieldset>
+      </form>
+
+      <p class="stp-about">
+        Launcher capacity comes from NASA's Launch Services Program performance site. Engines are real:
+        RL10, AJ10, R-4D and the Star 48BV solid motor. Cryogenic propellant boils off during the cruise,
+        faster near the Sun, and hydrogen goes faster than oxygen. Once one runs short, the rest of the other
+        is dead weight.
+      </p>
+    </div>
 
     <p class="stp-about">
       Planet positions come from JPL's published orbital elements, and each trajectory is a two-body
