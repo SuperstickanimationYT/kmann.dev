@@ -237,6 +237,14 @@ const PROJECTS = [
     status: 'live',
   },
   {
+    title: 'Space Travel Planner',
+    href: 'apps/space-travel-planner/',
+    category: 'simulations',
+    tags: ['Simulation', 'Vibecoded'],
+    blurb: 'Find launch windows between planets in 3D from real JPL planet positions, and see what each trajectory costs in launch energy and arrival speed.',
+    status: 'wip',
+  },
+  {
     title: 'Star Systems',
     href: 'apps/star-systems/',
     category: 'simulations',

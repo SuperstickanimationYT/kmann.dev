@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space Travel Planner &mdash; kmann314</title>
+<meta name="description" content="Find launch windows between planets in 3D, from real JPL planet positions, and see what each trajectory costs.">
+<link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<link rel="stylesheet" href="../../assets/css/studio.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="app-page studio">
+
+<header class="studio-bar">
+  <a class="mark" href="../../" aria-label="All projects">
+    <img src="../../assets/img/mark.svg" alt="">
+  </a>
+  <h1 class="studio-title">Space Travel Planner</h1>
+  <span class="wip-tag" title="This app is unfinished. Expect bugs and missing parts.">Work in progress</span>
+</header>
+
+<main class="studio-stage">
+  <canvas class="stp-view" data-view aria-label="3D view of the trajectory. Drag to turn, scroll or pinch to zoom."></canvas>
+  <p class="stp-view-hint">Drag to turn &middot; scroll or pinch to zoom</p>
+</main>
+
+<aside class="studio-panel" data-studio-panel aria-label="Mission">
+  <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Mission</button>
+  <div class="studio-panel-body">
+    <form class="stp-panel" data-controls>
+      <div class="stp-row">
+        <label class="stp-field">
+          <span>From</span>
+          <select name="from" data-planet-picker></select>
+        </label>
+        <label class="stp-field">
+          <span>To</span>
+          <select name="to" data-planet-picker></select>
+        </label>
+      </div>
+
+      <fieldset>
+        <legend>Search</legend>
+        <div class="stp-row">
+          <label class="stp-field">
+            <span>Launch from</span>
+            <input type="date" name="windowStart" min="1800-01-01" max="2999-12-31" required>
+          </label>
+          <label class="stp-field">
+            <span>For (years)</span>
+            <input type="number" name="windowYears" min="0.25" max="20" step="0.25" required>
+          </label>
+        </div>
+        <div class="stp-row">
+          <label class="stp-field">
+            <span>Shortest trip (days)</span>
+            <input type="number" name="flightMin" min="10" max="40000" step="1" required>
+          </label>
+          <label class="stp-field">
+            <span>Longest trip (days)</span>
+            <input type="number" name="flightMax" min="20" max="60000" step="1" required>
+          </label>
+        </div>
+        <label class="stp-field">
+          <span>Colour by</span>
+          <select name="metric">
+            <option value="c3">Launch energy (C3)</option>
+            <option value="arrivalSpeed">Arrival speed</option>
+          </select>
+        </label>
+      </fieldset>
+    </form>
+
+    <section class="stp-porkchop" aria-label="Launch window plot">
+      <canvas data-porkchop aria-label="Launch date across, trip length up. Brighter is cheaper. Click to pick a trajectory."></canvas>
+      <p class="stp-hint" data-readout>Computing&hellip;</p>
+    </section>
+
+    <section class="stp-chosen" aria-label="Chosen trajectory">
+      <dl class="stp-facts" data-facts></dl>
+      <ul class="stp-notes" data-notes></ul>
+      <label class="stp-field">
+        <span>Mission time <output data-mission-date></output></span>
+        <input type="range" data-mission-time min="0" max="1000" step="1" value="0">
+      </label>
+      <div class="stp-actions">
+        <button type="button" data-play>Play</button>
+        <button type="button" data-best>Cheapest launch</button>
+      </div>
+    </section>
+
+    <p class="stp-about">
+      Planet positions come from JPL's published orbital elements, and each trajectory is a two-body
+      Lambert solution around the Sun. Mission planners start from the same model before they refine it
+      with full gravity simulations. The brightest spot is the cheapest launch; the gold ring marks it.
+    </p>
+    <p class="studio-footer"><a href="../../about.html">About me</a> &middot; &copy; 2026 kmann314</p>
+    <button type="button" class="save-offline" data-save-offline hidden></button>
+  </div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="../../assets/js/studio.js"></script>
+<script type="module" src="../../assets/js/offline.js"></script>
+</body>
+</html>
