@@ -37,6 +37,12 @@
 
     <div class="stp-tab-panel" role="tabpanel" id="stp-trajectory" aria-labelledby="stp-tab-trajectory" data-tab-panel="trajectory">
     <form class="stp-panel" data-controls>
+      <label class="stp-field">
+        <span>Example mission</span>
+        <select name="preset" data-preset-picker>
+          <option value="">Pick one to load it</option>
+        </select>
+      </label>
       <div class="stp-row">
         <label class="stp-field">
           <span>From</span>
@@ -47,6 +53,12 @@
           <select name="to" data-planet-picker></select>
         </label>
       </div>
+      <label class="stp-field">
+        <span>Swing past on the way</span>
+        <select name="via" data-planet-picker>
+          <option value="">Nothing, fly direct</option>
+        </select>
+      </label>
 
       <fieldset>
         <legend>Search</legend>
@@ -75,6 +87,7 @@
           <select name="metric">
             <option value="c3">Launch energy (C3)</option>
             <option value="arrivalSpeed">Arrival speed</option>
+            <option value="totalDeltaV">Total Δv from low orbit</option>
           </select>
         </label>
       </fieldset>

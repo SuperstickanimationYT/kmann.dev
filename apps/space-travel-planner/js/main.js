@@ -1,15 +1,16 @@
 import { createView } from './view.js';
 import { createPorkchopPlot } from './porkchop-plot.js';
-import { directTransferOrNull } from './transfer.js';
+import { DIRECT_GRID, FLYBY_GRID } from './porkchop.js';
+import { routeOrNull } from './transfer.js';
+import { PRESETS } from './presets.js';
 import { PLANETS, PLANET_LOOKS, hohmannFlightDays, synodicPeriodDays, yearsFromDays } from './planets.js';
 import { DAYS_PER_YEAR, isoDate, julianFromIsoDate, julianFromUtcMs } from './time.js';
 import { LAUNCHERS } from './launchers.js';
-import { defaultApoapsisAltitude, defaultPeriapsisAltitude } from './bodies.js';
+import { BODIES, defaultApoapsisAltitude, defaultPeriapsisAltitude } from './bodies.js';
 import { simulateMission } from './mission.js';
 import { renderReport } from './mission-report.js';
 import { createRocketEditor } from './rocket-editor.js';
 
-const GRID = { columns: 140, rows: 110 };
 const RECOMPUTE_DELAY_MS = 250;
 const PLAY_SECONDS = 8;
 const SHORTEST_OVER_HOHMANN = 0.4;
@@ -32,6 +33,7 @@ const DEFAULT_ROCKET = {
 const METRICS = {
   c3: { label: 'C3', format: (value) => `${value.toFixed(1)} km²/s²` },
   arrivalSpeed: { label: 'arrival speed', format: (value) => `${value.toFixed(2)} km/s` },
+  totalDeltaV: { label: 'total Δv', format: (value) => `${value.toFixed(2)} km/s` },
 };
 
 const form = document.querySelector('[data-controls]');
@@ -61,17 +63,21 @@ let playing = 0;
 
 rocketForm.elements.launcher.append(...Object.entries(LAUNCHERS).map(([key, launcher]) => new Option(launcher.name, key)));
 
+form.elements.preset.append(...Object.entries(PRESETS).map(([key, preset]) => new Option(preset.name, key)));
+
 for (const picker of document.querySelectorAll('[data-planet-picker]')) {
   picker.append(...PLANETS.map((planet) => new Option(PLANET_LOOKS[planet].name, planet)));
 }
 
 function suggestRanges() {
-  const { from, to } = form.elements;
+  const { from, to, via } = form.elements;
   if (from.value === to.value) return;
   const today = julianFromUtcMs(Date.now());
-  const hohmann = hohmannFlightDays(from.value, to.value, today);
-  const synodicYears = yearsFromDays(synodicPeriodDays(from.value, to.value, today));
+  const flyingBy = via.value && via.value !== from.value && via.value !== to.value;
+  const hohmann = flyingBy ? hohmannFlightDays(from.value, via.value, today) + hohmannFlightDays(via.value, to.value, today) : hohmannFlightDays(from.value, to.value, today);
+  const synodicYears = flyingBy ? Infinity : yearsFromDays(synodicPeriodDays(from.value, to.value, today));
   const windowYears = Math.min(WINDOW_YEARS_RANGE[1], Math.max(WINDOW_YEARS_RANGE[0], synodicYears * WINDOW_OVER_SYNODIC));
+  if (flyingBy) form.elements.metric.value = 'totalDeltaV';
   form.elements.windowYears.value = Math.round(windowYears * 4) / 4;
   form.elements.flightMin.value = Math.round(hohmann * SHORTEST_OVER_HOHMANN);
   form.elements.flightMax.value = Math.round(hohmann * LONGEST_OVER_HOHMANN);
@@ -100,6 +106,16 @@ function updateMission() {
   rocketForm.querySelector('[data-orbit-only]').hidden = field('goal') !== 'orbit';
 }
 
+function applyPreset(preset) {
+  for (const [name, value] of Object.entries(preset.trajectory)) form.elements[name].value = value;
+  suggestRanges();
+  for (const [name, value] of Object.entries(preset.search)) form.elements[name].value = value;
+  const { stages, ...rocket } = preset.rocket;
+  for (const [name, value] of Object.entries(rocket)) rocketForm.elements[name].value = value;
+  rocketEditor.set(stages);
+  recompute();
+}
+
 function showTab(name) {
   tabs.forEach((tab) => tab.setAttribute('aria-selected', String(tab.dataset.tab === name)));
   tabPanels.forEach((panel) => {
@@ -113,10 +129,20 @@ function readSpec() {
   const flightMin = Number(field('flightMin'));
   const flightMax = Number(field('flightMax'));
   if (field('from') === field('to')) return { problem: 'Pick two different planets.' };
+  if (field('via') && (field('via') === field('from') || field('via') === field('to'))) return { problem: 'Swing past a third planet, not the start or the target.' };
   if (!Number.isFinite(departStart)) return { problem: 'Pick a launch date.' };
   if (!(flightMax > flightMin && flightMin > 0)) return { problem: 'The longest trip has to be longer than the shortest.' };
   return {
-    spec: { from: field('from'), to: field('to'), departStart, departDays: Number(field('windowYears')) * DAYS_PER_YEAR, flightMin, flightMax, ...GRID },
+    spec: {
+      from: field('from'),
+      via: field('via') || null,
+      to: field('to'),
+      departStart,
+      departDays: Number(field('windowYears')) * DAYS_PER_YEAR,
+      flightMin,
+      flightMax,
+      ...(field('via') ? FLYBY_GRID : DIRECT_GRID),
+    },
   };
 }
 
@@ -128,7 +154,7 @@ function recompute() {
       readout.textContent = problem;
       return;
     }
-    readout.textContent = 'Computing…';
+    readout.textContent = spec.via ? 'Searching flyby dates for every cell, a few seconds…' : 'Computing…';
     latestRequest += 1;
     worker.postMessage({ id: latestRequest, spec });
   }, RECOMPUTE_DELAY_MS);
@@ -142,8 +168,8 @@ worker.addEventListener('message', ({ data }) => {
   describeHover(null);
 });
 
-function choose({ index, departJd, flightDays }) {
-  const transfer = directTransferOrNull(grid.from, grid.to, departJd, departJd + flightDays);
+function choose({ index, departJd, flightDays, flybyJd }) {
+  const transfer = routeOrNull({ from: grid.from, via: grid.via, to: grid.to, departJd, flightDays, flybyJd });
   if (!transfer) return;
   chosen = transfer;
   plot.pick(index);
@@ -198,7 +224,14 @@ function showFacts(transfer) {
   addFact('Speed leaving', `${Math.sqrt(transfer.c3).toFixed(2)} km/s`, `Speed relative to ${fromName} once clear of its gravity.`);
   addFact('Launch direction (DLA)', `${declination.toFixed(1)}°`, `How far north or south of ${fromName}'s equator the departure points.`);
   addFact('Arrival speed', `${transfer.arrivalSpeed.toFixed(2)} km/s`, `Speed relative to ${PLANET_LOOKS[transfer.to].name} on approach. Getting into orbit means cancelling most of it.`);
-  addFact('Trip angle', `${sweep.toFixed(0)}°`, 'How far around the Sun the spacecraft travels.');
+  if (transfer.via) {
+    const viaName = PLANET_LOOKS[transfer.via].name;
+    addFact(`Passes ${viaName}`, isoDate(transfer.flybyJd));
+    addFact('Closest approach', `${Math.round(transfer.flyby.periapsisRadius - BODIES[transfer.via].radius).toLocaleString('en')} km`, `Height above ${viaName} at the closest point of the swing-by.`);
+    addFact('Burn during flyby', `${transfer.flyby.deltaV.toFixed(2)} km/s`, 'Extra push needed when the speeds in and out of the flyby differ, or the bend is too sharp.');
+  }
+  addFact('Total Δv from low orbit', `${transfer.totalDeltaV.toFixed(2)} km/s`, 'Escape burn from a low parking orbit, plus any flyby burn, plus the arrival speed to cancel.');
+  addFact(transfer.via ? 'First leg angle' : 'Trip angle', `${sweep.toFixed(0)}°`, 'How far around the Sun the spacecraft travels.');
   addFact('Plane tilt', `${tilt.toFixed(2)}°`, 'Tilt of the trajectory from the plane of Earth\'s orbit.');
 
   notes.replaceChildren();
@@ -215,7 +248,7 @@ function showFacts(transfer) {
   if (transfer.c3 > HUGE_C3) {
     addNote('A C3 above 100 km²/s² is out of reach for nearly every launcher. New Horizons needed 158 to send a 478 kg probe, using an Atlas V 551 plus an extra solid rocket stage.');
   }
-  if (yearsFromDays(flightDays) > LONG_CRUISE_YEARS) {
+  if (!transfer.via && yearsFromDays(flightDays) > LONG_CRUISE_YEARS) {
     addNote('Trips this long are why outer-planet missions use gravity assists. Voyager 2 reached Neptune in 12 years by swinging past Jupiter, Saturn and Uranus.');
   }
 }
@@ -260,7 +293,12 @@ form.addEventListener('input', (event) => {
     }
     return;
   }
-  if (event.target.name === 'from' || event.target.name === 'to') suggestRanges();
+  if (event.target.name === 'preset') {
+    if (event.target.value) applyPreset(PRESETS[event.target.value]);
+    return;
+  }
+  form.elements.preset.value = '';
+  if (['from', 'to', 'via'].includes(event.target.name)) suggestRanges();
   recompute();
 });
 form.addEventListener('submit', (event) => event.preventDefault());

@@ -3,6 +3,7 @@ import { elementsToState, propagate } from './kepler.js';
 import { PLANET_LOOKS } from './planets.js';
 import { createCamera, orbitCamera, projector, zoomCamera } from './camera.js';
 import { norm, scale } from './vector.js';
+import { legsOf } from './transfer.js';
 
 const ORBIT_SAMPLES = 240;
 const ARC_SAMPLES = 360;
@@ -26,11 +27,16 @@ export function orbitPath(planet, julianDate) {
   });
 }
 
-export function transferPath(transfer) {
-  const seconds = (transfer.arriveJd - transfer.departJd) * DAY_SECONDS;
-  return Array.from({ length: ARC_SAMPLES + 1 }, (_, step) =>
-    toAu(step === 0 ? transfer.departure.r : propagate(transfer.departure.r, transfer.v1, (seconds * step) / ARC_SAMPLES, SUN_MU).r),
-  );
+function legPath(leg, samples) {
+  const seconds = (leg.arriveJd - leg.departJd) * DAY_SECONDS;
+  return Array.from({ length: samples }, (_, step) => toAu(step === 0 ? leg.departure.r : propagate(leg.departure.r, leg.v1, (seconds * step) / samples, SUN_MU).r));
+}
+
+export function transferPath(route) {
+  const legs = legsOf(route);
+  const totalDays = route.arriveJd - route.departJd;
+  const points = legs.flatMap((leg) => legPath(leg, Math.max(2, Math.round((ARC_SAMPLES * (leg.arriveJd - leg.departJd)) / totalDays))));
+  return [...points, toAu(route.arrival.r)];
 }
 
 export function createView(canvas) {
@@ -139,7 +145,7 @@ export function createView(canvas) {
     drawSun(project);
 
     const { transfer, path, orbits, fraction } = scene;
-    const featured = (planet) => planet === transfer.from || planet === transfer.to;
+    const featured = (planet) => planet === transfer.from || planet === transfer.to || planet === transfer.via;
     const now = transfer.departJd + (transfer.arriveJd - transfer.departJd) * fraction;
 
     for (const planet of PLANETS) {
@@ -156,6 +162,7 @@ export function createView(canvas) {
 
     ring(project, toAu(transfer.departure.r), 9, `${PLANET_LOOKS[transfer.from].color}aa`);
     ring(project, toAu(transfer.arrival.r), 9, `${PLANET_LOOKS[transfer.to].color}aa`);
+    if (transfer.via) ring(project, toAu(transfer.legs[1].departure.r), 9, `${PLANET_LOOKS[transfer.via].color}aa`);
 
     for (const planet of PLANETS) {
       const position = toAu(planetState(planet, now).r);
@@ -168,11 +175,12 @@ export function createView(canvas) {
   }
 
   function show(transfer) {
-    const routeChanged = !scene || scene.transfer.from !== transfer.from || scene.transfer.to !== transfer.to;
+    const routeChanged = !scene || ['from', 'via', 'to'].some((key) => scene.transfer[key] !== transfer[key]);
     const orbits = routeChanged ? Object.fromEntries(PLANETS.map((planet) => [planet, orbitPath(planet, transfer.departJd)])) : scene.orbits;
-    scene = { transfer, path: transferPath(transfer), orbits, fraction: scene?.fraction ?? 0 };
+    const path = transferPath(transfer);
+    scene = { transfer, path, orbits, fraction: scene?.fraction ?? 0 };
     if (routeChanged) {
-      const reach = Math.max(norm(transfer.departure.r), norm(transfer.arrival.r)) / AU_KM;
+      const reach = Math.max(...path.map(norm));
       const portrait = Math.max(1, height / Math.max(1, width));
       camera.distance = Math.max(ZOOM_RANGE[0], Math.min(ZOOM_RANGE[1], reach * FIT_MARGIN * portrait));
     }

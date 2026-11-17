@@ -10,7 +10,7 @@ const RAMP = [
   [1, [9, 22, 44]],
 ];
 const UNSOLVED = [0, 0, 0];
-const WORST_OVER_BEST = 8;
+const WORST_OVER_BEST = { c3: 8, arrivalSpeed: 3, totalDeltaV: 1.6 };
 const CONTOUR_STEPS = 6;
 const TICK_FONT = '11px "Trebuchet MS", system-ui, sans-serif';
 const MONTH_STEPS = [1, 2, 3, 6, 12, 24, 48];
@@ -37,6 +37,7 @@ export function createPorkchopPlot(canvas, { onPick, onHover }) {
   const heat = document.createElement('canvas');
   let grid = null;
   let values = null;
+  let metricKey = 'c3';
   let picked = -1;
   let width = 0;
   let height = 0;
@@ -56,7 +57,7 @@ export function createPorkchopPlot(canvas, { onPick, onHover }) {
   }
 
   function shade(level) {
-    return Math.log(level) / Math.log(WORST_OVER_BEST);
+    return Math.log(level) / Math.log(WORST_OVER_BEST[metricKey]);
   }
 
   function paintHeat() {
@@ -178,6 +179,7 @@ export function createPorkchopPlot(canvas, { onPick, onHover }) {
     index,
     departJd: departAt(grid, index % grid.columns),
     flightDays: flightAt(grid, Math.floor(index / grid.columns)),
+    flybyJd: Number.isFinite(grid.flybyJd[index]) ? grid.flybyJd[index] : null,
   });
 
   let dragging = false;
@@ -203,6 +205,7 @@ export function createPorkchopPlot(canvas, { onPick, onHover }) {
     show(nextGrid, metric) {
       grid = nextGrid;
       values = nextGrid[metric];
+      metricKey = metric;
       paintHeat();
       draw();
     },
