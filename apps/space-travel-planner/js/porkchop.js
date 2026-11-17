@@ -1,4 +1,8 @@
-import { directTransferOrNull } from './transfer.js';
+import { routeOrNull } from './transfer.js';
+
+export const METRIC_KEYS = ['c3', 'arrivalSpeed', 'totalDeltaV'];
+export const DIRECT_GRID = { columns: 140, rows: 110 };
+export const FLYBY_GRID = { columns: 100, rows: 80 };
 
 export function departAt(grid, column) {
   return grid.departStart + (grid.departDays * column) / (grid.columns - 1);
@@ -9,18 +13,22 @@ export function flightAt(grid, row) {
 }
 
 export function porkchopGrid(spec) {
-  const grid = { ...spec, c3: new Float64Array(spec.columns * spec.rows), arrivalSpeed: new Float64Array(spec.columns * spec.rows) };
+  const cells = spec.columns * spec.rows;
+  const grid = { ...spec, flybyJd: new Float64Array(cells), ...Object.fromEntries(METRIC_KEYS.map((key) => [key, new Float64Array(cells)])) };
   for (let row = 0; row < grid.rows; row++) {
-    const flight = flightAt(grid, row);
+    const flightDays = flightAt(grid, row);
     for (let column = 0; column < grid.columns; column++) {
-      const depart = departAt(grid, column);
-      const transfer = directTransferOrNull(spec.from, spec.to, depart, depart + flight);
+      const route = routeOrNull({ from: spec.from, via: spec.via, to: spec.to, departJd: departAt(grid, column), flightDays });
       const index = row * grid.columns + column;
-      grid.c3[index] = transfer ? transfer.c3 : NaN;
-      grid.arrivalSpeed[index] = transfer ? transfer.arrivalSpeed : NaN;
+      for (const key of METRIC_KEYS) grid[key][index] = route ? route[key] : NaN;
+      grid.flybyJd[index] = route?.flybyJd ?? NaN;
     }
   }
   return grid;
+}
+
+export function gridBuffers(grid) {
+  return [grid.flybyJd.buffer, ...METRIC_KEYS.map((key) => grid[key].buffer)];
 }
 
 export function lowestIndex(values) {

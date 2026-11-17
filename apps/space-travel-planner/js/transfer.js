@@ -2,8 +2,25 @@ import { AU_KM, DAY_SECONDS, SUN_MU, planetState } from './ephemeris.js';
 import { lambert } from './lambert.js';
 import { cross, dot, norm, sub } from './vector.js';
 import { propagate, wrapAngle } from './kepler.js';
+import { BODIES, defaultPeriapsisAltitude } from './bodies.js';
+import { escapeFromCircularOrbit } from './burns.js';
+import { poweredFlyby } from './flyby.js';
+import { PARKING_ORBIT_ALTITUDE_KM } from './launchers.js';
 
 const OBLIQUITY_J2000 = (23.43928 * Math.PI) / 180;
+const FLYBY_FRACTION_SAMPLES = 20;
+const FLYBY_FRACTION_RANGE = [0.03, 0.97];
+const GOLDEN_STEPS = 8;
+const GOLDEN = (Math.sqrt(5) - 1) / 2;
+
+export function parkingOrbitAltitude(planet) {
+  return planet === 'earth' ? PARKING_ORBIT_ALTITUDE_KM : defaultPeriapsisAltitude(planet);
+}
+
+export function departureDeltaV(planet, c3) {
+  const body = BODIES[planet];
+  return escapeFromCircularOrbit(c3, body.mu, body.radius + parkingOrbitAltitude(planet));
+}
 
 export function eclipticToEquatorial([x, y, z]) {
   const cos = Math.cos(OBLIQUITY_J2000);
@@ -38,12 +55,84 @@ export function directTransfer(from, to, departJd, arriveJd) {
     arrivalSpeed: norm(arrivalVInf),
     sweep: plane[2] >= 0 === cross(departure.r, arrival.r)[2] >= 0 ? sweep : 2 * Math.PI - sweep,
     inclination: Math.acos(plane[2] / norm(plane)),
+    totalDeltaV: departureDeltaV(from, dot(departureVInf, departureVInf)) + norm(arrivalVInf),
   };
 }
 
 export function directTransferOrNull(from, to, departJd, arriveJd) {
   try {
     return directTransfer(from, to, departJd, arriveJd);
+  } catch {
+    return null;
+  }
+}
+
+export function legsOf(route) {
+  return route.legs ?? [route];
+}
+
+export function flybyRoute(from, via, to, departJd, flybyJd, arriveJd) {
+  const outbound = directTransfer(from, via, departJd, flybyJd);
+  const onward = directTransfer(via, to, flybyJd, arriveJd);
+  const body = BODIES[via];
+  const flyby = poweredFlyby(outbound.arrivalVInf, onward.departureVInf, body.mu, body.radius + defaultPeriapsisAltitude(via));
+  return {
+    ...outbound,
+    to,
+    via,
+    flybyJd,
+    flyby,
+    arriveJd,
+    arrival: onward.arrival,
+    v2: onward.v2,
+    arrivalVInf: onward.arrivalVInf,
+    arrivalSpeed: onward.arrivalSpeed,
+    legs: [outbound, onward],
+    totalDeltaV: departureDeltaV(from, outbound.c3) + flyby.deltaV + onward.arrivalSpeed,
+  };
+}
+
+function flybyRouteOrNull(from, via, to, departJd, flybyJd, arriveJd) {
+  try {
+    return flybyRoute(from, via, to, departJd, flybyJd, arriveJd);
+  } catch {
+    return null;
+  }
+}
+
+export function bestFlybyRoute(from, via, to, departJd, flightDays) {
+  const cost = (fraction) => flybyRouteOrNull(from, via, to, departJd, departJd + fraction * flightDays, departJd + flightDays)?.totalDeltaV ?? Infinity;
+  const [low, high] = FLYBY_FRACTION_RANGE;
+  const step = (high - low) / (FLYBY_FRACTION_SAMPLES - 1);
+  let bestFraction = low;
+  let bestCost = Infinity;
+  for (let sample = 0; sample < FLYBY_FRACTION_SAMPLES; sample++) {
+    const fraction = low + sample * step;
+    const value = cost(fraction);
+    if (value < bestCost) {
+      bestCost = value;
+      bestFraction = fraction;
+    }
+  }
+  if (!Number.isFinite(bestCost)) return null;
+  let left = Math.max(low, bestFraction - step);
+  let right = Math.min(high, bestFraction + step);
+  for (let iteration = 0; iteration < GOLDEN_STEPS; iteration++) {
+    const a = right - GOLDEN * (right - left);
+    const b = left + GOLDEN * (right - left);
+    if (cost(a) < cost(b)) right = b;
+    else left = a;
+  }
+  const refined = (left + right) / 2;
+  const fraction = cost(refined) < bestCost ? refined : bestFraction;
+  return flybyRoute(from, via, to, departJd, departJd + fraction * flightDays, departJd + flightDays);
+}
+
+export function routeOrNull({ from, via, to, departJd, flightDays, flybyJd }) {
+  if (!via) return directTransferOrNull(from, to, departJd, departJd + flightDays);
+  if (flybyJd) return flybyRouteOrNull(from, via, to, departJd, flybyJd, departJd + flightDays);
+  try {
+    return bestFlybyRoute(from, via, to, departJd, flightDays);
   } catch {
     return null;
   }

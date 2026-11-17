@@ -1,5 +1,5 @@
 {
-  "bytes": 104952,
+  "bytes": 118161,
   "files": [
     "./",
     "index.html",
@@ -8,6 +8,7 @@
     "js/burns.js",
     "js/camera.js",
     "js/ephemeris.js",
+    "js/flyby.js",
     "js/kepler.js",
     "js/lambert.js",
     "js/launchers.js",
@@ -19,6 +20,7 @@
     "js/porkchop-plot.js",
     "js/porkchop-worker.js",
     "js/porkchop.js",
+    "js/presets.js",
     "js/rocket-editor.js",
     "js/time.js",
     "js/transfer.js",

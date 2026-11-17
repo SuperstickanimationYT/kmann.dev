@@ -3,6 +3,17 @@ import { PLANET_LOOKS } from './planets.js';
 const kg = (value) => `${Math.round(value).toLocaleString('en')} kg`;
 const kmPerS = (value) => `${value.toFixed(2)} km/s`;
 const COMPONENT_NAMES = { hydrogen: 'hydrogen', oxygen: 'oxygen' };
+const HEAVY_BOILOFF_SHARE = 0.5;
+
+function explainBoiloff(mission) {
+  const heavy = mission.events
+    .filter((event) => event.kind === 'cruise')
+    .flatMap((event) => event.losses)
+    .filter((loss) => loss.before > 0 && loss.lost / loss.before > HEAVY_BOILOFF_SHARE);
+  if (!heavy.length) return null;
+  const names = [...new Set(heavy.map((loss) => COMPONENT_NAMES[loss.component]))].join(' and ');
+  return `Most of the ${names} boiled away during the cruise. Better insulation, such as the sunshade, or a storable propellant that doesn't boil, keeps it for the burns.`;
+}
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -43,6 +54,11 @@ function stepText(event, transfer) {
     const lost = event.losses.map((loss) => `${kg(loss.lost)} of ${COMPONENT_NAMES[loss.component]} (${Math.round((100 * loss.lost) / loss.before)}%)`);
     return `Cruise for ${days} days. Boils off ${lost.join(' and ')}.`;
   }
+  if (event.kind === 'flyby') {
+    const height = Math.round(event.periapsisAltitude).toLocaleString('en');
+    const burn = event.deltaV > 0.0005 ? `, plus a ${kmPerS(event.deltaV)} burn at closest approach` : ' with no burn needed';
+    return `Swings past ${PLANET_LOOKS[event.planet].name} ${height} km above it${burn}.`;
+  }
   return event.goal === 'orbit' ? `In orbit around ${PLANET_LOOKS[transfer.to].name} with ${kg(event.mass)}.` : `Flies past ${PLANET_LOOKS[transfer.to].name} with ${kg(event.mass)}.`;
 }
 
@@ -68,6 +84,6 @@ export function renderReport(container, verdict, mission, transfer) {
   }
   const notes = element('ul', null, 'stp-notes');
   const explanation = explainShortfall(mission.failure ?? {});
-  for (const text of [explanation, ...mission.warnings].filter(Boolean)) notes.append(element('li', text));
+  for (const text of [explainBoiloff(mission), explanation, ...mission.warnings].filter(Boolean)) notes.append(element('li', text));
   container.replaceChildren(heading, steps, notes);
 }

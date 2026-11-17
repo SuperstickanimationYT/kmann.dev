@@ -10,7 +10,8 @@ import {
 } from './burns.js';
 import { LAUNCHERS, LAUNCH_SITE_LATITUDE, PARKING_ORBIT_ALTITUDE_KM, bestC3For, payloadAt } from './launchers.js';
 import { ENGINES, PROPELLANTS, SOLID_MOTORS } from './parts.js';
-import { sunDistancesAlong } from './transfer.js';
+import { legsOf, sunDistancesAlong } from './transfer.js';
+import { PLANET_LOOKS } from './planets.js';
 
 const SEA_LEVEL_GRAVITY = 9.80665;
 const CRUISE_SAMPLES = 200;
@@ -80,6 +81,21 @@ export function simulateMission({ transfer, launcher, payload, stages: specs, go
   const warnings = [];
   const mass = () => payload + stack.reduce((sum, stage) => sum + stageMass(stage), 0);
   const result = (failure = null) => ({ ok: !failure, failure, events, warnings, arrivedMass: mass(), spareDeltaV: failure ? 0 : stackDeltaV(payload, stack) });
+
+  function cruise(leg) {
+    const days = leg.arriveJd - leg.departJd;
+    const distances = sunDistancesAlong(leg, CRUISE_SAMPLES);
+    const losses = [];
+    for (const stage of stack.filter((each) => each.kind === 'liquid')) {
+      for (const [component, nameKey] of [['fuel', 'fuelName'], ['oxidizer', 'oxidizerName']]) {
+        if (!boilsOff(stage[nameKey])) continue;
+        const after = massAfterCruise(stage[nameKey], stage[component], stage.insulation, distances, days / CRUISE_SAMPLES);
+        losses.push({ stage: stage.label, component: stage[nameKey], lost: stage[component] - after, before: stage[component] });
+        stage[component] = after;
+      }
+    }
+    events.push({ kind: 'cruise', days, losses });
+  }
 
   function burn(label, deltaV) {
     const startMass = mass();
@@ -152,18 +168,21 @@ export function simulateMission({ transfer, launcher, payload, stages: specs, go
     if (failure) return result(failure);
   }
 
-  const flightDays = transfer.arriveJd - transfer.departJd;
-  const distances = sunDistancesAlong(transfer, CRUISE_SAMPLES);
-  const losses = [];
-  for (const stage of stack.filter((each) => each.kind === 'liquid')) {
-    for (const [component, nameKey] of [['fuel', 'fuelName'], ['oxidizer', 'oxidizerName']]) {
-      if (!boilsOff(stage[nameKey])) continue;
-      const after = massAfterCruise(stage[nameKey], stage[component], stage.insulation, distances, flightDays / CRUISE_SAMPLES);
-      losses.push({ stage: stage.label, component: stage[nameKey], lost: stage[component] - after, before: stage[component] });
-      stage[component] = after;
+  const legs = legsOf(transfer);
+  for (const [legIndex, leg] of legs.entries()) {
+    cruise(leg);
+    if (legIndex === legs.length - 1) break;
+    const { flyby, via } = transfer;
+    const name = PLANET_LOOKS[via].name;
+    events.push({ kind: 'flyby', planet: via, periapsisAltitude: flyby.periapsisRadius - BODIES[via].radius, deltaV: flyby.deltaV });
+    if (flyby.missingTurn > 0) {
+      warnings.push(`${name} can't bend the path far enough, even skimming past at the lowest safe height. The planner adds a ${flyby.steeringBurn.toFixed(2)} km/s burn to steer the rest of the way.`);
+    }
+    if (flyby.deltaV > SPENT) {
+      const failure = burn(`Burn at ${name}`, flyby.deltaV);
+      if (failure) return result(failure);
     }
   }
-  events.push({ kind: 'cruise', days: flightDays, losses });
 
   if (goal === 'orbit') {
     const toBody = BODIES[transfer.to];
