@@ -3,6 +3,11 @@ import { createPorkchopPlot } from './porkchop-plot.js';
 import { directTransferOrNull } from './transfer.js';
 import { PLANETS, PLANET_LOOKS, hohmannFlightDays, synodicPeriodDays, yearsFromDays } from './planets.js';
 import { DAYS_PER_YEAR, isoDate, julianFromIsoDate, julianFromUtcMs } from './time.js';
+import { LAUNCHERS } from './launchers.js';
+import { defaultApoapsisAltitude, defaultPeriapsisAltitude } from './bodies.js';
+import { simulateMission } from './mission.js';
+import { renderReport } from './mission-report.js';
+import { createRocketEditor } from './rocket-editor.js';
 
 const GRID = { columns: 140, rows: 110 };
 const RECOMPUTE_DELAY_MS = 250;
@@ -17,6 +22,12 @@ const STEEP_PLANE_DEGREES = 5;
 const LONG_CRUISE_YEARS = 8;
 const HUGE_C3 = 100;
 const DEGREES = 180 / Math.PI;
+const DEFAULT_ROCKET = {
+  launcher: 'vulcanVc2',
+  payload: 1000,
+  goal: 'orbit',
+  stages: [{ kind: 'liquid', engine: 'aj10', engines: 1, propellant: 900, insulation: 'sunshade' }],
+};
 
 const METRICS = {
   c3: { label: 'C3', format: (value) => `${value.toFixed(1)} km²/s²` },
@@ -31,6 +42,12 @@ const missionTime = document.querySelector('[data-mission-time]');
 const missionDate = document.querySelector('[data-mission-date]');
 const playButton = document.querySelector('[data-play]');
 const bestButton = document.querySelector('[data-best]');
+const rocketForm = document.querySelector('[data-rocket]');
+const report = document.querySelector('[data-report]');
+const verdict = document.querySelector('[data-verdict]');
+const tabs = document.querySelectorAll('[data-tab]');
+const tabPanels = document.querySelectorAll('[data-tab-panel]');
+const rocketEditor = createRocketEditor(document.querySelector('[data-stages]'), document.querySelectorAll('[data-add-stage]'), updateMission);
 
 const view = createView(document.querySelector('[data-view]'));
 const plot = createPorkchopPlot(document.querySelector('[data-porkchop]'), { onPick: choose, onHover: describeHover });
@@ -41,6 +58,8 @@ let grid = null;
 let chosen = null;
 let recomputeTimer = 0;
 let playing = 0;
+
+rocketForm.elements.launcher.append(...Object.entries(LAUNCHERS).map(([key, launcher]) => new Option(launcher.name, key)));
 
 for (const picker of document.querySelectorAll('[data-planet-picker]')) {
   picker.append(...PLANETS.map((planet) => new Option(PLANET_LOOKS[planet].name, planet)));
@@ -56,6 +75,36 @@ function suggestRanges() {
   form.elements.windowYears.value = Math.round(windowYears * 4) / 4;
   form.elements.flightMin.value = Math.round(hohmann * SHORTEST_OVER_HOHMANN);
   form.elements.flightMax.value = Math.round(hohmann * LONGEST_OVER_HOHMANN);
+  rocketForm.elements.periapsisAltitude.value = defaultPeriapsisAltitude(to.value);
+  rocketForm.elements.apoapsisAltitude.value = defaultApoapsisAltitude(to.value);
+  const fromEarth = from.value === 'earth';
+  rocketForm.elements.launcher.disabled = !fromEarth;
+  rocketForm.elements.launcher.title = fromEarth ? '' : 'Launchers lift off from Earth. Away from Earth the spacecraft starts in a low orbit.';
+}
+
+function updateMission() {
+  if (!chosen) return;
+  const field = (name) => rocketForm.elements[name].value;
+  const payload = Number(field('payload'));
+  if (!(payload > 0)) return;
+  const mission = simulateMission({
+    transfer: chosen,
+    launcher: rocketForm.elements.launcher.disabled ? null : field('launcher'),
+    payload,
+    stages: rocketEditor.get(),
+    goal: field('goal'),
+    periapsisAltitude: Number(field('periapsisAltitude')),
+    apoapsisAltitude: Number(field('apoapsisAltitude')),
+  });
+  renderReport(report, verdict, mission, chosen);
+  rocketForm.querySelector('[data-orbit-only]').hidden = field('goal') !== 'orbit';
+}
+
+function showTab(name) {
+  tabs.forEach((tab) => tab.setAttribute('aria-selected', String(tab.dataset.tab === name)));
+  tabPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.tabPanel !== name;
+  });
 }
 
 function readSpec() {
@@ -101,6 +150,7 @@ function choose({ index, departJd, flightDays }) {
   view.show(transfer);
   showFacts(transfer);
   showMissionDate();
+  updateMission();
 }
 
 function flightText(days) {
@@ -215,9 +265,18 @@ form.addEventListener('input', (event) => {
 });
 form.addEventListener('submit', (event) => event.preventDefault());
 missionTime.addEventListener('input', showMissionDate);
+rocketForm.addEventListener('input', (event) => {
+  if (!event.target.closest('[data-stages]')) updateMission();
+});
+rocketForm.addEventListener('submit', (event) => event.preventDefault());
+tabs.forEach((tab) => tab.addEventListener('click', () => showTab(tab.dataset.tab)));
 playButton.addEventListener('click', play);
 bestButton.addEventListener('click', () => grid && choose(plot.cellOf(plot.best())));
 
+rocketForm.elements.launcher.value = DEFAULT_ROCKET.launcher;
+rocketForm.elements.payload.value = DEFAULT_ROCKET.payload;
+rocketForm.elements.goal.value = DEFAULT_ROCKET.goal;
+rocketEditor.set(DEFAULT_ROCKET.stages);
 form.elements.from.value = 'earth';
 form.elements.to.value = 'mars';
 const today = new Date();

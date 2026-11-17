@@ -1,7 +1,7 @@
-import { DAY_SECONDS, SUN_MU, planetState } from './ephemeris.js';
+import { AU_KM, DAY_SECONDS, SUN_MU, planetState } from './ephemeris.js';
 import { lambert } from './lambert.js';
 import { cross, dot, norm, sub } from './vector.js';
-import { wrapAngle } from './kepler.js';
+import { propagate, wrapAngle } from './kepler.js';
 
 const OBLIQUITY_J2000 = (23.43928 * Math.PI) / 180;
 
@@ -47,4 +47,12 @@ export function directTransferOrNull(from, to, departJd, arriveJd) {
   } catch {
     return null;
   }
+}
+
+export function sunDistancesAlong(transfer, samples) {
+  const seconds = (transfer.arriveJd - transfer.departJd) * DAY_SECONDS;
+  return Array.from({ length: samples }, (_, step) => {
+    const elapsed = (seconds * (step + 0.5)) / samples;
+    return norm(propagate(transfer.departure.r, transfer.v1, elapsed, SUN_MU).r) / AU_KM;
+  });
 }

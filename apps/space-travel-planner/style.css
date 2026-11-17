@@ -184,3 +184,152 @@
   outline: 2px solid var(--link);
   outline-offset: 2px;
 }
+
+.stp-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.stp-tabs button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stp-tabs button[aria-selected="true"] {
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: var(--text-strong);
+}
+
+.stp-tab-panel[hidden],
+.stp-panel [hidden] {
+  display: none;
+}
+
+.stp-verdict {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  max-width: 560px;
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid #ff8a6b;
+  border-radius: 8px;
+  background: rgba(7, 22, 39, 0.85);
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-strong);
+  pointer-events: none;
+}
+
+.stp-verdict-ok {
+  border-left-color: #6be3a0;
+}
+
+.stp-report {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.stp-report-ok,
+.stp-report-fail {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-strong);
+}
+
+.stp-report-ok {
+  background: rgba(107, 227, 160, 0.12);
+}
+
+.stp-report-fail {
+  background: rgba(255, 138, 107, 0.14);
+}
+
+.stp-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stp-steps ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--text-dim);
+}
+
+.stp-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: stage;
+}
+
+.stp-stage details {
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.stp-stage summary {
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--text-strong);
+  cursor: pointer;
+  counter-increment: stage;
+}
+
+.stp-stage summary::before {
+  content: counter(stage) ". ";
+  color: var(--text-dim);
+}
+
+.stp-stage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 10px 10px;
+}
+
+.stp-stage-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.stp-stage-tools button {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}

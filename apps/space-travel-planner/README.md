@@ -9,7 +9,18 @@ The page searches launch windows between two planets and draws the chosen trajec
 - `js/lambert.js` solves Lambert's problem with Izzo's method, for transfers with zero full revolutions.
 - `js/transfer.js` turns a Lambert solution into launch energy (C3), launch direction (DLA, in Earth's equatorial frame) and arrival speed.
 - `js/porkchop.js` fills a grid of launch date by trip length. `js/porkchop-worker.js` runs it off the main thread, and `js/porkchop-plot.js` draws it.
+- `js/launchers.js` holds payload-versus-C3 curves for Falcon 9, Falcon Heavy, Vulcan and New Glenn, taken from NASA's Launch Services Program performance site.
+- `js/parts.js` lists real engines (RL10C-1, RL10B-2, AJ10-190, R-4D-11) and the Star 48BV solid motor, with the source of each number.
+- `js/boiloff.js` models cryogenic boil-off. Hydrogen rates come from Centaur flight data and a NASA insulation test. Oxygen and other tank sizes scale with tank area per kilogram and heat of vaporization, and the solar part of the heat leak falls with distance squared.
+- `js/mission.js` flies the sequence: launcher, departure top-up burn, cruise boil-off, orbit insertion. It applies the rocket equation stage by stage, and counts leftover oxygen as dead weight once hydrogen runs short.
 - `js/view.js` and `js/camera.js` draw orbits and the trajectory in 3D on a 2D canvas, with lines dropped to the ecliptic so tilt shows.
+
+## Assumptions
+
+- Burns are instant. The report warns when a burn runs longer than 20 minutes, since a real one would lose more to gravity.
+- A storable tank adds 10% of its propellant mass in tanks and structure. A hydrolox tank adds 9.9%, from Centaur.
+- Three quarters of the boil-off heat at 1 au comes from sunlight. The rest is the spacecraft's own heat and doesn't fade with distance.
+- A solid motor fires completely. Any Δv beyond what the burn needs is wasted.
 
 ## Checks
 
