@@ -1,0 +1,27 @@
+{
+  "bytes": 69637,
+  "files": [
+    "./",
+    "index.html",
+    "js/camera.js",
+    "js/ephemeris.js",
+    "js/kepler.js",
+    "js/lambert.js",
+    "js/main.js",
+    "js/planets.js",
+    "js/porkchop-plot.js",
+    "js/porkchop-worker.js",
+    "js/porkchop.js",
+    "js/time.js",
+    "js/transfer.js",
+    "js/vector.js",
+    "js/view.js",
+    "style.css",
+    "manifest.webmanifest",
+    "../../assets/img/mark.svg",
+    "../../assets/css/site.css",
+    "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
+    "../../assets/js/offline.js"
+  ]
+}
