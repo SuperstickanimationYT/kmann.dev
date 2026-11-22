@@ -1,8 +1,8 @@
 import {
-  fromGalactic, fromHeliocentric, GALAXY_HALF_HEIGHT, GALAXY_RADIUS, LY_PER_PC, oldShape, positionSeenAt,
+  armedShape, fromGalactic, fromHeliocentric, GALAXY_HALF_HEIGHT, GALAXY_RADIUS, LY_PER_PC, oldShape, positionSeenAt,
   sampleArmMap, SUN_PECULIAR, SUN_POSITION, velocityFromHeliocentric, youngShape,
 } from './milky-way.js';
-import { ALL_BINS, colourIndex, luminosityOf, YOUNG_BINS } from './population.js';
+import { ALL_BINS, ARMED_BINS, colourIndex, luminosityOf, YOUNG_BINS } from './population.js';
 import { createRandom } from './random.js';
 
 export const STAR_FLOATS = 6;
@@ -211,6 +211,17 @@ export function placeNebulae(nebulae) {
   return nebulae.map((nebula) => ({ ...nebula, present: fromGalactic(nebula.l, nebula.b, nebula.kpc * 1000) }));
 }
 
+const armShareOf = (bin) => ARMED_BINS.find((armed) => armed.absolute === bin.absolute && bin.population === 'old')?.armShare ?? 0;
+
+function shapeFor(bin) {
+  if (bin.population === 'young') return youngShape;
+  const share = armShareOf(bin);
+  if (!share) return oldShape;
+  return (point, arms) => (1 - share) * oldShape(point, arms) + share * armedShape(point, arms);
+}
+
+const BIN_SHAPES = ALL_BINS.map(shapeFor);
+
 function expectedConeCounts(camera, axis, tanHalf, limit, armMap) {
   const span = axisSpanInGalaxy(camera, axis, 1e7, 0);
   if (!span) return ALL_BINS.map(() => 0);
@@ -225,11 +236,9 @@ function expectedConeCounts(camera, axis, tanHalf, limit, armMap) {
     const point = camera.map((value, axisIndex) => value + axis[axisIndex] * t);
     const arm = sampleArmMap(armMap, point[0], point[1]);
     const volume = Math.PI * (t * tanHalf) ** 2 * length;
-    const old = oldShape(point, arm);
-    const young = youngShape(point, arm);
     ALL_BINS.forEach((bin, binIndex) => {
       if (bin.absolute + 5 * Math.log10(t / 10) > limit) return;
-      counts[binIndex] += bin.density * volume * (bin.population === 'young' ? young : old);
+      counts[binIndex] += bin.density * volume * BIN_SHAPES[binIndex](point, arm);
     });
   }
   return counts;
@@ -255,7 +264,7 @@ export function gatherStars({ camera, axis = null, tanHalf = 0, limit, budget, a
       reaches.push(0);
       return;
     }
-    const shape = bin.population === 'young' ? youngShape : oldShape;
+    const shape = BIN_SHAPES[binIndex];
     const visit = (ix, iy, iz) => {
       const centre = [(ix + 0.5) * bin.cell, (iy + 0.5) * bin.cell, (iz + 0.5) * bin.cell];
       const density = shape(centre, sampleArmMap(armMap, centre[0], centre[1]));

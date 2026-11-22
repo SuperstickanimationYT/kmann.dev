@@ -3,7 +3,7 @@ export const MAX_GALAXIES = 4;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const TABLE_WIDTH = 64;
-export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4 };
+export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4, armedUnresolved: 5 };
 export const UNRESOLVED_NEAREST = 0.1;
 export const UNRESOLVED_FARTHEST = 1e6;
 
@@ -46,6 +46,8 @@ uniform float uThickHeight;
 uniform float uBulge;
 uniform float uLongBar;
 uniform float uYoungPerArm;
+uniform float uArmedFloor;
+uniform float uArmedNormal;
 uniform float uYoungHeight;
 uniform float uDustPerPc;
 uniform float uDustLength;
@@ -118,6 +120,7 @@ float youngTaper(float radius) {
 
 struct Matter {
   float disk;
+  float armed;
   float bar;
   float young;
   float dust;
@@ -136,6 +139,7 @@ Matter matterAt(vec3 seen, float delayYears, float footprint) {
   float thin = uThin * exp(-(radius - uSunRadius) / uThinLength) * sech2(p.z / uThinHeight) * (0.85 + 0.3 * arms.y);
   float thick = uThick * exp(-(radius - uSunRadius) / uThickLength) * exp(-abs(p.z) / uThickHeight);
   m.disk = (thin + thick) * outerEdge;
+  m.armed = uThin * exp(-(radius - uSunRadius) / uThinLength) * sech2(p.z / uThinHeight) * outerEdge * (uArmedFloor + arm) * uArmedNormal;
   m.bar = uBulge * exp(-barDistance(barFrame, uBulgeScales)) + uLongBar * exp(-pow(barDistance(barFrame, uLongBarScales), 4.0));
 
   float octaves = clamp(log2(900.0 / max(footprint, 1.0)), 0.0, 5.0);
@@ -235,6 +239,7 @@ void main() {
       float footprint = max(t * uPixelAngle, ds * 0.25);
       Matter m = matterAt(p, t * uYearsPerPc, footprint);
       vec3 emission = m.disk * lookupUnresolved(${TABLE_ROWS.oldUnresolved}, t) + m.bar * lookupUnresolved(${TABLE_ROWS.bulgeUnresolved}, t)
+        + m.armed * lookupUnresolved(${TABLE_ROWS.armedUnresolved}, t)
         + m.young * (lookupUnresolved(${TABLE_ROWS.youngUnresolved}, t) + uGasPerYoung * uGasColour);
       vec3 tau = m.dust * MAG_TO_TAU * EXTINCTION_BANDS * ds;
       vec3 transmit = exp(-depth);
@@ -574,6 +579,26 @@ float photoLightness(float logSeen) {
   return clamp(asinh(overKnee) / asinh(pow(10.0, PHOTO_WHITE_LOG - PHOTO_KNEE_LOG)), 0.0, 1.0);
 }
 
+const float LOCAL_CONTRAST = 1.5;
+const float LOCAL_CONTRAST_RADIUS = 0.025;
+const int LOCAL_CONTRAST_TAPS = 12;
+
+float broadbandAt(vec2 uv) {
+  return dot(max(texture(uSky, uv).rgb, vec3(0.0)) / uWhiteBalance, vec3(1.0 / 3.0));
+}
+
+float localContrastGain(float here) {
+  vec2 step = LOCAL_CONTRAST_RADIUS * vec2(uTanHalf.y / uTanHalf.x, 1.0);
+  float background = 0.0;
+  for (int i = 0; i < LOCAL_CONTRAST_TAPS; i++) {
+    float angle = 6.2831853 * float(i) / float(LOCAL_CONTRAST_TAPS);
+    vec2 direction = vec2(cos(angle), sin(angle));
+    background += broadbandAt(vUv + direction * step) + broadbandAt(vUv + direction * step * 2.0);
+  }
+  background /= float(2 * LOCAL_CONTRAST_TAPS);
+  return pow(clamp(here / max(background, 1e-12), 0.25, 4.0), LOCAL_CONTRAST);
+}
+
 vec3 boostSaturation(vec3 tint, float amount) {
   float grey = dot(tint, vec3(0.3, 0.5, 0.2));
   vec3 pushed = max(mix(vec3(grey), tint, amount), vec3(0.0));
@@ -597,9 +622,11 @@ void main() {
   float scotopic = 1.08e-4 * (0.3 * sky.g + 0.7 * sky.b);
   float logPhotopic = log(max(photopic, 1e-12)) / log(10.0);
   float colourShare = max(smoothstep(-3.0, -0.5, logPhotopic), uLongExposure);
-  float seen = mix(scotopic, photopic, colourShare);
+  float broadband = 1.08e-4 * dot(sky / uWhiteBalance, vec3(1.0 / 3.0));
+  bool photo = uLongExposure > 0.5 && uWarpAxis.w < 0.5;
+  float seen = photo ? broadband * localContrastGain(broadband / 1.08e-4) : mix(scotopic, photopic, colourShare);
   float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation;
-  float lightness = uLongExposure > 0.5 ? photoLightness(logSeen) : nakedEyeLightness(logSeen, colourShare);
+  float lightness = photo ? photoLightness(logSeen) : nakedEyeLightness(logSeen, colourShare);
   vec3 tint = sky / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), max(tint.b, 1e-9));
   tint = boostSaturation(tint, mix(1.0, LONG_EXPOSURE_SATURATION, uLongExposure));

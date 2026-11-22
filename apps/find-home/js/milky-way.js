@@ -34,6 +34,7 @@ export const DISK = {
   dustPerPc: 0.0011,
   dustScaleLength: 3500,
   dustScaleHeight: 95,
+  armedFloor: 0.15,
 };
 
 export const fromGalactic = (l, b, distance) => {
@@ -199,6 +200,25 @@ export function oldShape([x, y, z], arms) {
   const longBar = DISK.longBar * Math.exp(-(bulgeShape(x, y, z, DISK.longBarScales) ** 4));
   const outerEdge = 1 / (1 + Math.exp((radius - 16000) / 1500));
   return (thin + thick) * outerEdge + bulge + longBar;
+}
+
+function armsFromTraces(x, y) {
+  let young = 0;
+  for (const { points } of armTraces(0.5)) {
+    for (const point of points) {
+      young = Math.max(young, point.strength * Math.exp(-((point.x - x) ** 2 + (point.y - y) ** 2) / (2 * point.width * point.width)));
+    }
+  }
+  return young;
+}
+
+export const ARMED_NORMAL = 1 / (DISK.armedFloor + armsFromTraces(SUN_POSITION[0], SUN_POSITION[1]));
+
+export function armedShape([x, y, z], arms) {
+  const radius = Math.hypot(x, y);
+  const outerEdge = 1 / (1 + Math.exp((radius - 16000) / 1500));
+  const thin = DISK.midplane * Math.exp(-(radius - SUN_RADIUS) / DISK.scaleLength) * sech2(z / DISK.scaleHeight);
+  return thin * outerEdge * (DISK.armedFloor + arms.young) * ARMED_NORMAL;
 }
 
 export function youngShape([x, y, z], arms) {
