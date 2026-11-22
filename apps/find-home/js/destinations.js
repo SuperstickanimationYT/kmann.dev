@@ -5,7 +5,7 @@ import { add, normalize, scale, subtract } from './vectors.js';
 const STAR_STANDOFF = 0.5 / LY_PER_PC;
 const NEBULA_STANDOFF_RADII = 6;
 const GALAXY_STANDOFF_SCALE_LENGTHS = 8;
-const MILKY_WAY_ABOVE = [0, 0, 90000];
+const MILKY_WAY_ABOVE = [0, 0, 45000];
 
 const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
 
