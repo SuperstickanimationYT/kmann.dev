@@ -93,10 +93,10 @@ vec3 turnAzimuth(vec3 p, float angle) {
   return vec3(p.x * c + p.y * s, -p.x * s + p.y * c, p.z);
 }
 
-float armAt(vec2 xy) {
+vec2 armsAt(vec2 xy) {
   vec2 uv = (xy + uMapHalfWidth) / (2.0 * uMapHalfWidth);
-  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
-  return texture(uArmMap, uv).r;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec2(0.0);
+  return texture(uArmMap, uv).rg;
 }
 
 float sech2(float x) {
@@ -128,11 +128,12 @@ Matter matterAt(vec3 seen, float delayYears, float footprint) {
   vec3 p = turnAzimuth(seen, angularSpeed(seenRadius) * delayYears);
   vec3 barFrame = turnAzimuth(seen, uBarSpin * delayYears);
   float radius = length(p.xy);
-  float arm = armAt(p.xy);
+  vec2 arms = armsAt(p.xy);
+  float arm = arms.x;
 
   Matter m;
   float outerEdge = 1.0 / (1.0 + exp((radius - 16000.0) / 1500.0));
-  float thin = uThin * exp(-(radius - uSunRadius) / uThinLength) * sech2(p.z / uThinHeight) * (0.85 + 0.3 * arm);
+  float thin = uThin * exp(-(radius - uSunRadius) / uThinLength) * sech2(p.z / uThinHeight) * (0.85 + 0.3 * arms.y);
   float thick = uThick * exp(-(radius - uSunRadius) / uThickLength) * exp(-abs(p.z) / uThickHeight);
   m.disk = (thin + thick) * outerEdge;
   m.bar = uBulge * exp(-barDistance(barFrame, uBulgeScales)) + uLongBar * exp(-pow(barDistance(barFrame, uLongBarScales), 4.0));
