@@ -755,6 +755,12 @@ float localContrastGain(float here) {
   return pow(clamp(here / max(background, 1e-12), 0.25, 4.0), LOCAL_CONTRAST);
 }
 
+vec3 directionBeforeWarp(vec3 direction) {
+  if (uWarpAxis.w < 0.5) return direction;
+  vec2 look = warpLookup(acos(clamp(dot(direction, uWarpAxis.xyz), -1.0, 1.0)));
+  return look.x < 0.0 ? vec3(0.0) : atAngleFromAxis(direction, look.x);
+}
+
 vec3 boostSaturation(vec3 tint, float amount) {
   float grey = dot(tint, vec3(0.3, 0.5, 0.2));
   vec3 pushed = max(mix(vec3(grey), tint, amount), vec3(0.0));
@@ -773,7 +779,7 @@ void main() {
     outColour = vec4(planet.rgb, 1.0);
     return;
   }
-  vec4 body = bodiesColour(direction);
+  vec4 body = bodiesColour(directionBeforeWarp(direction));
   if (body.a >= 1.0) {
     outColour = vec4(body.rgb, 1.0);
     return;
