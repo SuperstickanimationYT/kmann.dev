@@ -330,7 +330,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, warp, adaptation }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, warp, adaptation, longExposure }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution && !warp) {
@@ -346,7 +346,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, shownSky.textures[0]);
     gl.uniform1i(eyeProgram.uniforms.uSky, 0);
-    setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed } });
+    setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0 });
     setCockpit(eyeProgram, cockpit);
     setUniforms(gl, eyeProgram, planetValues);
     bindWarp(eyeProgram, warp, adaptation);
@@ -354,7 +354,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
-    setUniforms(gl, eyeStarProgram, planetValues);
+    setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
     bindWarp(eyeStarProgram, warp, adaptation);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
   }

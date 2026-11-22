@@ -446,6 +446,7 @@ uniform vec2 uTanHalf;
 uniform samplerCube uSkyCube;
 uniform float uGlareLux;
 uniform float uAdaptation;
+uniform float uLongExposure;
 ${COCKPIT}
 ${WARP}
 in vec2 vUv;
@@ -557,6 +558,15 @@ float glare(vec3 direction) {
   return veil * (1.0 + 6.0 * spikes * degreesOff) / 1.08e-4;
 }
 
+const float LONG_EXPOSURE_GAIN = 1.5;
+const float LONG_EXPOSURE_SATURATION = 3.0;
+
+vec3 boostSaturation(vec3 tint, float amount) {
+  float grey = dot(tint, vec3(0.3, 0.5, 0.2));
+  vec3 pushed = max(mix(vec3(grey), tint, amount), vec3(0.0));
+  return pushed / max(max(pushed.r, pushed.g), max(pushed.b, 1e-9));
+}
+
 void main() {
   vec2 ndc = vUv * 2.0 - 1.0;
   vec3 direction = normalize(uForward + uRight * ndc.x * uTanHalf.x + uUp * ndc.y * uTanHalf.y);
@@ -573,14 +583,15 @@ void main() {
   float photopic = 1.08e-4 * sky.g;
   float scotopic = 1.08e-4 * (0.3 * sky.g + 0.7 * sky.b);
   float logPhotopic = log(max(photopic, 1e-12)) / log(10.0);
-  float colourShare = smoothstep(-3.0, -0.5, logPhotopic);
+  float colourShare = max(smoothstep(-3.0, -0.5, logPhotopic), uLongExposure);
   float seen = mix(scotopic, photopic, colourShare);
-  float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation;
+  float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation + LONG_EXPOSURE_GAIN * uLongExposure;
   float lightness = clamp((logSeen + 5.6) / 5.1, 0.0, 1.0);
   lightness = lightness * lightness * smoothstep(-6.2, -5.4, logSeen);
   lightness += grain() * 0.06 * (1.0 - colourShare) * smoothstep(-6.6, -5.0, logSeen);
   vec3 tint = sky / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), max(tint.b, 1e-9));
+  tint = boostSaturation(tint, mix(1.0, LONG_EXPOSURE_SATURATION, uLongExposure));
   vec3 colour = mix(vec3(0.86, 0.9, 1.0), tint, colourShare);
   outColour = vec4(mix(colour * max(lightness, 0.0) + planet.rgb, planet.rgb, planet.a), 1.0);
 }`;
@@ -598,6 +609,7 @@ out vec3 vColour;
 out float vSpread;
 out float vSize;
 out float vGlare;
+uniform float uLongExposure;
 
 vec3 bandFluxes(float colour) {
   float redIndex = min(1.4, 0.62 * colour + 0.04);
@@ -666,7 +678,7 @@ void main() {
   vec3 extinction = exp(-tau * EXTINCTION_BANDS) * warping / warping.g;
   float seenMagnitude = apparent + 2.5 * tau / log(10.0) - 2.5 * log(warping.g) / log(10.0);
   float brightness = min(2.5, 0.2 * pow(10.0, 0.16 * (6.5 - seenMagnitude)));
-  float colourShare = smoothstep(2.0, -1.0, seenMagnitude) * 0.75;
+  float colourShare = max(smoothstep(2.0, -1.0, seenMagnitude) * 0.75, uLongExposure);
   vec3 tint = bandFluxes(aLook.y) * extinction / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), tint.b);
   vColour = mix(vec3(0.9, 0.93, 1.0), tint, colourShare) * brightness;
