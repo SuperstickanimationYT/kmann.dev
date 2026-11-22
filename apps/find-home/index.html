@@ -71,8 +71,17 @@
         <select data-mode>
           <option value="mission" selected>Mission: unlabelled, scored</option>
           <option value="practice">Practice: labels, star names, Sun marked</option>
+          <option value="explore">Explore: fly anywhere, no goal</option>
         </select>
       </label>
+      <form class="fh-field" data-go-to-form data-go-to-field hidden>
+        <label for="fh-go-to" class="fh-go-to-label">Go to</label>
+        <div class="fh-actions fh-go-to">
+          <input id="fh-go-to" type="search" list="fh-go-to-list" data-go-to placeholder="Sun, Rigel, Orion Nebula…" autocomplete="off">
+          <button type="submit" class="fh-primary">Warp</button>
+        </div>
+        <datalist id="fh-go-to-list" data-go-to-list></datalist>
+      </form>
       <label class="fh-check" data-labels-field hidden>
         <input type="checkbox" data-labels checked>
         <span>Show labels and star names <kbd>L</kbd></span>

@@ -304,7 +304,25 @@
   accent-color: var(--edge-bright);
 }
 
+.fh-field[hidden] {
+  display: none;
+}
+
+.fh-go-to-label {
+  color: var(--text-strong);
+}
+
+.fh-go-to input {
+  flex: 1 1 10em;
+  min-width: 0;
+}
+
+.fh-go-to button {
+  flex: 0 0 auto;
+}
+
 .studio-panel select,
+.studio-panel input[type="search"],
 .studio-panel input[type="number"] {
   width: 100%;
   padding: 7px 10px;

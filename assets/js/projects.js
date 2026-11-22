@@ -84,7 +84,7 @@ const PROJECTS = [
     category: 'games',
     tags: ['Game', 'Simulation', 'Vibecoded'],
     poster: 'assets/img/posters/find-home.webp',
-    blurb: 'Lost outside the Milky Way with your eyes and a wide-field camera. Find the Sun, using real nebulae and stars, while light delay shifts everything.',
+    blurb: 'Lost outside the Milky Way with your eyes and a wide-field camera. Find the Sun, using real nebulae and stars, while light delay shifts everything. Or switch to Explore and fly anywhere.',
     status: 'live',
   },
   {
