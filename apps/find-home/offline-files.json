@@ -1,9 +1,11 @@
 {
-  "bytes": 995608,
+  "bytes": 1155854,
   "files": [
     "./",
     "data/nearby-star-names.json",
     "data/nearby-stars.bin",
+    "data/planets/earth-colour.webp",
+    "data/planets/earth-height.webp",
     "data/planets/maps.json",
     "data/planets/mars-colour.webp",
     "data/planets/mars-height.webp",

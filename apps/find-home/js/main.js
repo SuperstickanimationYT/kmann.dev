@@ -331,8 +331,8 @@ function aimView() {
   viewChanged();
 }
 
-function faceDirection(direction) {
-  game.ship = orthonormal(direction, game.ship.up);
+function faceDirection(direction, up = game.ship.up) {
+  game.ship = orthonormal(direction, up);
   game.head = { yaw: 0, pitch: 0 };
   aimView();
 }
@@ -433,7 +433,7 @@ function land(lightYears) {
 
 function arrive(destination) {
   game.camera = destination.arrival(game.camera);
-  faceDirection(subtract(destination.target, game.camera));
+  faceDirection(subtract(destination.target, game.camera), destination.up);
   if (destination.speed) game.speed = Math.max(game.mode.slowestSpeed, destination.speed);
   warp.axis = [...game.ship.forward];
   game.jumps += 1;

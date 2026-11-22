@@ -18,6 +18,9 @@ function solarBody(body) {
     get target() {
       return placedNow(body.name).centre;
     },
+    get up() {
+      return placedNow(body.name).north;
+    },
     arrival: (from) => arrivalNear(placedNow(body.name), from),
     speed: (body.radiusKm / BODY_CROSSING_SECONDS / KM_PER_PC) * LY_PER_PC,
   };
