@@ -1,6 +1,8 @@
 import { SHIP } from './ship.js';
 
 const EXPLORE_TOP_SPEED = 1e6;
+const THRUSTER_SLOWEST_SPEED = 0.001;
+const EXPLORE_SLOWEST_SPEED = 1e-13;
 
 export const MODES = {
   mission: {
@@ -12,6 +14,8 @@ export const MODES = {
     sunButton: 'Give up',
     restartButton: 'New mission',
     topSpeed: SHIP.thrusterTopSpeed,
+    slowestSpeed: THRUSTER_SLOWEST_SPEED,
+    solarSystem: false,
     greeting: () => null,
   },
   practice: {
@@ -23,6 +27,8 @@ export const MODES = {
     sunButton: 'Face the Sun',
     restartButton: 'New mission',
     topSpeed: SHIP.thrusterTopSpeed,
+    slowestSpeed: THRUSTER_SLOWEST_SPEED,
+    solarSystem: false,
     greeting: (labelsOn) =>
       labelsOn ? 'Practice: labels on. Click any star to identify it.' : 'Practice: labels hidden. Click a star to check whether it is the Sun.',
   },
@@ -35,7 +41,9 @@ export const MODES = {
     sunButton: 'Face the Sun',
     restartButton: 'Random start',
     topSpeed: EXPLORE_TOP_SPEED,
-    greeting: () => 'Explore: no goal, no fuel limit. Thrusters reach a million ly/s. Pick a place under Go to.',
+    slowestSpeed: EXPLORE_SLOWEST_SPEED,
+    solarSystem: true,
+    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 km/s to a million ly/s. Pick a place under Go to, planets included.',
   },
 };
 
