@@ -63,6 +63,8 @@ const introText = $('[data-intro-text]');
 const musicToggle = $('[data-music]');
 const restartButton = $('[data-restart]');
 const goToField = $('[data-go-to-field]');
+const longExposureField = $('[data-long-exposure-field]');
+const longExposureToggle = $('[data-long-exposure]');
 const goToInput = $('[data-go-to]');
 const goToList = $('[data-go-to-list]');
 
@@ -249,6 +251,7 @@ function setMode(name) {
   modeSelect.value = modeFromName(name);
   labelsField.hidden = !mode.labels;
   goToField.hidden = !mode.goTo;
+  longExposureField.hidden = !mode.longExposure;
   clockLabel.textContent = mode.clockLabel;
   giveUpButton.textContent = mode.sunButton;
   restartButton.textContent = mode.restartButton;
@@ -517,6 +520,7 @@ function frame(now) {
       planet: intro?.planet ?? null,
       warp: warpView,
       adaptation,
+      longExposure: game.mode.longExposure && longExposureToggle.checked,
     });
     eyeStarsChanged = false;
   }
@@ -748,6 +752,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyC') faceDirection(game.basis.forward);
   else if (event.code === 'KeyM') toggleAtlas();
   else if (event.code === 'KeyL' && game.mode.labels) setLabels(!labelsToggle.checked);
+  else if (event.code === 'KeyP' && game.mode.longExposure) longExposureToggle.checked = !longExposureToggle.checked;
   else if (event.code === 'Escape') {
     closePhoto();
     atlasFrame.hidden = true;
