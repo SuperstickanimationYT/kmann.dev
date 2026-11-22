@@ -1,8 +1,10 @@
 import { drawAtlas } from './atlas.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
+import { listDestinations } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, SUN_POSITION } from './milky-way.js';
+import { MODES, modeFromName } from './modes.js';
 import { KOTO_GARDEN } from './music/koto-garden.js';
 import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
@@ -24,7 +26,7 @@ const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
-const SPEED_RANGE = [0.001, SHIP.thrusterTopSpeed];
+const SLOWEST_SPEED = 0.001;
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
 
@@ -59,6 +61,10 @@ const labelsField = $('[data-labels-field]');
 const introFrame = $('[data-intro]');
 const introText = $('[data-intro-text]');
 const musicToggle = $('[data-music]');
+const restartButton = $('[data-restart]');
+const goToField = $('[data-go-to-field]');
+const goToInput = $('[data-go-to]');
+const goToList = $('[data-go-to-list]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -96,7 +102,7 @@ function startingPoint(random) {
   return add(SUN_POSITION, scale(away, distance));
 }
 
-function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice') {
+function newGame(seed = randomSeed(), modeName = modeSelect.value) {
   endIntro();
   warp = null;
   const random = createRandom(seed);
@@ -118,15 +124,15 @@ function newGame(seed = randomSeed(), practice = modeSelect.value === 'practice'
     exposures: 0,
     jumps: 0,
     over: false,
-    practice: false,
-    practiceUsed: false,
+    mode: MODES.mission,
+    helpUsed: false,
   };
   eyeStars = null;
   closePhoto();
   skyStale = true;
   ending.hidden = true;
-  setMode(practice);
-  if (!practice) playIntro();
+  setMode(modeName);
+  if (game.mode === MODES.mission) playIntro();
 }
 
 let intro = null;
@@ -228,27 +234,33 @@ function setMusic(wanted) {
   }
 }
 
-const labelsShown = () => game.practice && labelsToggle.checked;
+const labelsShown = () => game.mode.labels && labelsToggle.checked;
+const outOfPlay = () => game.over && game.mode.scored;
 
-function setMode(practice) {
-  game.practice = practice;
-  if (practice) {
+function setMode(name) {
+  const mode = MODES[modeFromName(name)];
+  game.mode = mode;
+  if (!mode.scored) {
     endIntro();
-    game.practiceUsed = true;
+    game.helpUsed = true;
     ending.hidden = true;
   }
-  modeSelect.value = practice ? 'practice' : 'mission';
-  labelsField.hidden = !practice;
-  clockLabel.textContent = practice ? 'Practice' : 'Mission clock';
-  giveUpButton.textContent = practice ? 'Face the Sun' : 'Give up';
+  game.speed = Math.min(game.speed, mode.topSpeed);
+  modeSelect.value = modeFromName(name);
+  labelsField.hidden = !mode.labels;
+  goToField.hidden = !mode.goTo;
+  clockLabel.textContent = mode.clockLabel;
+  giveUpButton.textContent = mode.sunButton;
+  restartButton.textContent = mode.restartButton;
   const url = new URL(window.location.href);
   url.searchParams.set('seed', game.seed);
-  if (practice) url.searchParams.set('mode', 'practice');
-  else url.searchParams.delete('mode');
+  if (mode === MODES.mission) url.searchParams.delete('mode');
+  else url.searchParams.set('mode', modeSelect.value);
   window.history.replaceState(null, '', url);
   clearGuides();
   if (photo) developPhoto();
-  if (practice) showStatus(labelsShown() ? 'Practice: labels on. Click any star to identify it.' : 'Practice: labels hidden. Click a star to check whether it is the Sun.', 6);
+  const greeting = mode.greeting(labelsShown());
+  if (greeting) showStatus(greeting, 6);
 }
 
 function setLabels(shown) {
@@ -328,16 +340,43 @@ let adaptation = 0;
 const CRUISE_TIMES_LIGHT = SHIP.warpLightYearsPerSecond * 365.25 * 86400;
 
 function jump() {
-  if (intro || photo?.running || warp || !warpOptics || !eyeStars || (game.over && !game.practice)) return;
+  if (!warpReady()) return;
   const lightYears = Number(jumpInput.value);
   if (!(lightYears > 0)) return;
-  if (!game.practice && lightYears > game.energy) {
+  if (game.mode.scored && lightYears > game.energy) {
     showStatus(`Not enough warp: ${formatWarpTime(game.energy)} left, enough for ${formatLightYears(game.energy)}.`);
     return;
   }
+  startWarp(lightYears, null);
+}
+
+const warpReady = () => !intro && !photo?.running && !warp && warpOptics && eyeStars && !outOfPlay();
+
+function startWarp(lightYears, destination) {
   renderer.captureSkyCube({ camera: game.camera, nebulae, stars: eyeStars });
-  warp = { axis: [...game.ship.forward], lightYears, startedAt: performance.now(), arrived: false };
+  warp = { axis: [...game.ship.forward], lightYears, destination, startedAt: performance.now(), arrived: false };
   clearGuides();
+}
+
+function goTo(name) {
+  const destination = destinations().find((place) => place.name.toLowerCase() === name.trim().toLowerCase());
+  if (!destination) {
+    showStatus(`Nowhere called "${name}" on the list.`);
+    return;
+  }
+  if (!warpReady()) return;
+  const arrival = destination.arrival(game.camera);
+  faceDirection(subtract(arrival, game.camera));
+  startWarp(Math.hypot(...subtract(arrival, game.camera)) * LY_PER_PC, destination);
+}
+
+let destinationList = null;
+function destinations() {
+  if (!destinationList && nearby.length) {
+    destinationList = listDestinations({ nearby, nebulae, galaxies });
+    goToList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
+  }
+  return destinationList ?? [];
 }
 
 const timesLight = (speed) => (speed < 10 ? speed.toFixed(2) : Math.round(speed).toLocaleString('en'));
@@ -351,7 +390,7 @@ function warpCaption(stage) {
 function advanceWarp(now) {
   const elapsed = (now - warp.startedAt) / 1000;
   if (elapsed >= WARP_SECONDS) {
-    showStatus(`Dropped out of warp after ${formatLightYears(warp.lightYears)}.`);
+    showStatus(warp.destination ? `Arrived at ${warp.destination.name}.` : `Dropped out of warp after ${formatLightYears(warp.lightYears)}.`);
     warp = null;
     viewChanged();
     return null;
@@ -359,7 +398,8 @@ function advanceWarp(now) {
   const stage = warpStage(elapsed);
   if (stage.arrived && !warp.arrived) {
     warp.arrived = true;
-    land(warp.lightYears);
+    if (warp.destination) arrive(warp.destination);
+    else land(warp.lightYears);
     refreshEyeStars(now);
     renderer.captureSkyCube({ camera: game.camera, nebulae, stars: eyeStars });
   }
@@ -374,10 +414,18 @@ function land(lightYears) {
   const miss = (SHIP.jumpScatter * lightYears) / LY_PER_PC;
   const scatter = normalize([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]).map((value) => value * miss * Math.cbrt(Math.random()));
   game.camera = add(add(game.camera, scale(game.ship.forward, lightYears / LY_PER_PC)), scatter);
-  if (!game.practice && !game.over) {
+  if (game.mode.scored && !game.over) {
     game.energy -= lightYears;
     game.clock += lightYears / SHIP.warpLightYearsPerSecond;
   }
+  game.jumps += 1;
+  eyeStars = null;
+}
+
+function arrive(destination) {
+  game.camera = destination.arrival(game.camera);
+  faceDirection(subtract(destination.target, game.camera));
+  warp.axis = [...game.ship.forward];
   game.jumps += 1;
   eyeStars = null;
 }
@@ -450,7 +498,7 @@ let lastFrame = performance.now();
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
-  if (!intro && !game.over && !game.practice && !photo?.running && !warp && document.visibilityState === 'visible') game.clock += seconds;
+  if (!intro && !game.over && game.mode.scored && !photo?.running && !warp && document.visibilityState === 'visible') game.clock += seconds;
   if (intro) advanceIntro(now);
   const warpView = warp ? advanceWarp(now) : null;
   adaptation = adaptEyes(adaptation, warpView?.glareLux ?? 0, seconds);
@@ -473,9 +521,9 @@ function frame(now) {
     eyeStarsChanged = false;
   }
   if (labelsShown()) refreshGuides();
-  $('[data-clock]').textContent = game.practice ? '' : formatClock(game.clock);
+  $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
   $('[data-speed]').textContent = formatSpeed(game.speed);
-  $('[data-energy]').textContent = game.practice ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
+  $('[data-energy]').textContent = !game.mode.scored ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
   requestAnimationFrame(frame);
 }
 
@@ -508,7 +556,7 @@ function toggleExposure() {
     stopExposure();
     return;
   }
-  if (intro || warp || (game.over && !game.practice) || !eyeStars) return;
+  if (intro || warp || outOfPlay() || !eyeStars) return;
   const { width, height } = photoSize();
   const pixelAngle = EYE_FIELD_HEIGHT / height;
   const electronsPerUnit = CAMERA.electronsPerNanomaggy * (pixelAngle * ARCSEC_PER_RADIAN) ** 2;
@@ -544,7 +592,7 @@ function toggleExposure() {
 
 function exposeFrame() {
   photo.frames += 1;
-  if (!game.practice && !game.over) game.clock += CAMERA.frameSeconds;
+  if (game.mode.scored && !game.over) game.clock += CAMERA.frameSeconds;
   developPhoto();
   photoFrame.hidden = false;
   if (photo.frames >= photo.target) stopExposure();
@@ -591,7 +639,7 @@ function developPhoto() {
 }
 
 function claim(star) {
-  if (game.over && !game.practice) return;
+  if (outOfPlay()) return;
   if (!star) {
     showStatus('No star there.');
     return;
@@ -600,7 +648,7 @@ function claim(star) {
     showStatus(describeStar(star), 8);
     return;
   }
-  if (game.practice) {
+  if (!game.mode.scored) {
     showStatus(star.kind === KIND.sun ? 'Yes, that is the Sun.' : 'Not the Sun. Show labels to see what it is.', 6);
     return;
   }
@@ -645,7 +693,7 @@ function finish(found) {
   $('[data-ending-text]').textContent = found
     ? `You found the Sun from ${formatLightYears(distance)} away in ${formatClock(game.clock)}, with ${count(game.jumps, 'jump')}, ${count(game.exposures, 'exposure')} and ${count(game.wrongClaims, 'wrong claim')}.`
     : `The Sun was ${formatLightYears(distance)} away, at the centre of your view now.`;
-  if (game.practiceUsed) $('[data-ending-text]').textContent += ' Practice mode was used during this mission.';
+  if (game.helpUsed) $('[data-ending-text]').textContent += ' Practice or Explore mode was used during this mission.';
   ending.hidden = false;
 }
 
@@ -678,7 +726,7 @@ view.addEventListener(
 );
 
 function changeSpeed(factor) {
-  game.speed = Math.min(SPEED_RANGE[1], Math.max(SPEED_RANGE[0], game.speed * factor));
+  game.speed = Math.min(game.mode.topSpeed, Math.max(SLOWEST_SPEED, game.speed * factor));
 }
 
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
@@ -699,7 +747,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyJ') jump();
   else if (event.code === 'KeyC') faceDirection(game.basis.forward);
   else if (event.code === 'KeyM') toggleAtlas();
-  else if (event.code === 'KeyL' && game.practice) setLabels(!labelsToggle.checked);
+  else if (event.code === 'KeyL' && game.mode.labels) setLabels(!labelsToggle.checked);
   else if (event.code === 'Escape') {
     closePhoto();
     atlasFrame.hidden = true;
@@ -746,7 +794,7 @@ stretchInput.addEventListener('input', () => photo && developPhoto());
 giveUpButton.addEventListener('click', () => {
   if (game.over) return;
   endIntro();
-  if (!game.practice) {
+  if (game.mode.scored) {
     finish(false);
     return;
   }
@@ -754,9 +802,14 @@ giveUpButton.addEventListener('click', () => {
 });
 $('[data-jump]').addEventListener('click', jump);
 $('[data-align]').addEventListener('click', () => faceDirection(game.basis.forward));
-modeSelect.addEventListener('change', () => setMode(modeSelect.value === 'practice'));
+modeSelect.addEventListener('change', () => setMode(modeSelect.value));
+$('[data-go-to-form]').addEventListener('submit', (event) => {
+  event.preventDefault();
+  goTo(goToInput.value);
+});
+goToInput.addEventListener('focus', destinations);
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
-$('[data-restart]').addEventListener('click', () => newGame());
+restartButton.addEventListener('click', () => newGame());
 $('[data-new-game]').addEventListener('click', () => newGame());
 new ResizeObserver(resize).observe(stage);
 
@@ -764,8 +817,8 @@ if (!renderer) {
   showStatus(rendererProblem, 3600);
 } else {
   const requested = Number(new URL(window.location.href).searchParams.get('seed'));
-  const practice = new URL(window.location.href).searchParams.get('mode') === 'practice';
-  newGame(Number.isInteger(requested) && requested > 0 ? requested : randomSeed(), practice);
+  const modeName = modeFromName(new URL(window.location.href).searchParams.get('mode'));
+  newGame(Number.isInteger(requested) && requested > 0 ? requested : randomSeed(), modeName);
   resize();
   loadWarpOptics('data/warp-optics.bin').then((optics) => {
     warpOptics = optics;
