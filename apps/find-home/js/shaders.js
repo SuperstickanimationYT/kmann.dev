@@ -536,6 +536,9 @@ const float DETAIL_ALBEDO = 0.3;
 const float CLOUD_DETAIL = 0.25;
 const vec3 CLOUD_ALBEDO = vec3(0.95);
 const float OCEAN_GLINT = 0.6;
+const vec3 OCEAN_ALBEDO = vec3(2.0, 5.0, 20.0) / 255.0;
+const float COAST_ROUGHNESS = 1.2;
+const float COAST_SHARPEST = 0.01;
 const float OCEAN_SHININESS = 250.0;
 const float CLOUD_SCALE = 7.0;
 const float CLOUD_STRETCH = 1.6;
@@ -619,6 +622,13 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   float mapTexel = 6.2831853 / MAP_WIDTH;
   float octaves = clamp(log2(mapTexel / max(footprint, 1e-9)), 0.0, MAX_DETAIL_OCTAVES);
   vec3 detailPoint = local / mapTexel;
+  if (look.w == BODY_OCEAN_WORLD && mapped) {
+    float edgeWidth = clamp(0.5 * footprint / mapTexel, COAST_SHARPEST, 0.5);
+    float nearCoast = 4.0 * land * (1.0 - land);
+    float coastline = land + COAST_ROUGHNESS * nearCoast * detailNoise(detailPoint + vec3(31.7, 4.3, 17.9), octaves);
+    land = smoothstep(0.5 - edgeWidth, 0.5 + edgeWidth, coastline);
+    albedo = mix(OCEAN_ALBEDO, albedo, land);
+  }
 
   vec3 shaded = normal;
   if (mapped) {

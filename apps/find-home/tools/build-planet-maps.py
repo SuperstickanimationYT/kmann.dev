@@ -10,8 +10,6 @@ Raw downloads (all NASA, public domain):
   world.200407.3x5400x2700.jpg     NASA Earth Observatory, Blue Marble Next Generation, July 2004
   gebco_08_rev_elev_5400x2700.jpg  NASA Earth Observatory from GEBCO, land elevation 0-6400 m
   gebco_08_rev_bath_5400x2700.jpg  NASA Earth Observatory from GEBCO, 255 on land, lower over water
-
-Earth's colour map carries a land mask in alpha: opaque land, transparent water.
 """
 
 import json
@@ -27,6 +25,9 @@ COLOUR_QUALITY = 82
 EARTH_HIGHEST_M = 6400
 DRY_LAND = 255
 SEA_ICE_FLOOR = 50
+COAST_UNMIX_FLOOR = 0.35
+COAST_FILL_STEPS = 6
+NEIGHBOUR_SHIFTS = [(1, 0), (-1, 0), (1, 1), (-1, 1)]
 OUT = Path(__file__).resolve().parent.parent / 'data' / 'planets'
 
 
@@ -37,17 +38,35 @@ def centred_on_prime_meridian(heights, starts_at_zero_east):
 def save_colour(source, name, land=None):
     colour = Image.open(source).convert('RGB').resize((WIDTH, HEIGHT), Image.LANCZOS)
     if land is not None:
-        colour = without_sea_ice_blocks(colour, land)
+        ocean = ocean_colour(colour, land)
+        print(f'{name} open-ocean colour: {ocean.round().astype(int).tolist()}')
+        colour = land_colour_everywhere(colour, land, ocean)
         colour.putalpha(land)
     colour.save(OUT / f'{name}-colour.webp', quality=COLOUR_QUALITY, method=6, exact=True)
 
 
-def without_sea_ice_blocks(colour, land):
-    pixels = np.asarray(colour).copy()
+def ocean_colour(colour, land):
+    pixels = np.asarray(colour)
     water = np.asarray(land) == 0
-    ice = water & (pixels.min(axis=2) > SEA_ICE_FLOOR)
-    pixels[ice] = np.median(pixels[water & ~ice], axis=0)
-    return Image.fromarray(pixels, 'RGB')
+    open_water = water & (pixels.min(axis=2) <= SEA_ICE_FLOOR)
+    return np.median(pixels[open_water], axis=0)
+
+
+def land_colour_everywhere(colour, land, ocean):
+    pixels = np.asarray(colour).astype(np.float64)
+    share = np.asarray(land).astype(np.float64)[..., None] / 255
+    known = share[..., 0] >= COAST_UNMIX_FLOOR
+    unmixed = (pixels - (1 - share) * ocean) / np.maximum(share, 1e-6)
+    filled = np.where(known[..., None], np.clip(unmixed, 0, 255), 0)
+    weight = known.astype(np.float64)
+    for _ in range(COAST_FILL_STEPS):
+        neighbours = sum(np.roll(filled * weight[..., None], shift, axis) for shift, axis in NEIGHBOUR_SHIFTS)
+        count = sum(np.roll(weight, shift, axis) for shift, axis in NEIGHBOUR_SHIFTS)
+        grow = (weight == 0) & (count > 0)
+        filled[grow] = neighbours[grow] / count[grow, None]
+        weight[grow] = 1
+    filled[weight == 0] = ocean
+    return Image.fromarray(np.round(filled).astype(np.uint8), 'RGB')
 
 
 def grey(path):
