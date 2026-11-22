@@ -13,5 +13,15 @@
     "lowKm": 0.0,
     "highKm": 6.35,
     "datumKm": 0.0
+  },
+  "Venus": {
+    "lowKm": -1.957,
+    "highKm": 11.002,
+    "datumKm": 0.876
+  },
+  "Titan": {
+    "lowKm": -1.764,
+    "highKm": 0.82,
+    "datumKm": -0.272
   }
 }

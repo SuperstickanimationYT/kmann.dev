@@ -575,7 +575,7 @@ function groundInView() {
   if (!settings) return null;
   const cameraLocalKm = solarFrame.coRotating ? solarFrame.localKm : toBodyLocal(body, solarFrame.offsetKm);
   const frame = groundFrame(cameraLocalKm, body.radiusKm);
-  const highest = Math.min(GROUND_VIEW_SHARE_OF_RADIUS * body.radiusKm, GROUND_VIEW_HIGHEST_KM);
+  const highest = settings.viewFromKm ?? Math.min(GROUND_VIEW_SHARE_OF_RADIUS * body.radiusKm, GROUND_VIEW_HIGHEST_KM);
   if (frame.altitudeKm > highest) return null;
   const fullyGround = highest * GROUND_VIEW_FULL_SHARE_OF_HIGHEST;
   const blend = Math.min(1, Math.max(0, (highest - frame.altitudeKm) / (highest - fullyGround)));
