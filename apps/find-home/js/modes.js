@@ -2,7 +2,7 @@ import { SHIP } from './ship.js';
 
 const EXPLORE_TOP_SPEED = 1e6;
 const THRUSTER_SLOWEST_SPEED = 0.001;
-const EXPLORE_SLOWEST_SPEED = 1e-13;
+const EXPLORE_SLOWEST_SPEED = 1e-16;
 
 export const MODES = {
   mission: {
@@ -43,7 +43,7 @@ export const MODES = {
     topSpeed: EXPLORE_TOP_SPEED,
     slowestSpeed: EXPLORE_SLOWEST_SPEED,
     solarSystem: true,
-    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 km/s to a million ly/s. Pick a place under Go to, planets included.',
+    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Pick a place under Go to, planets included.',
   },
 };
 

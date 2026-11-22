@@ -1,14 +1,17 @@
 {
   "Moon": {
     "lowKm": 1.121,
-    "highKm": 20.504
+    "highKm": 20.504,
+    "datumKm": 9.752
   },
   "Mars": {
     "lowKm": -8.068,
-    "highKm": 21.134
+    "highKm": 21.134,
+    "datumKm": 0.0
   },
   "Earth": {
     "lowKm": 0.0,
-    "highKm": 6.35
+    "highKm": 6.35,
+    "datumKm": 0.0
   }
 }
