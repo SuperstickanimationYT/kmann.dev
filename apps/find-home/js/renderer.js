@@ -8,9 +8,10 @@ import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
   CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
-  MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
+  MAX_BODIES, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
+import { apparentMagnitude, MAPPED_BODIES } from './solar-system.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
 const NEBULA_LIGHT_PER_IONIZING = 3700 / 1e49;
@@ -135,7 +136,47 @@ const CUBE_FACES = [
   { forward: [0, 0, 1], right: [1, 0, 0], up: [0, -1, 0] },
   { forward: [0, 0, -1], right: [-1, 0, 0], up: [0, -1, 0] },
 ];
+const BODY_COLOUR_UNIT = 5;
+const BODY_HEIGHT_UNIT = 6;
+const BODY_MAP_SIZE = [1024, 512];
+const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4 };
+const SUN_DISK_GLOW = 2;
 const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
+
+const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
+
+function bodyArrays(seen, mapRelief) {
+  const arrays = {
+    uBodyPlace: new Float32Array(MAX_BODIES * 4),
+    uBodyOccluder: new Float32Array(MAX_BODIES * 4),
+    uBodySun: new Float32Array(MAX_BODIES * 3),
+    uBodyNorth: new Float32Array(MAX_BODIES * 3),
+    uBodyMeridian: new Float32Array(MAX_BODIES * 3),
+    uBodyLook: new Float32Array(MAX_BODIES * 4),
+    uBodyMap: new Float32Array(MAX_BODIES * 4),
+  };
+  const shown = seen.slice(0, MAX_BODIES);
+  shown.forEach(({ body, offsetKm }, i) => {
+    const distance = Math.hypot(...offsetKm);
+    const angularRadius = Math.asin(Math.min(1, body.radiusKm / distance));
+    const direction = offsetKm.map((value) => value / distance);
+    const star = body.kind === 'star';
+    const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
+    arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
+    arrays.uBodyOccluder.set([...direction, star ? 0 : angularRadius], i * 4);
+    arrays.uBodySun.set(body.sunward, i * 3);
+    arrays.uBodyNorth.set(body.north, i * 3);
+    arrays.uBodyMeridian.set(body.meridian, i * 3);
+    arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), BODY_KIND_CODES[body.kind]], i * 4);
+    arrays.uBodyMap.set([
+      mapped ? body.mapLayer : -1,
+      mapped ? mapRelief[body.mapLayer] : 0,
+      body.roughness ?? 0,
+      star ? 0 : starPointBrightness(apparentMagnitude(body, offsetKm)),
+    ], i * 4);
+  });
+  return { arrays, count: shown.length };
+}
 
 function planetUniforms(planet, camera) {
   if (!planet) return NO_PLANET;
@@ -178,6 +219,49 @@ export function createRenderer(canvas, armMap, galaxies) {
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   for (const wrap of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, wrap, gl.REPEAT);
+
+  const createBodyMaps = (unit, format) => {
+    const texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, format, ...BODY_MAP_SIZE, Math.max(1, MAPPED_BODIES.length));
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0);
+    return texture;
+  };
+  const bodyColourMaps = createBodyMaps(BODY_COLOUR_UNIT, gl.RGBA8);
+  const bodyHeightMaps = createBodyMaps(BODY_HEIGHT_UNIT, gl.R8);
+  const mapRelief = [];
+
+  function loadBodyMap(layer, { colour, height, relief }) {
+    const upload = (unit, texture, format, image) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, ...BODY_MAP_SIZE, 1, format, gl.UNSIGNED_BYTE, image);
+    };
+    upload(BODY_COLOUR_UNIT, bodyColourMaps, gl.RGBA, colour);
+    upload(BODY_HEIGHT_UNIT, bodyHeightMaps, gl.RED, height);
+    gl.activeTexture(gl.TEXTURE0);
+    mapRelief[layer] = relief;
+  }
+
+  function setBodies(program, seen) {
+    const { arrays, count } = bodyArrays(seen ?? [], mapRelief);
+    for (const [name, values] of Object.entries(arrays)) setArray(gl, program, name, values, name === 'uBodySun' || name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
+    setUniforms(gl, program, { uBodyCount: { int: count } });
+    if (program.uniforms.uBodyColour) {
+      gl.activeTexture(gl.TEXTURE0 + BODY_COLOUR_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, bodyColourMaps);
+      gl.activeTexture(gl.TEXTURE0 + BODY_HEIGHT_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, bodyHeightMaps);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(program.uniforms.uBodyColour, BODY_COLOUR_UNIT);
+      gl.uniform1i(program.uniforms.uBodyHeight, BODY_HEIGHT_UNIT);
+    }
+  }
 
   const model = modelUniforms();
   [skyProgram, eyeStarProgram, cameraStarProgram].forEach((program) => {
@@ -334,7 +418,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, warp, adaptation, longExposure }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, warp, adaptation, longExposure }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution && !warp) {
@@ -353,12 +437,14 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0 });
     setCockpit(eyeProgram, cockpit);
     setUniforms(gl, eyeProgram, planetValues);
+    setBodies(eyeProgram, bodies);
     bindWarp(eyeProgram, warp, adaptation);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
+    setBodies(eyeStarProgram, bodies);
     bindWarp(eyeStarProgram, warp, adaptation);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
   }
@@ -433,5 +519,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap };
 }

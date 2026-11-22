@@ -1,5 +1,6 @@
 export const MAX_NEBULAE = 64;
 export const MAX_GALAXIES = 4;
+export const MAX_BODIES = 10;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const TABLE_WIDTH = 64;
@@ -14,6 +15,19 @@ void main() {
   vUv = corner;
   gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
 }`;
+
+const BODY_OCCLUDERS = `
+uniform vec4 uBodyOccluder[${MAX_BODIES}];
+uniform int uBodyCount;
+
+bool behindBody(vec3 direction) {
+  for (int i = 0; i < ${MAX_BODIES}; i++) {
+    if (i >= uBodyCount) break;
+    if (uBodyOccluder[i].w > 0.0 && dot(direction, uBodyOccluder[i].xyz) > cos(uBodyOccluder[i].w)) return true;
+  }
+  return false;
+}
+`;
 
 const COMMON = `
 precision highp float;
@@ -498,6 +512,148 @@ float terrain(vec3 p) {
   return total / 0.984;
 }
 
+uniform vec4 uBodyPlace[${MAX_BODIES}];
+uniform int uBodyCount;
+uniform vec3 uBodySun[${MAX_BODIES}];
+uniform vec3 uBodyNorth[${MAX_BODIES}];
+uniform vec3 uBodyMeridian[${MAX_BODIES}];
+uniform vec4 uBodyLook[${MAX_BODIES}];
+uniform vec4 uBodyMap[${MAX_BODIES}];
+uniform highp sampler2DArray uBodyColour;
+uniform highp sampler2DArray uBodyHeight;
+uniform float uPixelAngle;
+
+const float BODY_CLOUDED = 1.0;
+const float BODY_GIANT = 2.0;
+const float BODY_STAR = 3.0;
+const float BODY_OCEAN_WORLD = 4.0;
+const float MAP_WIDTH = 1024.0;
+const float MAP_HEIGHT = 512.0;
+const float MAX_DETAIL_OCTAVES = 7.0;
+const float POINT_SIGMA_PIXELS = 0.7;
+const float DETAIL_PERSISTENCE = 0.42;
+const float DETAIL_ALBEDO = 0.3;
+
+struct BodyFrame {
+  vec3 north;
+  vec3 meridian;
+  vec3 east;
+};
+
+vec2 mapCoordinates(vec3 surface, BodyFrame frame) {
+  float latitude = asin(clamp(dot(surface, frame.north), -1.0, 1.0));
+  float longitude = atan(dot(surface, frame.east), dot(surface, frame.meridian));
+  return vec2(longitude / 6.2831853 + 0.5, 0.5 - latitude / 3.1415927);
+}
+
+float detailNoise(vec3 p, float octaves) {
+  float total = 0.0;
+  float amplitude = 0.5;
+  for (int i = 0; i < int(MAX_DETAIL_OCTAVES); i++) {
+    float weight = clamp(octaves - float(i), 0.0, 1.0);
+    if (weight <= 0.0) break;
+    total += weight * amplitude * (smoothNoise(p) - 0.5);
+    p = p * 2.03 + vec3(7.1, 2.9, 5.3);
+    amplitude *= DETAIL_PERSISTENCE;
+  }
+  return total;
+}
+
+vec3 bodyLocal(vec3 surface, BodyFrame frame) {
+  return vec3(dot(surface, frame.meridian), dot(surface, frame.east), dot(surface, frame.north));
+}
+
+vec3 placeholderAlbedo(vec4 look, vec3 local) {
+  float latitude = local.z;
+  if (look.w == BODY_GIANT) {
+    float bands = sin(latitude * 22.0 + 2.5 * terrain(local * 3.0)) * 0.5 + 0.5;
+    return look.rgb * (0.78 + 0.3 * bands);
+  }
+  if (look.w == BODY_CLOUDED) return look.rgb * (0.92 + 0.12 * terrain(local * 2.0 + vec3(3.1)));
+  if (look.w == BODY_OCEAN_WORLD) {
+    float land = terrain(local * 1.7);
+    vec3 ocean = mix(vec3(0.02, 0.06, 0.16), vec3(0.04, 0.12, 0.28), smoothstep(0.3, 0.52, land));
+    vec3 ground = mix(vec3(0.16, 0.25, 0.1), vec3(0.45, 0.37, 0.25), smoothstep(0.58, 0.72, land));
+    vec3 surface = land > 0.53 ? ground : ocean;
+    surface = mix(surface, vec3(0.88), smoothstep(0.86, 0.9, abs(latitude) + 0.05 * land));
+    float cloud = smoothstep(0.5, 0.68, terrain(local * 3.4 + vec3(4.1, 1.7, 8.3)));
+    return mix(surface, vec3(0.92), 0.85 * cloud);
+  }
+  return look.rgb * (0.7 + 0.6 * terrain(local * 4.0));
+}
+
+float mapHeight(float layer, vec2 uv) {
+  return texture(uBodyHeight, vec3(uv, layer)).r;
+}
+
+vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
+  vec4 place = uBodyPlace[i];
+  vec4 look = uBodyLook[i];
+  vec4 map = uBodyMap[i];
+  vec3 normal = normalize(direction * hit - place.xyz);
+  float mu = max(dot(normal, -direction), 0.0);
+  if (look.w == BODY_STAR) return look.rgb * (0.4 + 0.6 * mu);
+
+  BodyFrame frame = BodyFrame(uBodyNorth[i], uBodyMeridian[i], cross(uBodyNorth[i], uBodyMeridian[i]));
+  vec3 local = bodyLocal(normal, frame);
+  vec2 uv = mapCoordinates(normal, frame);
+  vec3 albedo = map.x >= 0.0 ? texture(uBodyColour, vec3(uv, map.x)).rgb : placeholderAlbedo(look, local);
+
+  vec3 shaded = normal;
+  if (map.x >= 0.0) {
+    float latitudeCos = max(sqrt(1.0 - local.z * local.z), 0.05);
+    vec2 texel = vec2(1.0 / MAP_WIDTH, 1.0 / MAP_HEIGHT);
+    float eastSlope = (mapHeight(map.x, uv + vec2(texel.x, 0.0)) - mapHeight(map.x, uv - vec2(texel.x, 0.0))) / (2.0 * 6.2831853 * texel.x * latitudeCos);
+    float northSlope = (mapHeight(map.x, uv - vec2(0.0, texel.y)) - mapHeight(map.x, uv + vec2(0.0, texel.y))) / (2.0 * 3.1415927 * texel.y);
+    vec3 eastward = normalize(frame.east - normal * dot(frame.east, normal));
+    vec3 northward = cross(normal, eastward);
+    shaded = normalize(normal - map.y * (eastSlope * eastward + northSlope * northward));
+
+    float footprint = uPixelAngle * hit / radius;
+    float mapTexel = 6.2831853 / MAP_WIDTH;
+    float octaves = clamp(log2(mapTexel / max(footprint, 1e-9)), 0.0, MAX_DETAIL_OCTAVES);
+    if (octaves > 0.0) {
+      vec3 p = local / mapTexel;
+      float probe = 0.35;
+      float here = detailNoise(p, octaves);
+      float towardEast = detailNoise(p + probe * bodyLocal(eastward, frame), octaves);
+      float towardNorth = detailNoise(p + probe * bodyLocal(northward, frame), octaves);
+      float roughness = map.z;
+      shaded = normalize(shaded - roughness * ((towardEast - here) * eastward + (towardNorth - here) * northward) / probe);
+      albedo *= 1.0 + DETAIL_ALBEDO * here;
+    }
+  }
+
+  float sunlit = max(dot(shaded, uBodySun[i]), 0.0) * smoothstep(-0.02, 0.05, dot(normal, uBodySun[i]));
+  vec3 lit = albedo * sunlit;
+  if (look.w == BODY_OCEAN_WORLD || look.w == BODY_CLOUDED) {
+    float limb = pow(1.0 - mu, 3.0) * smoothstep(-0.15, 0.4, dot(normal, uBodySun[i]));
+    lit += (look.w == BODY_OCEAN_WORLD ? vec3(0.2, 0.4, 0.9) : vec3(0.6, 0.55, 0.4)) * limb;
+  }
+  return lit;
+}
+
+vec4 bodiesColour(vec3 direction) {
+  vec3 points = vec3(0.0);
+  for (int i = 0; i < ${MAX_BODIES}; i++) {
+    if (i >= uBodyCount) break;
+    vec4 place = uBodyPlace[i];
+    float along = dot(direction, place.xyz);
+    if (along <= 0.0) continue;
+    float radius = sin(place.w);
+    float miss = length(direction * along - place.xyz);
+    float pointSigma = POINT_SIGMA_PIXELS * uPixelAngle;
+    float unresolved = 1.0 - smoothstep(0.5, 2.0, radius / uPixelAngle);
+    points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
+    float cover = clamp((radius - miss) / max(fwidth(miss), 1e-9) + 0.5, 0.0, 1.0);
+    if (cover <= 0.0) continue;
+    float inside = min(miss, radius * 0.9999);
+    float hit = along - sqrt(radius * radius - inside * inside);
+    return vec4(shadeBody(i, direction, hit, radius) * cover + points, cover);
+  }
+  return vec4(points, 0.0);
+}
+
 uniform vec4 uPlanet;
 uniform vec3 uPlanetSun;
 uniform vec3 uPlanetNorth;
@@ -599,6 +755,12 @@ float localContrastGain(float here) {
   return pow(clamp(here / max(background, 1e-12), 0.25, 4.0), LOCAL_CONTRAST);
 }
 
+vec3 directionBeforeWarp(vec3 direction) {
+  if (uWarpAxis.w < 0.5) return direction;
+  vec2 look = warpLookup(acos(clamp(dot(direction, uWarpAxis.xyz), -1.0, 1.0)));
+  return look.x < 0.0 ? vec3(0.0) : atAngleFromAxis(direction, look.x);
+}
+
 vec3 boostSaturation(vec3 tint, float amount) {
   float grey = dot(tint, vec3(0.3, 0.5, 0.2));
   vec3 pushed = max(mix(vec3(grey), tint, amount), vec3(0.0));
@@ -617,6 +779,11 @@ void main() {
     outColour = vec4(planet.rgb, 1.0);
     return;
   }
+  vec4 body = bodiesColour(directionBeforeWarp(direction));
+  if (body.a >= 1.0) {
+    outColour = vec4(body.rgb, 1.0);
+    return;
+  }
   vec3 sky = uWarpAxis.w > 0.5 ? warpedSky(direction) + glare(direction) * uWhiteBalance : max(texture(uSky, vUv).rgb, vec3(0.0));
   float photopic = 1.08e-4 * sky.g;
   float scotopic = 1.08e-4 * (0.3 * sky.g + 0.7 * sky.b);
@@ -631,7 +798,8 @@ void main() {
   tint /= max(max(tint.r, tint.g), max(tint.b, 1e-9));
   tint = boostSaturation(tint, mix(1.0, LONG_EXPOSURE_SATURATION, uLongExposure));
   vec3 colour = mix(vec3(0.86, 0.9, 1.0), tint, colourShare);
-  outColour = vec4(mix(colour * max(lightness, 0.0) + planet.rgb, planet.rgb, planet.a), 1.0);
+  vec3 behind = colour * max(lightness, 0.0) * (1.0 - body.a);
+  outColour = vec4(mix(behind + body.rgb + planet.rgb, planet.rgb, planet.a), 1.0);
 }`;
 
 export const EYE_STAR_VERTEX = `#version 300 es
@@ -641,6 +809,7 @@ layout(location = 1) in vec3 aLook;
 uniform vec3 uAnchorShift;
 uniform vec3 uWhiteBalance;
 uniform vec4 uPlanet;
+${BODY_OCCLUDERS}
 ${COCKPIT}
 ${WARP}
 out vec3 vColour;
@@ -692,6 +861,7 @@ void main() {
   vec3 offset = aOffset - uAnchorShift;
   float distance = length(offset);
   vec3 seen = offset / distance;
+  bool behindBodyBeforeWarp = behindBody(seen);
   vec3 warping = vec3(1.0);
   vGlare = 0.0;
   if (uWarpAxis.w > 0.5) {
@@ -705,7 +875,7 @@ void main() {
     warping = warpBrightening(aLook.y, pow(10.0, warpLookup(observed).y), magnification);
   }
   vec3 local = vec3(dot(seen, uRight), dot(seen, uUp), dot(seen, uForward));
-  bool behindPlanet = uPlanet.w > 0.0 && dot(seen, uPlanet.xyz) > cos(uPlanet.w);
+  bool behindPlanet = (uPlanet.w > 0.0 && dot(seen, uPlanet.xyz) > cos(uPlanet.w)) || behindBodyBeforeWarp;
   if (local.z <= 0.0 || behindPlanet || !seenThroughCockpit(seen) || warping.g <= 0.0) {
     hide();
     return;

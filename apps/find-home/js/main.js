@@ -12,6 +12,7 @@ import { describeStar, drawGuides } from './practice.js';
 import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
+import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, placeBodies } from './solar-system.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
 import { add, dot, normalize, orthonormal, rotateAbout, scale, subtract } from './vectors.js';
@@ -27,7 +28,8 @@ const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
-const SLOWEST_SPEED = 0.001;
+const SOLAR_REACH_PC = 0.05;
+const KM_PER_LY = KM_PER_PC / LY_PER_PC;
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
 
@@ -68,6 +70,7 @@ const longExposureField = $('[data-long-exposure-field]');
 const longExposureToggle = $('[data-long-exposure]');
 const goToInput = $('[data-go-to]');
 const goToList = $('[data-go-to-list]');
+const solarNote = $('[data-solar-note]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -248,11 +251,12 @@ function setMode(name) {
     game.helpUsed = true;
     ending.hidden = true;
   }
-  game.speed = Math.min(game.speed, mode.topSpeed);
+  game.speed = Math.min(Math.max(game.speed, mode.slowestSpeed), mode.topSpeed);
   modeSelect.value = modeFromName(name);
   labelsField.hidden = !mode.labels;
   goToField.hidden = !mode.goTo;
   longExposureField.hidden = !mode.longExposure;
+  solarNote.hidden = !mode.solarSystem;
   clockLabel.textContent = mode.clockLabel;
   giveUpButton.textContent = mode.sunButton;
   restartButton.textContent = mode.restartButton;
@@ -295,7 +299,8 @@ function formatClock(seconds) {
 function formatLightYears(lightYears) {
   if (lightYears >= 1000) return `${Math.round(lightYears).toLocaleString('en')} ly`;
   if (lightYears >= 1) return `${lightYears.toFixed(1)} ly`;
-  return `${(lightYears * AU_PER_LY).toFixed(0)} AU`;
+  if (lightYears * AU_PER_LY >= 0.1) return `${(lightYears * AU_PER_LY).toFixed(lightYears * AU_PER_LY < 10 ? 1 : 0)} AU`;
+  return `${Math.round(lightYears * KM_PER_LY).toLocaleString('en')} km`;
 }
 
 function formatWarpTime(lightYears) {
@@ -429,6 +434,7 @@ function land(lightYears) {
 function arrive(destination) {
   game.camera = destination.arrival(game.camera);
   faceDirection(subtract(destination.target, game.camera));
+  if (destination.speed) game.speed = Math.max(game.mode.slowestSpeed, destination.speed);
   warp.axis = [...game.ship.forward];
   game.jumps += 1;
   eyeStars = null;
@@ -445,7 +451,9 @@ function flightStep(seconds) {
   if (move.some(Boolean)) {
     const pcPerSecond = game.speed / LY_PER_PC;
     const step = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, move[2]));
-    game.camera = add(game.camera, scale(step, pcPerSecond * seconds));
+    const shift = scale(step, pcPerSecond * seconds);
+    if (solarFrame) solarFrame.offsetKm = add(solarFrame.offsetKm, scale(shift, KM_PER_PC));
+    else game.camera = add(game.camera, shift);
     moved = true;
   }
   const yaw = (held.has('ArrowRight') ? 1 : 0) - (held.has('ArrowLeft') ? 1 : 0);
@@ -456,6 +464,46 @@ function flightStep(seconds) {
   if (roll) game.ship = turn(game.ship, 'forward', roll * ROLL_RATE * seconds);
   if (yaw || pitch || roll) aimView();
   else if (moved) viewChanged();
+}
+
+let solarBodies = null;
+let solarFrame = null;
+
+function enterSolarFrame() {
+  if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) return null;
+  const fromSunKm = scale(subtract(game.camera, SUN_POSITION), KM_PER_PC);
+  const holder = holdingBody(solarBodies, fromSunKm);
+  return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), camera: null };
+}
+
+function followSolarSystem() {
+  if (!game.mode.solarSystem) {
+    solarBodies = null;
+    solarFrame = null;
+    return;
+  }
+  solarBodies = placeBodies(Date.now());
+  if (solarFrame && game.camera !== solarFrame.camera) solarFrame = null;
+  solarFrame ??= enterSolarFrame();
+  if (!solarFrame) return;
+  const centreOf = (name) => solarBodies.find((body) => body.name === name).fromSunKm;
+  const fromSunKm = add(centreOf(solarFrame.holder), solarFrame.offsetKm);
+  const holder = holdingBody(solarBodies, fromSunKm);
+  let offsetKm = subtract(fromSunKm, holder.fromSunKm);
+  const lowest = holder.radiusKm + LOWEST_ALTITUDE_KM;
+  const height = Math.hypot(...offsetKm);
+  if (height < lowest) offsetKm = scale(offsetKm, lowest / height);
+  game.camera = add(SUN_POSITION, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
+  solarFrame = { holder: holder.name, offsetKm, camera: game.camera };
+  if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) solarFrame = null;
+}
+
+function bodiesInView() {
+  if (!solarFrame) return null;
+  const cameraFromSunKm = add(solarBodies.find((body) => body.name === solarFrame.holder).fromSunKm, solarFrame.offsetKm);
+  return solarBodies
+    .map((body) => ({ body, offsetKm: subtract(body.fromSunKm, cameraFromSunKm) }))
+    .sort((a, b) => Math.hypot(...a.offsetKm) - Math.hypot(...b.offsetKm));
 }
 
 let skyStale = true;
@@ -514,6 +562,7 @@ function frame(now) {
   const warpView = warp ? advanceWarp(now) : null;
   adaptation = adaptEyes(adaptation, warpView?.glareLux ?? 0, seconds);
   flightStep(seconds);
+  followSolarSystem();
   refreshEyeStars(now);
   if (eyeStars) {
     frameSeed = (frameSeed + 1) >>> 0;
@@ -526,6 +575,7 @@ function frame(now) {
       skyResolution: nextSkyResolution(),
       cockpit: { ...cockpitUniforms(game.ship), enabled: true },
       planet: intro?.planet ?? null,
+      bodies: bodiesInView(),
       warp: warpView,
       adaptation,
       longExposure: longExposureShown(),
@@ -738,7 +788,7 @@ view.addEventListener(
 );
 
 function changeSpeed(factor) {
-  game.speed = Math.min(game.mode.topSpeed, Math.max(SLOWEST_SPEED, game.speed * factor));
+  game.speed = Math.min(game.mode.topSpeed, Math.max(game.mode.slowestSpeed, game.speed * factor));
 }
 
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
@@ -838,6 +888,7 @@ if (!renderer) {
     warpOptics = optics;
     renderer.loadWarpTable(optics);
   });
+  loadBodyMaps(new URL('data/planets/', window.location.href), renderer.loadBodyMap).catch(() => showStatus('Planet maps failed to load; planets show placeholder surfaces.'));
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     nearby = stars;
   });

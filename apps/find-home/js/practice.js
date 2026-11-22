@@ -1,4 +1,4 @@
-import { LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
+import { AU_PER_LY, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { KIND, SUN_VELOCITY } from './stars.js';
 
 const NEBULA_COLOUR = '#ff8fa8';
@@ -16,7 +16,9 @@ function formatDistance(parsecs) {
   const lightYears = parsecs * LY_PER_PC;
   if (lightYears >= 1e6) return `${(lightYears / 1e6).toFixed(1)} million ly`;
   if (lightYears >= 100) return `${Math.round(lightYears).toLocaleString('en')} ly`;
-  return `${lightYears.toFixed(1)} ly`;
+  if (lightYears >= 0.1) return `${lightYears.toFixed(1)} ly`;
+  const au = lightYears * AU_PER_LY;
+  return au >= 10 ? `${Math.round(au).toLocaleString('en')} AU` : `${au.toFixed(2)} AU`;
 }
 
 function seenFrom(camera, present, velocity) {

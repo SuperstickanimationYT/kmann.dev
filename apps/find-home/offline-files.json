@@ -1,9 +1,14 @@
 {
-  "bytes": 436370,
+  "bytes": 995608,
   "files": [
     "./",
     "data/nearby-star-names.json",
     "data/nearby-stars.bin",
+    "data/planets/maps.json",
+    "data/planets/mars-colour.webp",
+    "data/planets/mars-height.webp",
+    "data/planets/moon-colour.webp",
+    "data/planets/moon-height.webp",
     "data/warp-optics.bin",
     "index.html",
     "js/atlas.js",
@@ -27,6 +32,7 @@
     "js/renderer.js",
     "js/shaders.js",
     "js/ship.js",
+    "js/solar-system.js",
     "js/stars.js",
     "js/vectors.js",
     "js/warp.js",

@@ -1,4 +1,5 @@
 import { LY_PER_PC, SUN_POSITION } from './milky-way.js';
+import { arrivalNear, BODIES, KM_PER_PC, placeBodies } from './solar-system.js';
 import { nebulaRadius } from './stars.js';
 import { add, normalize, scale, subtract } from './vectors.js';
 
@@ -6,6 +7,21 @@ const STAR_STANDOFF = 0.5 / LY_PER_PC;
 const NEBULA_STANDOFF_RADII = 6;
 const GALAXY_STANDOFF_SCALE_LENGTHS = 8;
 const MILKY_WAY_ABOVE = [0, 0, 45000];
+const BODY_CROSSING_SECONDS = 4;
+
+const placedNow = (name) => placeBodies(Date.now()).find((body) => body.name === name);
+
+function solarBody(body) {
+  return {
+    name: body.name,
+    group: body.parent ? `Moon of ${body.parent}` : 'Planets',
+    get target() {
+      return placedNow(body.name).centre;
+    },
+    arrival: (from) => arrivalNear(placedNow(body.name), from),
+    speed: (body.radiusKm / BODY_CROSSING_SECONDS / KM_PER_PC) * LY_PER_PC,
+  };
+}
 
 const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
 
@@ -14,6 +30,7 @@ export function listDestinations({ nearby, nebulae, galaxies }) {
   const approach = (name, group, target, standoff) => ({ name, group, target, arrival: (from) => backOff(from, target, standoff) });
   return [
     approach('Sun', 'Stars', SUN_POSITION, STAR_STANDOFF),
+    ...BODIES.filter((body) => body.kind !== 'star').map(solarBody),
     fixed('Milky Way, seen from above', 'Galaxies', [0, 0, 0], MILKY_WAY_ABOVE),
     ...nearby
       .filter((star) => star.name)
