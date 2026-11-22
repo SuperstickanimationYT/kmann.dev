@@ -12,6 +12,11 @@ const OBLIQUITY = 23.43928 * DEGREES;
 const MOON_DISTANCE_KM = 384400;
 const MOON_ELEMENTS_EPOCH_DAYS = -1.5;
 const EARTH_SHARE_OF_MOON_OFFSET = 1 / 82.3;
+const DAYS_PER_YEAR = 365.25;
+
+const SATELLITE_ORBITS = {
+  Titan: { laplacePole: [36.4, 84.0], a: 1221900, e: 0.029, meanLongitude: 11.7, periapsisLongitude: 208, periodDays: 15.945448, apsisDegreesPerYear: 0.502, parentShare: 8978.1371 / (37931206.23 + 8978.1371) },
+};
 
 const PLANET_ORBITS = {
   Mercury: [[0.38709927, 0.00000037], [0.20563593, 0.00001906], [7.00497902, -0.00594749], [252.2503235, 149472.67411175], [77.45779628, 0.16047689], [48.33076593, -0.12534081]],
@@ -34,6 +39,7 @@ export const BODIES = [
   { name: 'Jupiter', kind: 'giant', radiusKm: 69911, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
   { name: 'Saturn', kind: 'giant', radiusKm: 58232, pole: [40.589, 83.537], spin: [38.9, 810.7939024], tint: [0.88, 0.8, 0.62], magnitude: -8.88 },
   { name: 'Uranus', kind: 'giant', radiusKm: 25362, pole: [257.311, -15.175], spin: [203.81, -501.1600928], tint: [0.66, 0.85, 0.88], magnitude: -7.19 },
+  { name: 'Titan', kind: 'hazy', parent: 'Saturn', radiusKm: 2574.76, pole: [39.4827, 83.4279], spin: [186.5855, 22.5769768], tint: [0.8, 0.56, 0.3], magnitude: -1.28 },
   { name: 'Neptune', kind: 'giant', radiusKm: 24622, pole: [299.36, 43.46], spin: [249.978, 541.1397757], tint: [0.36, 0.5, 0.85], magnitude: -6.87 },
 ];
 
@@ -84,6 +90,16 @@ function moonOffsetKm(daysSinceJ2000) {
   }), MOON_DISTANCE_KM);
 }
 
+function satelliteOffsetEquatorialKm(orbit, days) {
+  const pole = equatorialDirection(...orbit.laplacePole);
+  const reference = normalize(cross([0, 0, 1], pole));
+  const across = cross(pole, reference);
+  const periapsisLongitude = orbit.periapsisLongitude + orbit.apsisDegreesPerYear * (days / DAYS_PER_YEAR);
+  const meanLongitude = orbit.meanLongitude + (360 / orbit.periodDays) * days;
+  const [x, y] = orbitPoint({ a: orbit.a, e: orbit.e, inclination: 0, node: 0, periapsisArgument: periapsisLongitude * DEGREES, meanAnomaly: (meanLongitude - periapsisLongitude) * DEGREES });
+  return add(scale(reference, x), scale(across, y));
+}
+
 function equatorialDirection(ra, dec) {
   return [Math.cos(dec * DEGREES) * Math.cos(ra * DEGREES), Math.cos(dec * DEGREES) * Math.sin(ra * DEGREES), Math.sin(dec * DEGREES)];
 }
@@ -104,6 +120,13 @@ export function placeBodies(ms) {
   const earth = subtract(fromSun.get('Earth'), scale(moonOffset, EARTH_SHARE_OF_MOON_OFFSET));
   fromSun.set('Earth', earth);
   fromSun.set('Moon', add(earth, moonOffset));
+  for (const [name, orbit] of Object.entries(SATELLITE_ORBITS)) {
+    const parent = BODIES.find((body) => body.name === name).parent;
+    const offset = equatorialToFrame(satelliteOffsetEquatorialKm(orbit, days));
+    const parentCentre = subtract(fromSun.get(parent), scale(offset, orbit.parentShare));
+    fromSun.set(parent, parentCentre);
+    fromSun.set(name, add(parentCentre, offset));
+  }
   return BODIES.map((body) => {
     const fromSunKm = fromSun.get(body.name);
     const sunDistanceKm = Math.hypot(...fromSunKm);

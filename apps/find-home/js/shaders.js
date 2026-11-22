@@ -1,6 +1,6 @@
 export const MAX_NEBULAE = 64;
 export const MAX_GALAXIES = 4;
-export const MAX_BODIES = 10;
+export const MAX_BODIES = 12;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const TABLE_WIDTH = 64;
@@ -527,6 +527,7 @@ const float BODY_CLOUDED = 1.0;
 const float BODY_GIANT = 2.0;
 const float BODY_STAR = 3.0;
 const float BODY_OCEAN_WORLD = 4.0;
+const float BODY_HAZY = 5.0;
 const float MAP_WIDTH = 1024.0;
 const float MAP_HEIGHT = 512.0;
 const float MAX_DETAIL_OCTAVES = 7.0;
@@ -542,6 +543,11 @@ const float STREAK_LENGTH = 3.0;
 const float STREAK_SPACING = 9.0;
 const float STREAK_WOBBLE = 0.6;
 const float CLOUD_DECK_FLATNESS = 0.5;
+const float HAZE_CONTRAST = 0.03;
+const float HAZE_HEMISPHERE_CONTRAST = 0.04;
+const float HAZE_POLAR_HOOD = 0.12;
+const float HAZE_TWILIGHT = 0.12;
+const vec3 DETACHED_HAZE = vec3(0.3, 0.42, 0.7);
 const vec3 OCEAN_ALBEDO = vec3(2.0, 5.0, 20.0) / 255.0;
 const float COAST_ROUGHNESS = 1.2;
 const float COAST_SHARPEST = 0.01;
@@ -613,6 +619,14 @@ float cloudTopShade(vec3 local, vec3 detailPoint, float octaves) {
   return 1.0 + CLOUD_TOP_CONTRAST * (2.0 * streaks + darkerEquator + polarCollar + detailNoise(detailPoint, octaves));
 }
 
+float hazeShade(vec3 local, vec3 detailPoint, float octaves) {
+  float latitude = asin(clamp(local.z, -1.0, 1.0));
+  float hemisphereContrast = HAZE_HEMISPHERE_CONTRAST * sin(latitude);
+  float polarHood = -HAZE_POLAR_HOOD * latitudeBelt(latitude, 1.2, 0.1) * step(0.0, latitude);
+  float drift = terrain(vec3(local.xy * 2.0, latitude * 6.0)) - 0.5;
+  return 1.0 + hemisphereContrast + polarHood + HAZE_CONTRAST * (drift + detailNoise(detailPoint, octaves));
+}
+
 float mapHeight(float layer, vec2 uv) {
   return texture(uBodyHeight, vec3(uv, layer)).r;
 }
@@ -645,6 +659,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     albedo = mix(OCEAN_ALBEDO, albedo, land);
   }
   if (look.w == BODY_CLOUDED) albedo = look.rgb * cloudTopShade(local, detailPoint, octaves);
+  if (look.w == BODY_HAZY) albedo = look.rgb * hazeShade(local, detailPoint, octaves);
 
   vec3 shaded = normal;
   if (mapped) {
@@ -667,10 +682,10 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   }
 
   vec3 sun = uBodySun[i];
-  float daylight = smoothstep(-0.02, 0.05, dot(normal, sun));
+  float daylight = look.w == BODY_HAZY ? smoothstep(-HAZE_TWILIGHT, HAZE_TWILIGHT, dot(normal, sun)) : smoothstep(-0.02, 0.05, dot(normal, sun));
   float sunHeight = max(dot(normal, sun), 0.0);
   float lighting = max(dot(shaded, sun), 0.0);
-  if (look.w == BODY_CLOUDED) lighting = mix(lighting, 2.0 * sunHeight / (sunHeight + mu + 1e-4), CLOUD_DECK_FLATNESS);
+  if (look.w == BODY_CLOUDED || look.w == BODY_HAZY) lighting = mix(lighting, 2.0 * sunHeight / (sunHeight + mu + 1e-4), CLOUD_DECK_FLATNESS);
   vec3 lit = albedo * lighting * daylight;
   if (look.w == BODY_OCEAN_WORLD) {
     vec3 halfway = normalize(sun - direction);
@@ -681,6 +696,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     float limb = pow(1.0 - mu, 3.0) * smoothstep(-0.15, 0.4, dot(normal, sun));
     lit += (look.w == BODY_OCEAN_WORLD ? vec3(0.2, 0.4, 0.9) : vec3(0.6, 0.55, 0.4)) * limb;
   }
+  if (look.w == BODY_HAZY) lit += DETACHED_HAZE * pow(1.0 - mu, 6.0) * smoothstep(-0.3, 0.3, dot(normal, sun));
   return lit;
 }
 

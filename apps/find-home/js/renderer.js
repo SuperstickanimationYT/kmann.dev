@@ -139,7 +139,7 @@ const CUBE_FACES = [
 const BODY_COLOUR_UNIT = 5;
 const BODY_HEIGHT_UNIT = 6;
 const BODY_MAP_SIZE = [1024, 512];
-const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4 };
+const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5 };
 const SUN_DISK_GLOW = 2;
 const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
