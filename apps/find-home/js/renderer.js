@@ -1,9 +1,9 @@
 import { createByteTarget, createContext, createProgram, createTarget, setUniforms } from './gl.js';
 import {
-  BAR_ANGLE, BAR_ANGULAR_SPEED, DISK, LY_PER_PC, MAP_HALF_WIDTH, MAP_SIZE, PC_PER_YEAR_PER_KM_S,
+  ARMED_NORMAL, BAR_ANGLE, BAR_ANGULAR_SPEED, DISK, LY_PER_PC, MAP_HALF_WIDTH, MAP_SIZE, PC_PER_YEAR_PER_KM_S,
   positionSeenAt, SUN_RADIUS,
 } from './milky-way.js';
-import { BULGE_BINS, luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.js';
+import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.js';
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
@@ -43,6 +43,8 @@ function modelUniforms() {
     uBulge: DISK.bulge,
     uLongBar: DISK.longBar,
     uYoungPerArm: DISK.youngPerArm,
+    uArmedFloor: DISK.armedFloor,
+    uArmedNormal: ARMED_NORMAL,
     uYoungHeight: DISK.youngScaleHeight,
     uDustPerPc: DISK.dustPerPc,
     uDustLength: DISK.dustScaleLength,
@@ -278,7 +280,8 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.useProgram(skyProgram.program);
     bindGalaxyTextures(skyProgram);
     setUniforms(gl, skyProgram, { ...viewUniforms(view), uOutputScale: outputScale, uFrameSeed: { uint: seed } });
-    writeUnresolved(tableRow(tables, TABLE_ROWS.oldUnresolved), OLD_BINS, reaches.slice(YOUNG_BINS.length));
+    writeUnresolved(tableRow(tables, TABLE_ROWS.oldUnresolved), SMOOTH_OLD_BINS, reaches.slice(YOUNG_BINS.length));
+    writeUnresolved(tableRow(tables, TABLE_ROWS.armedUnresolved), ARMED_BINS, reaches.slice(YOUNG_BINS.length));
     writeUnresolved(tableRow(tables, TABLE_ROWS.youngUnresolved), YOUNG_BINS, reaches.slice(0, YOUNG_BINS.length));
     writeUnresolved(tableRow(tables, TABLE_ROWS.bulgeUnresolved), BULGE_BINS, reaches.slice(YOUNG_BINS.length));
     const nebulaCount = writeNebulae(tableRow(tables, TABLE_ROWS.nebulaPlace), tableRow(tables, TABLE_ROWS.nebulaGlow), nebulae, view.camera);

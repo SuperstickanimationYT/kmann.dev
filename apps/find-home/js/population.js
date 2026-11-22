@@ -75,6 +75,17 @@ function describeBins(densities, population) {
 export const YOUNG_BINS = describeBins(YOUNG_DENSITIES, 'young');
 export const OLD_BINS = describeBins(OLD_DENSITIES, 'old');
 
+const ARM_FOLLOWING_SHARE = { '-1': 1, 0: 0.6, 1: 0.3 };
+
+export const ARMED_BINS = OLD_BINS.map((bin) => {
+  const share = (ARM_FOLLOWING_SHARE[bin.absolute] ?? 0) * (1 - giantShare(bin.absolute));
+  const dwarfFlux = bandFluxes(interpolate(MAIN_SEQUENCE_COLOUR, bin.absolute));
+  const light = bin.density * luminosityOf(bin.absolute) * share;
+  return { ...bin, armShare: share, light: dwarfFlux.map((flux) => light * flux) };
+});
+
+export const SMOOTH_OLD_BINS = OLD_BINS.map((bin, i) => ({ ...bin, light: bin.light.map((value, band) => value - ARMED_BINS[i].light[band]) }));
+
 const BULGE_TURNOFF = 4;
 
 export const BULGE_BINS = OLD_BINS.map((bin) => {
