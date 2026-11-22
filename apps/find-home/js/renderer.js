@@ -166,7 +166,7 @@ function bodyArrays(seen, mapRelief) {
     arrays.uBodyOccluder.set([...direction, star ? 0 : angularRadius], i * 4);
     arrays.uBodySun.set(body.sunward, i * 3);
     arrays.uBodyNorth.set(body.north, i * 3);
-    arrays.uBodyMeridian.set(body.meridian, i * 3);
+    arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), BODY_KIND_CODES[body.kind]], i * 4);
     arrays.uBodyMap.set([
       mapped ? body.mapLayer : -1,

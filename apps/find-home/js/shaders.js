@@ -536,6 +536,12 @@ const float DETAIL_ALBEDO = 0.3;
 const float CLOUD_DETAIL = 0.25;
 const vec3 CLOUD_ALBEDO = vec3(0.95);
 const float OCEAN_GLINT = 0.6;
+const float CLOUD_TOP_CONTRAST = 0.04;
+const float CHEVRON_SWEEP = 1.2;
+const float STREAK_LENGTH = 3.0;
+const float STREAK_SPACING = 9.0;
+const float STREAK_WOBBLE = 0.6;
+const float CLOUD_DECK_FLATNESS = 0.5;
 const vec3 OCEAN_ALBEDO = vec3(2.0, 5.0, 20.0) / 255.0;
 const float COAST_ROUGHNESS = 1.2;
 const float COAST_SHARPEST = 0.01;
@@ -580,7 +586,6 @@ vec3 placeholderAlbedo(vec4 look, vec3 local) {
     float bands = sin(latitude * 22.0 + 2.5 * terrain(local * 3.0)) * 0.5 + 0.5;
     return look.rgb * (0.78 + 0.3 * bands);
   }
-  if (look.w == BODY_CLOUDED) return look.rgb * (0.92 + 0.12 * terrain(local * 2.0 + vec3(3.1)));
   return look.rgb * (0.7 + 0.6 * terrain(local * 4.0));
 }
 
@@ -596,6 +601,16 @@ float cloudCover(vec3 local, vec3 detailPoint, float octaves) {
   float billows = terrain(stretchedEastWest + CLOUD_SWIRL * swirl) + CLOUD_DETAIL * detailNoise(detailPoint, octaves);
   float climate = 0.1 * latitudeBelt(latitude, 0.0, 0.1) - 0.15 * latitudeBelt(latitude, 0.45, 0.15) + 0.1 * latitudeBelt(latitude, 1.0, 0.2);
   return CLOUD_OPACITY * smoothstep(0.5, 0.75, billows + climate);
+}
+
+float cloudTopShade(vec3 local, vec3 detailPoint, float octaves) {
+  float latitude = asin(clamp(local.z, -1.0, 1.0));
+  float chevron = atan(local.y, local.x) + CHEVRON_SWEEP * abs(latitude);
+  vec3 streakSpace = vec3(cos(chevron) * STREAK_LENGTH, sin(chevron) * STREAK_LENGTH, latitude * STREAK_SPACING);
+  float streaks = terrain(streakSpace + STREAK_WOBBLE * (terrain(local * 2.0) - 0.5)) - 0.5;
+  float darkerEquator = -0.5 * latitudeBelt(latitude, 0.0, 0.35);
+  float polarCollar = 0.6 * latitudeBelt(latitude, 1.1, 0.12);
+  return 1.0 + CLOUD_TOP_CONTRAST * (2.0 * streaks + darkerEquator + polarCollar + detailNoise(detailPoint, octaves));
 }
 
 float mapHeight(float layer, vec2 uv) {
@@ -629,6 +644,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     land = smoothstep(0.5 - edgeWidth, 0.5 + edgeWidth, coastline);
     albedo = mix(OCEAN_ALBEDO, albedo, land);
   }
+  if (look.w == BODY_CLOUDED) albedo = look.rgb * cloudTopShade(local, detailPoint, octaves);
 
   vec3 shaded = normal;
   if (mapped) {
@@ -653,7 +669,9 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec3 sun = uBodySun[i];
   float daylight = smoothstep(-0.02, 0.05, dot(normal, sun));
   float sunHeight = max(dot(normal, sun), 0.0);
-  vec3 lit = albedo * max(dot(shaded, sun), 0.0) * daylight;
+  float lighting = max(dot(shaded, sun), 0.0);
+  if (look.w == BODY_CLOUDED) lighting = mix(lighting, 2.0 * sunHeight / (sunHeight + mu + 1e-4), CLOUD_DECK_FLATNESS);
+  vec3 lit = albedo * lighting * daylight;
   if (look.w == BODY_OCEAN_WORLD) {
     vec3 halfway = normalize(sun - direction);
     lit += (1.0 - land) * daylight * sunHeight * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
