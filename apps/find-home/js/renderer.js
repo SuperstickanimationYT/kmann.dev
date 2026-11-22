@@ -3,7 +3,7 @@ import {
   BAR_ANGLE, BAR_ANGULAR_SPEED, DISK, LY_PER_PC, MAP_HALF_WIDTH, MAP_SIZE, PC_PER_YEAR_PER_KM_S,
   positionSeenAt, SUN_RADIUS,
 } from './milky-way.js';
-import { luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.js';
+import { BULGE_BINS, luminosityOf, OLD_BINS, WHITE_BALANCE, YOUNG_BINS } from './population.js';
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
@@ -280,6 +280,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, skyProgram, { ...viewUniforms(view), uOutputScale: outputScale, uFrameSeed: { uint: seed } });
     writeUnresolved(tableRow(tables, TABLE_ROWS.oldUnresolved), OLD_BINS, reaches.slice(YOUNG_BINS.length));
     writeUnresolved(tableRow(tables, TABLE_ROWS.youngUnresolved), YOUNG_BINS, reaches.slice(0, YOUNG_BINS.length));
+    writeUnresolved(tableRow(tables, TABLE_ROWS.bulgeUnresolved), BULGE_BINS, reaches.slice(YOUNG_BINS.length));
     const nebulaCount = writeNebulae(tableRow(tables, TABLE_ROWS.nebulaPlace), tableRow(tables, TABLE_ROWS.nebulaGlow), nebulae, view.camera);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, tableTexture);

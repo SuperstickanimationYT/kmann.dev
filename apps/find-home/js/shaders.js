@@ -3,7 +3,7 @@ export const MAX_GALAXIES = 4;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const TABLE_WIDTH = 64;
-export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3 };
+export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4 };
 export const UNRESOLVED_NEAREST = 0.1;
 export const UNRESOLVED_FARTHEST = 1e6;
 
@@ -234,7 +234,7 @@ void main() {
       vec3 p = uCamera + direction * t;
       float footprint = max(t * uPixelAngle, ds * 0.25);
       Matter m = matterAt(p, t * uYearsPerPc, footprint);
-      vec3 emission = (m.disk + m.bar) * lookupUnresolved(${TABLE_ROWS.oldUnresolved}, t)
+      vec3 emission = m.disk * lookupUnresolved(${TABLE_ROWS.oldUnresolved}, t) + m.bar * lookupUnresolved(${TABLE_ROWS.bulgeUnresolved}, t)
         + m.young * (lookupUnresolved(${TABLE_ROWS.youngUnresolved}, t) + uGasPerYoung * uGasColour);
       vec3 tau = m.dust * MAG_TO_TAU * EXTINCTION_BANDS * ds;
       vec3 transmit = exp(-depth);
@@ -559,8 +559,20 @@ float glare(vec3 direction) {
   return veil * (1.0 + 6.0 * spikes * degreesOff) / 1.08e-4;
 }
 
-const float LONG_EXPOSURE_GAIN = 1.5;
-const float LONG_EXPOSURE_SATURATION = 3.0;
+const float LONG_EXPOSURE_SATURATION = 1.5;
+const float PHOTO_KNEE_LOG = -4.7;
+const float PHOTO_WHITE_LOG = -3.0;
+
+float nakedEyeLightness(float logSeen, float colourShare) {
+  float lightness = clamp((logSeen + 5.6) / 5.1, 0.0, 1.0);
+  lightness = lightness * lightness * smoothstep(-6.2, -5.4, logSeen);
+  return lightness + grain() * 0.06 * (1.0 - colourShare) * smoothstep(-6.6, -5.0, logSeen);
+}
+
+float photoLightness(float logSeen) {
+  float overKnee = pow(10.0, logSeen - PHOTO_KNEE_LOG);
+  return clamp(asinh(overKnee) / asinh(pow(10.0, PHOTO_WHITE_LOG - PHOTO_KNEE_LOG)), 0.0, 1.0);
+}
 
 vec3 boostSaturation(vec3 tint, float amount) {
   float grey = dot(tint, vec3(0.3, 0.5, 0.2));
@@ -586,10 +598,8 @@ void main() {
   float logPhotopic = log(max(photopic, 1e-12)) / log(10.0);
   float colourShare = max(smoothstep(-3.0, -0.5, logPhotopic), uLongExposure);
   float seen = mix(scotopic, photopic, colourShare);
-  float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation + LONG_EXPOSURE_GAIN * uLongExposure;
-  float lightness = clamp((logSeen + 5.6) / 5.1, 0.0, 1.0);
-  lightness = lightness * lightness * smoothstep(-6.2, -5.4, logSeen);
-  lightness += grain() * 0.06 * (1.0 - colourShare) * smoothstep(-6.6, -5.0, logSeen);
+  float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation;
+  float lightness = uLongExposure > 0.5 ? photoLightness(logSeen) : nakedEyeLightness(logSeen, colourShare);
   vec3 tint = sky / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), max(tint.b, 1e-9));
   tint = boostSaturation(tint, mix(1.0, LONG_EXPOSURE_SATURATION, uLongExposure));
