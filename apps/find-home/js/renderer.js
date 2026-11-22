@@ -7,7 +7,7 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX, GROUND_FRAGMENT,
   MAX_BODIES, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
@@ -139,8 +139,33 @@ const CUBE_FACES = [
 const BODY_COLOUR_UNIT = 5;
 const BODY_HEIGHT_UNIT = 6;
 const BODY_MAP_SIZE = [1024, 512];
+const GROUND_VIEW_UNIT = 7;
 const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5 };
 const SUN_DISK_GLOW = 2;
+const HIDDEN_BEHIND_FOREGROUND = true;
+const NO_GROUND = { uGround: { int: -1 } };
+const AIRLESS = { tint: [0, 0, 0], scaleKm: 0, glow: [0, 0, 0], hazeKm: 1, sunset: [0, 0, 0] };
+
+function groundUniforms(ground, seen) {
+  if (!ground) return NO_GROUND;
+  const index = seen.slice(0, MAX_BODIES).findIndex(({ body }) => body.name === ground.body.name);
+  if (index < 0) return NO_GROUND;
+  const air = ground.settings.air ?? AIRLESS;
+  return {
+    uGround: { int: index },
+    uGroundCamera: ground.cameraLocalKm,
+    uGroundRadius: ground.body.radiusKm,
+    uGroundExcess: ground.frame.excess,
+    uGroundFromAnchor: ground.frame.fromAnchor,
+    uGroundShape: [ground.settings.lowKm, ground.settings.rangeKm, ground.settings.roughness, ground.settings.craters],
+    uGroundSea: ground.settings.sea ? 1 : 0,
+    uGroundAir: [...air.tint, air.scaleKm],
+    uGroundGlow: [...air.glow, air.hazeKm],
+    uGroundSunset: air.sunset,
+    uGroundTopKm: ground.topKm,
+    uGroundBlend: ground.blend,
+  };
+}
 const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
 const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
@@ -196,6 +221,8 @@ export function createRenderer(canvas, armMap, galaxies) {
 
   const skyProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FRAGMENT);
   const eyeProgram = createProgram(gl, FULLSCREEN_VERTEX, EYE_FRAGMENT);
+  const groundProgram = createProgram(gl, FULLSCREEN_VERTEX, GROUND_FRAGMENT);
+  let groundTarget = null;
   const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
   const cameraStarProgram = createProgram(gl, CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT);
   const developProgram = createProgram(gl, FULLSCREEN_VERTEX, DEVELOP_FRAGMENT);
@@ -248,8 +275,11 @@ export function createRenderer(canvas, armMap, galaxies) {
     mapRelief[layer] = relief;
   }
 
-  function setBodies(program, seen) {
+  function setBodies(program, seen, ground) {
     const { arrays, count } = bodyArrays(seen ?? [], mapRelief);
+    const groundValues = groundUniforms(ground, seen ?? []);
+    setUniforms(gl, program, groundValues);
+    if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
     for (const [name, values] of Object.entries(arrays)) setArray(gl, program, name, values, name === 'uBodySun' || name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
     setUniforms(gl, program, { uBodyCount: { int: count } });
     if (program.uniforms.uBodyColour) {
@@ -386,12 +416,13 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  function drawStars(program, target, view, extra) {
+  function drawStars(program, target, view, extra, hiddenBehindForeground = false) {
     gl.useProgram(program.program);
     bindGalaxyTextures(program);
     setUniforms(gl, program, { ...viewUniforms(view), ...extra });
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE);
+    if (hiddenBehindForeground) gl.blendFuncSeparate(gl.ONE_MINUS_DST_ALPHA, gl.ONE, gl.ZERO, gl.ONE);
+    else gl.blendFunc(gl.ONE, gl.ONE);
     gl.bindVertexArray(target.vao);
     gl.drawArrays(gl.POINTS, 0, target.count);
     gl.disable(gl.BLEND);
@@ -412,13 +443,35 @@ export function createRenderer(canvas, armMap, galaxies) {
     return target;
   }
 
+  function groundTargetFitting(resolution) {
+    const width = Math.max(1, Math.round(canvas.width * resolution));
+    const height = Math.max(1, Math.round(canvas.height * resolution));
+    if (!groundTarget || groundTarget.width !== width || groundTarget.height !== height) {
+      groundTarget?.destroy();
+      groundTarget = createTarget(gl, width, height);
+    }
+    return groundTarget;
+  }
+
+  function drawGround(view, bodies, ground, resolution) {
+    const target = groundTargetFitting(resolution);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+    gl.viewport(0, 0, target.width, target.height);
+    gl.useProgram(groundProgram.program);
+    setUniforms(gl, groundProgram, viewUniforms({ ...view, pixelAngle: view.pixelAngle / resolution }));
+    setBodies(groundProgram, bodies, ground);
+    gl.bindVertexArray(emptyVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return target.textures[0];
+  }
+
   function setCockpit(program, cockpit) {
     setUniforms(gl, program, { uShipRight: cockpit.uShipRight, uShipUp: cockpit.uShipUp, uShipForward: cockpit.uShipForward, uCockpit: cockpit.enabled ? 1 : 0 });
     gl.uniform4fv(program.uniforms.uWindows, cockpit.windows);
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, warp, adaptation, longExposure }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, ground, groundResolution, warp, adaptation, longExposure }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution && !warp) {
@@ -428,16 +481,22 @@ export function createRenderer(canvas, armMap, galaxies) {
       drawSky({ ...view, pixelAngle: view.pixelAngle / skyResolution }, nebulae, stars.reaches, 1, seed);
     }
 
+    const groundView = ground && !warp ? drawGround(view, bodies, ground, groundResolution) : null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.useProgram(eyeProgram.program);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, shownSky.textures[0]);
     gl.uniform1i(eyeProgram.uniforms.uSky, 0);
+    if (groundView) {
+      gl.activeTexture(gl.TEXTURE0 + GROUND_VIEW_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D, groundView);
+      gl.uniform1i(eyeProgram.uniforms.uGroundView, GROUND_VIEW_UNIT);
+    }
     setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0 });
     setCockpit(eyeProgram, cockpit);
     setUniforms(gl, eyeProgram, planetValues);
-    setBodies(eyeProgram, bodies);
+    setBodies(eyeProgram, bodies, ground);
     bindWarp(eyeProgram, warp, adaptation);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -446,7 +505,11 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
     setBodies(eyeStarProgram, bodies);
     bindWarp(eyeStarProgram, warp, adaptation);
-    drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift });
+    drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift }, HIDDEN_BEHIND_FOREGROUND);
+    gl.colorMask(false, false, false, true);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.colorMask(true, true, true, true);
   }
 
   function exposeCamera({ view, nebulae, stars, width, height, electronsPerNanomaggy, electronsPerUnit, psfPixels }) {

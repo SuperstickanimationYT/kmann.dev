@@ -13,6 +13,7 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, placeBodies } from './solar-system.js';
+import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres, highestGroundNearKm } from './terrain.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
 import { add, dot, normalize, orthonormal, rotateAbout, scale, subtract } from './vectors.js';
@@ -29,6 +30,16 @@ const REGATHER_INTERVAL = 150;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
 const SOLAR_REACH_PC = 0.05;
+const CO_ROTATION_RADII = 3;
+const GROUND_CHECK_KM = 60;
+const GROUND_VIEW_SHARE_OF_RADIUS = 0.12;
+const GROUND_VIEW_HIGHEST_KM = 400;
+const GROUND_VIEW_FULL_SHARE_OF_HIGHEST = 0.5;
+const COLLISION_FOOTPRINT_METRES = 0.05;
+const GROUND_RESOLUTIONS = [0.25, 0.35, 0.5, 0.7];
+const GROUND_RESOLUTION_JUDGED_OVER_FRAMES = 30;
+const GROUND_FRAME_TOO_SLOW = 1 / 45;
+const GROUND_FRAME_ROOMY = 1 / 58;
 const KM_PER_LY = KM_PER_PC / LY_PER_PC;
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
@@ -300,7 +311,9 @@ function formatLightYears(lightYears) {
   if (lightYears >= 1000) return `${Math.round(lightYears).toLocaleString('en')} ly`;
   if (lightYears >= 1) return `${lightYears.toFixed(1)} ly`;
   if (lightYears * AU_PER_LY >= 0.1) return `${(lightYears * AU_PER_LY).toFixed(lightYears * AU_PER_LY < 10 ? 1 : 0)} AU`;
-  return `${Math.round(lightYears * KM_PER_LY).toLocaleString('en')} km`;
+  const km = lightYears * KM_PER_LY;
+  if (km >= 1) return `${Math.round(km).toLocaleString('en')} km`;
+  return `${Math.round(km * 1000).toLocaleString('en')} m`;
 }
 
 function formatWarpTime(lightYears) {
@@ -452,7 +465,7 @@ function flightStep(seconds) {
     const pcPerSecond = game.speed / LY_PER_PC;
     const step = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, move[2]));
     const shift = scale(step, pcPerSecond * seconds);
-    if (solarFrame) solarFrame.offsetKm = add(solarFrame.offsetKm, scale(shift, KM_PER_PC));
+    if (solarFrame) moveInSolarFrame(scale(shift, KM_PER_PC));
     else game.camera = add(game.camera, shift);
     moved = true;
   }
@@ -469,11 +482,39 @@ function flightStep(seconds) {
 let solarBodies = null;
 let solarFrame = null;
 
+const groundMaps = [];
+
+const bodyNamed = (name) => solarBodies.find((body) => body.name === name);
+const bodyEast = (body) => [
+  body.north[1] * body.meridian[2] - body.north[2] * body.meridian[1],
+  body.north[2] * body.meridian[0] - body.north[0] * body.meridian[2],
+  body.north[0] * body.meridian[1] - body.north[1] * body.meridian[0],
+];
+const toBodyLocal = (body, vector) => [dot(vector, body.meridian), dot(vector, bodyEast(body)), dot(vector, body.north)];
+const fromBodyLocal = (body, [x, y, z]) => add(add(scale(body.meridian, x), scale(bodyEast(body), y)), scale(body.north, z));
+const groundFor = (body) => (body.ground && body.mapLayer >= 0 ? groundMaps[body.mapLayer] ?? null : null);
+const frameOffsetKm = (body, frame) => (frame.coRotating ? fromBodyLocal(body, frame.localKm) : frame.offsetKm);
+
 function enterSolarFrame() {
   if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) return null;
   const fromSunKm = scale(subtract(game.camera, SUN_POSITION), KM_PER_PC);
   const holder = holdingBody(solarBodies, fromSunKm);
-  return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), camera: null };
+  return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), coRotating: false, localKm: null, camera: null, landed: false };
+}
+
+function moveInSolarFrame(shiftKm) {
+  const holder = bodyNamed(solarFrame.holder);
+  if (solarFrame.coRotating) solarFrame.localKm = add(solarFrame.localKm, toBodyLocal(holder, shiftKm));
+  else solarFrame.offsetKm = add(solarFrame.offsetKm, shiftKm);
+}
+
+function lowestDistanceKm(holder, offsetKm) {
+  const ground = groundFor(holder);
+  if (!ground) return holder.radiusKm + LOWEST_ALTITUDE_KM;
+  const frame = groundFrame(toBodyLocal(holder, offsetKm), holder.radiusKm);
+  if (frame.altitudeKm > GROUND_CHECK_KM) return holder.radiusKm;
+  const { height, seaLevel } = groundHeightMetres(ground, frame.up, frame.anchor, frame.surfaceOffset, COLLISION_FOOTPRINT_METRES);
+  return holder.radiusKm + (Math.max(height, seaLevel) + EYE_HEIGHT_METRES) / 1000;
 }
 
 function followSolarSystem() {
@@ -486,21 +527,64 @@ function followSolarSystem() {
   if (solarFrame && game.camera !== solarFrame.camera) solarFrame = null;
   solarFrame ??= enterSolarFrame();
   if (!solarFrame) return;
-  const centreOf = (name) => solarBodies.find((body) => body.name === name).fromSunKm;
-  const fromSunKm = add(centreOf(solarFrame.holder), solarFrame.offsetKm);
+  const previous = bodyNamed(solarFrame.holder);
+  const fromSunKm = add(previous.fromSunKm, frameOffsetKm(previous, solarFrame));
   const holder = holdingBody(solarBodies, fromSunKm);
   let offsetKm = subtract(fromSunKm, holder.fromSunKm);
-  const lowest = holder.radiusKm + LOWEST_ALTITUDE_KM;
-  const height = Math.hypot(...offsetKm);
-  if (height < lowest) offsetKm = scale(offsetKm, lowest / height);
+  const lowest = lowestDistanceKm(holder, offsetKm);
+  const distance = Math.hypot(...offsetKm);
+  const landed = distance <= lowest;
+  if (landed) offsetKm = scale(offsetKm, lowest / distance);
+  if (landed && !solarFrame.landed) showStatus(`Touched down on ${holder.name === 'Moon' ? 'the Moon' : holder.name}.`);
   game.camera = add(SUN_POSITION, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
-  solarFrame = { holder: holder.name, offsetKm, camera: game.camera };
+  const coRotating = holder.kind !== 'star' && Math.hypot(...offsetKm) < CO_ROTATION_RADII * holder.radiusKm;
+  solarFrame = { holder: holder.name, offsetKm, coRotating, localKm: coRotating ? toBodyLocal(holder, offsetKm) : null, camera: game.camera, landed };
   if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) solarFrame = null;
+}
+
+let ceiling = null;
+const groundDetail = { level: 2, tooSlow: GROUND_RESOLUTIONS.length, frames: 0, seconds: 0 };
+
+function judgeGroundResolution(seconds, groundShown) {
+  if (!groundShown) {
+    Object.assign(groundDetail, { tooSlow: GROUND_RESOLUTIONS.length, frames: 0, seconds: 0 });
+    return;
+  }
+  groundDetail.frames++;
+  groundDetail.seconds += seconds;
+  if (groundDetail.frames < GROUND_RESOLUTION_JUDGED_OVER_FRAMES) return;
+  const average = groundDetail.seconds / groundDetail.frames;
+  if (average > GROUND_FRAME_TOO_SLOW && groundDetail.level > 0) {
+    groundDetail.tooSlow = groundDetail.level;
+    groundDetail.level--;
+  } else if (average < GROUND_FRAME_ROOMY && groundDetail.level + 1 < groundDetail.tooSlow) groundDetail.level++;
+  groundDetail.frames = 0;
+  groundDetail.seconds = 0;
+}
+
+function ceilingNear(body, settings, frame) {
+  const key = `${body.name} ${frame.anchor.join(' ')} ${Math.round(frame.altitudeKm)}`;
+  if (ceiling?.key !== key) ceiling = { key, topKm: highestGroundNearKm(settings, frame.up, body.radiusKm, frame.altitudeKm) };
+  return ceiling.topKm;
+}
+
+function groundInView() {
+  if (!solarFrame) return null;
+  const body = bodyNamed(solarFrame.holder);
+  const settings = groundFor(body);
+  if (!settings) return null;
+  const cameraLocalKm = solarFrame.coRotating ? solarFrame.localKm : toBodyLocal(body, solarFrame.offsetKm);
+  const frame = groundFrame(cameraLocalKm, body.radiusKm);
+  const highest = Math.min(GROUND_VIEW_SHARE_OF_RADIUS * body.radiusKm, GROUND_VIEW_HIGHEST_KM);
+  if (frame.altitudeKm > highest) return null;
+  const fullyGround = highest * GROUND_VIEW_FULL_SHARE_OF_HIGHEST;
+  const blend = Math.min(1, Math.max(0, (highest - frame.altitudeKm) / (highest - fullyGround)));
+  return { body, settings, cameraLocalKm, frame, topKm: ceilingNear(body, settings, frame), blend: blend * blend * (3 - 2 * blend) };
 }
 
 function bodiesInView() {
   if (!solarFrame) return null;
-  const cameraFromSunKm = add(solarBodies.find((body) => body.name === solarFrame.holder).fromSunKm, solarFrame.offsetKm);
+  const cameraFromSunKm = add(bodyNamed(solarFrame.holder).fromSunKm, solarFrame.offsetKm);
   return solarBodies
     .map((body) => ({ body, offsetKm: subtract(body.fromSunKm, cameraFromSunKm) }))
     .sort((a, b) => Math.hypot(...a.offsetKm) - Math.hypot(...b.offsetKm));
@@ -566,6 +650,8 @@ function frame(now) {
   refreshEyeStars(now);
   if (eyeStars) {
     frameSeed = (frameSeed + 1) >>> 0;
+    const ground = groundInView();
+    judgeGroundResolution(seconds, ground !== null);
     renderer.renderEye({
       view: eyeView(),
       nebulae,
@@ -576,6 +662,8 @@ function frame(now) {
       cockpit: { ...cockpitUniforms(game.ship), enabled: true },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
+      ground,
+      groundResolution: GROUND_RESOLUTIONS[groundDetail.level],
       warp: warpView,
       adaptation,
       longExposure: longExposureShown(),
@@ -888,7 +976,10 @@ if (!renderer) {
     warpOptics = optics;
     renderer.loadWarpTable(optics);
   });
-  loadBodyMaps(new URL('data/planets/', window.location.href), renderer.loadBodyMap).catch(() => showStatus('Planet maps failed to load; planets show placeholder surfaces.'));
+  loadBodyMaps(new URL('data/planets/', window.location.href), (layer, maps) => {
+    renderer.loadBodyMap(layer, maps);
+    groundMaps[layer] = maps.ground ?? null;
+  }).catch(() => showStatus('Planet maps failed to load; planets show placeholder surfaces.'));
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     nearby = stars;
   });

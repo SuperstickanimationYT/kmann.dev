@@ -78,11 +78,17 @@ def land_mask(bathymetry_path):
     return Image.fromarray(np.round(np.asarray(dry.resize((WIDTH, HEIGHT), Image.BOX))).astype(np.uint8), 'L')
 
 
-def save_height(metres, name):
+def area_weighted_mean(metres):
+    latitudes = (0.5 - (np.arange(metres.shape[0]) + 0.5) / metres.shape[0]) * np.pi
+    weights = np.cos(latitudes)[:, None] * np.ones_like(metres)
+    return float((metres * weights).sum() / weights.sum())
+
+
+def save_height(metres, name, datum_metres=0.0):
     low, high = float(metres.min()), float(metres.max())
     scaled = np.round((metres - low) / (high - low) * 255).astype(np.uint8)
     Image.fromarray(scaled, 'L').resize((WIDTH, HEIGHT), Image.LANCZOS).save(OUT / f'{name}-height.webp', lossless=True, method=6)
-    return {'lowKm': round(low / 1000, 3), 'highKm': round(high / 1000, 3)}
+    return {'lowKm': round(low / 1000, 3), 'highKm': round(high / 1000, 3), 'datumKm': round(datum_metres / 1000, 3)}
 
 
 def edge_strength(grey):
@@ -105,7 +111,7 @@ def main(raw):
 
     moon = np.asarray(Image.open(raw / 'ldem_4_uint.tif'), dtype=np.float64) * 0.5
     save_colour(raw / 'lroc_color_2k.jpg', 'moon')
-    ranges['Moon'] = save_height(moon, 'moon')
+    ranges['Moon'] = save_height(moon, 'moon', datum_metres=area_weighted_mean(moon))
 
     mola = np.fromfile(raw / 'megt90n000cb.img', dtype='>i2').reshape(720, 1440).astype(np.float64)
     mola = centred_on_prime_meridian(mola, starts_at_zero_east=True)

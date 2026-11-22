@@ -1,3 +1,5 @@
+import { ANCHOR_METRES, COAST_DROP_METRES, COAST_OCTAVES, COAST_ROUGHNESS, CRATER_CHANCE, CRATER_FIRST_OCTAVE, CRATER_LAST_OCTAVE, GROUND_OCTAVES } from './terrain.js';
+
 export const MAX_NEBULAE = 64;
 export const MAX_GALAXIES = 4;
 export const MAX_BODIES = 12;
@@ -453,7 +455,7 @@ vec3 blueshifted(vec3 bands, float shift) {
 }
 `;
 
-export const EYE_FRAGMENT = `#version 300 es
+const EYE_SHARED = `
 precision highp float;
 precision highp int;
 uniform sampler2D uSky;
@@ -522,6 +524,8 @@ uniform vec4 uBodyMap[${MAX_BODIES}];
 uniform highp sampler2DArray uBodyColour;
 uniform highp sampler2DArray uBodyHeight;
 uniform float uPixelAngle;
+uniform int uGround;
+uniform float uGroundBlend;
 
 const float BODY_CLOUDED = 1.0;
 const float BODY_GIANT = 2.0;
@@ -549,7 +553,7 @@ const float HAZE_POLAR_HOOD = 0.12;
 const float HAZE_TWILIGHT = 0.12;
 const vec3 DETACHED_HAZE = vec3(0.3, 0.42, 0.7);
 const vec3 OCEAN_ALBEDO = vec3(2.0, 5.0, 20.0) / 255.0;
-const float COAST_ROUGHNESS = 1.2;
+const float COAST_ROUGHNESS = ${COAST_ROUGHNESS};
 const float COAST_SHARPEST = 0.01;
 const float OCEAN_SHININESS = 250.0;
 const float CLOUD_SCALE = 7.0;
@@ -704,6 +708,7 @@ vec4 bodiesColour(vec3 direction) {
   vec3 points = vec3(0.0);
   for (int i = 0; i < ${MAX_BODIES}; i++) {
     if (i >= uBodyCount) break;
+    if (i == uGround && uGroundBlend >= 1.0) continue;
     vec4 place = uBodyPlace[i];
     float along = dot(direction, place.xyz);
     if (along <= 0.0) continue;
@@ -719,6 +724,339 @@ vec4 bodiesColour(vec3 direction) {
     return vec4(shadeBody(i, direction, hit, radius) * cover + points, cover);
   }
   return vec4(points, 0.0);
+}
+
+uniform vec3 uGroundCamera;
+uniform float uGroundRadius;
+uniform float uGroundExcess;
+uniform ivec3 uGroundAnchor;
+uniform vec3 uGroundFromAnchor;
+uniform vec4 uGroundShape;
+uniform float uGroundTopKm;
+uniform float uGroundSea;
+uniform vec4 uGroundAir;
+uniform vec4 uGroundGlow;
+uniform vec3 uGroundSunset;
+
+const float ANCHOR_METRES = ${ANCHOR_METRES}.0;
+const int GROUND_OCTAVES = ${GROUND_OCTAVES};
+const int CRATER_FIRST_OCTAVE = ${CRATER_FIRST_OCTAVE};
+const int CRATER_LAST_OCTAVE = ${CRATER_LAST_OCTAVE};
+const float CRATER_CHANCE = ${CRATER_CHANCE};
+const float COAST_DROP_METRES = ${COAST_DROP_METRES}.0;
+const int COAST_OCTAVES = ${COAST_OCTAVES};
+const int GROUND_STEPS = 160;
+const float GROUND_STEP_SHARE = 0.6;
+const int SHADOW_STEPS = 12;
+const float SHADOW_REACH_GROWTH = 2.0;
+const float SHADOW_NEAREST_METRES = 8.0;
+const float SHADOW_DETAIL_SHARE_OF_REACH = 0.5;
+const float MARCH_DETAIL_SHARE_OF_GAP = 0.25;
+const float SMALLEST_STEP_IN_FOOTPRINTS = 1.5;
+const float CRATER_RIM_SHARE_OF_CELL = 0.05;
+const float WATER_FRESNEL_HEAD_ON = 0.02;
+const float CLOUD_ALTITUDE_KM = 6.0;
+const float SKY_BRIGHTNESS = 0.9;
+const float SKY_VEIL_GAIN = 2.5;
+const float GROUND_GRAIN = 0.25;
+
+float groundLattice(ivec3 cell, int seed) {
+  uvec3 q = uvec3(cell);
+  return float(hashUint(q.x * 73856093u ^ q.y * 19349663u ^ q.z * 83492791u ^ uint(seed) * 2654435761u)) / 4294967295.0;
+}
+
+ivec3 octaveCells(int octave) {
+  return uGroundAnchor * (2 << octave);
+}
+
+vec3 inShiftedCells(vec3 offset, float cell, int seed) {
+  return offset / cell + fract(float(seed + 1) * vec3(0.618034, 0.414214, 0.732051));
+}
+
+float octaveNoise(ivec3 cells, vec3 offset, float cell, int seed) {
+  vec3 scaled = inShiftedCells(offset, cell, seed);
+  vec3 whole = floor(scaled);
+  vec3 f = scaled - whole;
+  f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  ivec3 c = cells + ivec3(whole);
+  return mix(
+    mix(mix(groundLattice(c, seed), groundLattice(c + ivec3(1, 0, 0), seed), f.x), mix(groundLattice(c + ivec3(0, 1, 0), seed), groundLattice(c + ivec3(1, 1, 0), seed), f.x), f.y),
+    mix(mix(groundLattice(c + ivec3(0, 0, 1), seed), groundLattice(c + ivec3(1, 0, 1), seed), f.x), mix(groundLattice(c + ivec3(0, 1, 1), seed), groundLattice(c + ivec3(1, 1, 1), seed), f.x), f.y),
+    f.z);
+}
+
+float craterDepth(ivec3 cells, vec3 offset, float cell, int octave) {
+  vec3 scaled = inShiftedCells(offset, cell, octave);
+  vec3 whole = floor(scaled);
+  ivec3 c = cells + ivec3(whole);
+  if (groundLattice(c, 100 + octave) > CRATER_CHANCE) return 0.0;
+  vec3 centre = whole + 0.3 + 0.4 * vec3(groundLattice(c, 200 + octave), groundLattice(c, 300 + octave), groundLattice(c, 400 + octave));
+  float radius = 0.06 + 0.14 * groundLattice(c, 500 + octave);
+  float reach = length(scaled - centre) / radius;
+  float bowl = reach < 1.0 ? reach * reach - 1.0 : 0.0;
+  float rimOff = (reach - 1.0) / 0.22;
+  return 0.2 * radius * cell * (bowl + 0.35 * exp(-rimOff * rimOff));
+}
+
+float octaveFade(float cell, float footprint) {
+  return clamp(log2(cell / footprint), 0.0, 1.0);
+}
+
+float groundDetailMetres(vec3 offset, float footprint) {
+  float height = 0.0;
+  for (int octave = 0; octave < GROUND_OCTAVES; octave++) {
+    float cell = ANCHOR_METRES / float(2 << octave);
+    float fade = octaveFade(cell, footprint);
+    if (fade <= 0.0) break;
+    ivec3 cells = octaveCells(octave);
+    height += fade * uGroundShape.z * cell * (octaveNoise(cells, offset, cell, octave) - 0.5);
+    if (uGroundShape.w > 0.0 && octave >= CRATER_FIRST_OCTAVE && octave <= CRATER_LAST_OCTAVE) height += fade * uGroundShape.w * craterDepth(cells, offset, cell, octave);
+  }
+  return height;
+}
+
+float coastNoise(vec3 offset, float footprint) {
+  float total = 0.0;
+  float amplitude = 0.5;
+  for (int octave = 0; octave < COAST_OCTAVES; octave++) {
+    float cell = ANCHOR_METRES / float(2 << octave);
+    float fade = octaveFade(cell, footprint);
+    if (fade <= 0.0) break;
+    total += fade * amplitude * (octaveNoise(octaveCells(octave), offset, cell, 700 + octave) - 0.5);
+    amplitude *= 0.5;
+  }
+  return total;
+}
+
+vec2 groundUv(vec3 up) {
+  return vec2(atan(up.y, up.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(up.z, -1.0, 1.0)) / 3.1415927);
+}
+
+float groundLayer() {
+  return uBodyMap[uGround].x;
+}
+
+vec4 mapTexelsLikeCollision(highp sampler2DArray map, vec2 uv) {
+  ivec2 size = textureSize(map, 0).xy;
+  float fx = uv.x * float(size.x) - 0.5;
+  float fy = clamp(uv.y * float(size.y) - 0.5, 0.0, float(size.y - 1));
+  vec2 corner = floor(vec2(fx, fy));
+  vec2 t = vec2(fx, fy) - corner;
+  int x0 = int(corner.x);
+  int y0 = int(corner.y);
+  int left = ((x0 % size.x) + size.x) % size.x;
+  int right = (left + 1) % size.x;
+  int below = min(y0 + 1, size.y - 1);
+  int layer = int(groundLayer());
+  vec4 a = texelFetch(map, ivec3(left, y0, layer), 0);
+  vec4 b = texelFetch(map, ivec3(right, y0, layer), 0);
+  vec4 c = texelFetch(map, ivec3(left, below, layer), 0);
+  vec4 d = texelFetch(map, ivec3(right, below, layer), 0);
+  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+}
+
+float landShare(vec2 uv, vec3 offset, float footprint) {
+  if (uGroundSea < 0.5) return 1.0;
+  float alpha = mapTexelsLikeCollision(uBodyColour, uv).a;
+  float edgeWidth = clamp(0.5 * footprint / (6.2831853 * uGroundRadius * 1000.0 / MAP_WIDTH), 0.002, 0.5);
+  float coastline = alpha + COAST_ROUGHNESS * 4.0 * alpha * (1.0 - alpha) * coastNoise(offset, footprint);
+  return smoothstep(0.5 - edgeWidth, 0.5 + edgeWidth, coastline);
+}
+
+float groundHeightMetres(vec3 up, vec3 offset, float footprint, out float land) {
+  vec2 uv = groundUv(up);
+  float mapped = (uGroundShape.x + mapTexelsLikeCollision(uBodyHeight, uv).r * uGroundShape.y) * 1000.0;
+  land = landShare(uv, offset, footprint);
+  float coast = uGroundSea > 0.5 ? (land - 0.5) * COAST_DROP_METRES : 0.0;
+  return mapped + groundDetailMetres(offset, footprint) * land + coast;
+}
+
+float surfaceHeightMetres(vec3 up, vec3 offset, float footprint) {
+  float land;
+  return max(groundHeightMetres(up, offset, footprint, land), uGroundSea > 0.5 ? 0.0 : -1e9);
+}
+
+struct GroundPoint {
+  vec3 up;
+  vec3 offset;
+  float altitudeKm;
+};
+
+GroundPoint groundPointAt(vec3 ray, float t) {
+  float excess = uGroundExcess + 2.0 * t * dot(uGroundCamera, ray) + t * t;
+  float fromCentre = sqrt(uGroundRadius * uGroundRadius + excess);
+  float altitudeKm = excess / (fromCentre + uGroundRadius);
+  vec3 up = (uGroundCamera + ray * t) / fromCentre;
+  return GroundPoint(up, uGroundFromAnchor + ray * t * 1000.0 - up * altitudeKm * 1000.0, altitudeKm);
+}
+
+vec3 groundLocal(vec3 direction) {
+  return vec3(dot(direction, uBodyMeridian[uGround]), dot(direction, cross(uBodyNorth[uGround], uBodyMeridian[uGround])), dot(direction, uBodyNorth[uGround]));
+}
+
+float cameraAltitudeKm() {
+  return uGroundExcess / (sqrt(uGroundRadius * uGroundRadius + uGroundExcess) + uGroundRadius);
+}
+
+float airDensityHere() {
+  return exp(-max(cameraAltitudeKm(), 0.0) / uGroundAir.w);
+}
+
+vec3 groundSky(vec3 ray, vec3 sun, vec3 upHere) {
+  if (uGroundAir.w <= 0.0) return vec3(0.0);
+  float density = airDensityHere();
+  float viewHeight = dot(ray, upHere);
+  float sunHeight = dot(sun, upHere);
+  float day = smoothstep(-0.15, 0.05, sunHeight);
+  float airmass = density / (max(viewHeight, 0.0) + 0.05);
+  float lowSun = 1.0 - smoothstep(0.0, 0.35, sunHeight);
+  vec3 tint = mix(uGroundAir.rgb, uGroundSunset, lowSun * pow(1.0 - max(viewHeight, 0.0), 3.0));
+  vec3 sky = tint * (1.0 - exp(-airmass * 0.35)) * day * SKY_BRIGHTNESS;
+  float towardSun = max(dot(ray, sun), 0.0);
+  sky += mix(uGroundGlow.rgb, uGroundSunset, lowSun) * density * day * (0.5 * pow(towardSun, 12.0) + 0.15 * pow(towardSun, 3.0));
+  return sky;
+}
+
+vec3 sunlightThroughAir(vec3 sun, vec3 upHere) {
+  if (uGroundAir.w <= 0.0) return vec3(1.0);
+  float airmass = 1.0 / (max(dot(sun, upHere), 0.0) + 0.04);
+  return exp(-airmass * 0.06 * (vec3(1.0) - uGroundAir.rgb * 0.8));
+}
+
+float groundShadow(GroundPoint p, float height, vec3 sun, float footprint) {
+  vec3 along = sun - p.up * dot(sun, p.up);
+  float rise = dot(sun, p.up);
+  float light = 1.0;
+  float reach = max(footprint * 4.0, SHADOW_NEAREST_METRES);
+  for (int i = 0; i < SHADOW_STEPS; i++) {
+    vec3 offset = p.offset + along * reach;
+    vec3 up = normalize(p.up + along * reach / (uGroundRadius * 1000.0));
+    float terrain = surfaceHeightMetres(up, offset, reach * SHADOW_DETAIL_SHARE_OF_REACH);
+    float ray = height + rise * reach;
+    light = min(light, clamp((ray - terrain) / (0.02 * reach) + 0.5, 0.0, 1.0));
+    if (light <= 0.0) break;
+    reach *= SHADOW_REACH_GROWTH;
+  }
+  return light;
+}
+
+vec4 cloudsSeenFrom(vec3 ray, vec3 sun, out float cloudT) {
+  cloudT = -1.0;
+  if (uGroundSea < 0.5) return vec4(0.0);
+  float shell = uGroundRadius + CLOUD_ALTITUDE_KM;
+  float b = dot(uGroundCamera, ray);
+  float c = uGroundExcess - (shell * shell - uGroundRadius * uGroundRadius);
+  float disc = b * b - c;
+  if (disc < 0.0) return vec4(0.0);
+  float root = sqrt(disc);
+  cloudT = c > 0.0 ? -b - root : -b + root;
+  if (cloudT <= 0.0) return vec4(0.0);
+  vec3 up = normalize(uGroundCamera + ray * cloudT);
+  float mapTexel = 6.2831853 / MAP_WIDTH;
+  float footprint = uPixelAngle * cloudT / uGroundRadius;
+  float octaves = clamp(log2(mapTexel / max(footprint, 1e-9)), 0.0, MAX_DETAIL_OCTAVES);
+  float cover = cloudCover(up, up / mapTexel, octaves);
+  float underside = c < 0.0 ? 0.65 : 1.0;
+  return vec4(CLOUD_ALBEDO * max(dot(sun, up), 0.0) * underside * sunlightThroughAir(sun, up), cover);
+}
+
+vec3 groundNormal(GroundPoint p, float rawHeight, float footprint) {
+  vec3 east = normalize(abs(p.up.z) < 0.999 ? cross(vec3(0.0, 0.0, 1.0), p.up) : vec3(1.0, 0.0, 0.0));
+  vec3 north = cross(p.up, east);
+  float probe = max(footprint, 0.5);
+  float scratch;
+  float towardEast = groundHeightMetres(normalize(p.up + east * probe / (uGroundRadius * 1000.0)), p.offset + east * probe, footprint, scratch);
+  float towardNorth = groundHeightMetres(normalize(p.up + north * probe / (uGroundRadius * 1000.0)), p.offset + north * probe, footprint, scratch);
+  return normalize(p.up - east * (towardEast - rawHeight) / probe - north * (towardNorth - rawHeight) / probe);
+}
+
+vec3 shadeGround(GroundPoint p, float t, float footprint, vec3 ray, vec3 sun, vec3 upHere) {
+  float land;
+  float rawHeight = groundHeightMetres(p.up, p.offset, footprint, land);
+  bool water = uGroundSea > 0.5 && rawHeight <= 0.0;
+  float height = water ? 0.0 : rawHeight;
+  vec3 normal = water ? p.up : groundNormal(p, rawHeight, footprint);
+  vec3 albedo = textureLod(uBodyColour, vec3(groundUv(p.up), groundLayer()), 0.0).rgb;
+  float grain = octaveNoise(octaveCells(12), p.offset, ANCHOR_METRES / float(2 << 12), 900) + octaveNoise(octaveCells(7), p.offset, ANCHOR_METRES / float(2 << 7), 901) - 1.0;
+  albedo *= 1.0 + GROUND_GRAIN * grain;
+  vec3 sunlight = sunlightThroughAir(sun, p.up);
+  float sunHeight = dot(sun, p.up);
+  float shadow = sunHeight > -0.05 ? groundShadow(p, height, sun, footprint) : 0.0;
+  vec3 ambient = uGroundAir.w > 0.0 ? uGroundAir.rgb * 0.18 * smoothstep(-0.15, 0.1, sunHeight) : vec3(0.0);
+  vec3 lit;
+  if (water) {
+    vec3 halfway = normalize(sun - ray);
+    float facing = clamp(dot(-ray, normal), 0.0, 1.0);
+    float fresnel = WATER_FRESNEL_HEAD_ON + (1.0 - WATER_FRESNEL_HEAD_ON) * pow(1.0 - facing, 5.0);
+    vec3 skyInWater = groundSky(normalize(reflect(ray, normal) + normal * 0.02), sun, p.up);
+    lit = OCEAN_ALBEDO * (max(sunHeight, 0.0) * sunlight * shadow + ambient) * (1.0 - fresnel) + skyInWater * fresnel + sunlight * shadow * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
+  } else {
+    lit = albedo * (max(dot(normal, sun), 0.0) * sunlight * shadow + ambient);
+  }
+  if (uGroundAir.w > 0.0) {
+    float haze = 1.0 - exp(-t * airDensityHere() / uGroundGlow.w);
+    lit = mix(lit, groundSky(normalize(ray + upHere * 0.02), sun, upHere), haze);
+  }
+  return lit;
+}
+
+vec4 groundView(vec3 direction) {
+  vec3 ray = groundLocal(direction);
+  vec3 sun = groundLocal(uBodySun[uGround]);
+  vec3 upHere = normalize(uGroundCamera);
+  float top = uGroundTopKm;
+  float topExcess = (uGroundRadius + top) * (uGroundRadius + top) - uGroundRadius * uGroundRadius;
+  float t = 0.0;
+  if (cameraAltitudeKm() > top) {
+    float b = dot(uGroundCamera, ray);
+    float disc = b * b - (uGroundExcess - topExcess);
+    t = disc < 0.0 ? -1.0 : -b - sqrt(disc);
+  }
+  float farthest = sqrt(max(topExcess, 0.0)) + sqrt(max(uGroundExcess, 0.0)) + 1.0;
+  float cloudT;
+  vec4 cloud = cloudsSeenFrom(ray, sun, cloudT);
+  vec3 sky = groundSky(ray, sun, upHere);
+
+  bool hit = false;
+  float previous = t;
+  float footprint = 1.0;
+  float lastGap = 0.0;
+  GroundPoint p = groundPointAt(ray, max(t, 0.0));
+  if (t >= 0.0) {
+    for (int i = 0; i < GROUND_STEPS; i++) {
+      p = groundPointAt(ray, t);
+      footprint = max(t * 1000.0 * uPixelAngle, 0.05);
+      float detailWorthSeeing = max(footprint, MARCH_DETAIL_SHARE_OF_GAP * lastGap);
+      float skippedDetailReach = (uGroundShape.z + uGroundShape.w * CRATER_RIM_SHARE_OF_CELL) * (detailWorthSeeing - footprint);
+      float gap = p.altitudeKm * 1000.0 - surfaceHeightMetres(p.up, p.offset, detailWorthSeeing) - skippedDetailReach;
+      lastGap = gap;
+      if (gap < footprint * 0.5) {
+        hit = true;
+        break;
+      }
+      if ((p.altitudeKm > top && dot(p.up, ray) > 0.0) || t > farthest) break;
+      previous = t;
+      t += max(gap * GROUND_STEP_SHARE, footprint * SMALLEST_STEP_IN_FOOTPRINTS) / 1000.0;
+    }
+    if (!hit && p.altitudeKm < top && t <= farthest && dot(p.up, ray) <= 0.0) hit = true;
+  }
+  if (hit) {
+    float low = previous;
+    float high = t;
+    for (int i = 0; i < 5; i++) {
+      float middle = 0.5 * (low + high);
+      GroundPoint q = groundPointAt(ray, middle);
+      if (q.altitudeKm * 1000.0 < surfaceHeightMetres(q.up, q.offset, footprint)) high = middle;
+      else low = middle;
+    }
+    p = groundPointAt(ray, high);
+    vec3 lit = shadeGround(p, high, footprint, ray, sun, upHere);
+    if (cloudT > 0.0 && cloudT < high) lit = mix(lit, cloud.rgb, cloud.a);
+    return vec4(lit, 1.0);
+  }
+  if (cloudT > 0.0) sky = mix(sky, cloud.rgb, cloud.a);
+  float veil = clamp(dot(sky, vec3(0.3, 0.5, 0.2)) * SKY_VEIL_GAIN + (cloudT > 0.0 ? cloud.a : 0.0), 0.0, 1.0);
+  return vec4(sky, veil);
 }
 
 uniform vec4 uPlanet;
@@ -834,9 +1172,24 @@ vec3 boostSaturation(vec3 tint, float amount) {
   return pushed / max(max(pushed.r, pushed.g), max(pushed.b, 1e-9));
 }
 
-void main() {
+vec3 viewDirection() {
   vec2 ndc = vUv * 2.0 - 1.0;
-  vec3 direction = normalize(uForward + uRight * ndc.x * uTanHalf.x + uUp * ndc.y * uTanHalf.y);
+  return normalize(uForward + uRight * ndc.x * uTanHalf.x + uUp * ndc.y * uTanHalf.y);
+}
+`;
+
+export const GROUND_FRAGMENT = `#version 300 es
+${EYE_SHARED}
+void main() {
+  outColour = groundView(viewDirection());
+}`;
+
+export const EYE_FRAGMENT = `#version 300 es
+${EYE_SHARED}
+uniform sampler2D uGroundView;
+
+void main() {
+  vec3 direction = viewDirection();
   if (!seenThroughCockpit(direction)) {
     outColour = vec4(cabinColour(direction), 1.0);
     return;
@@ -846,9 +1199,14 @@ void main() {
     outColour = vec4(planet.rgb, 1.0);
     return;
   }
+  vec4 ground = uGround >= 0 && uWarpAxis.w < 0.5 ? texture(uGroundView, vUv) * uGroundBlend : vec4(0.0);
+  if (ground.a >= 1.0) {
+    outColour = vec4(ground.rgb, 1.0);
+    return;
+  }
   vec4 body = bodiesColour(directionBeforeWarp(direction));
   if (body.a >= 1.0) {
-    outColour = vec4(body.rgb, 1.0);
+    outColour = vec4(body.rgb * (1.0 - ground.a) + ground.rgb, 1.0);
     return;
   }
   vec3 sky = uWarpAxis.w > 0.5 ? warpedSky(direction) + glare(direction) * uWhiteBalance : max(texture(uSky, vUv).rgb, vec3(0.0));
@@ -866,7 +1224,8 @@ void main() {
   tint = boostSaturation(tint, mix(1.0, LONG_EXPOSURE_SATURATION, uLongExposure));
   vec3 colour = mix(vec3(0.86, 0.9, 1.0), tint, colourShare);
   vec3 behind = colour * max(lightness, 0.0) * (1.0 - body.a);
-  outColour = vec4(mix(behind + body.rgb + planet.rgb, planet.rgb, planet.a), 1.0);
+  vec3 throughAir = (behind + body.rgb) * (1.0 - ground.a) + ground.rgb;
+  outColour = vec4(mix(throughAir + planet.rgb, planet.rgb, planet.a), max(max(body.a, ground.a), planet.a));
 }`;
 
 export const EYE_STAR_VERTEX = `#version 300 es
