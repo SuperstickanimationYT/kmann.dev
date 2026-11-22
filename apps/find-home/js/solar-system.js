@@ -28,7 +28,7 @@ export const BODIES = [
   { name: 'Sun', kind: 'star', radiusKm: 695700, pole: [286.13, 63.87], spin: [84.176, 14.1844], tint: [1, 0.96, 0.88] },
   { name: 'Mercury', kind: 'rocky', radiusKm: 2439.7, pole: [281.0103, 61.4155], spin: [329.5988, 6.1385108], tint: [0.55, 0.52, 0.5], magnitude: -0.6 },
   { name: 'Venus', kind: 'clouded', radiusKm: 6051.8, pole: [272.76, 67.16], spin: [160.2, -1.4813688], tint: [0.93, 0.86, 0.68], magnitude: -4.47 },
-  { name: 'Earth', kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86 },
+  { name: 'Earth', kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3 },
   { name: 'Moon', kind: 'rocky', parent: 'Earth', radiusKm: 1737.4, pole: [269.9949, 66.5392], spin: [38.3213, 13.17635815], tint: [0.6, 0.58, 0.55], magnitude: 0.21, map: 'moon', mapKmPerPixel: 10.7, roughness: 0.5 },
   { name: 'Mars', kind: 'rocky', radiusKm: 3389.5, pole: [317.269202, 54.432516], spin: [176.049863, 350.891982443297], tint: [0.7, 0.42, 0.25], magnitude: -1.52, map: 'mars', mapKmPerPixel: 20.8, roughness: 0.35 },
   { name: 'Jupiter', kind: 'giant', radiusKm: 69911, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
@@ -152,7 +152,7 @@ export async function loadBodyMaps(folder, onLoaded) {
   const ranges = await fetch(new URL('maps.json', folder)).then((response) => response.json());
   await Promise.all(MAPPED_BODIES.map(async (body, layer) => {
     const [colour, height] = await Promise.all([
-      mapImage(new URL(`${body.map}-colour.webp`, folder)),
+      mapImage(new URL(`${body.map}-colour.webp`, folder), { premultiplyAlpha: 'none' }),
       mapImage(new URL(`${body.map}-height.webp`, folder), { colorSpaceConversion: 'none' }),
     ]);
     const { lowKm, highKm } = ranges[body.name];

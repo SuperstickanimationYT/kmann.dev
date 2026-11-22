@@ -533,6 +533,14 @@ const float MAX_DETAIL_OCTAVES = 7.0;
 const float POINT_SIGMA_PIXELS = 0.7;
 const float DETAIL_PERSISTENCE = 0.42;
 const float DETAIL_ALBEDO = 0.3;
+const float CLOUD_DETAIL = 0.25;
+const vec3 CLOUD_ALBEDO = vec3(0.95);
+const float OCEAN_GLINT = 0.6;
+const float OCEAN_SHININESS = 250.0;
+const float CLOUD_SCALE = 7.0;
+const float CLOUD_STRETCH = 1.6;
+const float CLOUD_SWIRL = 2.5;
+const float CLOUD_OPACITY = 0.9;
 
 struct BodyFrame {
   vec3 north;
@@ -570,16 +578,21 @@ vec3 placeholderAlbedo(vec4 look, vec3 local) {
     return look.rgb * (0.78 + 0.3 * bands);
   }
   if (look.w == BODY_CLOUDED) return look.rgb * (0.92 + 0.12 * terrain(local * 2.0 + vec3(3.1)));
-  if (look.w == BODY_OCEAN_WORLD) {
-    float land = terrain(local * 1.7);
-    vec3 ocean = mix(vec3(0.02, 0.06, 0.16), vec3(0.04, 0.12, 0.28), smoothstep(0.3, 0.52, land));
-    vec3 ground = mix(vec3(0.16, 0.25, 0.1), vec3(0.45, 0.37, 0.25), smoothstep(0.58, 0.72, land));
-    vec3 surface = land > 0.53 ? ground : ocean;
-    surface = mix(surface, vec3(0.88), smoothstep(0.86, 0.9, abs(latitude) + 0.05 * land));
-    float cloud = smoothstep(0.5, 0.68, terrain(local * 3.4 + vec3(4.1, 1.7, 8.3)));
-    return mix(surface, vec3(0.92), 0.85 * cloud);
-  }
   return look.rgb * (0.7 + 0.6 * terrain(local * 4.0));
+}
+
+float latitudeBelt(float latitude, float centre, float width) {
+  float off = (abs(latitude) - centre) / width;
+  return exp(-off * off);
+}
+
+float cloudCover(vec3 local, vec3 detailPoint, float octaves) {
+  float latitude = asin(clamp(local.z, -1.0, 1.0));
+  vec3 swirl = vec3(terrain(local * 2.0), terrain(local * 2.0 + vec3(5.2)), terrain(local * 2.0 + vec3(9.1))) - 0.5;
+  vec3 stretchedEastWest = local * CLOUD_SCALE * vec3(1.0, 1.0, CLOUD_STRETCH);
+  float billows = terrain(stretchedEastWest + CLOUD_SWIRL * swirl) + CLOUD_DETAIL * detailNoise(detailPoint, octaves);
+  float climate = 0.1 * latitudeBelt(latitude, 0.0, 0.1) - 0.15 * latitudeBelt(latitude, 0.45, 0.15) + 0.1 * latitudeBelt(latitude, 1.0, 0.2);
+  return CLOUD_OPACITY * smoothstep(0.5, 0.75, billows + climate);
 }
 
 float mapHeight(float layer, vec2 uv) {
@@ -597,37 +610,47 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   BodyFrame frame = BodyFrame(uBodyNorth[i], uBodyMeridian[i], cross(uBodyNorth[i], uBodyMeridian[i]));
   vec3 local = bodyLocal(normal, frame);
   vec2 uv = mapCoordinates(normal, frame);
-  vec3 albedo = map.x >= 0.0 ? texture(uBodyColour, vec3(uv, map.x)).rgb : placeholderAlbedo(look, local);
+  bool mapped = map.x >= 0.0;
+  vec4 surface = mapped ? texture(uBodyColour, vec3(uv, map.x)) : vec4(placeholderAlbedo(look, local), 1.0);
+  vec3 albedo = surface.rgb;
+  float land = surface.a;
+
+  float footprint = uPixelAngle * hit / radius;
+  float mapTexel = 6.2831853 / MAP_WIDTH;
+  float octaves = clamp(log2(mapTexel / max(footprint, 1e-9)), 0.0, MAX_DETAIL_OCTAVES);
+  vec3 detailPoint = local / mapTexel;
 
   vec3 shaded = normal;
-  if (map.x >= 0.0) {
+  if (mapped) {
     float latitudeCos = max(sqrt(1.0 - local.z * local.z), 0.05);
     vec2 texel = vec2(1.0 / MAP_WIDTH, 1.0 / MAP_HEIGHT);
     float eastSlope = (mapHeight(map.x, uv + vec2(texel.x, 0.0)) - mapHeight(map.x, uv - vec2(texel.x, 0.0))) / (2.0 * 6.2831853 * texel.x * latitudeCos);
     float northSlope = (mapHeight(map.x, uv - vec2(0.0, texel.y)) - mapHeight(map.x, uv + vec2(0.0, texel.y))) / (2.0 * 3.1415927 * texel.y);
     vec3 eastward = normalize(frame.east - normal * dot(frame.east, normal));
     vec3 northward = cross(normal, eastward);
-    shaded = normalize(normal - map.y * (eastSlope * eastward + northSlope * northward));
-
-    float footprint = uPixelAngle * hit / radius;
-    float mapTexel = 6.2831853 / MAP_WIDTH;
-    float octaves = clamp(log2(mapTexel / max(footprint, 1e-9)), 0.0, MAX_DETAIL_OCTAVES);
+    shaded = normalize(normal - land * map.y * (eastSlope * eastward + northSlope * northward));
     if (octaves > 0.0) {
-      vec3 p = local / mapTexel;
       float probe = 0.35;
-      float here = detailNoise(p, octaves);
-      float towardEast = detailNoise(p + probe * bodyLocal(eastward, frame), octaves);
-      float towardNorth = detailNoise(p + probe * bodyLocal(northward, frame), octaves);
-      float roughness = map.z;
+      float here = detailNoise(detailPoint, octaves);
+      float towardEast = detailNoise(detailPoint + probe * bodyLocal(eastward, frame), octaves);
+      float towardNorth = detailNoise(detailPoint + probe * bodyLocal(northward, frame), octaves);
+      float roughness = map.z * land;
       shaded = normalize(shaded - roughness * ((towardEast - here) * eastward + (towardNorth - here) * northward) / probe);
-      albedo *= 1.0 + DETAIL_ALBEDO * here;
+      albedo *= 1.0 + land * DETAIL_ALBEDO * here;
     }
   }
 
-  float sunlit = max(dot(shaded, uBodySun[i]), 0.0) * smoothstep(-0.02, 0.05, dot(normal, uBodySun[i]));
-  vec3 lit = albedo * sunlit;
+  vec3 sun = uBodySun[i];
+  float daylight = smoothstep(-0.02, 0.05, dot(normal, sun));
+  float sunHeight = max(dot(normal, sun), 0.0);
+  vec3 lit = albedo * max(dot(shaded, sun), 0.0) * daylight;
+  if (look.w == BODY_OCEAN_WORLD) {
+    vec3 halfway = normalize(sun - direction);
+    lit += (1.0 - land) * daylight * sunHeight * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
+    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight, cloudCover(local, detailPoint, octaves));
+  }
   if (look.w == BODY_OCEAN_WORLD || look.w == BODY_CLOUDED) {
-    float limb = pow(1.0 - mu, 3.0) * smoothstep(-0.15, 0.4, dot(normal, uBodySun[i]));
+    float limb = pow(1.0 - mu, 3.0) * smoothstep(-0.15, 0.4, dot(normal, sun));
     lit += (look.w == BODY_OCEAN_WORLD ? vec3(0.2, 0.4, 0.9) : vec3(0.6, 0.55, 0.4)) * limb;
   }
   return lit;

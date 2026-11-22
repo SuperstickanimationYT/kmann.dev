@@ -6,5 +6,9 @@
   "Mars": {
     "lowKm": -8.068,
     "highKm": 21.134
+  },
+  "Earth": {
+    "lowKm": 0.0,
+    "highKm": 6.35
   }
 }
