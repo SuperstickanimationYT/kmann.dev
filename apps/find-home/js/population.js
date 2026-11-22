@@ -74,4 +74,14 @@ function describeBins(densities, population) {
 
 export const YOUNG_BINS = describeBins(YOUNG_DENSITIES, 'young');
 export const OLD_BINS = describeBins(OLD_DENSITIES, 'old');
+
+const BULGE_TURNOFF = 4;
+
+export const BULGE_BINS = OLD_BINS.map((bin) => {
+  if (bin.absolute >= BULGE_TURNOFF) return bin;
+  const giants = giantShare(bin.absolute);
+  const giantFlux = bandFluxes(bin.absolute <= -5 ? SUPERGIANT_RED_COLOUR : GIANT_COLOUR);
+  const light = bin.density * luminosityOf(bin.absolute) * giants;
+  return { ...bin, light: giantFlux.map((flux) => light * flux) };
+});
 export const ALL_BINS = [...YOUNG_BINS, ...OLD_BINS];

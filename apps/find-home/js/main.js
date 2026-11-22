@@ -21,6 +21,7 @@ const MAX_PIXEL_RATIO = 1.25;
 const EYE_LIMIT = 6.5;
 const SKY_RESOLUTION_MOVING = 0.25;
 const SKY_RESOLUTION_STILL = 0.5;
+const SKY_RESOLUTION_PHOTO = 1;
 const EYE_BUDGET = 60000;
 const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
@@ -465,6 +466,13 @@ function viewChanged() {
   if (photo && !photo.running) closePhoto();
 }
 
+const longExposureShown = () => game.mode.longExposure && longExposureToggle.checked;
+
+function setLongExposure(shown) {
+  longExposureToggle.checked = shown;
+  skySharp = false;
+}
+
 function nextSkyResolution() {
   if (skyStale) {
     skyStale = false;
@@ -472,7 +480,7 @@ function nextSkyResolution() {
   }
   if (!skySharp) {
     skySharp = true;
-    return SKY_RESOLUTION_STILL;
+    return longExposureShown() ? SKY_RESOLUTION_PHOTO : SKY_RESOLUTION_STILL;
   }
   return 0;
 }
@@ -520,7 +528,7 @@ function frame(now) {
       planet: intro?.planet ?? null,
       warp: warpView,
       adaptation,
-      longExposure: game.mode.longExposure && longExposureToggle.checked,
+      longExposure: longExposureShown(),
     });
     eyeStarsChanged = false;
   }
@@ -752,7 +760,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyC') faceDirection(game.basis.forward);
   else if (event.code === 'KeyM') toggleAtlas();
   else if (event.code === 'KeyL' && game.mode.labels) setLabels(!labelsToggle.checked);
-  else if (event.code === 'KeyP' && game.mode.longExposure) longExposureToggle.checked = !longExposureToggle.checked;
+  else if (event.code === 'KeyP' && game.mode.longExposure) setLongExposure(!longExposureToggle.checked);
   else if (event.code === 'Escape') {
     closePhoto();
     atlasFrame.hidden = true;
@@ -814,6 +822,7 @@ $('[data-go-to-form]').addEventListener('submit', (event) => {
 });
 goToInput.addEventListener('focus', destinations);
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
+longExposureToggle.addEventListener('change', () => setLongExposure(longExposureToggle.checked));
 restartButton.addEventListener('click', () => newGame());
 $('[data-new-game]').addEventListener('click', () => newGame());
 new ResizeObserver(resize).observe(stage);

@@ -3,7 +3,7 @@ export const MAX_GALAXIES = 4;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const TABLE_WIDTH = 64;
-export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3 };
+export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4 };
 export const UNRESOLVED_NEAREST = 0.1;
 export const UNRESOLVED_FARTHEST = 1e6;
 
@@ -233,7 +233,7 @@ void main() {
       vec3 p = uCamera + direction * t;
       float footprint = max(t * uPixelAngle, ds * 0.25);
       Matter m = matterAt(p, t * uYearsPerPc, footprint);
-      vec3 emission = (m.disk + m.bar) * lookupUnresolved(${TABLE_ROWS.oldUnresolved}, t)
+      vec3 emission = m.disk * lookupUnresolved(${TABLE_ROWS.oldUnresolved}, t) + m.bar * lookupUnresolved(${TABLE_ROWS.bulgeUnresolved}, t)
         + m.young * (lookupUnresolved(${TABLE_ROWS.youngUnresolved}, t) + uGasPerYoung * uGasColour);
       vec3 tau = m.dust * MAG_TO_TAU * EXTINCTION_BANDS * ds;
       vec3 transmit = exp(-depth);
@@ -558,9 +558,9 @@ float glare(vec3 direction) {
   return veil * (1.0 + 6.0 * spikes * degreesOff) / 1.08e-4;
 }
 
-const float LONG_EXPOSURE_SATURATION = 3.0;
-const float PHOTO_KNEE_LOG = -5.0;
-const float PHOTO_WHITE_LOG = -3.6;
+const float LONG_EXPOSURE_SATURATION = 1.5;
+const float PHOTO_KNEE_LOG = -4.7;
+const float PHOTO_WHITE_LOG = -3.0;
 
 float nakedEyeLightness(float logSeen, float colourShare) {
   float lightness = clamp((logSeen + 5.6) / 5.1, 0.0, 1.0);
