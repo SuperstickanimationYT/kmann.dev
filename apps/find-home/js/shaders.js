@@ -745,7 +745,7 @@ const int CRATER_LAST_OCTAVE = ${CRATER_LAST_OCTAVE};
 const float CRATER_CHANCE = ${CRATER_CHANCE};
 const float COAST_DROP_METRES = ${COAST_DROP_METRES}.0;
 const int COAST_OCTAVES = ${COAST_OCTAVES};
-const int GROUND_STEPS = 160;
+const int GROUND_STEPS = 200;
 const float GROUND_STEP_SHARE = 0.6;
 const int SHADOW_STEPS = 12;
 const float SHADOW_REACH_GROWTH = 2.0;
@@ -755,6 +755,9 @@ const float MARCH_DETAIL_SHARE_OF_GAP = 0.25;
 const float SMALLEST_STEP_IN_FOOTPRINTS = 1.5;
 const float CRATER_RIM_SHARE_OF_CELL = 0.05;
 const float WATER_FRESNEL_HEAD_ON = 0.02;
+const float STEP_GROWTH_PER_STEP = 0.1;
+const float SMALLEST_STEP_SHARE_OF_DISTANCE = 0.004;
+const float GROUND_HIT = 2.0;
 const float CLOUD_ALTITUDE_KM = 6.0;
 const float SKY_BRIGHTNESS = 0.9;
 const float SKY_VEIL_GAIN = 2.5;
@@ -1036,7 +1039,8 @@ vec4 groundView(vec3 direction) {
       }
       if ((p.altitudeKm > top && dot(p.up, ray) > 0.0) || t > farthest) break;
       previous = t;
-      t += max(gap * GROUND_STEP_SHARE, footprint * SMALLEST_STEP_IN_FOOTPRINTS) / 1000.0;
+      float smallestStep = max(footprint * SMALLEST_STEP_IN_FOOTPRINTS, t * 1000.0 * SMALLEST_STEP_SHARE_OF_DISTANCE) * (1.0 + float(i) * STEP_GROWTH_PER_STEP);
+      t += max(gap * GROUND_STEP_SHARE, smallestStep) / 1000.0;
     }
     if (!hit && p.altitudeKm < top && t <= farthest && dot(p.up, ray) <= 0.0) hit = true;
   }
@@ -1052,7 +1056,7 @@ vec4 groundView(vec3 direction) {
     p = groundPointAt(ray, high);
     vec3 lit = shadeGround(p, high, footprint, ray, sun, upHere);
     if (cloudT > 0.0 && cloudT < high) lit = mix(lit, cloud.rgb, cloud.a);
-    return vec4(lit, 1.0);
+    return vec4(lit, GROUND_HIT);
   }
   if (cloudT > 0.0) sky = mix(sky, cloud.rgb, cloud.a);
   float veil = clamp(dot(sky, vec3(0.3, 0.5, 0.2)) * SKY_VEIL_GAIN + (cloudT > 0.0 ? cloud.a : 0.0), 0.0, 1.0);
@@ -1188,6 +1192,22 @@ export const EYE_FRAGMENT = `#version 300 es
 ${EYE_SHARED}
 uniform sampler2D uGroundView;
 
+bool onGroundEdge() {
+  ivec2 size = textureSize(uGroundView, 0);
+  ivec2 corner = ivec2(floor(vUv * vec2(size) - 0.5));
+  int hits = 0;
+  for (int i = 0; i < 16; i++) {
+    ivec2 texel = clamp(corner + ivec2(i & 3, i >> 2) - 1, ivec2(0), size - 1);
+    if (texelFetch(uGroundView, texel, 0).a > 0.5 * (GROUND_HIT + 1.0)) hits++;
+  }
+  return hits > 0 && hits < 16;
+}
+
+vec4 groundSeen(vec3 direction) {
+  vec4 ground = onGroundEdge() ? groundView(direction) : texture(uGroundView, vUv);
+  return vec4(ground.rgb, min(ground.a, 1.0)) * uGroundBlend;
+}
+
 void main() {
   vec3 direction = viewDirection();
   if (!seenThroughCockpit(direction)) {
@@ -1199,7 +1219,7 @@ void main() {
     outColour = vec4(planet.rgb, 1.0);
     return;
   }
-  vec4 ground = uGround >= 0 && uWarpAxis.w < 0.5 ? texture(uGroundView, vUv) * uGroundBlend : vec4(0.0);
+  vec4 ground = uGround >= 0 && uWarpAxis.w < 0.5 ? groundSeen(direction) : vec4(0.0);
   if (ground.a >= 1.0) {
     outColour = vec4(ground.rgb, 1.0);
     return;
