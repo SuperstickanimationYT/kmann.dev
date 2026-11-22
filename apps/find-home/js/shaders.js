@@ -861,6 +861,7 @@ void main() {
   vec3 offset = aOffset - uAnchorShift;
   float distance = length(offset);
   vec3 seen = offset / distance;
+  bool behindBodyBeforeWarp = behindBody(seen);
   vec3 warping = vec3(1.0);
   vGlare = 0.0;
   if (uWarpAxis.w > 0.5) {
@@ -874,7 +875,7 @@ void main() {
     warping = warpBrightening(aLook.y, pow(10.0, warpLookup(observed).y), magnification);
   }
   vec3 local = vec3(dot(seen, uRight), dot(seen, uUp), dot(seen, uForward));
-  bool behindPlanet = (uPlanet.w > 0.0 && dot(seen, uPlanet.xyz) > cos(uPlanet.w)) || behindBody(seen);
+  bool behindPlanet = (uPlanet.w > 0.0 && dot(seen, uPlanet.xyz) > cos(uPlanet.w)) || behindBodyBeforeWarp;
   if (local.z <= 0.0 || behindPlanet || !seenThroughCockpit(seen) || warping.g <= 0.0) {
     hide();
     return;
