@@ -66,7 +66,7 @@ function craterDepth(cells, offset, cell, octave) {
   return 0.2 * radius * cell * (bowl + rim);
 }
 
-const octaveFade = (cell, footprint) => Math.min(1, Math.max(0, Math.log2(cell / footprint)));
+const octaveFade = (cell, footprint) => Math.min(1, Math.max(0, Math.log2(cell / footprint) - 1));
 
 export function groundDetailMetres(anchor, offset, footprint, roughness, craters) {
   let height = 0;

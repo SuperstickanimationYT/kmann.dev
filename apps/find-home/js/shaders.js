@@ -802,7 +802,7 @@ float craterDepth(ivec3 cells, vec3 offset, float cell, int octave) {
 }
 
 float octaveFade(float cell, float footprint) {
-  return clamp(log2(cell / footprint), 0.0, 1.0);
+  return clamp(log2(cell / footprint) - 1.0, 0.0, 1.0);
 }
 
 float groundDetailMetres(vec3 offset, float footprint) {
@@ -980,7 +980,10 @@ vec3 shadeGround(GroundPoint p, float t, float footprint, vec3 ray, vec3 sun, ve
   float height = water ? 0.0 : rawHeight;
   vec3 normal = water ? p.up : groundNormal(p, rawHeight, footprint);
   vec3 albedo = textureLod(uBodyColour, vec3(groundUv(p.up), groundLayer()), 0.0).rgb;
-  float grain = octaveNoise(octaveCells(12), p.offset, ANCHOR_METRES / float(2 << 12), 900) + octaveNoise(octaveCells(7), p.offset, ANCHOR_METRES / float(2 << 7), 901) - 1.0;
+  float fineCell = ANCHOR_METRES / float(2 << 12);
+  float coarseCell = ANCHOR_METRES / float(2 << 7);
+  float grain = octaveFade(fineCell, footprint) * (octaveNoise(octaveCells(12), p.offset, fineCell, 900) - 0.5)
+    + octaveFade(coarseCell, footprint) * (octaveNoise(octaveCells(7), p.offset, coarseCell, 901) - 0.5);
   albedo *= 1.0 + GROUND_GRAIN * grain;
   vec3 sunlight = sunlightThroughAir(sun, p.up);
   float sunHeight = dot(sun, p.up);
