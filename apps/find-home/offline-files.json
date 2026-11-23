@@ -1,5 +1,5 @@
 {
-  "bytes": 1191771,
+  "bytes": 1570093,
   "files": [
     "./",
     "data/nearby-star-names.json",
@@ -11,6 +11,10 @@
     "data/planets/mars-height.webp",
     "data/planets/moon-colour.webp",
     "data/planets/moon-height.webp",
+    "data/planets/titan-colour.webp",
+    "data/planets/titan-height.webp",
+    "data/planets/venus-colour.webp",
+    "data/planets/venus-height.webp",
     "data/warp-optics.bin",
     "index.html",
     "js/atlas.js",

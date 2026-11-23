@@ -666,7 +666,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   if (look.w == BODY_HAZY) albedo = look.rgb * hazeShade(local, detailPoint, octaves);
 
   vec3 shaded = normal;
-  if (mapped) {
+  if (mapped && look.w != BODY_CLOUDED && look.w != BODY_HAZY) {
     float latitudeCos = max(sqrt(1.0 - local.z * local.z), 0.05);
     vec2 texel = vec2(1.0 / MAP_WIDTH, 1.0 / MAP_HEIGHT);
     float eastSlope = (mapHeight(map.x, uv + vec2(texel.x, 0.0)) - mapHeight(map.x, uv - vec2(texel.x, 0.0))) / (2.0 * 6.2831853 * texel.x * latitudeCos);
@@ -737,6 +737,10 @@ uniform float uGroundSea;
 uniform vec4 uGroundAir;
 uniform vec4 uGroundGlow;
 uniform vec3 uGroundSunset;
+uniform float uGroundOvercast;
+uniform vec3 uGroundMeridian;
+uniform vec3 uGroundCameraUp;
+uniform vec2 uGroundCameraUv;
 
 const float ANCHOR_METRES = ${ANCHOR_METRES}.0;
 const int GROUND_OCTAVES = ${GROUND_OCTAVES};
@@ -761,6 +765,8 @@ const float GROUND_HIT = 2.0;
 const float CLOUD_ALTITUDE_KM = 6.0;
 const float SKY_BRIGHTNESS = 0.9;
 const float SKY_VEIL_GAIN = 2.5;
+const float OVERCAST_SKY_LIGHT = 0.9;
+const float OVERCAST_VEIL_GAIN = 2.0;
 const float GROUND_GRAIN = 0.25;
 
 float groundLattice(ivec3 cell, int seed) {
@@ -832,7 +838,12 @@ float coastNoise(vec3 offset, float footprint) {
 }
 
 vec2 groundUv(vec3 up) {
-  return vec2(atan(up.y, up.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(up.z, -1.0, 1.0)) / 3.1415927);
+  vec3 camera = uGroundCameraUp;
+  float across = length(up.xy);
+  float cameraAcross = length(camera.xy);
+  float eastOfCamera = atan(camera.x * up.y - camera.y * up.x, camera.x * up.x + camera.y * up.y);
+  float northOfCamera = atan(up.z * cameraAcross - camera.z * across, across * cameraAcross + up.z * camera.z);
+  return uGroundCameraUv + vec2(eastOfCamera / 6.2831853, -northOfCamera / 3.1415927);
 }
 
 float groundLayer() {
@@ -894,7 +905,7 @@ GroundPoint groundPointAt(vec3 ray, float t) {
 }
 
 vec3 groundLocal(vec3 direction) {
-  return vec3(dot(direction, uBodyMeridian[uGround]), dot(direction, cross(uBodyNorth[uGround], uBodyMeridian[uGround])), dot(direction, uBodyNorth[uGround]));
+  return vec3(dot(direction, uGroundMeridian), dot(direction, cross(uBodyNorth[uGround], uGroundMeridian)), dot(direction, uBodyNorth[uGround]));
 }
 
 float cameraAltitudeKm() {
@@ -917,7 +928,8 @@ vec3 groundSky(vec3 ray, vec3 sun, vec3 upHere) {
   vec3 sky = tint * (1.0 - exp(-airmass * 0.35)) * day * SKY_BRIGHTNESS;
   float towardSun = max(dot(ray, sun), 0.0);
   sky += mix(uGroundGlow.rgb, uGroundSunset, lowSun) * density * day * (0.5 * pow(towardSun, 12.0) + 0.15 * pow(towardSun, 3.0));
-  return sky;
+  vec3 overcastSky = uGroundAir.rgb * day * SKY_BRIGHTNESS * (0.55 + 0.45 * max(viewHeight, 0.0)) * (0.8 + 0.4 * towardSun * towardSun);
+  return mix(sky, overcastSky, uGroundOvercast);
 }
 
 vec3 sunlightThroughAir(vec3 sun, vec3 upHere) {
@@ -987,8 +999,10 @@ vec3 shadeGround(GroundPoint p, float t, float footprint, vec3 ray, vec3 sun, ve
   albedo *= 1.0 + GROUND_GRAIN * grain;
   vec3 sunlight = sunlightThroughAir(sun, p.up);
   float sunHeight = dot(sun, p.up);
-  float shadow = sunHeight > -0.05 ? groundShadow(p, height, sun, footprint) : 0.0;
-  vec3 ambient = uGroundAir.w > 0.0 ? uGroundAir.rgb * 0.18 * smoothstep(-0.15, 0.1, sunHeight) : vec3(0.0);
+  float direct = 1.0 - uGroundOvercast;
+  float shadow = sunHeight > -0.05 && direct > 0.01 ? groundShadow(p, height, sun, footprint) * direct : 0.0;
+  float skyDome = 0.5 + 0.5 * dot(normal, p.up);
+  vec3 ambient = uGroundAir.w > 0.0 ? uGroundAir.rgb * (0.18 + OVERCAST_SKY_LIGHT * uGroundOvercast * skyDome) * smoothstep(-0.15, 0.1, sunHeight) : vec3(0.0);
   vec3 lit;
   if (water) {
     vec3 halfway = normalize(sun - ray);
@@ -1062,7 +1076,7 @@ vec4 groundView(vec3 direction) {
     return vec4(lit, GROUND_HIT);
   }
   if (cloudT > 0.0) sky = mix(sky, cloud.rgb, cloud.a);
-  float veil = clamp(dot(sky, vec3(0.3, 0.5, 0.2)) * SKY_VEIL_GAIN + (cloudT > 0.0 ? cloud.a : 0.0), 0.0, 1.0);
+  float veil = max(clamp(dot(sky, vec3(0.3, 0.5, 0.2)) * SKY_VEIL_GAIN + (cloudT > 0.0 ? cloud.a : 0.0), 0.0, 1.0), min(1.0, uGroundOvercast * OVERCAST_VEIL_GAIN));
   return vec4(sky, veil);
 }
 

@@ -12,6 +12,7 @@ import {
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
 import { apparentMagnitude, MAPPED_BODIES } from './solar-system.js';
+import { mapCoordinates } from './terrain.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
 const NEBULA_LIGHT_PER_IONIZING = 3700 / 1e49;
@@ -162,6 +163,10 @@ function groundUniforms(ground, seen) {
     uGroundAir: [...air.tint, air.scaleKm],
     uGroundGlow: [...air.glow, air.hazeKm],
     uGroundSunset: air.sunset,
+    uGroundOvercast: air.overcast ?? 0,
+    uGroundMeridian: ground.body.meridian,
+    uGroundCameraUp: ground.frame.up,
+    uGroundCameraUv: mapCoordinates(ground.frame.up),
     uGroundTopKm: ground.topKm,
     uGroundBlend: ground.blend,
   };
@@ -263,14 +268,15 @@ export function createRenderer(canvas, armMap, galaxies) {
   const bodyHeightMaps = createBodyMaps(BODY_HEIGHT_UNIT, gl.R8);
   const mapRelief = [];
 
-  function loadBodyMap(layer, { colour, height, relief }) {
-    const upload = (unit, texture, format, image) => {
+  function loadBodyMap(layer, { colour, heights, relief }) {
+    const upload = (unit, texture, format, pixels) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
-      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, ...BODY_MAP_SIZE, 1, format, gl.UNSIGNED_BYTE, image);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, ...BODY_MAP_SIZE, 1, format, gl.UNSIGNED_BYTE, pixels);
     };
     upload(BODY_COLOUR_UNIT, bodyColourMaps, gl.RGBA, colour);
-    upload(BODY_HEIGHT_UNIT, bodyHeightMaps, gl.RED, height);
+    upload(BODY_HEIGHT_UNIT, bodyHeightMaps, gl.RED, heights.values);
     gl.activeTexture(gl.TEXTURE0);
     mapRelief[layer] = relief;
   }

@@ -10,9 +10,13 @@ Raw downloads (all NASA, public domain):
   world.200407.3x5400x2700.jpg     NASA Earth Observatory, Blue Marble Next Generation, July 2004
   gebco_08_rev_elev_5400x2700.jpg  NASA Earth Observatory from GEBCO, land elevation 0-6400 m
   gebco_08_rev_bath_5400x2700.jpg  NASA Earth Observatory from GEBCO, 255 on land, lower over water
+  Venus_Magellan_Topography_Global_4641m_v02.tif  USGS Astrogeology, Magellan, int16 metres, -32768 where unmapped
+  Titan_ISS_P19658_Mosaic_Global_4km.tif           USGS Astrogeology, Cassini ISS 938 nm, columns run 0-360 E
+  topo_4PPD_interp.cub                             Cornell eCommons (Corlies 2017, CC0), ISIS cube, float32 metres
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -28,6 +32,10 @@ SEA_ICE_FLOOR = 50
 COAST_UNMIX_FLOOR = 0.35
 COAST_FILL_STEPS = 6
 NEIGHBOUR_SHIFTS = [(1, 0), (-1, 0), (1, 1), (-1, 1)]
+VENUS_UNMAPPED = -32768
+VENUS_BASALT = (80, 74, 66)
+TITAN_TINT = np.array([1.0, 0.84, 0.62])
+GAP_FILL_STEPS = 400
 OUT = Path(__file__).resolve().parent.parent / 'data' / 'planets'
 
 
@@ -91,6 +99,60 @@ def save_height(metres, name, datum_metres=0.0):
     return {'lowKm': round(low / 1000, 3), 'highKm': round(high / 1000, 3), 'datumKm': round(datum_metres / 1000, 3)}
 
 
+def uncompressed_int16_tiff(path):
+    tiff = Image.open(path)
+    width, height = tiff.size
+    offsets = tiff.tag_v2[273]
+    if tiff.tag_v2[259] != 1 or any(b - a != width * 2 for a, b in zip(offsets, offsets[1:])):
+        raise SystemExit(f'{path.name} is not one contiguous uncompressed strip run.')
+    order = '<' if path.read_bytes()[:2] == b'II' else '>'
+    return np.fromfile(path, dtype=f'{order}i2', count=width * height, offset=offsets[0]).reshape(height, width)
+
+
+def isis_tiled_cube(path):
+    label = path.read_bytes()[:65536].decode('ascii', 'ignore')
+    field = lambda name: int(re.search(rf'^\s*{name}\s*=\s*(\d+)', label, re.M).group(1))
+    width, height = field('Samples'), field('Lines')
+    tile_width, tile_height = field('TileSamples'), field('TileLines')
+    tiles = np.fromfile(path, dtype='<f4', count=width * height, offset=field('StartByte') - 1)
+    image = np.empty((height, width), np.float32)
+    per_tile = tile_width * tile_height
+    for index in range(width * height // per_tile):
+        row, column = divmod(index, width // tile_width)
+        image[row * tile_height:(row + 1) * tile_height, column * tile_width:(column + 1) * tile_width] = tiles[index * per_tile:(index + 1) * per_tile].reshape(tile_height, tile_width)
+    return image
+
+
+def block_mean_ignoring_gaps(metres, gap):
+    rows, columns = metres.shape[0] // HEIGHT, metres.shape[1] // WIDTH
+    known = (metres != gap).reshape(HEIGHT, rows, WIDTH, columns)
+    values = np.where(known, metres.reshape(HEIGHT, rows, WIDTH, columns), 0).astype(np.float64)
+    count = known.sum(axis=(1, 3))
+    return np.where(count > 0, values.sum(axis=(1, 3)) / np.maximum(count, 1), np.nan)
+
+
+def gaps_filled(metres):
+    filled = metres.copy()
+    gaps = np.isnan(metres)
+    filled[gaps] = np.nanmean(metres)
+    for _ in range(GAP_FILL_STEPS):
+        neighbours = sum(np.roll(filled, shift, axis) for shift, axis in NEIGHBOUR_SHIFTS) / len(NEIGHBOUR_SHIFTS)
+        filled[gaps] = neighbours[gaps]
+    return filled
+
+
+def save_flat_colour(rgb, name):
+    Image.new('RGB', (WIDTH, HEIGHT), rgb).save(OUT / f'{name}-colour.webp', quality=COLOUR_QUALITY, method=6)
+
+
+def save_tinted_brightness(path, name, tint, starts_at_zero_east):
+    brightness = np.asarray(Image.open(path).convert('L').resize((WIDTH, HEIGHT), Image.LANCZOS), dtype=np.float64)
+    brightness = centred_on_prime_meridian(brightness, starts_at_zero_east)
+    brightness[brightness == 0] = np.median(brightness[brightness > 0])
+    rgb = np.clip(brightness[..., None] * tint, 0, 255).round().astype(np.uint8)
+    Image.fromarray(rgb, 'RGB').save(OUT / f'{name}-colour.webp', quality=COLOUR_QUALITY, method=6)
+
+
 def edge_strength(grey):
     return np.abs(np.diff(grey, axis=1, append=grey[:, :1])) + np.abs(np.diff(grey, axis=0, append=grey[:1, :]))
 
@@ -124,6 +186,14 @@ def main(raw):
 
     save_colour(raw / 'world.200407.3x5400x2700.jpg', 'earth', land=land_mask(raw / 'gebco_08_rev_bath_5400x2700.jpg'))
     ranges['Earth'] = save_height(grey(raw / 'gebco_08_rev_elev_5400x2700.jpg') / 255 * EARTH_HIGHEST_M, 'earth')
+
+    venus = gaps_filled(block_mean_ignoring_gaps(uncompressed_int16_tiff(raw / 'Venus_Magellan_Topography_Global_4641m_v02.tif'), VENUS_UNMAPPED))
+    save_flat_colour(VENUS_BASALT, 'venus')
+    ranges['Venus'] = save_height(venus, 'venus', datum_metres=area_weighted_mean(venus))
+
+    titan = isis_tiled_cube(raw / 'topo_4PPD_interp.cub').astype(np.float64)
+    save_tinted_brightness(raw / 'Titan_ISS_P19658_Mosaic_Global_4km.tif', 'titan', TITAN_TINT, starts_at_zero_east=True)
+    ranges['Titan'] = save_height(titan, 'titan', datum_metres=area_weighted_mean(titan))
 
     (OUT / 'maps.json').write_text(json.dumps(ranges, indent=2) + '\n')
     for path in sorted(OUT.iterdir()):
