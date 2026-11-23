@@ -5,6 +5,7 @@ import { ANCHOR_METRES, COAST_ROUGHNESS, GROUND_OCTAVES } from './terrain.js';
 export const MAX_NEBULAE = 64;
 export const MAX_GALAXIES = 4;
 export const MAX_BODIES = 12;
+export const MAX_HAZY = 4;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const TABLE_WIDTH = 64;
@@ -562,7 +563,6 @@ const float HAZE_CONTRAST = 0.03;
 const float HAZE_HEMISPHERE_CONTRAST = 0.04;
 const float HAZE_POLAR_HOOD = 0.12;
 const float HAZE_TWILIGHT = 0.12;
-const vec3 DETACHED_HAZE = vec3(0.3, 0.42, 0.7);
 const vec3 OCEAN_ALBEDO = vec3(2.0, 5.0, 20.0) / 255.0;
 const float COAST_ROUGHNESS = ${COAST_ROUGHNESS};
 const float COAST_SHARPEST = 0.01;
@@ -731,6 +731,125 @@ vec3 sunlightReaching(int i, vec3 surface) {
   return vec3(max(1.0 - hidden, 0.0)) + bent;
 }
 
+const int HAZE_STEPS_PER_SIDE = 10;
+const float HAZE_SCALES_SHOWN = 12.0;
+const float HAZE_PIXEL_BLUR = 0.5;
+const float HAZE_DEEPEST_EXPONENT = 40.0;
+const float HAZE_SMALLEST_PIXELS = 1.0;
+const float HAZE_FULL_PIXELS = 4.0;
+const float HAZE_DISPLAY_GAIN = 4.5;
+const float HAZE_RESCATTERING = 0.6;
+const float HAZE_DISPLAY_GAMMA = 0.4545;
+uniform vec4 uHazeBody;
+uniform vec4 uHazeGas[${MAX_HAZY}];
+uniform vec4 uHazeDust[${MAX_HAZY}];
+uniform vec4 uHazeDustLight[${MAX_HAZY}];
+uniform vec4 uHazeLayer[${MAX_HAZY}];
+uniform vec4 uHazeLayerShape[${MAX_HAZY}];
+
+struct Haze {
+  vec3 light;
+  vec3 clear;
+};
+
+const Haze NO_HAZE = Haze(vec3(0.0), vec3(1.0));
+
+int hazeOf(int body) {
+  for (int k = 0; k < ${MAX_HAZY}; k++) if (int(uHazeBody[k]) == body) return k;
+  return -1;
+}
+
+float airMassTowardSun(float r, float sunHeight, float scaleHeight) {
+  float x = r / scaleHeight;
+  float c = sqrt(1.5707963 * x);
+  float climbing = c / ((c - 1.0) * abs(sunHeight) + 1.0);
+  if (sunHeight >= 0.0) return climbing;
+  float lowest = x * sqrt(max(1.0 - sunHeight * sunHeight, 0.0));
+  return 2.0 * sqrt(1.5707963 * lowest) * exp(min(x - lowest, HAZE_DEEPEST_EXPONENT)) - climbing;
+}
+
+float rayleighPhase(float towardSun) {
+  return 0.75 * (1.0 + towardSun * towardSun);
+}
+
+float dustPhase(float towardSun, float forwardness) {
+  float g2 = forwardness * forwardness;
+  return (1.0 - g2) / pow(1.0 + g2 - 2.0 * forwardness * towardSun, 1.5);
+}
+
+vec3 sunlightIntoHaze(int k, float r, float sunHeight, vec2 scales, vec2 density) {
+  vec3 depth = uHazeGas[k].rgb * density.x * airMassTowardSun(r, sunHeight, scales.x)
+    + uHazeLayerShape[k].y * uHazeDust[k].rgb * density.y * airMassTowardSun(r, sunHeight, scales.y);
+  return exp(-HAZE_RESCATTERING * max(depth, 0.0));
+}
+
+vec3 sunlightToSurface(int i, float sunHeight) {
+  int k = hazeOf(i);
+  if (k < 0) return vec3(1.0);
+  return pow(sunlightIntoHaze(k, 1.0, max(sunHeight, 0.0), vec2(uHazeGas[k].w, uHazeDust[k].w), vec2(1.0)), vec3(HAZE_DISPLAY_GAMMA));
+}
+
+vec3 detachedHaze(int k, float miss, float farSideSeen, float sunHeight) {
+  float height = 1.0 + uHazeLayer[k].w;
+  float width = uHazeLayerShape[k].x;
+  if (width <= 0.0) return vec3(0.0);
+  float above = max(miss - height, 0.0) / width;
+  float column = 2.0 * height * exp(-above * above) / sqrt(max(height * height - miss * miss, 0.0) + 1.5 * width * height);
+  return uHazeLayer[k].rgb * column * (0.5 + 0.5 * farSideSeen) * smoothstep(-0.55, 0.1, sunHeight);
+}
+
+Haze hazeAround(int i, vec3 direction) {
+  int k = hazeOf(i);
+  if (k < 0) return NO_HAZE;
+  vec3 centre = uBodyPlace[i].xyz;
+  float radius = sin(uBodyPlace[i].w);
+  float along = dot(direction, centre) / radius;
+  vec3 nearest = (direction * dot(direction, centre) - centre) / radius;
+  float miss = length(nearest);
+  float pixel = uPixelAngle / radius;
+  vec2 trueScales = vec2(uHazeGas[k].w, uHazeDust[k].w);
+  float blur = HAZE_PIXEL_BLUR * min(pixel, 0.1);
+  vec2 scales = sqrt(trueScales * trueScales + blur * blur);
+  float top = 1.0 + max(HAZE_SCALES_SHOWN * max(scales.x, scales.y), uHazeLayer[k].w + 3.0 * uHazeLayerShape[k].x);
+  float leaving = sqrt(max(top * top - miss * miss, 0.0));
+  if (miss >= top || leaving <= -along || pixel * HAZE_SMALLEST_PIXELS >= 1.0) return NO_HAZE;
+  float cover = along > 0.0 ? clamp((1.0 - miss) / pixel + 0.5, 0.0, 1.0) : 0.0;
+  float start = max(-leaving, -along);
+  float end = mix(leaving, -sqrt(max(1.0 - miss * miss, 0.0)), cover);
+  if (end <= start) return NO_HAZE;
+  float closest = clamp(0.0, start, end);
+
+  vec3 sun = uBodySun[i].xyz;
+  float towardSun = dot(direction, sun);
+  float gasPhase = 0.25 * rayleighPhase(towardSun);
+  vec3 dustShine = 0.25 * dustPhase(towardSun, uHazeDustLight[k].w) * uHazeDustLight[k].rgb;
+  vec3 light = vec3(0.0);
+  vec3 depth = vec3(0.0);
+  for (int n = 0; n < 2 * HAZE_STEPS_PER_SIDE; n++) {
+    float t = (float(n) + 0.5) / float(HAZE_STEPS_PER_SIDE) - 1.0;
+    float reach = t < 0.0 ? start - closest : end - closest;
+    float stepLength = 2.0 * abs(t * reach) / float(HAZE_STEPS_PER_SIDE);
+    if (stepLength <= 0.0) continue;
+    vec3 p = nearest + direction * (closest + reach * t * t);
+    float r = max(length(p), 1.0);
+    vec2 density = exp((1.0 - r) / scales);
+    vec3 gas = uHazeGas[k].rgb * density.x * stepLength / scales.x;
+    vec3 dust = uHazeDust[k].rgb * density.y * stepLength / scales.y;
+    vec3 dustLight = dustShine * density.y * stepLength / scales.y;
+    vec3 sunlit = sunlightIntoHaze(k, r, dot(p, sun) / r, scales, density);
+    vec3 stepDepth = gas + dust;
+    light += (gas * gasPhase + dustLight) * sunlit * exp(-depth) * (1.0 - exp(-stepDepth)) / max(stepDepth, 1e-6);
+    depth += stepDepth;
+  }
+  vec3 outward = normalize(nearest - direction * sqrt(max(1.0 - miss * miss, 0.0)));
+  vec3 detached = detachedHaze(k, miss, (1.0 - cover) * exp(-depth.g), dot(outward, sun));
+  float shown = smoothstep(HAZE_SMALLEST_PIXELS, HAZE_FULL_PIXELS, 1.0 / pixel);
+  float spread = max(trueScales.x / scales.x, trueScales.y / scales.y);
+  shown *= mix(spread, 1.0, cover);
+  vec3 glow = 1.0 - exp(-HAZE_DISPLAY_GAIN * (light + detached));
+  return Haze(glow * sunlightReaching(i, outward) * shown, mix(vec3(1.0), exp(-HAZE_DISPLAY_GAMMA * depth), shown));
+}
+
 vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec4 place = uBodyPlace[i];
   vec4 look = uBodyLook[i];
@@ -793,12 +912,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     lit += (1.0 - land) * daylight * sunHeight * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
     lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight, cloudCover(local, detailPoint, octaves));
   }
-  if (look.w == BODY_OCEAN_WORLD || look.w == BODY_CLOUDED) {
-    float limb = pow(1.0 - mu, 3.0) * smoothstep(-0.15, 0.4, dot(normal, sun));
-    lit += (look.w == BODY_OCEAN_WORLD ? vec3(0.2, 0.4, 0.9) : vec3(0.6, 0.55, 0.4)) * limb;
-  }
-  if (look.w == BODY_HAZY) lit += DETACHED_HAZE * pow(1.0 - mu, 6.0) * smoothstep(-0.3, 0.3, dot(normal, sun));
-  return lit * sunlightReaching(i, normal);
+  return lit * sunlightToSurface(i, dot(normal, sun)) * sunlightReaching(i, normal);
 }
 
 
@@ -990,11 +1104,20 @@ vec3 coronaBehind(vec3 direction) {
   return vec3(0.0);
 }
 
+vec4 throughHaze(vec4 behind, Haze haze) {
+  return vec4(haze.light + haze.clear * behind.rgb, 1.0 - (1.0 - behind.a) * dot(haze.clear, vec3(1.0 / 3.0)));
+}
+
 vec4 bodiesColour(vec3 direction) {
   vec3 points = vec3(0.0);
+  Haze haze = NO_HAZE;
   for (int i = 0; i < ${MAX_BODIES}; i++) {
     if (i >= uBodyCount) break;
     if (i == uGround && uGroundBlend >= 1.0) continue;
+    if (i != uGround || uWarpAxis.w > 0.5) {
+      Haze ahead = hazeAround(i, direction);
+      haze = Haze(haze.light + haze.clear * ahead.light, haze.clear * ahead.clear);
+    }
     float ringHit = -1.0;
     vec4 ring = i == uRingedBody ? ringSeen(i, direction, ringHit) : vec4(0.0);
     vec4 place = uBodyPlace[i];
@@ -1007,7 +1130,7 @@ vec4 bodiesColour(vec3 direction) {
     if (along > 0.0) points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
     if (along > 0.0 && uBodyLook[i].w == STAR_KIND) points += coronaLight(i, direction);
     if (cover <= 0.0) {
-      if (ring.a > 0.0) return vec4(ring.rgb + points, ring.a);
+      if (ring.a > 0.0) return throughHaze(vec4(ring.rgb + points, ring.a), haze);
       continue;
     }
     float inside = min(miss, radius * 0.9999);
@@ -1017,12 +1140,12 @@ vec4 bodiesColour(vec3 direction) {
     if (i == uRingedBody) body *= sunThroughRings(i, direction * hit);
     if (ring.a <= 0.0) {
       vec3 behind = starHit || cover >= 1.0 ? vec3(0.0) : coronaBehind(direction) * (1.0 - cover);
-      return vec4(body * cover + behind + points, cover);
+      return throughHaze(vec4(body * cover + behind + points, cover), haze);
     }
-    if (ringHit < hit) return vec4(ring.rgb + body * cover * (1.0 - ring.a) + points, 1.0 - (1.0 - ring.a) * (1.0 - cover));
-    return vec4(body * cover + ring.rgb * (1.0 - cover) + points, cover + ring.a * (1.0 - cover));
+    if (ringHit < hit) return throughHaze(vec4(ring.rgb + body * cover * (1.0 - ring.a) + points, 1.0 - (1.0 - ring.a) * (1.0 - cover)), haze);
+    return throughHaze(vec4(body * cover + ring.rgb * (1.0 - cover) + points, cover + ring.a * (1.0 - cover)), haze);
   }
-  return vec4(points, 0.0);
+  return throughHaze(vec4(points, 0.0), haze);
 }
 
 uniform vec3 uGroundCamera;
@@ -1692,6 +1815,17 @@ vec3 sunGlare(vec3 direction) {
   return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunVisible;
 }
 
+const float HAZE_LOWEST_SCALES = 1.5;
+const float HAZE_FULL_SCALES = 5.0;
+
+Haze hazeAboveGround(vec3 direction) {
+  if (uGroundAir.w <= 0.0) return NO_HAZE;
+  float share = max(smoothstep(HAZE_LOWEST_SCALES, HAZE_FULL_SCALES, cameraAltitudeKm() / uGroundAir.w), 1.0 - uGroundBlend);
+  if (share <= 0.0) return NO_HAZE;
+  Haze haze = hazeAround(uGround, direction);
+  return Haze(haze.light * share, mix(vec3(1.0), haze.clear, share));
+}
+
 vec4 sceneSeen(vec3 direction) {
   vec4 planet = planetColour(direction);
   if (planet.a >= 1.0) {
@@ -1733,6 +1867,7 @@ void main() {
     return;
   }
   vec4 scene = sceneSeen(direction);
+  if (uGround >= 0 && uWarpAxis.w < 0.5) scene = throughHaze(scene, hazeAboveGround(direction));
   outColour = vec4(scene.rgb + sunGlare(direction), scene.a);
 }`;
 

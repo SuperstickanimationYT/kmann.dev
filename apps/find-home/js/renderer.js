@@ -9,7 +9,7 @@ import { planckNanomaggies } from './warp.js';
 import {
   CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, DEVELOP_FRAGMENT,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
-  GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, MAX_BODIES, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
+  GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
   SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
@@ -193,6 +193,27 @@ function groundUniforms(ground, shown) {
     uGroundCameraUp: ground.frame.up,
     uGroundCameraUv: mapCoordinates(ground.frame.up),
     uGroundBlend: ground.blend,
+  };
+}
+
+const NO_HAZY_BODY = -1;
+
+function hazeUniforms(shown) {
+  const hazy = shown.flatMap(({ body }, index) => (body.haze ? [{ index, ...body.haze, radiusKm: body.radiusKm }] : [])).slice(0, MAX_HAZY);
+  const rows = (row) => {
+    const values = new Float32Array(MAX_HAZY * 4);
+    hazy.forEach((haze, k) => values.set(row(haze), k * 4));
+    return values;
+  };
+  return {
+    bodies: Array.from({ length: MAX_HAZY }, (_, k) => hazy[k]?.index ?? NO_HAZY_BODY),
+    arrays: {
+      uHazeGas: rows(({ gas, radiusKm }) => [...gas.depth, gas.scaleKm / radiusKm]),
+      uHazeDust: rows(({ dust, radiusKm }) => [...dust.depth, dust.scaleKm / radiusKm]),
+      uHazeDustLight: rows(({ dust }) => [...dust.light, dust.forwardness]),
+      uHazeLayer: rows(({ layer, radiusKm }) => (layer ? [...layer.light, layer.heightKm / radiusKm] : [0, 0, 0, 0])),
+      uHazeLayerShape: rows(({ dust, layer, radiusKm }) => [(layer?.thicknessKm ?? 0) / radiusKm, dust.sunDimming, 0, 0]),
+    },
   };
 }
 
@@ -393,7 +414,9 @@ export function createRenderer(canvas, armMap, galaxies) {
     const groundValues = groundUniforms(ground, shown);
     setUniforms(gl, program, groundValues);
     if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
-    for (const [name, values] of Object.entries(arrays)) setArray(gl, program, name, values, name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
+    const haze = hazeUniforms(shown);
+    setUniforms(gl, program, { uHazeBody: haze.bodies });
+    for (const [name, values] of Object.entries({ ...arrays, ...haze.arrays })) setArray(gl, program, name, values, name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
     const sunVisible = sunShareVisible(seen ?? [], ground?.body.name);
     const coronaShown = Math.max(0, 1 - sunVisible / CORONA_FADE_SHARE) ** 2;
     setUniforms(gl, program, { uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uCoronaShown: coronaShown });
