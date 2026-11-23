@@ -24,6 +24,11 @@ import { gatherStars, KIND, loadNearbyStars, placeNebulae, SUN_ABSOLUTE } from '
 import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
+const WIDEST_FIELD_HEIGHT = 90 * DEGREES;
+const NARROWEST_FIELD_HEIGHT = 0.05 * DEGREES;
+const ZOOM_STEP = 1.25;
+const ZOOM_PER_WHEEL_PIXEL = 0.01;
+const MOST_WHEEL_PIXELS_PER_EVENT = 25;
 const MAX_PIXEL_RATIO = 1.25;
 const EYE_LIMIT = 6.5;
 const SKY_RESOLUTION_MOVING = 0.25;
@@ -152,7 +157,7 @@ function newGame(seed = randomSeed(), modeName = modeSelect.value) {
   };
   eyeStars = null;
   closePhoto();
-  skyStale = true;
+  setField(EYE_FIELD_HEIGHT);
   ending.hidden = true;
   setMode(modeName);
   if (game.mode === MODES.mission) playIntro();
@@ -392,8 +397,30 @@ function resize() {
   skyStale = true;
 }
 
+let fieldHeight = EYE_FIELD_HEIGHT;
+
+function formatField(radians) {
+  const degrees = radians / DEGREES;
+  if (degrees >= 10) return `${Math.round(degrees)}°`;
+  if (degrees >= 1) return `${degrees.toFixed(1)}°`;
+  return `${(degrees * 60).toFixed(degrees * 60 >= 10 ? 0 : 1)}′`;
+}
+
+function setField(height) {
+  fieldHeight = Math.min(WIDEST_FIELD_HEIGHT, Math.max(NARROWEST_FIELD_HEIGHT, height));
+  $('[data-zoom-reset]').textContent = formatField(fieldHeight);
+  viewChanged();
+}
+
+function zoomTo(height) {
+  if (!intro && !photo?.running) setField(height);
+}
+
+const zoomBy = (factor) => zoomTo(fieldHeight / factor);
+const resetZoom = () => zoomTo(EYE_FIELD_HEIGHT);
+
 function eyeTanHalf() {
-  const tanY = Math.tan(EYE_FIELD_HEIGHT / 2);
+  const tanY = Math.tan(fieldHeight / 2);
   return [tanY * (view.width / view.height), tanY];
 }
 
@@ -610,8 +637,9 @@ function flightStep(seconds) {
   const yaw = (held.has('ArrowRight') ? 1 : 0) - (held.has('ArrowLeft') ? 1 : 0);
   const pitch = (held.has('ArrowUp') ? 1 : 0) - (held.has('ArrowDown') ? 1 : 0);
   const roll = (held.has('KeyE') ? 1 : 0) - (held.has('KeyQ') ? 1 : 0);
-  if (yaw) game.ship = turn(game.ship, 'up', -yaw * LOOK_RATE * seconds);
-  if (pitch) game.ship = turn(game.ship, 'right', pitch * LOOK_RATE * seconds);
+  const lookRate = LOOK_RATE * Math.min(1, fieldHeight / EYE_FIELD_HEIGHT);
+  if (yaw) game.ship = turn(game.ship, 'up', -yaw * lookRate * seconds);
+  if (pitch) game.ship = turn(game.ship, 'right', pitch * lookRate * seconds);
   if (roll) game.ship = turn(game.ship, 'forward', roll * ROLL_RATE * seconds);
   if (yaw || pitch || roll) aimView();
   else if (moved) viewChanged();
@@ -757,7 +785,7 @@ function eyeView() {
     camera: game.camera,
     basis: game.basis,
     tanHalf: eyeTanHalf(),
-    pixelAngle: EYE_FIELD_HEIGHT / view.height,
+    pixelAngle: fieldHeight / view.height,
     anchorShift: subtract(game.camera, eyeAnchor),
   };
 }
@@ -836,7 +864,7 @@ function toggleExposure() {
   }
   if (intro || warp || outOfPlay() || !eyeStars) return;
   const { width, height } = photoSize();
-  const pixelAngle = EYE_FIELD_HEIGHT / height;
+  const pixelAngle = fieldHeight / height;
   const electronsPerUnit = CAMERA.electronsPerNanomaggy * (pixelAngle * ARCSEC_PER_RADIAN) ** 2;
   const pointing = { camera: [...game.camera], basis: { ...game.basis }, tanHalf: eyeTanHalf() };
   const samples = renderer.exposeCamera({
@@ -1135,16 +1163,41 @@ function finish(found) {
   ending.hidden = false;
 }
 
+const fingers = new Map();
+let pinchSpread = null;
+
+function fingerSpread() {
+  const [first, second] = [...fingers.values()];
+  return Math.max(1, Math.hypot(first.x - second.x, first.y - second.y));
+}
+
+function liftFinger(event) {
+  fingers.delete(event.pointerId);
+  pinchSpread = null;
+}
+
 let drag = null;
 view.addEventListener('pointerdown', (event) => {
   if (photo?.running) return;
   view.focus();
   view.setPointerCapture(event.pointerId);
+  fingers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (fingers.size > 1) {
+    pinchSpread = fingers.size === 2 ? fingerSpread() : null;
+    drag = null;
+    return;
+  }
   drag = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY };
 });
 view.addEventListener('pointermove', (event) => {
+  if (fingers.has(event.pointerId)) fingers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pinchSpread) {
+    const spread = fingerSpread();
+    zoomBy(spread / pinchSpread);
+    pinchSpread = spread;
+  }
   if (!drag) return;
-  const perPixel = EYE_FIELD_HEIGHT / stage.clientHeight;
+  const perPixel = fieldHeight / stage.clientHeight;
   const across = (event.clientX - drag.x) * perPixel;
   const down = (event.clientY - drag.y) * perPixel;
   if (game.mode.dragSteersShip && !aim && !glide) {
@@ -1155,23 +1208,41 @@ view.addEventListener('pointermove', (event) => {
   drag.y = event.clientY;
 });
 view.addEventListener('pointerup', (event) => {
+  liftFinger(event);
   const tapped = drag && !warp && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < TAP_DISTANCE;
   if (tapped && game.mode.picking) selectInView(event.clientX, event.clientY);
   else if (tapped) claimInView(event.clientX, event.clientY);
   drag = null;
 });
-view.addEventListener('pointercancel', () => (drag = null));
+view.addEventListener('pointercancel', (event) => {
+  liftFinger(event);
+  drag = null;
+});
 view.addEventListener(
   'wheel',
   (event) => {
     event.preventDefault();
-    changeSpeed(event.deltaY < 0 ? 1.25 : 0.8);
+    if (event.ctrlKey) {
+      const pixels = Math.max(-MOST_WHEEL_PIXELS_PER_EVENT, Math.min(MOST_WHEEL_PIXELS_PER_EVENT, event.deltaY));
+      zoomBy(Math.exp(-pixels * ZOOM_PER_WHEEL_PIXEL));
+    } else changeSpeed(event.deltaY < 0 ? 1.25 : 0.8);
   },
   { passive: false },
 );
 
 function changeSpeed(factor) {
   game.speed = Math.min(game.mode.topSpeed, Math.max(game.mode.slowestSpeed, game.speed * factor));
+}
+
+const ZOOM_IN_KEYS = new Set(['Equal', 'NumpadAdd']);
+const ZOOM_OUT_KEYS = new Set(['Minus', 'NumpadSubtract']);
+const ZOOM_RESET_KEYS = new Set(['Digit0', 'Numpad0']);
+
+function zoomWithKey(event) {
+  if (event.ctrlKey || event.metaKey) return;
+  if (ZOOM_IN_KEYS.has(event.code)) zoomBy(ZOOM_STEP);
+  else if (ZOOM_OUT_KEYS.has(event.code)) zoomBy(1 / ZOOM_STEP);
+  else if (ZOOM_RESET_KEYS.has(event.code)) resetZoom();
 }
 
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
@@ -1202,7 +1273,7 @@ window.addEventListener('keydown', (event) => {
     closePhoto();
     atlasFrame.hidden = true;
     clearSelection();
-  }
+  } else zoomWithKey(event);
 });
 window.addEventListener('keyup', (event) => held.delete(event.code));
 window.addEventListener('blur', () => held.clear());
@@ -1219,6 +1290,9 @@ document.querySelectorAll('[data-thrust]').forEach((button) => {
 document.querySelectorAll('[data-speed-change]').forEach((button) => {
   button.addEventListener('click', () => changeSpeed(Number(button.dataset.speedChange)));
 });
+$('[data-zoom-in]').addEventListener('click', () => zoomBy(ZOOM_STEP));
+$('[data-zoom-out]').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
+$('[data-zoom-reset]').addEventListener('click', resetZoom);
 document.querySelector('[data-touch]').addEventListener('contextmenu', (event) => event.preventDefault());
 
 let atlasDrawn = false;

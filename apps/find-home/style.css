@@ -96,11 +96,20 @@
 @media (max-width: 560px) {
   .fh-dock-buttons {
     flex-basis: 100%;
+    flex-wrap: wrap;
   }
 
   .fh-dock-buttons button {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     padding: 8px 6px;
+  }
+
+  .fh-zoom {
+    flex: 1 1 auto;
+  }
+
+  .fh-dock .fh-zoom button {
+    min-width: 36px;
   }
 }
 
@@ -356,6 +365,28 @@
   .fh-touch {
     display: grid;
   }
+}
+
+.fh-zoom {
+  display: flex;
+}
+
+.fh-dock .fh-zoom button {
+  border-radius: 0;
+}
+
+.fh-dock .fh-zoom button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.fh-dock .fh-zoom button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.fh-zoom [data-zoom-reset] {
+  min-width: 46px;
+  border-inline: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .fh-photo {

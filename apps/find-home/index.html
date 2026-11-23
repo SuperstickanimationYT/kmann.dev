@@ -65,6 +65,11 @@
       <button type="button" data-atlas-open title="Atlas of the Milky Way (M)">Atlas</button>
       <button type="button" data-orbits aria-pressed="false" title="Show planet and moon orbits (O)" hidden>Orbits</button>
       <button type="button" data-time-open aria-pressed="false" title="Change the date and how fast time runs" hidden>Time</button>
+      <div class="fh-zoom" role="group" aria-label="Zoom">
+        <button type="button" data-zoom-out title="Zoom out (−)" aria-label="Zoom out">&minus;</button>
+        <button type="button" data-zoom-reset title="Field of view, top to bottom. Click for the normal view (0)">50&deg;</button>
+        <button type="button" data-zoom-in title="Zoom in (+)" aria-label="Zoom in">+</button>
+      </div>
       <button type="button" data-give-up>Give up</button>
       <button type="button" data-more aria-expanded="true" title="Mode, settings, camera, help">More</button>
     </div>
@@ -163,7 +168,7 @@
           <input type="range" data-stretch min="1" max="100" step="1" value="5">
         </label>
         <p class="fh-note">
-          Wide-field camera with a 36 mm lens, framed like your eyes. It stacks 10 s frames; each takes 1 s of
+          Camera framed like your view: a 36 mm lens at the normal zoom, a longer lens of the same opening when you zoom in. It stacks 10 s frames; each takes 1 s of
           real time and adds 10 s to the clock. Your ship holds still until the exposure ends or you stop it.
         </p>
       </fieldset>
@@ -175,8 +180,9 @@
           <li><kbd>C</kbd> point the ship where you look &middot; <kbd>J</kbd> jump</li>
           <li><kbd>W</kbd><kbd>S</kbd> thrust forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
           <li><kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> thruster speed &middot; <kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; <kbd>O</kbd> orbits, <kbd>,</kbd><kbd>.</kbd> time slower, faster, <kbd>/</kbd> pause time and <kbd>P</kbd> long-exposure view (Explore)</li>
+          <li><kbd>+</kbd><kbd>&minus;</kbd> or <kbd>Ctrl</kbd> <kbd>Wheel</kbd> zoom &middot; <kbd>0</kbd> normal view</li>
           <li>Click a star through a window to claim it</li>
-          <li>Touch: drag to look &middot; hold <kbd>&#9650;</kbd><kbd>&#9660;</kbd> to fly &middot; <kbd>+</kbd><kbd>&minus;</kbd> speed</li>
+          <li>Touch: drag to look &middot; hold <kbd>&#9650;</kbd><kbd>&#9660;</kbd> to fly &middot; round <kbd>+</kbd><kbd>&minus;</kbd> speed &middot; pinch to zoom</li>
         </ul>
       </fieldset>
 
