@@ -1,3 +1,4 @@
+import { GIANT_FACE_OVERSCAN, GIANT_FACE_SIZE } from './giant-shader.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { ANCHOR_METRES, COAST_ROUGHNESS, GROUND_OCTAVES } from './terrain.js';
 
@@ -530,6 +531,7 @@ uniform vec4 uBodyLook[${MAX_BODIES}];
 uniform vec4 uBodyMap[${MAX_BODIES}];
 uniform highp sampler2DArray uBodyColour;
 uniform highp sampler2DArray uBodyHeight;
+uniform highp sampler2DArray uGiantFaces;
 uniform float uPixelAngle;
 uniform int uGround;
 uniform float uGroundBlend;
@@ -599,12 +601,30 @@ vec3 bodyLocal(vec3 surface, BodyFrame frame) {
   return vec3(dot(surface, frame.meridian), dot(surface, frame.east), dot(surface, frame.north));
 }
 
+const float GIANT_TEXEL = ${(Math.PI / 2 / GIANT_FACE_SIZE).toFixed(8)};
+const float GIANT_DETAIL_SCALE = 0.4;
+const float GIANT_DETAIL_CONTRAST = 0.3;
+const float GIANT_DETAIL_FOLLOWS = 30.0;
+const vec3 GIANT_DETAIL_STRETCH = vec3(1.0, 1.0, 2.5);
+
+vec4 giantFaces(vec3 local, float firstFace, float lod) {
+  vec3 size = abs(local);
+  float axis = size.x >= size.y && size.x >= size.z ? 0.0 : size.y >= size.z ? 1.0 : 2.0;
+  vec3 st = axis == 0.0 ? local.yzx : axis == 1.0 ? local.xzy : local;
+  float face = axis * 2.0 + (st.z < 0.0 ? 1.0 : 0.0);
+  vec2 uv = 0.5 + 0.5 * st.xy / (abs(st.z) * ${GIANT_FACE_OVERSCAN.toFixed(6)});
+  return textureLod(uGiantFaces, vec3(uv, firstFace + face), lod);
+}
+
+vec3 giantAlbedo(vec3 local, float firstFace, float footprint) {
+  vec4 clouds = giantFaces(local, firstFace, max(log2(footprint / GIANT_TEXEL), 0.0));
+  float octaves = clamp(log2(GIANT_TEXEL / (GIANT_DETAIL_SCALE * max(footprint, 1e-9))), 0.0, MAX_DETAIL_OCTAVES);
+  vec3 detailPoint = local * GIANT_DETAIL_STRETCH * GIANT_DETAIL_SCALE / GIANT_TEXEL + GIANT_DETAIL_FOLLOWS * dot(clouds.rgb, vec3(0.333));
+  return clouds.rgb * (1.0 + GIANT_DETAIL_CONTRAST * clouds.a * detailNoise(detailPoint, octaves));
+}
+
 vec3 placeholderAlbedo(vec4 look, vec3 local) {
-  float latitude = local.z;
-  if (look.w == BODY_GIANT) {
-    float bands = sin(latitude * 22.0 + 2.5 * terrain(local * 3.0)) * 0.5 + 0.5;
-    return look.rgb * (0.78 + 0.3 * bands);
-  }
+  if (look.w == BODY_GIANT) return look.rgb;
   return look.rgb * (0.7 + 0.6 * terrain(local * 4.0));
 }
 
@@ -709,6 +729,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     albedo = mix(OCEAN_ALBEDO, albedo, land);
   }
   if (look.w == BODY_CLOUDED) albedo = look.rgb * cloudTopShade(local, detailPoint, octaves);
+  if (look.w == BODY_GIANT && map.y >= 0.0) albedo = giantAlbedo(local, map.y, footprint);
   if (look.w == BODY_HAZY) albedo = look.rgb * hazeShade(local, detailPoint, octaves);
 
   vec3 shaded = normal;

@@ -1,5 +1,5 @@
 {
-  "bytes": 1587054,
+  "bytes": 1696663,
   "files": [
     "./",
     "data/nearby-star-names.json",
@@ -22,6 +22,8 @@
     "js/cutscene.js",
     "js/destinations.js",
     "js/galaxies.js",
+    "js/giant-shader.js",
+    "js/giants.js",
     "js/gl.js",
     "js/ground-patches.js",
     "js/main.js",
@@ -53,7 +55,6 @@
     "../../assets/img/mark.svg",
     "../../assets/css/site.css",
     "../../assets/css/studio.css",
-    "../../assets/js/studio.js",
     "../../assets/js/offline.js"
   ]
 }

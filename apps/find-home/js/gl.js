@@ -5,23 +5,27 @@ export function createContext(canvas) {
   return gl;
 }
 
-function compile(gl, type, source) {
+function startCompiling(gl, type, source) {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(shader);
-    gl.deleteShader(shader);
-    throw new Error(log);
-  }
   return shader;
 }
 
-export function createProgram(gl, vertexSource, fragmentSource) {
+export function startProgram(gl, vertexSource, fragmentSource) {
   const program = gl.createProgram();
-  gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, vertexSource));
-  gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, fragmentSource));
+  const shaders = [startCompiling(gl, gl.VERTEX_SHADER, vertexSource), startCompiling(gl, gl.FRAGMENT_SHADER, fragmentSource)];
+  shaders.forEach((shader) => gl.attachShader(program, shader));
   gl.linkProgram(program);
+  const parallel = gl.getExtension('KHR_parallel_shader_compile');
+  return {
+    ready: () => !parallel || gl.getProgramParameter(program, parallel.COMPLETION_STATUS_KHR),
+    finish: () => finishProgram(gl, program, shaders),
+  };
+}
+
+function finishProgram(gl, program, shaders) {
+  for (const shader of shaders) if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
 
   const uniforms = {};
@@ -31,6 +35,10 @@ export function createProgram(gl, vertexSource, fragmentSource) {
     uniforms[name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, name);
   }
   return { program, uniforms };
+}
+
+export function createProgram(gl, vertexSource, fragmentSource) {
+  return startProgram(gl, vertexSource, fragmentSource).finish();
 }
 
 export function setUniforms(gl, { uniforms }, values) {

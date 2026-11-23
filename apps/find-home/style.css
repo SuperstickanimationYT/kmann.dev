@@ -43,6 +43,7 @@
 .fh-dock-buttons {
   display: flex;
   flex: 1 1 auto;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -93,10 +94,15 @@
   white-space: nowrap;
 }
 
+@media (max-width: 760px) {
+  .fh-dock button {
+    padding: 8px 10px;
+  }
+}
+
 @media (max-width: 560px) {
   .fh-dock-buttons {
     flex-basis: 100%;
-    flex-wrap: wrap;
   }
 
   .fh-dock-buttons button {
