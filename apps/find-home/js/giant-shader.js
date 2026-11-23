@@ -1,6 +1,7 @@
 import { MAX_BANDS, MAX_JETS, MAX_SPOTS } from './giants.js';
 
 export const GIANT_FACE_SIZE = 768;
+export const GIANT_FLOW_SIZE = 192;
 const GUTTER = 4;
 export const GIANT_FACE_OVERSCAN = GIANT_FACE_SIZE / (GIANT_FACE_SIZE - 2 * GUTTER);
 
@@ -8,6 +9,10 @@ export const GIANT_FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
 uniform int uFace;
+uniform float uFaceSize;
+uniform int uFlowOnly;
+uniform float uGrowth;
+uniform float uWisps;
 uniform int uBandCount;
 uniform float uBandLatitude[${MAX_BANDS}];
 uniform vec4 uBandColour[${MAX_BANDS}];
@@ -26,6 +31,11 @@ uniform float uHexagon;
 out vec4 outColour;
 
 const int TRACE_STEPS = 56;
+const int WISP_STEPS = 24;
+const float WISP_STEP = 0.6 / float(WISP_STEPS);
+const float WISP_EDDY_SCALE = 1.9;
+const float WISP_EDDY_SPEED = 1.2;
+const float SPIN_SHARE_IN_FLOW = 0.3;
 const float TRACE_STEP = 1.0 / float(TRACE_STEPS);
 const vec3 EDDY_STRETCH = vec3(1.0, 1.0, 1.8);
 const float STREAK_FLATNESS = 9.0;
@@ -100,7 +110,7 @@ vec2 acrossSpot(vec3 p, vec4 place, out vec3 east, out vec3 north) {
   return dot(p, centre) > 0.0 ? vec2(dot(p, east), dot(p, north)) / place.zw : vec2(99.0);
 }
 
-vec3 windAt(vec3 p) {
+vec3 windAt(vec3 p, float eddyScale, float eddySpeed, float spinShare) {
   float latitude = latitudeOf(p);
   float along = 0.0;
   for (int k = 0; k < uJetCount; k++) {
@@ -115,15 +125,19 @@ vec3 windAt(vec3 p) {
   for (int k = 0; k < uSpinningCount; k++) {
     vec2 off = acrossSpot(p, uSpotPlace[k], east, north);
     float reach = exp(-0.55 * dot(off, off));
-    swirl += SPOT_TURNS * 6.2831853 * uSpotSpin[k] * reach * reach * (north * off.x * uSpotPlace[k].w - east * off.y * uSpotPlace[k].z);
+    swirl += spinShare * SPOT_TURNS * 6.2831853 * uSpotSpin[k] * reach * reach * (north * off.x * uSpotPlace[k].w - east * off.y * uSpotPlace[k].z);
     calm *= 1.0 - min(1.6 * reach, 1.0);
+  }
+  for (int k = uSpinningCount; k < uSpotCount; k++) {
+    vec2 off = acrossSpot(p, uSpotPlace[k], east, north);
+    calm *= 1.0 - exp(-0.4 * dot(off, off));
   }
   float turbulence = bandAt(latitude).a;
   vec2 wakeOff = acrossSpot(p, vec4(uWake.x + 0.1, uWake.y, uWake.z * 0.8, 0.09), east, north);
   turbulence += uWake.w * exp(-dot(wakeOff, wakeOff));
   vec3 eddies = vec3(0.0);
-  float scale = uEddyScale;
-  float speed = uEddySpeed * turbulence;
+  float scale = eddyScale * uGrowth;
+  float speed = eddySpeed * turbulence;
   for (int octave = 0; octave < 4; octave++) {
     vec3 slope = noiseAndSlope(p * EDDY_STRETCH * scale + float(octave) * vec3(17.3, 5.1, 9.7)).yzw * EDDY_STRETCH;
     eddies += speed * cross(p, slope);
@@ -145,6 +159,18 @@ float streakNoise(vec3 p) {
   return total;
 }
 
+float wispsAt(vec3 p) {
+  float total = 0.0;
+  float scale = 11.0;
+  float amplitude = 0.5;
+  for (int octave = 0; octave < 5; octave++) {
+    total += amplitude * noiseAndSlope(p * vec3(1.0, 1.0, 2.6) * scale + 41.3 + float(octave) * 7.9).x;
+    scale *= 2.1;
+    amplitude *= 0.62;
+  }
+  return smoothstep(0.03, 0.36, total);
+}
+
 vec3 paintSpots(vec3 colour, vec3 p, vec3 origin) {
   float ragged = noiseAndSlope(p * 30.0).x * 0.08 + noiseAndSlope(p * 70.0).x * 0.04;
   vec3 east;
@@ -160,22 +186,35 @@ vec3 paintSpots(vec3 colour, vec3 p, vec3 origin) {
 }
 
 void main() {
-  vec2 st = (gl_FragCoord.xy / ${GIANT_FACE_SIZE.toFixed(1)} * 2.0 - 1.0) * ${GIANT_FACE_OVERSCAN.toFixed(6)};
+  vec2 st = (gl_FragCoord.xy / uFaceSize * 2.0 - 1.0) * ${GIANT_FACE_OVERSCAN.toFixed(6)};
   float side = uFace % 2 == 0 ? 1.0 : -1.0;
   int axis = uFace / 2;
   vec3 here = normalize(axis == 0 ? vec3(side, st) : axis == 1 ? vec3(st.x, side, st.y) : vec3(st, side));
+  if (uFlowOnly == 1) {
+    outColour = vec4(windAt(here, uEddyScale, uEddySpeed, SPIN_SHARE_IN_FLOW), 1.0);
+    return;
+  }
   vec3 origin = here;
-  for (int k = 0; k < TRACE_STEPS; k++) origin = normalize(origin - TRACE_STEP * windAt(origin));
+  for (int k = 0; k < TRACE_STEPS; k++) origin = normalize(origin - TRACE_STEP * windAt(origin, uEddyScale, uEddySpeed, 1.0));
   float latitude = latitudeOf(origin);
   float fromPole = 1.5707963 - latitude;
   float alongSide = mod(atan(here.y, here.x), HEXAGON_SIDE) - 0.5 * HEXAGON_SIDE;
   float hexagon = uHexagon * (1.0 - smoothstep(0.6 * HEXAGON_REACH, HEXAGON_REACH, fromPole));
   latitude = 1.5707963 - fromPole * mix(1.0, cos(alongSide) / HEXAGON_MEAN_INSET, hexagon);
   vec4 band = bandAt(latitude);
-  float streak = streakNoise(origin);
+  float streak = streakNoise(origin * uGrowth);
   vec3 colour = band.rgb * (1.0 + uStreaks * (1.2 + 1.6 * band.a) * streak);
   colour *= mix(vec3(1.0), vec3(1.05, 1.0, 0.93), clamp(-16.0 * uStreaks * streak, 0.0, 1.0));
   colour = paintSpots(colour, here, origin);
-  outColour = vec4(clamp(colour, 0.0, 1.0), clamp(band.a * 0.5, 0.0, 1.0));
+  vec3 wispOrigin = here;
+  for (int k = 0; k < WISP_STEPS; k++) wispOrigin = normalize(wispOrigin - WISP_STEP * windAt(wispOrigin, uEddyScale * WISP_EDDY_SCALE, uEddySpeed * WISP_EDDY_SPEED, 0.5));
+  float wisps = uWisps * clamp(0.3 + 0.6 * band.a, 0.0, 1.0) * wispsAt(wispOrigin * uGrowth);
+  vec3 east;
+  vec3 north;
+  for (int k = 0; k < uSpotCount; k++) {
+    vec2 off = acrossSpot(here, uSpotPlace[k], east, north);
+    wisps *= 1.0 - 0.85 * exp(-0.5 * dot(off, off));
+  }
+  outColour = vec4(clamp(colour, 0.0, 1.0), clamp(wisps, 0.0, 1.0));
 }
 `;

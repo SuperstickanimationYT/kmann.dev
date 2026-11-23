@@ -790,6 +790,7 @@ function eyeView() {
   };
 }
 
+const prefersStillness = matchMedia('(prefers-reduced-motion: reduce)');
 let lastFrame = performance.now();
 function frame(now) {
   const seconds = Math.min(0.1, (now - lastFrame) / 1000);
@@ -816,6 +817,7 @@ function frame(now) {
       cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
+      cloudSeconds: paused() || prefersStillness.matches ? 0 : seconds,
       ground,
       warp: warpView,
       adaptation,

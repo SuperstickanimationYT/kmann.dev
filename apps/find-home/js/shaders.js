@@ -532,6 +532,8 @@ uniform vec4 uBodyMap[${MAX_BODIES}];
 uniform highp sampler2DArray uBodyColour;
 uniform highp sampler2DArray uBodyHeight;
 uniform highp sampler2DArray uGiantFaces;
+uniform highp sampler2DArray uGiantFlow;
+uniform float uGiantAge;
 uniform float uPixelAngle;
 uniform int uGround;
 uniform float uGroundBlend;
@@ -603,24 +605,52 @@ vec3 bodyLocal(vec3 surface, BodyFrame frame) {
 
 const float GIANT_TEXEL = ${(Math.PI / 2 / GIANT_FACE_SIZE).toFixed(8)};
 const float GIANT_DETAIL_SCALE = 0.4;
-const float GIANT_DETAIL_CONTRAST = 0.3;
+const float GIANT_DETAIL_CONTRAST = 0.25;
 const float GIANT_DETAIL_FOLLOWS = 30.0;
 const vec3 GIANT_DETAIL_STRETCH = vec3(1.0, 1.0, 2.5);
+const float GIANT_FLOW_REACH = 0.1;
+const float HIGH_CLOUD_WIND = 1.8;
+const float HIGH_CLOUD_HEIGHT = 0.005;
+const float HIGH_CLOUD_SHADOW = 0.4;
+const float HIGH_CLOUD_BRIGHTNESS = 0.96;
+const float HIGH_CLOUD_WHITENESS = 0.45;
 
-vec4 giantFaces(vec3 local, float firstFace, float lod) {
+vec3 giantFaceAt(vec3 local) {
   vec3 size = abs(local);
   float axis = size.x >= size.y && size.x >= size.z ? 0.0 : size.y >= size.z ? 1.0 : 2.0;
   vec3 st = axis == 0.0 ? local.yzx : axis == 1.0 ? local.xzy : local;
-  float face = axis * 2.0 + (st.z < 0.0 ? 1.0 : 0.0);
-  vec2 uv = 0.5 + 0.5 * st.xy / (abs(st.z) * ${GIANT_FACE_OVERSCAN.toFixed(6)});
-  return textureLod(uGiantFaces, vec3(uv, firstFace + face), lod);
+  return vec3(0.5 + 0.5 * st.xy / (abs(st.z) * ${GIANT_FACE_OVERSCAN.toFixed(6)}), axis * 2.0 + (st.z < 0.0 ? 1.0 : 0.0));
 }
 
-vec3 giantAlbedo(vec3 local, float firstFace, float footprint) {
-  vec4 clouds = giantFaces(local, firstFace, max(log2(footprint / GIANT_TEXEL), 0.0));
+vec4 giantFaces(vec3 local, float firstFace, float lod) {
+  return textureLod(uGiantFaces, giantFaceAt(local) + vec3(0.0, 0.0, firstFace), lod);
+}
+
+vec4 giantLayers(vec3 local, vec3 flow, float firstFace, float lod, float octaves, vec3 towardSun) {
+  vec3 deckPlace = normalize(local - flow);
+  vec3 highPlace = normalize(local - HIGH_CLOUD_WIND * flow);
+  vec3 deck = giantFaces(deckPlace, firstFace, lod).rgb;
+  vec3 detailPoint = deckPlace * GIANT_DETAIL_STRETCH * GIANT_DETAIL_SCALE / GIANT_TEXEL + GIANT_DETAIL_FOLLOWS * dot(deck, vec3(0.333));
+  deck *= 1.0 + GIANT_DETAIL_CONTRAST * detailNoise(detailPoint, octaves);
+  deck *= 1.0 - HIGH_CLOUD_SHADOW * giantFaces(normalize(highPlace + towardSun), firstFace, lod).a;
+  return vec4(deck, giantFaces(highPlace, firstFace, lod).a);
+}
+
+vec3 giantAlbedo(vec3 local, vec2 firstFaces, float footprint, vec3 sun) {
+  float lod = max(log2(footprint / GIANT_TEXEL), 0.0);
   float octaves = clamp(log2(GIANT_TEXEL / (GIANT_DETAIL_SCALE * max(footprint, 1e-9))), 0.0, MAX_DETAIL_OCTAVES);
-  vec3 detailPoint = local * GIANT_DETAIL_STRETCH * GIANT_DETAIL_SCALE / GIANT_TEXEL + GIANT_DETAIL_FOLLOWS * dot(clouds.rgb, vec3(0.333));
-  return clouds.rgb * (1.0 + GIANT_DETAIL_CONTRAST * clouds.a * detailNoise(detailPoint, octaves));
+  float sunHeight = dot(sun, local);
+  vec3 towardSun = HIGH_CLOUD_HEIGHT * (sun - local * sunHeight) / max(sunHeight, 0.3);
+  vec4 layers;
+  if (firstFaces.y < 0.0) layers = giantLayers(local, vec3(0.0), firstFaces.x, lod, octaves, towardSun);
+  else {
+    vec3 flow = GIANT_FLOW_REACH * textureLod(uGiantFlow, giantFaceAt(local), 0.0).xyz;
+    vec4 leaving = giantLayers(local, flow * uGiantAge, firstFaces.x, lod, octaves, towardSun);
+    vec4 arriving = giantLayers(local, flow * (uGiantAge - 1.0), firstFaces.y, lod, octaves, towardSun);
+    layers = mix(leaving, arriving, smoothstep(0.1, 0.9, uGiantAge));
+  }
+  vec3 deckHue = layers.rgb / max(max(layers.r, max(layers.g, layers.b)), 0.01);
+  return mix(layers.rgb, HIGH_CLOUD_BRIGHTNESS * mix(deckHue, vec3(1.0), HIGH_CLOUD_WHITENESS), layers.a);
 }
 
 vec3 placeholderAlbedo(vec4 look, vec3 local) {
@@ -729,7 +759,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     albedo = mix(OCEAN_ALBEDO, albedo, land);
   }
   if (look.w == BODY_CLOUDED) albedo = look.rgb * cloudTopShade(local, detailPoint, octaves);
-  if (look.w == BODY_GIANT && map.y >= 0.0) albedo = giantAlbedo(local, map.y, footprint);
+  if (look.w == BODY_GIANT && map.y >= 0.0) albedo = giantAlbedo(local, map.yz, footprint, bodyLocal(uBodySun[i].xyz, frame));
   if (look.w == BODY_HAZY) albedo = look.rgb * hazeShade(local, detailPoint, octaves);
 
   vec3 shaded = normal;

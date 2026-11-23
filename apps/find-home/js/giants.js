@@ -33,6 +33,7 @@ const GIANTS = {
     eddyScale: 9,
     eddySpeed: 0.1,
     streaks: 0.26,
+    wisps: 0.6,
     hexagon: 0,
   },
   Saturn: {
@@ -51,6 +52,7 @@ const GIANTS = {
     eddyScale: 12,
     eddySpeed: 0.03,
     streaks: 0.07,
+    wisps: 0.25,
     hexagon: 1,
   },
   Uranus: {
@@ -63,6 +65,7 @@ const GIANTS = {
     eddyScale: 8,
     eddySpeed: 0.02,
     streaks: 0.02,
+    wisps: 0.12,
     hexagon: 0,
   },
   Neptune: {
@@ -80,6 +83,7 @@ const GIANTS = {
     eddyScale: 8,
     eddySpeed: 0.035,
     streaks: 0.05,
+    wisps: 0.35,
     hexagon: 0,
   },
 };
@@ -111,6 +115,7 @@ export function giantUniforms(name) {
       uEddyScale: giant.eddyScale,
       uEddySpeed: giant.eddySpeed,
       uStreaks: giant.streaks,
+      uWisps: giant.wisps,
       uHexagon: giant.hexagon,
     },
     arrays: {

@@ -1,4 +1,4 @@
-import { createByteTarget, createContext, createProgram, createTarget, setUniforms, startProgram } from './gl.js';
+import { createByteTarget, createContext, createProgram, createTarget, setUniforms } from './gl.js';
 import {
   ARMED_NORMAL, BAR_ANGLE, BAR_ANGULAR_SPEED, DISK, LY_PER_PC, MAP_HALF_WIDTH, MAP_SIZE, PC_PER_YEAR_PER_KM_S,
   positionSeenAt, SUN_RADIUS,
@@ -14,8 +14,7 @@ import {
   SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
-import { GIANT_FACE_SIZE, GIANT_FRAGMENT } from './giant-shader.js';
-import { GIANT_NAMES, giantUniforms } from './giants.js';
+import { createGiantPainter } from './giant-painter.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { apparentMagnitude, MAPPED_BODIES, sunShareVisible } from './solar-system.js';
 import { mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
@@ -112,8 +111,7 @@ function galaxyUniforms(galaxies, camera) {
 function setArray(gl, program, name, values, size) {
   const location = program.uniforms[name];
   if (!location) return;
-  if (size === 1) gl.uniform1fv(location, values);
-  else if (size === 3) gl.uniform3fv(location, values);
+  if (size === 3) gl.uniform3fv(location, values);
   else gl.uniform4fv(location, values);
 }
 
@@ -146,11 +144,6 @@ const CUBE_FACES = [
 ];
 const BODY_COLOUR_UNIT = 5;
 const BODY_HEIGHT_UNIT = 6;
-const GIANT_FACES_UNIT = 14;
-const FACES_PER_GIANT = 6;
-const STRIPS_PER_GIANT_FACE = 6;
-const SMALLEST_PAINTED_GIANT_PIXELS = 1.5;
-const NOT_PAINTED = -1;
 const BODY_MAP_SIZE = [1024, 512];
 const GROUND_VIEW_UNIT = 7;
 const SHADOW_MAP_UNIT = 8;
@@ -252,9 +245,7 @@ function brightestInDistanceOrder(seen) {
   return seen.filter((entry) => kept.has(entry));
 }
 
-const firstGiantFace = (name) => GIANT_NAMES.indexOf(name) * FACES_PER_GIANT;
-
-function bodyArrays(shown, mapRelief, giantsPainted) {
+function bodyArrays(shown, mapRelief, giants) {
   const arrays = {
     uBodyPlace: new Float32Array(MAX_BODIES * 4),
     uBodyOccluder: new Float32Array(MAX_BODIES * 4),
@@ -273,7 +264,7 @@ function bodyArrays(shown, mapRelief, giantsPainted) {
     const direction = offsetKm.map((value) => value / distance);
     const star = body.kind === 'star';
     const relief = mapRelief[body.mapLayer] ?? 0;
-    const giantFace = giantsPainted.has(body.name) ? firstGiantFace(body.name) : NOT_PAINTED;
+    const giantFaces = body.kind === 'giant' ? giants.facesOf(body.name) : null;
     const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
     arrays.uBodyOccluder.set([...direction, star ? 0 : angularRadius], i * 4);
@@ -285,8 +276,8 @@ function bodyArrays(shown, mapRelief, giantsPainted) {
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), BODY_KIND_CODES[body.kind]], i * 4);
     arrays.uBodyMap.set([
       mapped ? body.mapLayer : -1,
-      body.kind === 'giant' ? giantFace : relief,
-      body.roughness ?? 0,
+      giantFaces ? giantFaces.now : relief,
+      giantFaces ? giantFaces.next : body.roughness ?? 0,
       star ? 0 : starPointBrightness(apparentMagnitude(body, offsetKm)),
     ], i * 4);
   });
@@ -394,62 +385,11 @@ export function createRenderer(canvas, armMap, galaxies) {
     mapRelief[layer] = relief;
   }
 
-  const giantsPainted = new Set();
-  let giantPainter = null;
-
-  function createGiantPainter() {
-    const texture = gl.createTexture();
-    gl.activeTexture(gl.TEXTURE0 + GIANT_FACES_UNIT);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, Math.floor(Math.log2(GIANT_FACE_SIZE)) + 1, gl.RGBA8, GIANT_FACE_SIZE, GIANT_FACE_SIZE, GIANT_NAMES.length * FACES_PER_GIANT);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.activeTexture(gl.TEXTURE0);
-    return { texture, framebuffer: gl.createFramebuffer(), compiling: startProgram(gl, FULLSCREEN_VERTEX, GIANT_FRAGMENT), program: null, name: null, strip: 0 };
-  }
-
-  function unpaintedGiant(seen, pixelAngle) {
-    return seen.find(({ body, offsetKm }) => body.kind === 'giant' && !giantsPainted.has(body.name) && body.radiusKm / Math.hypot(...offsetKm) > SMALLEST_PAINTED_GIANT_PIXELS * pixelAngle)?.body.name;
-  }
-
-  function paintNextGiantStrip(seen, pixelAngle) {
-    const name = giantPainter?.name ?? unpaintedGiant(seen, pixelAngle);
-    if (!name) return;
-    giantPainter ??= createGiantPainter();
-    if (!giantPainter.program && !giantPainter.compiling.ready()) return;
-    giantPainter.program ??= giantPainter.compiling.finish();
-    if (giantPainter.name !== name) Object.assign(giantPainter, { name, strip: 0 });
-    const { program, texture, framebuffer, strip } = giantPainter;
-    const face = Math.floor(strip / STRIPS_PER_GIANT_FACE);
-    const stripHeight = GIANT_FACE_SIZE / STRIPS_PER_GIANT_FACE;
-    const { values, arrays } = giantUniforms(name);
-    gl.useProgram(program.program);
-    setUniforms(gl, program, { ...values, uFace: { int: face } });
-    for (const [uniform, [entries, width]] of Object.entries(arrays)) setArray(gl, program, uniform, entries, width);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-    gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, texture, 0, firstGiantFace(name) + face);
-    gl.viewport(0, 0, GIANT_FACE_SIZE, GIANT_FACE_SIZE);
-    gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(0, (strip % STRIPS_PER_GIANT_FACE) * stripHeight, GIANT_FACE_SIZE, stripHeight);
-    gl.bindVertexArray(emptyVao);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    giantPainter.strip++;
-    if (giantPainter.strip < FACES_PER_GIANT * STRIPS_PER_GIANT_FACE) return;
-    gl.activeTexture(gl.TEXTURE0 + GIANT_FACES_UNIT);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
-    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
-    gl.activeTexture(gl.TEXTURE0);
-    giantsPainted.add(name);
-    giantPainter.name = null;
-  }
+  const giants = createGiantPainter(gl, emptyVao);
 
   function setBodies(program, seen, ground) {
     const shown = brightestInDistanceOrder(seen ?? []);
-    const { arrays, count, rings } = bodyArrays(shown, mapRelief, giantsPainted);
+    const { arrays, count, rings } = bodyArrays(shown, mapRelief, giants);
     const groundValues = groundUniforms(ground, shown);
     setUniforms(gl, program, groundValues);
     if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
@@ -465,7 +405,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(program.uniforms.uBodyColour, BODY_COLOUR_UNIT);
       gl.uniform1i(program.uniforms.uBodyHeight, BODY_HEIGHT_UNIT);
-      gl.uniform1i(program.uniforms.uGiantFaces, GIANT_FACES_UNIT);
+      giants.bind(program);
     }
   }
 
@@ -856,7 +796,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, ground, warp, adaptation, longExposure }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution && !warp) {
@@ -866,7 +806,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       drawSky({ ...view, pixelAngle: view.pixelAngle / skyResolution }, nebulae, stars.reaches, 1, seed);
     }
 
-    paintNextGiantStrip(bodies ?? [], view.pixelAngle);
+    giants.advance(bodies ?? [], view.pixelAngle, cloudSeconds);
     const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
