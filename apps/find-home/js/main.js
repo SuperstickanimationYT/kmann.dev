@@ -16,6 +16,7 @@ import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, orbitPaths, placeBodies } from './solar-system.js';
 import { drawOrbits } from './orbits.js';
+import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
@@ -257,6 +258,31 @@ function setMusic(wanted) {
 }
 
 const labelsShown = () => game.mode.labels && labelsToggle.checked;
+const timeButton = $('[data-time-open]');
+const timePanel = $('[data-time]');
+const simDateField = $('[data-sim-date-field]');
+const simDateInput = $('[data-sim-date-input]');
+const SIM_TIME_REFRESH_MS = 250;
+let simTimeShownAt = -Infinity;
+
+const utcMinute = (ms) => new Date(ms).toISOString().slice(0, 16);
+const formatSimDate = (ms) => `${utcMinute(ms).replace('T', ' ')} UTC`;
+
+function showSimTime(now) {
+  if (hitTimeLimit()) showStatus(`Planet positions are only accurate from ${new Date(EARLIEST_MS).getUTCFullYear()} to ${new Date(LATEST_MS).getUTCFullYear()}, so time stopped there.`);
+  if (now - simTimeShownAt < SIM_TIME_REFRESH_MS) return;
+  simTimeShownAt = now;
+  const shown = formatSimDate(simNow());
+  $('[data-sim-date]').textContent = describeRate() === 'real time' ? shown : `${shown} · ${describeRate()}`;
+  $('[data-time-rate]').textContent = describeRate();
+  $('[data-time-pause]').textContent = paused() ? 'Play' : 'Pause';
+  if (document.activeElement !== simDateInput) simDateInput.value = utcMinute(simNow());
+}
+
+function changeTime(change) {
+  change();
+  simTimeShownAt = -Infinity;
+}
 const orbitsButton = $('[data-orbits]');
 const orbitsShown = () => game.mode.solarSystem && orbitsButton.getAttribute('aria-pressed') === 'true';
 
@@ -270,7 +296,7 @@ function drawOrbitLines(context, width, height) {
   if (!seen) return;
   const offsets = new Map(seen.map(({ body, offsetKm }) => [body.name, offsetKm]));
   drawOrbits(context, {
-    paths: orbitPaths(Date.now()),
+    paths: orbitPaths(simNow()),
     offsetOf: (name) => offsets.get(name),
     bodies: seen.map(({ body, offsetKm }) => ({ offsetKm, radiusKm: body.radiusKm })),
     basis: game.basis,
@@ -294,6 +320,9 @@ function setMode(name) {
   labelsField.hidden = !mode.labels;
   selectField.hidden = !mode.selecting;
   orbitsButton.hidden = !mode.solarSystem;
+  timeButton.hidden = !mode.solarSystem;
+  simDateField.hidden = !mode.solarSystem;
+  if (!mode.solarSystem) timePanel.hidden = true;
   longExposureField.hidden = !mode.longExposure;
   solarNote.hidden = !mode.solarSystem;
   clockLabel.textContent = mode.clockLabel;
@@ -632,7 +661,7 @@ function followSolarSystem() {
     solarFrame = null;
     return;
   }
-  solarBodies = placeBodies(Date.now());
+  solarBodies = placeBodies(simNow());
   if (solarFrame && game.camera !== solarFrame.camera) solarFrame = null;
   solarFrame ??= enterSolarFrame();
   if (!solarFrame) return;
@@ -769,6 +798,7 @@ function frame(now) {
   if (labelsShown() || selection || orbitsShown()) refreshGuides(now);
   $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
   $('[data-speed]').textContent = formatSpeed(game.speed);
+  if (game.mode.solarSystem) showSimTime(now);
   $('[data-energy]').textContent = !game.mode.scored ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
   requestAnimationFrame(frame);
 }
@@ -1162,6 +1192,9 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyJ') jump();
   else if (event.code === 'KeyC') faceDirection(game.basis.forward);
   else if (event.code === 'KeyM') toggleAtlas();
+  else if (event.code === 'Comma' && game.mode.solarSystem) changeTime(slower);
+  else if (event.code === 'Period' && game.mode.solarSystem) changeTime(faster);
+  else if (event.code === 'Slash' && game.mode.solarSystem) changeTime(togglePause);
   else if (event.code === 'KeyO' && game.mode.solarSystem) setOrbits(!orbitsShown());
   else if (event.code === 'KeyL' && game.mode.labels) setLabels(!labelsToggle.checked);
   else if (event.code === 'KeyP' && game.mode.longExposure) setLongExposure(!longExposureToggle.checked);
@@ -1220,6 +1253,19 @@ giveUpButton.addEventListener('click', () => {
 });
 $('[data-jump]').addEventListener('click', jump);
 orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
+timeButton.addEventListener('click', () => {
+  timePanel.hidden = !timePanel.hidden;
+  timeButton.setAttribute('aria-pressed', String(!timePanel.hidden));
+});
+$('[data-time-close]').addEventListener('click', () => timeButton.click());
+$('[data-time-slower]').addEventListener('click', () => changeTime(slower));
+$('[data-time-faster]').addEventListener('click', () => changeTime(faster));
+$('[data-time-pause]').addEventListener('click', () => changeTime(togglePause));
+$('[data-time-now]').addEventListener('click', () => changeTime(backToNow));
+simDateInput.addEventListener('change', () => {
+  const chosen = Date.parse(`${simDateInput.value}Z`);
+  if (Number.isFinite(chosen)) changeTime(() => jumpTo(chosen));
+});
 const moreButton = $('[data-more]');
 const showPanelState = () => moreButton.setAttribute('aria-expanded', String(studioPanelOpen()));
 moreButton.addEventListener('click', () => {

@@ -1,5 +1,6 @@
 import { LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { arrivalNear, BODIES, KM_PER_PC, placeBodies } from './solar-system.js';
+import { simNow } from './sim-clock.js';
 import { nebulaRadius } from './stars.js';
 import { add, normalize, scale, subtract } from './vectors.js';
 
@@ -9,7 +10,7 @@ const GALAXY_STANDOFF_SCALE_LENGTHS = 8;
 const MILKY_WAY_ABOVE = [0, 0, 45000];
 const BODY_CROSSING_SECONDS = 4;
 
-const placedNow = (name) => placeBodies(Date.now()).find((body) => body.name === name);
+const placedNow = (name) => placeBodies(simNow()).find((body) => body.name === name);
 const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
 const approach = (name, group, target, standoff, subject) => ({ name, group, target, subject, arrival: (from) => backOff(from, target, standoff) });
 

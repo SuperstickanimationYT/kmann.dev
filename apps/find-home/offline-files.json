@@ -41,6 +41,7 @@
     "js/renderer.js",
     "js/shaders.js",
     "js/ship.js",
+    "js/sim-clock.js",
     "js/solar-system.js",
     "js/stars.js",
     "js/terrain-worker.js",

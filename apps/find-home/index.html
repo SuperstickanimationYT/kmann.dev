@@ -26,6 +26,7 @@
   <div class="fh-hud" aria-live="polite">
     <span><span data-clock-label>Mission clock</span> <strong data-clock>0:00:00</strong></span>
     <span>Thrusters <strong data-speed></strong></span>
+    <span data-sim-date-field hidden>Date <strong data-sim-date></strong></span>
     <span>Warp left <strong data-energy></strong></span>
   </div>
   <aside class="fh-pick" data-pick hidden aria-live="polite">
@@ -34,6 +35,21 @@
     <p data-pick-kind></p>
     <dl data-pick-facts></dl>
     <div class="fh-actions fh-pick-warp"><button type="button" class="fh-primary" data-pick-warp>Warp here</button></div>
+  </aside>
+  <aside class="fh-time" data-time hidden aria-label="Time">
+    <button type="button" class="fh-pick-close" data-time-close aria-label="Close time controls">&times;</button>
+    <h2>Time</h2>
+    <label class="fh-time-date">
+      <span>Date and time (UTC)</span>
+      <input type="datetime-local" data-sim-date-input min="1800-01-01T00:00" max="2050-01-01T00:00" step="60">
+    </label>
+    <p>Running: <strong data-time-rate></strong></p>
+    <div class="fh-actions">
+      <button type="button" data-time-slower title="Slower, then backward (,)" aria-label="Slower">&#9664;&#9664;</button>
+      <button type="button" data-time-pause title="Pause or play (/)">Pause</button>
+      <button type="button" data-time-faster title="Faster (.)" aria-label="Faster">&#9654;&#9654;</button>
+      <button type="button" data-time-now>Now</button>
+    </div>
   </aside>
   <p class="fh-status" data-status hidden></p>
   <nav class="fh-dock" data-dock aria-label="Controls">
@@ -48,6 +64,7 @@
       <button type="button" data-expose title="Start or stop a long exposure (T)">Photo</button>
       <button type="button" data-atlas-open title="Atlas of the Milky Way (M)">Atlas</button>
       <button type="button" data-orbits aria-pressed="false" title="Show planet and moon orbits (O)" hidden>Orbits</button>
+      <button type="button" data-time-open aria-pressed="false" title="Change the date and how fast time runs" hidden>Time</button>
       <button type="button" data-give-up>Give up</button>
       <button type="button" data-more aria-expanded="true" title="Mode, settings, camera, help">More</button>
     </div>
@@ -157,7 +174,7 @@
           <li><kbd>Drag</kbd> turn your head &middot; <kbd>&larr;&uarr;&rarr;&darr;</kbd> <kbd>Q</kbd><kbd>E</kbd> turn the ship</li>
           <li><kbd>C</kbd> point the ship where you look &middot; <kbd>J</kbd> jump</li>
           <li><kbd>W</kbd><kbd>S</kbd> thrust forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
-          <li><kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> thruster speed &middot; <kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; <kbd>O</kbd> orbits and <kbd>P</kbd> long-exposure view (Explore)</li>
+          <li><kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> thruster speed &middot; <kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; <kbd>O</kbd> orbits, <kbd>,</kbd><kbd>.</kbd> time slower, faster, <kbd>/</kbd> pause time and <kbd>P</kbd> long-exposure view (Explore)</li>
           <li>Click a star through a window to claim it</li>
           <li>Touch: drag to look &middot; hold <kbd>&#9650;</kbd><kbd>&#9660;</kbd> to fly &middot; <kbd>+</kbd><kbd>&minus;</kbd> speed</li>
         </ul>
