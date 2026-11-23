@@ -714,6 +714,9 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   return lit;
 }
 
+const float STAR_KIND = 3.0;
+bool starHit = false;
+
 vec4 bodiesColour(vec3 direction) {
   vec3 points = vec3(0.0);
   for (int i = 0; i < ${MAX_BODIES}; i++) {
@@ -731,6 +734,7 @@ vec4 bodiesColour(vec3 direction) {
     if (cover <= 0.0) continue;
     float inside = min(miss, radius * 0.9999);
     float hit = along - sqrt(radius * radius - inside * inside);
+    starHit = uBodyLook[i].w == STAR_KIND;
     return vec4(shadeBody(i, direction, hit, radius) * cover + points, cover);
   }
   return vec4(points, 0.0);
@@ -1303,6 +1307,8 @@ uniform sampler2D uGroundView;
 uniform sampler2D uCloudView;
 uniform float uCloudsOn;
 
+float starVeil = 0.0;
+
 vec4 groundSeen() {
   vec4 ground = texture(uGroundView, vUv);
   vec4 cloud = vec4(0.0);
@@ -1310,6 +1316,8 @@ vec4 groundSeen() {
     vec2 texel = 1.0 / vec2(textureSize(uCloudView, 0));
     for (int i = 0; i < 4; i++) cloud += 0.25 * texture(uCloudView, vUv + (vec2(i & 1, i >> 1) - 0.5) * texel);
   }
+  float solid = ground.a >= GROUND_HIT ? 1.0 : 0.0;
+  starVeil = max(max(solid, cloud.a), min(1.0, uGroundOvercast * OVERCAST_VEIL_GAIN)) * uGroundBlend;
   return vec4(ground.rgb * (1.0 - cloud.a) + cloud.rgb, max(min(ground.a, 1.0), cloud.a)) * uGroundBlend;
 }
 
@@ -1325,13 +1333,16 @@ void main() {
     return;
   }
   vec4 ground = uGround >= 0 && uWarpAxis.w < 0.5 ? groundSeen() : vec4(0.0);
-  if (ground.a >= 1.0) {
+  if (starVeil >= 1.0) {
     outColour = vec4(ground.rgb, 1.0);
     return;
   }
   vec4 body = bodiesColour(directionBeforeWarp(direction));
+  bool sunThroughAir = starHit && uGround >= 0 && uWarpAxis.w < 0.5;
+  float bodyVeil = sunThroughAir ? starVeil : ground.a;
+  if (sunThroughAir) body.rgb *= sunlightThroughAir(groundLocal(uBodySun[uGround]), normalize(uGroundCamera));
   if (body.a >= 1.0) {
-    outColour = vec4(body.rgb * (1.0 - ground.a) + ground.rgb, 1.0);
+    outColour = vec4(body.rgb * (1.0 - bodyVeil) + ground.rgb, 1.0);
     return;
   }
   vec3 sky = uWarpAxis.w > 0.5 ? warpedSky(direction) + glare(direction) * uWhiteBalance : max(texture(uSky, vUv).rgb, vec3(0.0));
@@ -1349,7 +1360,7 @@ void main() {
   tint = boostSaturation(tint, mix(1.0, LONG_EXPOSURE_SATURATION, uLongExposure));
   vec3 colour = mix(vec3(0.86, 0.9, 1.0), tint, colourShare);
   vec3 behind = colour * max(lightness, 0.0) * (1.0 - body.a);
-  vec3 throughAir = (behind + body.rgb) * (1.0 - ground.a) + ground.rgb;
+  vec3 throughAir = behind * (1.0 - ground.a) + body.rgb * (1.0 - bodyVeil) + ground.rgb;
   outColour = vec4(mix(throughAir + planet.rgb, planet.rgb, planet.a), max(max(body.a, ground.a), planet.a));
 }`;
 
