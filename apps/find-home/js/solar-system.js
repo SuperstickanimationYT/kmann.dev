@@ -11,12 +11,194 @@ const J2000_MS = Date.UTC(2000, 0, 1, 12);
 const MS_PER_DAY = 86400000;
 const DAYS_PER_CENTURY = 36525;
 const OBLIQUITY = 23.43928 * DEGREES;
-const MOON_DISTANCE_KM = 384400;
-const MOON_ELEMENTS_EPOCH_DAYS = -1.5;
 const EARTH_SHARE_OF_MOON_OFFSET = 1 / 82.3;
 const DAYS_PER_YEAR = 365.25;
 const ORBIT_PATH_POINTS = 256;
 const SYNCHRONOUS_LOOKAHEAD_DAYS = 0.01;
+
+const MOON_ARGUMENTS = [
+  [297.8501921, 445267.1114034],
+  [357.5291092, 35999.0502909],
+  [134.9633964, 477198.8675055],
+  [93.272095, 483202.0175233],
+  [218.3164477, 481267.88123421],
+  [119.75, 131.849],
+  [53.09, 479264.29],
+  [313.45, 481266.484],
+];
+const SIDEREAL_MONTH_DAYS = 27.321661;
+const SUN_RADIUS_KM = 695700;
+const ECLIPSERS_PER_BODY = 2;
+const TT_TABLE_START_YEAR = 1800;
+const TT_TABLE_STEP_YEARS = 5;
+const MOON_LONGITUDE_TERMS = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 218.316721],
+  [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 481266.484834],
+  [0, 0, 0, 0, 0, 0, 0, 0, 2, 0, -0.001572],
+  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0.003987, 0.000092],
+  [0, 0, 0, -1, 1, 0, 0, 0, 0, 0.002396, -0.00003],
+  [0, 0, 0, 0, 0, 0, 1, 0, 0, 0.000293, -0.000034],
+  [0, 0, 0, 2, 0, 0, 0, 0, 0, -0.114336, 0.000022],
+  [0, 0, 1, -2, 0, 0, 0, 0, 0, 0.010976, 0.000001],
+  [0, 0, 1, 0, 0, 0, 0, 0, 0, 6.288771, 0.001102],
+  [0, 0, 1, 2, 0, 0, 0, 0, 0, -0.012528, 0],
+  [0, 0, 2, -2, 0, 0, 0, 0, 0, -0.000382, 0.000002],
+  [0, 0, 2, 0, 0, 0, 0, 0, 0, 0.21362, 0.000073],
+  [0, 0, 2, 2, 0, 0, 0, 0, 0, -0.001111, 0],
+  [0, 0, 3, 0, 0, 0, 0, 0, 0, 0.010035, 0.000005],
+  [0, 0, 4, 0, 0, 0, 0, 0, 0, 0.000537, 0],
+  [0, 1, -2, 0, 0, 0, 0, 0, 0, -0.002694, 0.000001],
+  [0, 1, -1, 0, 0, 0, 0, 0, 0, -0.040999, 0.000009],
+  [0, 1, 0, 0, 0, 0, 0, 0, 0, -0.185466, 0.000006],
+  [0, 1, 1, 0, 0, 0, 0, 0, 0, -0.030439, -0.000004],
+  [0, 1, 2, 0, 0, 0, 0, 0, 0, -0.002124, 0],
+  [0, 2, -1, 0, 0, 0, 0, 0, 0, -0.000712, -0.000001],
+  [0, 2, 0, 0, 0, 0, 0, 0, 0, -0.002077, -0.000001],
+  [0, 2, 1, 0, 0, 0, 0, 0, 0, -0.000323, 0],
+  [1, 0, -2, 0, 0, 0, 0, 0, 0, -0.000489, 0.000001],
+  [1, 0, -1, 0, 0, 0, 0, 0, 0, -0.005161, 0],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, -0.034722, -0.000001],
+  [1, 0, 1, 0, 0, 0, 0, 0, 0, -0.002348, 0],
+  [1, 1, -1, 0, 0, 0, 0, 0, 0, 0.000297, 0.00001],
+  [1, 1, 0, 0, 0, 0, 0, 0, 0, 0.00499, 0.000021],
+  [1, 1, 1, 0, 0, 0, 0, 0, 0, 0.000355, 0.000002],
+  [2, -2, -1, 0, 0, 0, 0, 0, 0, 0.002058, -0.000001],
+  [2, -2, 0, 0, 0, 0, 0, 0, 0, 0.002243, 0.000001],
+  [2, -2, 1, 0, 0, 0, 0, 0, 0, 0.00021, 0],
+  [2, -1, -2, 0, 0, 0, 0, 0, 0, 0.002395, -0.000001],
+  [2, -1, -1, 0, 0, 0, 0, 0, 0, 0.057173, -0.000008],
+  [2, -1, 0, -2, 0, 0, 0, 0, 0, 0.000597, 0],
+  [2, -1, 0, 0, 0, 0, 0, 0, 0, 0.045843, 0.000002],
+  [2, -1, 1, 0, 0, 0, 0, 0, 0, 0.004044, 0.000001],
+  [2, -1, 2, 0, 0, 0, 0, 0, 0, 0.000327, 0],
+  [2, 0, -4, 0, 0, 0, 0, 0, 0, 0.000264, 0],
+  [2, 0, -3, 0, 0, 0, 0, 0, 0, 0.003665, -0.000003],
+  [2, 0, -2, 0, 0, 0, 0, 0, 0, 0.058795, -0.000022],
+  [2, 0, -1, 0, 0, 0, 0, 0, 0, 1.274023, -0.000231],
+  [2, 0, -1, 2, 0, 0, 0, 0, 0, -0.002602, 0.000001],
+  [2, 0, 0, -2, 0, 0, 0, 0, 0, 0.015326, 0.000002],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0.658312, -0.000003],
+  [2, 0, 0, 2, 0, 0, 0, 0, 0, -0.001595, 0],
+  [2, 0, 1, -2, 0, 0, 0, 0, 0, -0.001771, -0.000001],
+  [2, 0, 1, 0, 0, 0, 0, 0, 0, 0.053322, 0.000009],
+  [2, 0, 1, 2, 0, 0, 0, 0, 0, -0.000275, 0],
+  [2, 0, 2, 0, 0, 0, 0, 0, 0, 0.003994, 0.000001],
+  [2, 0, 3, 0, 0, 0, 0, 0, 0, 0.000294, 0],
+  [2, 1, -2, 0, 0, 0, 0, 0, 0, 0.000692, -0.000001],
+  [2, 1, -1, 0, 0, 0, 0, 0, 0, -0.007903, 0.000001],
+  [2, 1, 0, -2, 0, 0, 0, 0, 0, -0.000406, -0.000001],
+  [2, 1, 0, 0, 0, 0, 0, 0, 0, -0.006779, 0.000001],
+  [2, 1, 1, 0, 0, 0, 0, 0, 0, -0.000811, 0.000001],
+  [2, 2, -1, 0, 0, 0, 0, 0, 0, -0.000706, 0.000002],
+  [3, 0, -2, 0, 0, 0, 0, 0, 0, -0.000339, 0.000001],
+  [3, 0, -1, 0, 0, 0, 0, 0, 0, -0.000893, 0],
+  [4, -1, -1, 0, 0, 0, 0, 0, 0, 0.001217, 0],
+  [4, -1, 0, 0, 0, 0, 0, 0, 0, 0.000521, 0],
+  [4, 0, -2, 0, 0, 0, 0, 0, 0, 0.008548, -0.000003],
+  [4, 0, -1, 0, 0, 0, 0, 0, 0, 0.010675, -0.000002],
+  [4, 0, 0, 0, 0, 0, 0, 0, 0, 0.003861, 0],
+  [4, 0, 1, 0, 0, 0, 0, 0, 0, 0.000549, 0],
+];
+const MOON_LATITUDE_TERMS = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.000002],
+  [0, 0, 0, 0, 1, 0, 0, 0, 1, -0.583361, 0.72652],
+  [0, 0, 0, 0, 1, 0, 0, 0, 2, 0.008731, 0.007361],
+  [0, 0, 0, 0, 1, 0, 0, 0, 0, -29.839941, -23.387897],
+  [0, 0, 0, 0, 0, 0, 0, 1, 0, 20.624695, -31.810698],
+  [0, 0, 0, -1, 0, 1, 0, 0, 0, 0.000403, 0.000029],
+  [0, 0, 0, 1, 0, 1, 0, 0, 0, 0.000407, 0.000027],
+  [0, 0, -1, 0, 1, 0, 0, 0, 0, -0.000405, -0.000086],
+  [0, 0, 1, 0, 1, 0, 0, 0, 0, 0.000413, 0.000086],
+  [0, 0, 0, 1, 0, 0, 0, 0, 0, 5.12812, -0.00038],
+  [0, 0, 0, 3, 0, 0, 0, 0, 0, -0.001749, 0],
+  [0, 0, 1, -3, 0, 0, 0, 0, 0, 0.000775, -0.000002],
+  [0, 0, 1, -1, 0, 0, 0, 0, 0, 0.277695, 0.000067],
+  [0, 0, 1, 1, 0, 0, 0, 0, 0, 0.280601, 0.000027],
+  [0, 0, 2, -1, 0, 0, 0, 0, 0, 0.008822, 0.000004],
+  [0, 0, 2, 1, 0, 0, 0, 0, 0, 0.017199, 0.000004],
+  [0, 0, 3, -1, 0, 0, 0, 0, 0, 0.000437, 0.000003],
+  [0, 0, 3, 1, 0, 0, 0, 0, 0, 0.001107, -0.000001],
+  [0, 1, -1, -1, 0, 0, 0, 0, 0, -0.001873, -0.000001],
+  [0, 1, -1, 1, 0, 0, 0, 0, 0, -0.001567, 0],
+  [0, 1, 0, -1, 0, 0, 0, 0, 0, -0.001348, 0],
+  [0, 1, 0, 1, 0, 0, 0, 0, 0, -0.001798, 0.000001],
+  [0, 1, 1, -1, 0, 0, 0, 0, 0, -0.001413, 0],
+  [0, 1, 1, 1, 0, 0, 0, 0, 0, -0.001478, 0],
+  [1, 0, 0, -1, 0, 0, 0, 0, 0, -0.001337, 0],
+  [1, 0, 0, 1, 0, 0, 0, 0, 0, -0.001492, 0],
+  [2, -2, 0, -1, 0, 0, 0, 0, 0, 0.000303, 0],
+  [2, -1, -1, -1, 0, 0, 0, 0, 0, 0.002069, 0],
+  [2, -1, -1, 1, 0, 0, 0, 0, 0, 0.002468, -0.000001],
+  [2, -1, 0, -1, 0, 0, 0, 0, 0, 0.00823, 0.000001],
+  [2, -1, 0, 1, 0, 0, 0, 0, 0, 0.002213, 0],
+  [2, -1, 1, -1, 0, 0, 0, 0, 0, 0.00049, 0],
+  [2, -1, 1, 1, 0, 0, 0, 0, 0, 0.000316, 0],
+  [2, 0, -3, -1, 0, 0, 0, 0, 0, 0.000422, -0.000001],
+  [2, 0, -2, -1, 0, 0, 0, 0, 0, 0.004324, -0.000001],
+  [2, 0, -2, 1, 0, 0, 0, 0, 0, -0.000452, 0],
+  [2, 0, -1, -1, 0, 0, 0, 0, 0, 0.046272, -0.000003],
+  [2, 0, -1, 1, 0, 0, 0, 0, 0, 0.055414, -0.000016],
+  [2, 0, 0, -3, 0, 0, 0, 0, 0, 0.000607, 0],
+  [2, 0, 0, -1, 0, 0, 0, 0, 0, 0.173236, 0.00001],
+  [2, 0, 0, 1, 0, 0, 0, 0, 0, 0.032573, -0.000003],
+  [2, 0, 1, -1, 0, 0, 0, 0, 0, 0.009265, 0.000002],
+  [2, 0, 1, 1, 0, 0, 0, 0, 0, 0.0042, 0],
+  [2, 0, 2, -1, 0, 0, 0, 0, 0, 0.000596, 0],
+  [2, 0, 2, 1, 0, 0, 0, 0, 0, 0.000422, 0],
+  [2, 1, -1, 1, 0, 0, 0, 0, 0, -0.000367, 0],
+  [2, 1, 0, -1, 0, 0, 0, 0, 0, -0.003367, 0],
+  [2, 1, 0, 1, 0, 0, 0, 0, 0, -0.000352, 0],
+  [4, 0, -1, -1, 0, 0, 0, 0, 0, 0.001828, -0.000001],
+  [4, 0, -1, 1, 0, 0, 0, 0, 0, 0.000833, -0.000001],
+  [4, 0, 0, -1, 0, 0, 0, 0, 0, 0.001021, 0.000002],
+  [4, 0, 0, 1, 0, 0, 0, 0, 0, 0.000331, 0],
+];
+const MOON_DISTANCE_TERMS = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 385000.5],
+  [0, 0, 0, 2, 0, 0, 0, 0, 0, 0, -3.1],
+  [0, 0, 1, -2, 0, 0, 0, 0, 0, 0, 79.6],
+  [0, 0, 1, 0, 0, 0, 0, 0, 0, 3.7, -20905.3],
+  [0, 0, 2, -2, 0, 0, 0, 0, 0, 0, -4.4],
+  [0, 0, 2, 0, 0, 0, 0, 0, 0, 0.2, -569.9],
+  [0, 0, 3, 0, 0, 0, 0, 0, 0, 0, -23.2],
+  [0, 1, -2, 0, 0, 0, 0, 0, 0, 0, -7],
+  [0, 1, -1, 0, 0, 0, 0, 0, 0, 0, -129.9],
+  [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 49],
+  [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 104.9],
+  [0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 5.8],
+  [0, 2, -1, 0, 0, 0, 0, 0, 0, 0, -2.1],
+  [1, 0, -2, 0, 0, 0, 0, 0, 0, 0, -1.7],
+  [1, 0, -1, 0, 0, 0, 0, 0, 0, 0, -8.4],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 108.8],
+  [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6.3],
+  [1, 1, 0, 0, 0, 0, 0, 0, 0, 0.1, -16.7],
+  [2, -2, -1, 0, 0, 0, 0, 0, 0, 0, -5],
+  [2, -2, 0, 0, 0, 0, 0, 0, 0, 0, -9.9],
+  [2, -1, -2, 0, 0, 0, 0, 0, 0, 0, 10.1],
+  [2, -1, -1, 0, 0, 0, 0, 0, 0, 0, -152.4],
+  [2, -1, 0, 0, 0, 0, 0, 0, 0, 0, -205],
+  [2, -1, 1, 0, 0, 0, 0, 0, 0, 0, -12.9],
+  [2, 0, -3, 0, 0, 0, 0, 0, 0, 0, 14.4],
+  [2, 0, -2, 0, 0, 0, 0, 0, 0, 0.1, 246.2],
+  [2, 0, -1, -2, 0, 0, 0, 0, 0, 0, 8.8],
+  [2, 0, -1, 0, 0, 0, 0, 0, 0, -0.7, -3699.1],
+  [2, 0, 0, -2, 0, 0, 0, 0, 0, 0, 10.3],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, -2956],
+  [2, 0, 1, -2, 0, 0, 0, 0, 0, 0, 4.1],
+  [2, 0, 1, 0, 0, 0, 0, 0, 0, 0, -170.7],
+  [2, 0, 2, 0, 0, 0, 0, 0, 0, 0, -10.4],
+  [2, 1, -1, 0, 0, 0, 0, 0, 0, 0, 24.3],
+  [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 30.9],
+  [2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 2.6],
+  [2, 2, -1, 0, 0, 0, 0, 0, 0, 0, 2.4],
+  [3, 0, -1, 0, 0, 0, 0, 0, 0, 0, 3.3],
+  [4, -1, -1, 0, 0, 0, 0, 0, 0, 0, -4],
+  [4, -1, 0, 0, 0, 0, 0, 0, 0, 0, -1.6],
+  [4, 0, -2, 0, 0, 0, 0, 0, 0, 0, -21.6],
+  [4, 0, -1, 0, 0, 0, 0, 0, 0, 0, -34.8],
+  [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, -11.7],
+];
+const TT_MINUS_UTC_SECONDS = [18.6, 16.8, 15.9, 16.6, 16.7, 14.3, 11, 8.7, 7.8, 8.2, 9.5, 10.5, 9.1, 8.3, 2.4, -1.1, -3.1, -4.3, -3.8, -5, -1.9, 4.9, 11.2, 17.5, 21.6, 23.8, 24.4, 24.2, 24.4, 27.1, 28.9, 30.4, 33.1, 35.7, 40.2, 46.2, 51.2, 54.2, 57.2, 61.2, 64.2, 64.2, 66.2, 67.2, 69.2, 69.2, 69.2, 69.2, 69.2, 69.2, 69.2];
 
 const SATELLITE_ORBITS = {
   Phobos: { laplacePole: [317.7, 52.9], a: 9375, e: 0.015, inclination: 1.075, node: 100.3506, nodeDegreesPerYear: -156.5217, periapsisLongitude: 172.3259, apsisDegreesPerYear: 327.2727, meanLongitude: 215.0929, degreesPerDay: 1128.84476212, degreesPerCenturySquared: 12.737, parentShare: 1.655e-8 },
@@ -52,7 +234,7 @@ const PLANET_ORBITS = {
 };
 
 export const BODIES = [
-  { name: 'Sun', kind: 'star', radiusKm: 695700, pole: [286.13, 63.87], spin: [84.176, 14.1844], tint: [1, 0.96, 0.88] },
+  { name: 'Sun', kind: 'star', radiusKm: SUN_RADIUS_KM, pole: [286.13, 63.87], spin: [84.176, 14.1844], tint: [1, 0.96, 0.88] },
   { name: 'Mercury', kind: 'rocky', radiusKm: 2439.7, pole: [281.0103, 61.4155], spin: [329.5988, 6.1385108], tint: [0.55, 0.52, 0.5], magnitude: -0.6 },
   { name: 'Venus', kind: 'clouded', radiusKm: 6051.8, pole: [272.76, 67.16], spin: [160.2, -1.4813688], cloudSpin: [0, -90], tint: [0.93, 0.86, 0.68], magnitude: -4.47, map: 'venus', mapKmPerPixel: 37.1, roughness: 0, ground: { roughness: 0.04, craters: 0.15, viewFromKm: 60, air: { tint: [0.8, 0.55, 0.26], scaleKm: 15.9, glow: [0.95, 0.7, 0.35], hazeKm: 20, sunset: [0.7, 0.4, 0.15], overcast: 1 } } },
   { name: 'Earth', kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3, ground: { roughness: 0.03, craters: 0, sea: true, clouds: { baseKm: 1.5, topKm: 5, extinctionPerKm: 3, coverShift: 0 }, air: { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] } } },
@@ -120,16 +302,30 @@ function planetElements(name, centuries) {
 
 const planetOffsetAu = (name, centuries) => orbitPoint(planetElements(name, centuries));
 
-function moonElements(daysSinceJ2000) {
-  const days = daysSinceJ2000 - MOON_ELEMENTS_EPOCH_DAYS;
-  return {
-    a: MOON_DISTANCE_KM,
-    e: 0.0549,
-    inclination: 5.1454 * DEGREES,
-    node: (125.1228 - 0.0529538083 * days) * DEGREES,
-    periapsisArgument: (318.0634 + 0.1643573223 * days) * DEGREES,
-    meanAnomaly: (115.3654 + 13.0649929509 * days) * DEGREES,
-  };
+function ttMinusUtcSeconds(days) {
+  const index = (2000 + days / DAYS_PER_YEAR - TT_TABLE_START_YEAR) / TT_TABLE_STEP_YEARS;
+  const below = Math.max(0, Math.min(TT_MINUS_UTC_SECONDS.length - 2, Math.floor(index)));
+  const share = Math.max(0, Math.min(1, index - below));
+  return TT_MINUS_UTC_SECONDS[below] * (1 - share) + TT_MINUS_UTC_SECONDS[below + 1] * share;
+}
+
+function sumSeries(terms, arguments_, centuries) {
+  let total = 0;
+  for (const term of terms) {
+    let angle = 0;
+    for (let k = 0; k < arguments_.length; k++) angle += term[k] * arguments_[k];
+    total += centuries ** term[8] * (term[9] * Math.sin(angle) + term[10] * Math.cos(angle));
+  }
+  return total;
+}
+
+function moonOffsetKm(days) {
+  const centuries = (days + ttMinusUtcSeconds(days) / 86400) / DAYS_PER_CENTURY;
+  const arguments_ = MOON_ARGUMENTS.map(([start, rate]) => (start + rate * centuries) * DEGREES);
+  const longitude = sumSeries(MOON_LONGITUDE_TERMS, arguments_, centuries) * DEGREES;
+  const latitude = sumSeries(MOON_LATITUDE_TERMS, arguments_, centuries) * DEGREES;
+  const distance = sumSeries(MOON_DISTANCE_TERMS, arguments_, centuries);
+  return eclipticToFrame([distance * Math.cos(latitude) * Math.cos(longitude), distance * Math.cos(latitude) * Math.sin(longitude), distance * Math.sin(latitude)]);
 }
 
 function satellitePlane(orbit) {
@@ -166,7 +362,7 @@ export function orbitPaths(ms) {
   const centuries = days / DAYS_PER_CENTURY;
   return [
     ...Object.keys(PLANET_ORBITS).map((name) => ({ name, parent: 'Sun', pointsKm: tracedBackFromNow(planetElements(name, centuries), (point) => scale(eclipticToFrame(point), KM_PER_AU)) })),
-    { name: 'Moon', parent: 'Earth', pointsKm: tracedBackFromNow(moonElements(days), eclipticToFrame) },
+    { name: 'Moon', parent: 'Earth', pointsKm: Array.from({ length: ORBIT_PATH_POINTS }, (_, step) => moonOffsetKm(days - (SIDEREAL_MONTH_DAYS * step) / ORBIT_PATH_POINTS)) },
     ...Object.entries(SATELLITE_ORBITS).map(([name, orbit]) => ({ name, parent: parentOf(name), pointsKm: tracedBackFromNow(satelliteElements(orbit, days), satelliteToFrame(satellitePlane(orbit))) })),
   ];
 }
@@ -188,12 +384,55 @@ function orientation(body, days) {
   return { north: equatorialToFrame(northEquatorial), meridian: equatorialToFrame(meridianEquatorial) };
 }
 
+const angleBetween = (a, b) => Math.atan2(Math.hypot(...cross(a, b)), dot(a, b));
+
+function discOverlapShare(sunRadius, coverRadius, apart) {
+  if (apart >= sunRadius + coverRadius) return 0;
+  if (apart <= Math.abs(sunRadius - coverRadius)) return Math.min(sunRadius, coverRadius) ** 2 / sunRadius ** 2;
+  const sunPart = sunRadius ** 2 * Math.acos((apart ** 2 + sunRadius ** 2 - coverRadius ** 2) / (2 * apart * sunRadius));
+  const coverPart = coverRadius ** 2 * Math.acos((apart ** 2 + coverRadius ** 2 - sunRadius ** 2) / (2 * apart * coverRadius));
+  const kite = 0.5 * Math.sqrt(Math.max(0, (-apart + sunRadius + coverRadius) * (apart + sunRadius - coverRadius) * (apart - sunRadius + coverRadius) * (apart + sunRadius + coverRadius)));
+  return (sunPart + coverPart - kite) / (Math.PI * sunRadius ** 2);
+}
+
+export function sunShareVisible(seen, ignoredName) {
+  const sun = seen.find(({ body }) => body.kind === 'star');
+  if (!sun) return 1;
+  const sunDistance = Math.hypot(...sun.offsetKm);
+  const sunRadius = Math.asin(Math.min(1, SUN_RADIUS_KM / sunDistance));
+  let hidden = 0;
+  for (const { body, offsetKm } of seen) {
+    const distance = Math.hypot(...offsetKm);
+    if (body.kind === 'star' || body.name === ignoredName || distance >= sunDistance) continue;
+    hidden += discOverlapShare(sunRadius, Math.asin(Math.min(1, body.radiusKm / distance)), angleBetween(offsetKm, sun.offsetKm));
+  }
+  return Math.max(0, 1 - hidden);
+}
+
+function eclipsersOf(body, bodies) {
+  if (body.kind === 'star') return [];
+  const sunDistance = Math.hypot(...body.fromSunKm);
+  const sunRadius = SUN_RADIUS_KM / sunDistance;
+  return bodies
+    .filter((other) => other !== body && other.kind !== 'star')
+    .map((other) => {
+      const offsetKm = subtract(other.fromSunKm, body.fromSunKm);
+      const along = dot(offsetKm, body.sunward);
+      const across = Math.hypot(...subtract(offsetKm, scale(body.sunward, along)));
+      return { offsetKm, radiusKm: other.radiusKm, hasAir: Boolean(other.ground?.air), along, across };
+    })
+    .filter(({ along, across, radiusKm }) => along > 0 && along < sunDistance && across < body.radiusKm + radiusKm + along * sunRadius)
+    .sort((a, b) => b.radiusKm / b.along - a.radiusKm / a.along)
+    .slice(0, ECLIPSERS_PER_BODY)
+    .map(({ offsetKm, radiusKm, hasAir }) => ({ offsetKm, radiusKm, hasAir }));
+}
+
 export function placeBodies(ms) {
   const days = (ms - J2000_MS) / MS_PER_DAY;
   const centuries = days / DAYS_PER_CENTURY;
   const fromSun = new Map([['Sun', [0, 0, 0]]]);
   for (const name of Object.keys(PLANET_ORBITS)) fromSun.set(name, scale(eclipticToFrame(planetOffsetAu(name, centuries)), KM_PER_AU));
-  const moonOffset = eclipticToFrame(orbitPoint(moonElements(days)));
+  const moonOffset = moonOffsetKm(days);
   const earth = subtract(fromSun.get('Earth'), scale(moonOffset, EARTH_SHARE_OF_MOON_OFFSET));
   fromSun.set('Earth', earth);
   fromSun.set('Moon', add(earth, moonOffset));
@@ -208,7 +447,7 @@ export function placeBodies(ms) {
     fromSun.set(parent, subtract(fromSun.get(parent), scale(offset, orbit.parentShare)));
   }
   for (const [name, offset] of satelliteOffsets) fromSun.set(name, add(fromSun.get(parentOf(name)), offset));
-  return BODIES.map((body) => {
+  const placed = BODIES.map((body) => {
     const fromSunKm = fromSun.get(body.name);
     const sunDistanceKm = Math.hypot(...fromSunKm);
     return {
@@ -220,9 +459,11 @@ export function placeBodies(ms) {
       radius: body.radiusKm / KM_PER_PC,
       sunward: sunDistanceKm > 0 ? scale(fromSunKm, -1 / sunDistanceKm) : [0, 0, 1],
       sunDistanceAu: sunDistanceKm / KM_PER_AU,
+      sunAngularRadius: sunDistanceKm > 0 ? Math.asin(Math.min(1, SUN_RADIUS_KM / sunDistanceKm)) : 0,
       mapLayer: MAPPED_BODIES.indexOf(body),
     };
   });
+  return placed.map((body) => ({ ...body, eclipsers: eclipsersOf(body, placed) }));
 }
 
 export function apparentMagnitude(body, offsetKm) {

@@ -520,7 +520,10 @@ float terrain(vec3 p) {
 
 uniform vec4 uBodyPlace[${MAX_BODIES}];
 uniform int uBodyCount;
-uniform vec3 uBodySun[${MAX_BODIES}];
+uniform vec4 uBodySun[${MAX_BODIES}];
+uniform vec4 uBodyEclipser[${MAX_BODIES * 2}];
+uniform float uSunVisible;
+uniform float uCoronaShown;
 uniform vec3 uBodyNorth[${MAX_BODIES}];
 uniform vec3 uBodyMeridian[${MAX_BODIES}];
 uniform vec4 uBodyLook[${MAX_BODIES}];
@@ -645,6 +648,39 @@ float mapHeight(float layer, vec2 uv) {
   return texture(uBodyHeight, vec3(uv, layer)).r;
 }
 
+float discOverlapShare(float sunRadius, float coverRadius, float apart) {
+  if (apart >= sunRadius + coverRadius) return 0.0;
+  if (apart <= abs(sunRadius - coverRadius)) {
+    float smaller = min(sunRadius, coverRadius);
+    return smaller * smaller / (sunRadius * sunRadius);
+  }
+  float sunPart = sunRadius * sunRadius * acos(clamp((apart * apart + sunRadius * sunRadius - coverRadius * coverRadius) / (2.0 * apart * sunRadius), -1.0, 1.0));
+  float coverPart = coverRadius * coverRadius * acos(clamp((apart * apart + coverRadius * coverRadius - sunRadius * sunRadius) / (2.0 * apart * coverRadius), -1.0, 1.0));
+  float kite = 0.5 * sqrt(max((-apart + sunRadius + coverRadius) * (apart + sunRadius - coverRadius) * (apart - sunRadius + coverRadius) * (apart + sunRadius + coverRadius), 0.0));
+  return (sunPart + coverPart - kite) / (3.1415927 * sunRadius * sunRadius);
+}
+
+const vec3 LIGHT_BENT_THROUGH_AIR = vec3(0.32, 0.09, 0.03);
+
+vec3 sunlightReaching(int i, vec3 surface) {
+  vec3 sun = uBodySun[i].xyz;
+  float sunRadius = uBodySun[i].w;
+  float hidden = 0.0;
+  vec3 bent = vec3(0.0);
+  for (int k = 0; k < 2; k++) {
+    vec4 eclipser = uBodyEclipser[i * 2 + k];
+    if (eclipser.w == 0.0) continue;
+    vec3 toward = eclipser.xyz - surface;
+    float along = dot(toward, sun);
+    if (along <= 0.0) continue;
+    float coverRadius = asin(min(abs(eclipser.w) / length(toward), 1.0));
+    float share = discOverlapShare(sunRadius, coverRadius, atan(length(cross(toward, sun)), along));
+    hidden += share;
+    if (eclipser.w < 0.0) bent += LIGHT_BENT_THROUGH_AIR * share;
+  }
+  return vec3(max(1.0 - hidden, 0.0)) + bent;
+}
+
 vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec4 place = uBodyPlace[i];
   vec4 look = uBodyLook[i];
@@ -695,7 +731,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     }
   }
 
-  vec3 sun = uBodySun[i];
+  vec3 sun = uBodySun[i].xyz;
   float daylight = look.w == BODY_HAZY ? smoothstep(-HAZE_TWILIGHT, HAZE_TWILIGHT, dot(normal, sun)) : smoothstep(-0.02, 0.05, dot(normal, sun));
   float sunHeight = max(dot(normal, sun), 0.0);
   float lighting = max(dot(shaded, sun), 0.0);
@@ -711,7 +747,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     lit += (look.w == BODY_OCEAN_WORLD ? vec3(0.2, 0.4, 0.9) : vec3(0.6, 0.55, 0.4)) * limb;
   }
   if (look.w == BODY_HAZY) lit += DETACHED_HAZE * pow(1.0 - mu, 6.0) * smoothstep(-0.3, 0.3, dot(normal, sun));
-  return lit;
+  return lit * sunlightReaching(i, normal);
 }
 
 
@@ -789,7 +825,7 @@ vec4 ringSeen(int i, vec3 direction, out float ringHit) {
   float depth = (depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlet);
   if (depth <= 0.0) return vec4(0.0);
   vec3 albedo = (RING_DUSTY_COLOUR * depths.x + RING_ICY_COLOUR * depths.y) / (depths.x + depths.y) * (1.0 + RINGLET_ALBEDO_CONTRAST * ringlet);
-  vec3 sun = uBodySun[i];
+  vec3 sun = uBodySun[i].xyz;
   float viewSlant = max(abs(facing), RING_FLATTEST_VIEW);
   float sunSlant = max(abs(dot(sun, north)), RING_FLATTEST_VIEW);
   bool litFace = sign(dot(sun, north)) == sign(-dot(centre, north));
@@ -805,7 +841,7 @@ vec4 ringSeen(int i, vec3 direction, out float ringHit) {
 
 float sunThroughRings(int i, vec3 surface) {
   vec3 north = uBodyNorth[i];
-  vec3 sun = uBodySun[i];
+  vec3 sun = uBodySun[i].xyz;
   vec3 fromCentre = surface - uBodyPlace[i].xyz;
   float sunRise = dot(sun, north);
   if (abs(sunRise) < 1e-6) return 1.0;
@@ -818,7 +854,90 @@ float sunThroughRings(int i, vec3 surface) {
 }
 
 const float STAR_KIND = 3.0;
+const int CORONA_STREAMERS = 5;
+const vec4 CORONA_STREAMER_SHAPE[CORONA_STREAMERS] = vec4[](
+  vec4(1.05, 0.7, 1.0, 0.08),
+  vec4(-0.2, 0.42, 0.75, -0.06),
+  vec4(-1.95, 0.55, 0.65, -0.1),
+  vec4(2.95, 0.62, 0.85, 0.12),
+  vec4(-1.1, 0.34, 0.35, 0.05)
+);
+const float CORONA_CONVERGENCE = 1.4;
+const float CORONA_CONVERGENCE_HEIGHT = 0.9;
+const float CORONA_PINCH_REACH = 1.3;
+const float CORONA_HOLE_DENSITY = 0.35;
+const float CORONA_STREAMER_DENSITY = 2.6;
+const float CORONA_GAIN = 4.5;
+const float CORONA_TONE = 1.0;
+const float CORONA_LOOP_HEIGHT = 0.3;
+const float CORONA_REACH_RADII = 1.1;
+const float CORONA_TAPER = 0.8;
+const float CORONA_TAPER_RADII = 2.5;
+const float CORONA_THREAD_CONTRAST = 0.16;
+const float CORONA_PLUME_CONTRAST = 0.4;
+const vec3 CORONA_COLOUR = vec3(1.0, 0.98, 0.96);
 bool starHit = false;
+
+float angleApart(float a, float b) {
+  return atan(sin(a - b), cos(a - b));
+}
+
+float coronaRootAngle(float positionAngle, float climb) {
+  float root = positionAngle;
+  for (int k = 0; k < CORONA_STREAMERS; k++) {
+    vec4 streamer = CORONA_STREAMER_SHAPE[k];
+    float off = angleApart(positionAngle, streamer.x + streamer.w * climb);
+    float reach = off / (CORONA_PINCH_REACH * streamer.y);
+    float pinch = exp(-reach * reach);
+    root += pinch * (off * CORONA_CONVERGENCE * climb - streamer.w * climb);
+  }
+  return root;
+}
+
+float coronaThread(float root, float cells) {
+  float x = fract(root / 6.2831853) * cells;
+  float cell = floor(x);
+  float next = mod(cell + 1.0, cells);
+  float a = fract(sin(cell * 127.1 + cells) * 43758.5453);
+  float b = fract(sin(next * 127.1 + cells) * 43758.5453);
+  float t = fract(x);
+  return 2.0 * mix(a, b, t * t * (3.0 - 2.0 * t)) - 1.0;
+}
+
+vec3 coronaLight(int i, vec3 direction) {
+  vec3 centre = uBodyPlace[i].xyz;
+  float apart = atan(length(cross(direction, centre)), dot(direction, centre));
+  float radii = max(apart / uBodyPlace[i].w, 1.0);
+  if (uCoronaShown <= 0.0) return vec3(0.0);
+  vec3 northOnSky = normalize(uBodyNorth[i] - centre * dot(uBodyNorth[i], centre));
+  vec3 outward = direction - centre * dot(direction, centre);
+  float positionAngle = atan(dot(outward, cross(centre, northOnSky)), dot(outward, northOnSky));
+  float climb = 1.0 - exp((1.0 - radii) / CORONA_CONVERGENCE_HEIGHT);
+  float root = coronaRootAngle(positionAngle, climb);
+  float taper = 1.0 - CORONA_TAPER * smoothstep(1.0, CORONA_TAPER_RADII, radii);
+  float streamers = 0.0;
+  for (int k = 0; k < CORONA_STREAMERS; k++) {
+    vec4 streamer = CORONA_STREAMER_SHAPE[k];
+    float off = abs(angleApart(root, streamer.x)) / (streamer.y * taper);
+    streamers = max(streamers, streamer.z * (1.0 - smoothstep(0.35, 1.15, off)));
+  }
+  float resolved = smoothstep(8.0, 40.0, uBodyPlace[i].w / uPixelAngle);
+  float threads = resolved * (0.5 * coronaThread(root, 37.0) + 0.3 * coronaThread(root, 83.0) + 0.2 * coronaThread(root, 171.0));
+  float contrast = mix(CORONA_PLUME_CONTRAST, CORONA_THREAD_CONTRAST, min(streamers, 1.0));
+  float density = mix(1.0, mix(CORONA_HOLE_DENSITY, CORONA_STREAMER_DENSITY, streamers) * (1.0 + contrast * threads), smoothstep(0.0, CORONA_LOOP_HEIGHT, radii - 1.0));
+  float falloff = 2.565 * pow(radii, -17.0) + 1.425 * pow(radii, -7.0) + 0.0532 * pow(radii, -2.5);
+  float reached = (radii - 1.0) / CORONA_REACH_RADII;
+  float shown = 1.0 - exp(-CORONA_GAIN * exp(-reached * reached) * pow(falloff * density, CORONA_TONE));
+  return CORONA_COLOUR * shown * uCoronaShown;
+}
+
+vec3 coronaBehind(vec3 direction) {
+  if (uCoronaShown <= 0.0) return vec3(0.0);
+  for (int i = 0; i < ${MAX_BODIES}; i++) {
+    if (i < uBodyCount && uBodyLook[i].w == STAR_KIND && dot(direction, uBodyPlace[i].xyz) > 0.0) return coronaLight(i, direction);
+  }
+  return vec3(0.0);
+}
 
 vec4 bodiesColour(vec3 direction) {
   vec3 points = vec3(0.0);
@@ -833,8 +952,9 @@ vec4 bodiesColour(vec3 direction) {
     float miss = length(direction * along - place.xyz);
     float pointSigma = POINT_SIGMA_PIXELS * uPixelAngle;
     float unresolved = 1.0 - smoothstep(0.5, 2.0, radius / uPixelAngle);
-    float cover = along > 0.0 ? clamp((radius - miss) / max(fwidth(miss), 1e-9) + 0.5, 0.0, 1.0) : 0.0;
+    float cover = along > 0.0 ? clamp((radius - miss) / uPixelAngle + 0.5, 0.0, 1.0) : 0.0;
     if (along > 0.0) points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
+    if (along > 0.0 && uBodyLook[i].w == STAR_KIND) points += coronaLight(i, direction);
     if (cover <= 0.0) {
       if (ring.a > 0.0) return vec4(ring.rgb + points, ring.a);
       continue;
@@ -844,7 +964,10 @@ vec4 bodiesColour(vec3 direction) {
     starHit = uBodyLook[i].w == STAR_KIND;
     vec3 body = shadeBody(i, direction, hit, radius);
     if (i == uRingedBody) body *= sunThroughRings(i, direction * hit);
-    if (ring.a <= 0.0) return vec4(body * cover + points, cover);
+    if (ring.a <= 0.0) {
+      vec3 behind = starHit || cover >= 1.0 ? vec3(0.0) : coronaBehind(direction) * (1.0 - cover);
+      return vec4(body * cover + behind + points, cover);
+    }
     if (ringHit < hit) return vec4(ring.rgb + body * cover * (1.0 - ring.a) + points, 1.0 - (1.0 - ring.a) * (1.0 - cover));
     return vec4(body * cover + ring.rgb * (1.0 - cover) + points, cover + ring.a * (1.0 - cover));
   }
@@ -964,6 +1087,13 @@ float airDensityHere() {
   return exp(-max(cameraAltitudeKm(), 0.0) / uGroundAir.w);
 }
 
+const float TOTALITY_SKYLIGHT = 0.02;
+const float TOTALITY_HORIZON_GLOW = 0.08;
+
+float skylightLeft() {
+  return mix(TOTALITY_SKYLIGHT, 1.0, uSunVisible);
+}
+
 vec3 groundSky(vec3 ray, vec3 sun, vec3 upHere) {
   if (uGroundAir.w <= 0.0) return vec3(0.0);
   float density = airDensityHere();
@@ -977,7 +1107,8 @@ vec3 groundSky(vec3 ray, vec3 sun, vec3 upHere) {
   float towardSun = max(dot(ray, sun), 0.0);
   sky += mix(uGroundGlow.rgb, uGroundSunset, lowSun) * density * day * (0.5 * pow(towardSun, 12.0) + 0.15 * pow(towardSun, 3.0));
   vec3 overcastSky = uGroundAir.rgb * day * SKY_BRIGHTNESS * (0.55 + 0.45 * max(viewHeight, 0.0)) * (0.8 + 0.4 * towardSun * towardSun);
-  return mix(sky, overcastSky, uGroundOvercast);
+  vec3 totalityHorizon = uGroundSunset * day * TOTALITY_HORIZON_GLOW * pow(1.0 - abs(viewHeight), 8.0);
+  return mix(sky, overcastSky, uGroundOvercast) * skylightLeft() + totalityHorizon * (1.0 - uSunVisible);
 }
 
 vec3 sunlightThroughAir(vec3 sun, vec3 upHere) {
@@ -1091,8 +1222,8 @@ vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm)
       float sunThrough = max(exp(-depthTowardSun), CLOUD_SCATTERED_SHARE * exp(-CLOUD_SCATTERED_REACH * depthTowardSun));
       float sunHeight = dot(sun, up);
       float daylight = smoothstep(-0.05, 0.05, sunHeight);
-      vec3 sunlit = sunlightThroughAir(sun, up) * sunThrough * phase * max(sunHeight, 0.0);
-      vec3 skylit = mix(vec3(dot(uGroundAir.rgb, vec3(0.3, 0.5, 0.2))), uGroundAir.rgb, 0.5) * CLOUD_SKY_LIGHT * smoothstep(-0.15, 0.1, sunHeight);
+      vec3 sunlit = sunlightThroughAir(sun, up) * uSunVisible * sunThrough * phase * max(sunHeight, 0.0);
+      vec3 skylit = mix(vec3(dot(uGroundAir.rgb, vec3(0.3, 0.5, 0.2))), uGroundAir.rgb, 0.5) * CLOUD_SKY_LIGHT * smoothstep(-0.15, 0.1, sunHeight) * skylightLeft();
       float opacity = 1.0 - exp(-uGroundClouds.z * density * stepKm);
       float share = (length(uGroundCamera + ray * t) - uGroundRadius - uGroundClouds.x) / (uGroundClouds.y - uGroundClouds.x);
       vec3 scattered = CLOUD_LIT_ALBEDO * (sunlit * daylight + skylit * mix(CLOUD_DARK_BASE_SHARE, 1.0, share));
@@ -1129,11 +1260,11 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   float grain = octaveFade(fineCell, footprint) * (groundDetail(12, offset, fineCell, 900).w - 0.5)
     + octaveFade(coarseCell, footprint) * (groundDetail(7, offset, coarseCell, 901).w - 0.5);
   albedo *= 1.0 + GROUND_GRAIN * grain;
-  vec3 sunlight = sunlightThroughAir(sun, up);
+  vec3 sunlight = sunlightThroughAir(sun, up) * uSunVisible;
   float sunHeight = dot(sun, up);
   float shadow = sunHeight > -0.05 ? sunVisible * (1.0 - uGroundOvercast) * sunThroughClouds(up, sun, offset, footprint) : 0.0;
   float skyDome = 0.5 + 0.5 * dot(normal, up);
-  vec3 ambient = uGroundAir.w > 0.0 ? uGroundAir.rgb * (0.18 + OVERCAST_SKY_LIGHT * uGroundOvercast * skyDome) * smoothstep(-0.15, 0.1, sunHeight) : vec3(0.0);
+  vec3 ambient = uGroundAir.w > 0.0 ? uGroundAir.rgb * (0.18 + OVERCAST_SKY_LIGHT * uGroundOvercast * skyDome) * smoothstep(-0.15, 0.1, sunHeight) * skylightLeft() : vec3(0.0);
   vec3 lit;
   if (water) {
     vec3 halfway = normalize(sun - ray);
@@ -1153,7 +1284,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
 
 vec4 skyOverGround(vec3 direction) {
   vec3 ray = groundLocal(direction);
-  vec3 sun = groundLocal(uBodySun[uGround]);
+  vec3 sun = groundLocal(uBodySun[uGround].xyz);
   vec3 sky = groundSky(ray, sun, normalize(uGroundCamera));
   float veil = max(clamp(dot(sky, vec3(0.3, 0.5, 0.2)) * SKY_VEIL_GAIN, 0.0, 1.0), min(1.0, uGroundOvercast * OVERCAST_VEIL_GAIN));
   return vec4(sky, veil);
@@ -1390,7 +1521,7 @@ float sunVisibleAt(vec3 fromCamera, vec3 normal) {
 void main() {
   float distance = length(vFromCamera);
   vec3 ray = vFromCamera / distance;
-  vec3 sun = groundLocal(uBodySun[uGround]);
+  vec3 sun = groundLocal(uBodySun[uGround].xyz);
   vec3 up = normalize(vUpward);
   bool water = vWet > 0.5;
   float footprint = max(distance * uPixelAngle, ${NEAREST_SEEN_METRES});
@@ -1440,7 +1571,7 @@ vec2 previousUv(vec3 fromPrevious) {
 void main() {
   vec3 ray = groundLocal(viewDirection());
   float depthKm;
-  vec4 current = cloudsSeenFrom(ray, groundLocal(uBodySun[uGround]), farthestGroundKm(), depthKm);
+  vec4 current = cloudsSeenFrom(ray, groundLocal(uBodySun[uGround].xyz), farthestGroundKm(), depthKm);
   outColour = current;
   outCloudDepth = vec4(depthKm, 0.0, 0.0, 1.0);
   if (uCloudHistoryOn < 0.5 || depthKm <= 0.0) return;
@@ -1495,7 +1626,7 @@ float sunVisibleFromGround(vec3 toSun) {
   float ahead = dot(toSun, uForward);
   vec2 uv = vec2(dot(toSun, uRight) / (ahead * uTanHalf.x), dot(toSun, uUp) / (ahead * uTanHalf.y)) * 0.5 + 0.5;
   if (ahead > 0.0 && all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)))) return 1.0 - starVeilAt(uv);
-  float aboveHorizon = step(0.0, dot(groundLocal(uBodySun[uGround]), normalize(uGroundCamera)));
+  float aboveHorizon = step(0.0, dot(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera)));
   return aboveHorizon * (1.0 - min(1.0, uGroundOvercast * OVERCAST_VEIL_GAIN) * uGroundBlend);
 }
 
@@ -1506,8 +1637,8 @@ vec3 sunGlare(vec3 direction) {
   vec3 toSun = uBodyPlace[sun].xyz;
   float degreesOff = degrees(acos(clamp(dot(direction, toSun), -1.0, 1.0)));
   float spread = SUN_GLARE_CORE * exp(-degreesOff / SUN_GLARE_CORE_DEGREES) + SUN_GLARE_WIDE * exp(-degreesOff / SUN_GLARE_WIDE_DEGREES);
-  vec3 tint = uBodyLook[sun].rgb * sunlightThroughAir(groundLocal(uBodySun[uGround]), normalize(uGroundCamera));
-  return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend;
+  vec3 tint = uBodyLook[sun].rgb * sunlightThroughAir(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera));
+  return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunVisible;
 }
 
 vec4 sceneSeen(vec3 direction) {
@@ -1522,7 +1653,7 @@ vec4 sceneSeen(vec3 direction) {
   vec4 body = bodiesColour(directionBeforeWarp(direction));
   bool sunThroughAir = starHit && uGround >= 0 && uWarpAxis.w < 0.5;
   float bodyVeil = sunThroughAir ? starVeil : ground.a;
-  if (sunThroughAir) body.rgb *= sunlightThroughAir(groundLocal(uBodySun[uGround]), normalize(uGroundCamera));
+  if (sunThroughAir) body.rgb *= sunlightThroughAir(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera));
   if (body.a >= 1.0) {
     return vec4(body.rgb * (1.0 - bodyVeil) + ground.rgb, 1.0);
   }
@@ -1569,6 +1700,9 @@ out float vSpread;
 out float vSize;
 out float vGlare;
 uniform float uLongExposure;
+uniform float uSunVisible;
+
+const float BRIGHTER_THAN_ANY_OTHER_STAR = -15.0;
 
 vec3 bandFluxes(float colour) {
   float redIndex = min(1.4, 0.62 * colour + 0.04);
@@ -1642,6 +1776,7 @@ void main() {
   vec3 tint = bandFluxes(aLook.y) * extinction / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), tint.b);
   vColour = mix(vec3(0.9, 0.93, 1.0), tint, colourShare) * brightness;
+  if (seenMagnitude < BRIGHTER_THAN_ANY_OTHER_STAR) vColour *= uSunVisible;
   vSpread = 1.0 + max(0.0, 4.0 - seenMagnitude) * 0.5;
   vGlare = clamp(-1.0 - seenMagnitude, 0.0, 10.0);
   vSize = seenMagnitude < 6.8 ? min(128.0, ceil(vSpread * 4.0 + vGlare * 10.0)) : 0.0;

@@ -15,7 +15,7 @@ import {
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
-import { apparentMagnitude, MAPPED_BODIES } from './solar-system.js';
+import { apparentMagnitude, MAPPED_BODIES, sunShareVisible } from './solar-system.js';
 import { mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
@@ -162,6 +162,9 @@ const SHADOW_CONSTANT_BIAS = 4;
 const NO_SHADOWS = { uShadowsOn: 0 };
 const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5 };
 const SUN_DISK_GLOW = 2;
+const ECLIPSERS_PER_BODY = 2;
+const AIRY_ECLIPSER_SIGN = -1;
+const CORONA_FADE_SHARE = 0.004;
 const HIDDEN_BEHIND_FOREGROUND = true;
 const NO_GROUND = { uGround: { int: -1 } };
 const NO_CLOUDS = [0, 0, 0, 0];
@@ -245,7 +248,8 @@ function bodyArrays(shown, mapRelief) {
   const arrays = {
     uBodyPlace: new Float32Array(MAX_BODIES * 4),
     uBodyOccluder: new Float32Array(MAX_BODIES * 4),
-    uBodySun: new Float32Array(MAX_BODIES * 3),
+    uBodySun: new Float32Array(MAX_BODIES * 4),
+    uBodyEclipser: new Float32Array(MAX_BODIES * ECLIPSERS_PER_BODY * 4),
     uBodyNorth: new Float32Array(MAX_BODIES * 3),
     uBodyMeridian: new Float32Array(MAX_BODIES * 3),
     uBodyLook: new Float32Array(MAX_BODIES * 4),
@@ -261,7 +265,9 @@ function bodyArrays(shown, mapRelief) {
     const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
     arrays.uBodyOccluder.set([...direction, star ? 0 : angularRadius], i * 4);
-    arrays.uBodySun.set(body.sunward, i * 3);
+    arrays.uBodySun.set([...body.sunward, body.sunAngularRadius], i * 4);
+    body.eclipsers.forEach(({ offsetKm: eclipserKm, radiusKm, hasAir }, k) =>
+      arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((hasAir ? AIRY_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
     arrays.uBodyNorth.set(body.north, i * 3);
     arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), BODY_KIND_CODES[body.kind]], i * 4);
@@ -382,8 +388,10 @@ export function createRenderer(canvas, armMap, galaxies) {
     const groundValues = groundUniforms(ground, shown);
     setUniforms(gl, program, groundValues);
     if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
-    for (const [name, values] of Object.entries(arrays)) setArray(gl, program, name, values, name === 'uBodySun' || name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
-    setUniforms(gl, program, { uBodyCount: { int: count }, ...rings });
+    for (const [name, values] of Object.entries(arrays)) setArray(gl, program, name, values, name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
+    const sunVisible = sunShareVisible(seen ?? [], ground?.body.name);
+    const coronaShown = Math.max(0, 1 - sunVisible / CORONA_FADE_SHARE) ** 2;
+    setUniforms(gl, program, { uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uCoronaShown: coronaShown });
     if (program.uniforms.uBodyColour) {
       gl.activeTexture(gl.TEXTURE0 + BODY_COLOUR_UNIT);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, bodyColourMaps);
