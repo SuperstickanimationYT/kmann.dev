@@ -714,6 +714,109 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   return lit;
 }
 
+
+uniform int uRingedBody;
+uniform float uRingedBodyKm;
+
+const float RING_INNER_KM = 66900.0;
+const float RING_OUTER_KM = 140300.0;
+const float RING_BRIGHTNESS = 3.5;
+const float RING_BRIGHTEST_SHARE = 0.3;
+const float RINGLET_CONTRAST = 0.45;
+const float RINGLET_ALBEDO_CONTRAST = 0.25;
+const float RING_SHADOW_SOFTNESS = 0.004;
+const float RING_FLATTEST_VIEW = 1e-3;
+const vec3 RING_DUSTY_COLOUR = vec3(0.6, 0.55, 0.5);
+const vec3 RING_ICY_COLOUR = vec3(0.86, 0.78, 0.64);
+
+float band(float r, float footprint, float inner, float outer) {
+  return clamp((min(r + 0.5 * footprint, outer) - max(r - 0.5 * footprint, inner)) / footprint, 0.0, 1.0);
+}
+
+float ringletNoise(float x) {
+  float cell = floor(x);
+  float a = fract(sin(cell * 127.1) * 43758.5453);
+  float b = fract(sin((cell + 1.0) * 127.1) * 43758.5453);
+  float t = fract(x);
+  return mix(a, b, t * t * (3.0 - 2.0 * t)) * 2.0 - 1.0;
+}
+
+float ringlets(float rKm, float footprint) {
+  float total = 0.0;
+  float wavelength = 2400.0;
+  float amplitude = 0.5;
+  for (int octave = 0; octave < 5; octave++) {
+    total += amplitude * ringletNoise(rKm / wavelength + float(octave) * 17.3) * (1.0 - smoothstep(0.25 * wavelength, wavelength, footprint));
+    wavelength *= 0.3;
+    amplitude *= 0.75;
+  }
+  return total;
+}
+
+vec2 ringDepths(float r, float w) {
+  float dusty = 0.002 * band(r, w, 66900.0, 74510.0)
+    + 0.08 * band(r, w, 74658.0, 92000.0)
+    + 0.25 * (band(r, w, 85900.0, 86600.0) + band(r, w, 88700.0, 89100.0) + band(r, w, 89800.0, 90300.0))
+    + 0.1 * band(r, w, 117580.0, 122170.0)
+    - 0.1 * band(r, w, 117680.0, 118183.0);
+  float icy = 1.0 * band(r, w, 92000.0, 99000.0)
+    + 3.0 * band(r, w, 99000.0, 110000.0)
+    + 2.0 * band(r, w, 110000.0, 117580.0)
+    + 0.6 * band(r, w, 122170.0, 133423.0)
+    + 0.45 * band(r, w, 133745.0, 136485.0)
+    + 0.3 * band(r, w, 136527.0, 136775.0)
+    + 0.6 * band(r, w, 140155.0, 140205.0);
+  return max(vec2(dusty, icy), 0.0);
+}
+
+float ringRadiusKm(vec3 fromCentre, float radius) {
+  return length(fromCentre) / radius * uRingedBodyKm;
+}
+
+vec4 ringSeen(int i, vec3 direction, out float ringHit) {
+  ringHit = -1.0;
+  vec3 centre = uBodyPlace[i].xyz;
+  float radius = sin(uBodyPlace[i].w);
+  vec3 north = uBodyNorth[i];
+  float facing = dot(direction, north);
+  float hit = dot(centre, north) / (abs(facing) < RING_FLATTEST_VIEW ? sign(facing + 1e-9) * RING_FLATTEST_VIEW : facing);
+  vec3 fromCentre = direction * hit - centre;
+  float rKm = ringRadiusKm(fromCentre, radius);
+  float footprint = max(fwidth(rKm), 1.0);
+  if (hit <= 0.0 || rKm + footprint < RING_INNER_KM || rKm - footprint > RING_OUTER_KM) return vec4(0.0);
+  float ringlet = ringlets(rKm, footprint);
+  vec2 depths = ringDepths(rKm, footprint);
+  float depth = (depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlet);
+  if (depth <= 0.0) return vec4(0.0);
+  vec3 albedo = (RING_DUSTY_COLOUR * depths.x + RING_ICY_COLOUR * depths.y) / (depths.x + depths.y) * (1.0 + RINGLET_ALBEDO_CONTRAST * ringlet);
+  vec3 sun = uBodySun[i];
+  float viewSlant = max(abs(facing), RING_FLATTEST_VIEW);
+  float sunSlant = max(abs(dot(sun, north)), RING_FLATTEST_VIEW);
+  bool litFace = sign(dot(sun, north)) == sign(-dot(centre, north));
+  float scattered = depth / viewSlant * exp(-depth / viewSlant);
+  if (litFace) scattered = sunSlant / (sunSlant + viewSlant) * (1.0 - exp(-depth * (1.0 / sunSlant + 1.0 / viewSlant)));
+  else if (abs(sunSlant - viewSlant) >= 1e-3) scattered = sunSlant / (sunSlant - viewSlant) * (exp(-depth / sunSlant) - exp(-depth / viewSlant));
+  float towardSun = dot(fromCentre, sun);
+  float offShadowAxis = length(fromCentre - sun * towardSun) / radius;
+  float inSaturnShadow = towardSun < 0.0 ? 1.0 - smoothstep(1.0 - RING_SHADOW_SOFTNESS, 1.0 + RING_SHADOW_SOFTNESS, offShadowAxis) : 0.0;
+  ringHit = hit;
+  return vec4(albedo * RING_BRIGHTNESS * min(scattered, RING_BRIGHTEST_SHARE) * (1.0 - inSaturnShadow), 1.0 - exp(-depth / viewSlant));
+}
+
+float sunThroughRings(int i, vec3 surface) {
+  vec3 north = uBodyNorth[i];
+  vec3 sun = uBodySun[i];
+  vec3 fromCentre = surface - uBodyPlace[i].xyz;
+  float sunRise = dot(sun, north);
+  if (abs(sunRise) < 1e-6) return 1.0;
+  float toPlane = -dot(fromCentre, north) / sunRise;
+  if (toPlane <= 0.0) return 1.0;
+  float rKm = ringRadiusKm(fromCentre + sun * toPlane, sin(uBodyPlace[i].w));
+  float footprint = max(fwidth(rKm), 1.0);
+  vec2 depths = ringDepths(rKm, footprint);
+  return exp(-(depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlets(rKm, footprint)) / abs(sunRise));
+}
+
 const float STAR_KIND = 3.0;
 bool starHit = false;
 
@@ -722,20 +825,28 @@ vec4 bodiesColour(vec3 direction) {
   for (int i = 0; i < ${MAX_BODIES}; i++) {
     if (i >= uBodyCount) break;
     if (i == uGround && uGroundBlend >= 1.0) continue;
+    float ringHit = -1.0;
+    vec4 ring = i == uRingedBody ? ringSeen(i, direction, ringHit) : vec4(0.0);
     vec4 place = uBodyPlace[i];
     float along = dot(direction, place.xyz);
-    if (along <= 0.0) continue;
     float radius = sin(place.w);
     float miss = length(direction * along - place.xyz);
     float pointSigma = POINT_SIGMA_PIXELS * uPixelAngle;
     float unresolved = 1.0 - smoothstep(0.5, 2.0, radius / uPixelAngle);
-    points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
-    float cover = clamp((radius - miss) / max(fwidth(miss), 1e-9) + 0.5, 0.0, 1.0);
-    if (cover <= 0.0) continue;
+    float cover = along > 0.0 ? clamp((radius - miss) / max(fwidth(miss), 1e-9) + 0.5, 0.0, 1.0) : 0.0;
+    if (along > 0.0) points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
+    if (cover <= 0.0) {
+      if (ring.a > 0.0) return vec4(ring.rgb + points, ring.a);
+      continue;
+    }
     float inside = min(miss, radius * 0.9999);
     float hit = along - sqrt(radius * radius - inside * inside);
     starHit = uBodyLook[i].w == STAR_KIND;
-    return vec4(shadeBody(i, direction, hit, radius) * cover + points, cover);
+    vec3 body = shadeBody(i, direction, hit, radius);
+    if (i == uRingedBody) body *= sunThroughRings(i, direction * hit);
+    if (ring.a <= 0.0) return vec4(body * cover + points, cover);
+    if (ringHit < hit) return vec4(ring.rgb + body * cover * (1.0 - ring.a) + points, 1.0 - (1.0 - ring.a) * (1.0 - cover));
+    return vec4(body * cover + ring.rgb * (1.0 - cover) + points, cover + ring.a * (1.0 - cover));
   }
   return vec4(points, 0.0);
 }

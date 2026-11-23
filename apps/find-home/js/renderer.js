@@ -244,6 +244,8 @@ function bodyArrays(seen, mapRelief) {
     uBodyMap: new Float32Array(MAX_BODIES * 4),
   };
   const shown = seen.slice(0, MAX_BODIES);
+  const ringed = shown.findIndex(({ body }) => body.rings);
+  const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringed >= 0 ? shown[ringed].body.radiusKm : 0 };
   shown.forEach(({ body, offsetKm }, i) => {
     const distance = Math.hypot(...offsetKm);
     const angularRadius = Math.asin(Math.min(1, body.radiusKm / distance));
@@ -263,7 +265,7 @@ function bodyArrays(seen, mapRelief) {
       star ? 0 : starPointBrightness(apparentMagnitude(body, offsetKm)),
     ], i * 4);
   });
-  return { arrays, count: shown.length };
+  return { arrays, count: shown.length, rings };
 }
 
 function planetUniforms(planet, camera) {
@@ -368,12 +370,12 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
 
   function setBodies(program, seen, ground) {
-    const { arrays, count } = bodyArrays(seen ?? [], mapRelief);
+    const { arrays, count, rings } = bodyArrays(seen ?? [], mapRelief);
     const groundValues = groundUniforms(ground, seen ?? []);
     setUniforms(gl, program, groundValues);
     if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
     for (const [name, values] of Object.entries(arrays)) setArray(gl, program, name, values, name === 'uBodySun' || name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
-    setUniforms(gl, program, { uBodyCount: { int: count } });
+    setUniforms(gl, program, { uBodyCount: { int: count }, ...rings });
     if (program.uniforms.uBodyColour) {
       gl.activeTexture(gl.TEXTURE0 + BODY_COLOUR_UNIT);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, bodyColourMaps);
