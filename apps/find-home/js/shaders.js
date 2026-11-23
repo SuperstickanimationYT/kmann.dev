@@ -860,10 +860,21 @@ const float CORONA_POLAR_FALLOFF = 4.5;
 const float CORONA_STREAMER_FALLOFF = 1.9;
 const float CORONA_STREAMER_SHARE = 0.75;
 const vec4 CORONA_HELMET_ANGLES = vec4(1.25, 1.95, -1.4, -2.05);
-const float CORONA_HELMET_WIDTH = 0.22;
-const float CORONA_RAY_CONTRAST = 0.35;
+const float CORONA_HELMET_WIDTH_AT_BASE = 0.4;
+const float CORONA_HELMET_WIDTH_ALOFT = 0.2;
+const float CORONA_HELMET_CUSP_RADII = 2.5;
+const float CORONA_FIELD_BEND = 0.45;
+const float CORONA_WAVINESS = 0.012;
+const float CORONA_RAY_CONTRAST = 0.5;
 const vec3 CORONA_COLOUR = vec3(1.0, 0.96, 0.9);
 bool starHit = false;
+
+float coronaRootAngle(float positionAngle, float radii) {
+  float fromPole = abs(positionAngle);
+  float bentAway = CORONA_FIELD_BEND * sin(2.0 * fromPole) * (1.0 - 1.0 / radii);
+  float wave = CORONA_WAVINESS * sin(3.0 * radii + 5.0 * positionAngle) * (1.0 - 1.0 / radii);
+  return sign(positionAngle) * (fromPole - bentAway) + wave;
+}
 
 vec3 coronaLight(int i, vec3 direction) {
   vec3 centre = uBodyPlace[i].xyz;
@@ -873,10 +884,12 @@ vec3 coronaLight(int i, vec3 direction) {
   vec3 northOnSky = normalize(uBodyNorth[i] - centre * dot(uBodyNorth[i], centre));
   vec3 outward = direction - centre * dot(direction, centre);
   float positionAngle = atan(dot(outward, cross(centre, northOnSky)), dot(outward, northOnSky));
-  vec4 offHelmet = atan(sin(positionAngle - CORONA_HELMET_ANGLES), cos(positionAngle - CORONA_HELMET_ANGLES)) / CORONA_HELMET_WIDTH;
+  float root = coronaRootAngle(positionAngle, radii);
+  float helmetWidth = mix(CORONA_HELMET_WIDTH_AT_BASE, CORONA_HELMET_WIDTH_ALOFT, smoothstep(1.0, CORONA_HELMET_CUSP_RADII, radii));
+  vec4 offHelmet = atan(sin(root - CORONA_HELMET_ANGLES), cos(root - CORONA_HELMET_ANGLES)) / helmetWidth;
   vec4 helmets = exp(-offHelmet * offHelmet);
-  float equatorial = max(0.5 * pow(abs(sin(positionAngle)), 6.0), max(max(helmets.x, helmets.y), max(helmets.z, helmets.w)));
-  float rays = 1.0 + CORONA_RAY_CONTRAST * (0.5 * sin(7.0 * positionAngle + 1.3) + 0.3 * sin(13.0 * positionAngle + 4.1) + 0.2 * sin(29.0 * positionAngle + 2.2) + 0.15 * sin(53.0 * positionAngle));
+  float equatorial = max(0.5 * pow(abs(sin(root)), 6.0), max(max(helmets.x, helmets.y), max(helmets.z, helmets.w)));
+  float rays = 1.0 + CORONA_RAY_CONTRAST * (0.5 * sin(7.0 * root + 1.3) + 0.3 * sin(13.0 * root + 4.1) + 0.2 * sin(29.0 * root + 2.2) + 0.15 * sin(53.0 * root));
   float outer = pow(radii, -mix(CORONA_POLAR_FALLOFF, CORONA_STREAMER_FALLOFF, equatorial)) * mix(1.0 - CORONA_STREAMER_SHARE, 1.0, equatorial) * rays;
   float inner = pow(radii, -CORONA_INNER_FALLOFF);
   return CORONA_COLOUR * CORONA_BRIGHTNESS * uCoronaShown * (inner + outer) * smoothstep(1.0, 1.01, radii);
