@@ -158,6 +158,49 @@
   color: var(--text-dim);
 }
 
+.fh-time {
+  position: absolute;
+  z-index: 3;
+  bottom: calc(var(--dock-height) + 12px);
+  left: 16px;
+  width: min(320px, calc(100% - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.fh-time h2 {
+  margin: 0 28px 8px 0;
+  font-size: 16px;
+  color: var(--text-strong);
+}
+
+.fh-time p {
+  margin: 8px 0;
+}
+
+.fh-time strong {
+  color: var(--text-strong);
+}
+
+.fh-time-date {
+  display: grid;
+  gap: 4px;
+}
+
+.fh-time-date input {
+  padding: 7px 9px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: #071627;
+  color: var(--text-strong);
+  font: inherit;
+  color-scheme: dark;
+}
+
 .fh-pick h2 {
   margin: 0 28px 2px 0;
   font-size: 16px;
