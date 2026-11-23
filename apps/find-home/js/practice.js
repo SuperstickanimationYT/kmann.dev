@@ -73,7 +73,7 @@ function drawMarker(context, label, colour, spot, text, radius) {
   label(text, spot.x + radius + 4, spot.y + 4);
 }
 
-function drawEdgeArrow(context, spot, width, height, text) {
+export function drawEdgeArrow(context, spot, width, height, text) {
   const [dx, dy] = spot.direction;
   const reach = Math.min((width / 2 - EDGE_MARGIN) / Math.max(Math.abs(dx), 1e-6), (height / 2 - EDGE_MARGIN) / Math.max(Math.abs(dy), 1e-6));
   const length = Math.hypot(dx, dy) || 1;

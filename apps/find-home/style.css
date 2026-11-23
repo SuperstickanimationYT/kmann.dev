@@ -80,6 +80,10 @@
   color: var(--text-strong);
 }
 
+.fh-pick-warp {
+  margin-top: 10px;
+}
+
 .fh-pick-close {
   position: absolute;
   top: 6px;

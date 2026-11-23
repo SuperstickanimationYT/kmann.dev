@@ -8,7 +8,7 @@ export const MODES = {
   mission: {
     scored: true,
     labels: false,
-    goTo: false,
+    selecting: false,
     longExposure: false,
     clockLabel: 'Mission clock',
     sunButton: 'Give up',
@@ -17,7 +17,7 @@ export const MODES = {
     slowestSpeed: THRUSTER_SLOWEST_SPEED,
     solarSystem: false,
     cockpit: true,
-    instantWarp: false,
+    glideWarp: false,
     dragSteersShip: false,
     picking: false,
     greeting: () => null,
@@ -25,7 +25,7 @@ export const MODES = {
   practice: {
     scored: false,
     labels: true,
-    goTo: false,
+    selecting: false,
     longExposure: false,
     clockLabel: 'Practice',
     sunButton: 'Face the Sun',
@@ -34,7 +34,7 @@ export const MODES = {
     slowestSpeed: THRUSTER_SLOWEST_SPEED,
     solarSystem: false,
     cockpit: true,
-    instantWarp: false,
+    glideWarp: false,
     dragSteersShip: false,
     picking: false,
     greeting: (labelsOn) =>
@@ -43,7 +43,7 @@ export const MODES = {
   explore: {
     scored: false,
     labels: false,
-    goTo: true,
+    selecting: true,
     longExposure: true,
     clockLabel: 'Explore',
     sunButton: 'Face the Sun',
@@ -52,10 +52,10 @@ export const MODES = {
     slowestSpeed: EXPLORE_SLOWEST_SPEED,
     solarSystem: true,
     cockpit: false,
-    instantWarp: true,
+    glideWarp: true,
     dragSteersShip: true,
     picking: true,
-    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Pick a place under Go to, or click anything in view to see what it is.',
+    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Click anything in view, or type a name under Select, then press Warp to fly there.',
   },
 };
 

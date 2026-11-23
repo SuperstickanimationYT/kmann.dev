@@ -1,10 +1,13 @@
 import { LY_PER_PC } from './milky-way.js';
 import { formatDistance } from './practice.js';
+import { KM_PER_PC } from './solar-system.js';
 import { KIND } from './stars.js';
 
 const SUN_ABSOLUTE_MAGNITUDE = 4.83;
+export const UNNAMED_STAR = 'Unnamed star';
 const KM_PER_AU = 149597870.7;
 const SHOW_KM_BELOW_AU = 0.01;
+const SHOW_LIGHT_YEARS_FROM_AU = 6000;
 const MINUTES_PER_YEAR = 525960;
 const MINUTES_PER_DAY = 1440;
 const SPECTRAL_CLASSES = [
@@ -55,6 +58,7 @@ function formatLightTravel(parsecs) {
 function formatKm(km) {
   const au = km / KM_PER_AU;
   if (au < SHOW_KM_BELOW_AU) return `${Math.round(km).toLocaleString('en')} km`;
+  if (au >= SHOW_LIGHT_YEARS_FROM_AU) return formatDistance(km / KM_PER_PC);
   return au >= 10 ? `${Math.round(au).toLocaleString('en')} AU` : `${au.toFixed(2)} AU`;
 }
 
@@ -63,7 +67,7 @@ function starFacts(pick) {
   const kelvin = temperatureFromColour(pick.colour);
   const named = pick.kind === KIND.sun || pick.kind === KIND.catalogue;
   return {
-    title: pick.kind === KIND.sun ? 'Sun' : (named && pick.name) || 'Unnamed star',
+    title: pick.kind === KIND.sun ? 'Sun' : (named && pick.name) || UNNAMED_STAR,
     kind: pick.kind === KIND.cluster ? `${STAR_KINDS[KIND.cluster]} in ${pick.name}` : STAR_KINDS[pick.kind],
     facts: [
       ['Distance', formatDistance(pick.distance)],

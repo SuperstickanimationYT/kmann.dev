@@ -1,15 +1,15 @@
 import { drawAtlas } from './atlas.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
-import { listDestinations } from './destinations.js';
+import { bodyDestination, galaxyDestination, listDestinations, nebulaDestination, starDestination, SUN_DESTINATION } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
-import { describePick } from './picking.js';
+import { describePick, UNNAMED_STAR } from './picking.js';
 import { MODES, modeFromName } from './modes.js';
 import { KOTO_GARDEN } from './music/koto-garden.js';
 import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
-import { describeStar, drawGuides } from './practice.js';
+import { describeStar, drawEdgeArrow, drawGuides, formatDistance } from './practice.js';
 import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
@@ -17,7 +17,7 @@ import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, placeBodies }
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
-import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
+import { gatherStars, KIND, loadNearbyStars, placeNebulae, SUN_ABSOLUTE } from './stars.js';
 import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
@@ -29,6 +29,7 @@ const SKY_RESOLUTION_PHOTO = 1;
 const EYE_BUDGET = 60000;
 const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
+const GLIDE_REGATHER_INTERVAL = 500;
 const REGATHER_SHARE_OF_NEAREST_STAR = 0.5;
 const STAR_STRIDE = 6;
 const STAR_DISTANCE_SLOT = 5;
@@ -77,11 +78,11 @@ const introFrame = $('[data-intro]');
 const introText = $('[data-intro-text]');
 const musicToggle = $('[data-music]');
 const restartButton = $('[data-restart]');
-const goToField = $('[data-go-to-field]');
+const selectField = $('[data-select-field]');
 const longExposureField = $('[data-long-exposure-field]');
 const longExposureToggle = $('[data-long-exposure]');
-const goToInput = $('[data-go-to]');
-const goToList = $('[data-go-to-list]');
+const selectInput = $('[data-select]');
+const selectList = $('[data-select-list]');
 const solarNote = $('[data-solar-note]');
 
 const armMap = buildArmMap();
@@ -267,7 +268,7 @@ function setMode(name) {
   game.speed = Math.min(Math.max(game.speed, mode.slowestSpeed), mode.topSpeed);
   modeSelect.value = modeFromName(name);
   labelsField.hidden = !mode.labels;
-  goToField.hidden = !mode.goTo;
+  selectField.hidden = !mode.selecting;
   longExposureField.hidden = !mode.longExposure;
   solarNote.hidden = !mode.solarSystem;
   clockLabel.textContent = mode.clockLabel;
@@ -279,6 +280,8 @@ function setMode(name) {
   else url.searchParams.set('mode', modeSelect.value);
   window.history.replaceState(null, '', url);
   clearSelection();
+  aim = null;
+  glide = null;
   clearGuides();
   if (photo) developPhoto();
   const greeting = mode.greeting(labelsShown());
@@ -372,16 +375,15 @@ function jump() {
     showStatus(`Not enough warp: ${formatWarpTime(game.energy)} left, enough for ${formatLightYears(game.energy)}.`);
     return;
   }
-  if (game.mode.instantWarp) {
-    land(lightYears);
-    showStatus(`Jumped ${formatLightYears(lightYears)}.`);
-    viewChanged();
+  if (game.mode.glideWarp) {
+    const end = jumpLanding(lightYears);
+    glideTo({ target: add(end, scale(game.ship.forward, lightYears / LY_PER_PC)), arrival: () => end }, `Jumped ${formatLightYears(lightYears)}.`);
     return;
   }
   startWarp(lightYears, null);
 }
 
-const warpReady = () => !intro && !photo?.running && !warp && !aim && warpOptics && eyeStars && !outOfPlay();
+const warpReady = () => !intro && !photo?.running && !warp && !aim && !glide && warpOptics && eyeStars && !outOfPlay();
 
 const AIM_SECONDS_PER_HALF_TURN = 0.8;
 const QUICKEST_AIM_SECONDS = 0.2;
@@ -412,9 +414,33 @@ function advanceAim(now) {
   done();
 }
 
-function arriveNow(destination) {
+const GLIDE_SECONDS = 2.5;
+const GLIDE_LEFT_OF_STANDOFF = 0.01;
+const GLIDE_SMALLEST_SHARE = 1e-12;
+let glide = null;
+
+function glideTo(destination, announcement = `Arrived at ${destination.name}.`) {
+  if (!warpReady()) return;
+  aimThen(subtract(destination.target, game.camera), () => {
+    const from = [...game.camera];
+    const end = destination.arrival(from);
+    const span = Math.hypot(...subtract(from, end));
+    const finalShare = span > 0 ? Math.max(GLIDE_SMALLEST_SHARE, Math.min(1, (GLIDE_LEFT_OF_STANDOFF * Math.hypot(...subtract(end, destination.target))) / span)) : 1;
+    glide = { destination, announcement, from, finalShare, startedAt: performance.now() };
+  });
+}
+
+function advanceGlide(now) {
+  const progress = Math.min(1, (now - glide.startedAt) / 1000 / GLIDE_SECONDS);
+  const eased = progress * progress * (3 - 2 * progress);
+  const { destination, from, finalShare, announcement } = glide;
+  const end = destination.arrival(from);
+  game.camera = add(end, scale(subtract(from, end), finalShare ** eased));
+  faceDirection(subtract(destination.target, game.camera));
+  if (progress < 1) return;
+  glide = null;
   arrive(destination);
-  showStatus(`Arrived at ${destination.name}.`);
+  showStatus(announcement);
   viewChanged();
 }
 
@@ -424,27 +450,32 @@ function startWarp(lightYears, destination) {
   clearGuides();
 }
 
-function goTo(name) {
-  const destination = destinations().find((place) => place.name.toLowerCase() === name.trim().toLowerCase());
+const destinationNamed = (name) => destinations().find((place) => place.name.toLowerCase() === name.trim().toLowerCase());
+
+function selectNamed(name) {
+  const destination = destinationNamed(name);
   if (!destination) {
     showStatus(`Nowhere called "${name}" on the list.`);
+    return false;
+  }
+  selection = pickFor(destination);
+  selectionShownAt = -Infinity;
+  return true;
+}
+
+function warpToSelection() {
+  if (!selection && !(selectInput.value.trim() && selectNamed(selectInput.value))) {
+    showStatus('Select something first: click it, or type its name under Select.');
     return;
   }
-  if (!warpReady()) return;
-  const arrival = destination.arrival(game.camera);
-  if (game.mode.instantWarp) {
-    aimThen(subtract(destination.target, game.camera), () => arriveNow(destination));
-    return;
-  }
-  faceDirection(subtract(arrival, game.camera));
-  startWarp(Math.hypot(...subtract(arrival, game.camera)) * LY_PER_PC, destination);
+  glideTo(selection.destination);
 }
 
 let destinationList = null;
 function destinations() {
   if (!destinationList && nearby.length) {
     destinationList = listDestinations({ nearby, nebulae, galaxies });
-    goToList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
+    selectList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
   }
   return destinationList ?? [];
 }
@@ -482,10 +513,14 @@ function advanceWarp(now) {
   return { axis: warp.axis, row, shutter: stage.shutter, glareLux: glareForRow(warpOptics, row) * (1 - stage.shutter) };
 }
 
-function land(lightYears) {
+function jumpLanding(lightYears) {
   const miss = (SHIP.jumpScatter * lightYears) / LY_PER_PC;
   const scatter = normalize([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]).map((value) => value * miss * Math.cbrt(Math.random()));
-  game.camera = add(add(game.camera, scale(game.ship.forward, lightYears / LY_PER_PC)), scatter);
+  return add(add(game.camera, scale(game.ship.forward, lightYears / LY_PER_PC)), scatter);
+}
+
+function land(lightYears) {
+  game.camera = jumpLanding(lightYears);
   if (game.mode.scored && !game.over) {
     game.energy -= lightYears;
     game.clock += lightYears / SHIP.warpLightYearsPerSecond;
@@ -503,7 +538,7 @@ function arrive(destination) {
 }
 
 function flightStep(seconds) {
-  if (intro || photo?.running || warp || aim) return;
+  if (intro || photo?.running || warp || aim || glide) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
@@ -655,7 +690,7 @@ function refreshEyeStars(now) {
   if (!nearby.length) return;
   const drift = eyeAnchor ? Math.hypot(...subtract(game.camera, eyeAnchor)) : Infinity;
   const regatherAfter = eyeStars ? Math.min(REGATHER_DISTANCE, REGATHER_SHARE_OF_NEAREST_STAR * eyeNearestStarPc) : 0;
-  if (eyeStars && (drift < regatherAfter || now - eyeGatheredAt < REGATHER_INTERVAL)) return;
+  if (eyeStars && (drift < regatherAfter || now - eyeGatheredAt < (glide ? GLIDE_REGATHER_INTERVAL : REGATHER_INTERVAL))) return;
   eyeAnchor = [...game.camera];
   eyeStars = gatherStars({ camera: eyeAnchor, limit: EYE_LIMIT, budget: EYE_BUDGET, armMap, nebulae, nearby });
   eyeNearestStarPc = nearestStarPc(eyeStars);
@@ -681,6 +716,7 @@ function frame(now) {
   if (intro) advanceIntro(now);
   const warpView = warp ? advanceWarp(now) : null;
   if (aim) advanceAim(now);
+  if (glide) advanceGlide(now);
   adaptation = adaptEyes(adaptation, warpView?.glareLux ?? 0, seconds);
   flightStep(seconds);
   followSolarSystem();
@@ -888,6 +924,8 @@ function claimInView(clientX, clientY) {
 const SELECTION_RING_PX = 12;
 const SELECTION_COLOUR = '#9fd4ff';
 const SELECTION_REFRESH_MS = 250;
+const SELECTION_FONT = '13px "Trebuchet MS", sans-serif';
+const SUN_COLOUR_INDEX = 0.65;
 const pickPanel = $('[data-pick]');
 let selection = null;
 let selectionShownAt = -Infinity;
@@ -899,7 +937,9 @@ function discPixels(pick, offset) {
 
 function bodyOffsetPc(name) {
   const seen = bodiesInView()?.find(({ body }) => body.name === name);
-  return seen ? scale(seen.offsetKm, 1 / KM_PER_PC) : null;
+  if (seen) return scale(seen.offsetKm, 1 / KM_PER_PC);
+  const placed = solarBodies && bodyNamed(name);
+  return placed ? subtract(add(SUN_POSITION, scale(placed.fromSunKm, 1 / KM_PER_PC)), game.camera) : null;
 }
 
 const nebulaOffsetPc = (nebula) => {
@@ -907,13 +947,45 @@ const nebulaOffsetPc = (nebula) => {
   return subtract(positionSeenAt(nebula.present, [0, 0, 0], delay), game.camera);
 };
 
+const placedAt = (position) => () => subtract(position, game.camera);
+
+function bodyPick(body) {
+  return {
+    kind: 'body',
+    get body() {
+      return (solarBodies && bodyNamed(body.name)) ?? body;
+    },
+    locate: () => bodyOffsetPc(body.name),
+    destination: bodyDestination(body),
+  };
+}
+
+const nebulaPick = (nebula) => ({ kind: 'nebula', name: nebula.name, locate: () => nebulaOffsetPc(nebula), destination: nebulaDestination(nebula) });
+const galaxyPick = (galaxy) => ({ kind: 'galaxy', name: galaxy.name, locate: placedAt(galaxy.centre), destination: galaxyDestination(galaxy) });
+const sunPick = () => ({ kind: KIND.sun, name: 'Sun', absolute: SUN_ABSOLUTE, colour: SUN_COLOUR_INDEX, locate: placedAt(SUN_POSITION), destination: SUN_DESTINATION });
+
+function pickFor(destination) {
+  const { subject } = destination;
+  if (subject.kind === 'body') return bodyPick(subject.body);
+  if (subject.kind === 'nebula') return { ...nebulaPick(subject.nebula), destination };
+  if (subject.kind === 'galaxy') return { ...galaxyPick(subject.galaxy), destination };
+  const { star } = subject;
+  if (star.sun) return sunPick();
+  return { kind: KIND.catalogue, name: star.name, absolute: star.absolute, colour: star.colour, locate: placedAt(star.position), destination };
+}
+
+function clickedStarPick(star) {
+  if (star.kind === KIND.sun) return sunPick();
+  const position = add(game.camera, star.offset);
+  const pick = { ...star, locate: placedAt(position) };
+  const { title } = describePick(pick);
+  return { ...pick, destination: starDestination({ name: title === UNNAMED_STAR ? 'an unnamed star' : title, position }) };
+}
+
 function pickablesAt(x, y) {
   const star = nearestStarAt(x, y);
   const picks = [];
-  if (star) {
-    const position = add(game.camera, star.offset);
-    picks.push({ ...star, locate: () => subtract(position, game.camera) });
-  }
+  if (star) picks.push({ ...clickedStarPick(star), miss: star.miss });
   const pixelsPerTan = stage.clientHeight / 2 / eyeTanHalf()[1];
   for (const { body, offsetKm } of bodiesInView() ?? []) {
     const offset = scale(offsetKm, 1 / KM_PER_PC);
@@ -922,11 +994,11 @@ function pickablesAt(x, y) {
     const distanceKm = Math.hypot(...offsetKm);
     const discPx = (body.radiusKm / distanceKm) * pixelsPerTan;
     const miss = Math.max(0, Math.hypot(spot.x - x, spot.y - y) - discPx);
-    if (miss <= PICK_RADIUS_PX) picks.push({ kind: 'body', body, miss, locate: () => bodyOffsetPc(body.name) });
+    if (miss <= PICK_RADIUS_PX) picks.push(Object.assign(body.kind === 'star' ? sunPick() : bodyPick(body), { miss }));
   }
   const deepSky = [
-    ...nebulae.map((nebula) => ({ kind: 'nebula', name: nebula.name, locate: () => nebulaOffsetPc(nebula) })),
-    ...galaxies.map((galaxy) => ({ kind: 'galaxy', name: galaxy.name, locate: () => subtract(galaxy.centre, game.camera) })),
+    ...nebulae.map(nebulaPick),
+    ...galaxies.map(galaxyPick),
   ];
   for (const place of deepSky) {
     const spot = spotOnStage(place.locate());
@@ -969,12 +1041,29 @@ function followSelection(context, now) {
     showSelectionFacts();
     selectionShownAt = now;
   }
-  const spot = offset && spotOnStage(offset);
-  if (!spot || discPixels(selection, offset) > SELECTION_RING_PX) return;
+  if (!offset) return;
+  const spot = spotOnStage(offset);
+  const width = stage.clientWidth;
+  const height = stage.clientHeight;
   context.strokeStyle = SELECTION_COLOUR;
+  context.fillStyle = SELECTION_COLOUR;
+  if (!spot || spot.x < 0 || spot.x > width || spot.y < 0 || spot.y > height) {
+    context.font = SELECTION_FONT;
+    drawEdgeArrow(context, { direction: edgeDirection(offset) }, width, height, `${describePick(selection).title} · ${formatDistance(Math.hypot(...offset))}`);
+    return;
+  }
+  if (discPixels(selection, offset) > SELECTION_RING_PX) return;
   context.beginPath();
   context.arc(spot.x, spot.y, SELECTION_RING_PX, 0, 2 * Math.PI);
   context.stroke();
+}
+
+function edgeDirection(offset) {
+  const [tanX, tanY] = eyeTanHalf();
+  const depth = dot(offset, game.basis.forward);
+  const away = Math.max(Math.abs(depth), Number.EPSILON);
+  const side = Math.sign(depth) || 1;
+  return [(dot(offset, game.basis.right) / away / tanX) * side, (-dot(offset, game.basis.up) / away / tanY) * side];
 }
 
 function finish(found) {
@@ -1002,7 +1091,7 @@ view.addEventListener('pointermove', (event) => {
   const perPixel = EYE_FIELD_HEIGHT / stage.clientHeight;
   const across = (event.clientX - drag.x) * perPixel;
   const down = (event.clientY - drag.y) * perPixel;
-  if (game.mode.dragSteersShip && !aim) {
+  if (game.mode.dragSteersShip && !aim && !glide) {
     game.ship = turn(turn(game.ship, 'up', across), 'right', down);
     aimView();
   } else turnHead(-across, down);
@@ -1105,11 +1194,17 @@ giveUpButton.addEventListener('click', () => {
 $('[data-jump]').addEventListener('click', jump);
 $('[data-align]').addEventListener('click', () => faceDirection(game.basis.forward));
 modeSelect.addEventListener('change', () => setMode(modeSelect.value));
-$('[data-go-to-form]').addEventListener('submit', (event) => {
+$('[data-select-form]').addEventListener('submit', (event) => {
   event.preventDefault();
-  goTo(goToInput.value);
+  selectNamed(selectInput.value);
 });
-goToInput.addEventListener('focus', destinations);
+selectInput.addEventListener('focus', destinations);
+selectInput.addEventListener('input', (event) => {
+  const choseFromList = !(event instanceof InputEvent) || event.inputType === 'insertReplacementText';
+  if (choseFromList && destinationNamed(selectInput.value)) selectNamed(selectInput.value);
+});
+$('[data-warp-selection]').addEventListener('click', warpToSelection);
+$('[data-pick-warp]').addEventListener('click', warpToSelection);
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-pick-close]').addEventListener('click', clearSelection);
 longExposureToggle.addEventListener('change', () => setLongExposure(longExposureToggle.checked));

@@ -10,11 +10,19 @@ const MILKY_WAY_ABOVE = [0, 0, 45000];
 const BODY_CROSSING_SECONDS = 4;
 
 const placedNow = (name) => placeBodies(Date.now()).find((body) => body.name === name);
+const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
+const approach = (name, group, target, standoff, subject) => ({ name, group, target, subject, arrival: (from) => backOff(from, target, standoff) });
 
-function solarBody(body) {
+export const starDestination = (star) => approach(star.name, 'Stars', star.position, STAR_STANDOFF, { kind: 'star', star });
+
+export const SUN_DESTINATION = starDestination({ name: 'Sun', position: SUN_POSITION, sun: true });
+
+export function bodyDestination(body) {
+  if (body.kind === 'star') return SUN_DESTINATION;
   return {
     name: body.name,
     group: body.parent ? `Moon of ${body.parent}` : 'Planets',
+    subject: { kind: 'body', body },
     get target() {
       return placedNow(body.name).centre;
     },
@@ -26,22 +34,31 @@ function solarBody(body) {
   };
 }
 
-const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
+export const nebulaDestination = (nebula) =>
+  approach(nebula.name, 'Nebulae', nebula.present, NEBULA_STANDOFF_RADII * nebulaRadius(nebula), { kind: 'nebula', nebula });
+
+export const galaxyDestination = (galaxy) =>
+  approach(galaxy.name, 'Galaxies', galaxy.centre, GALAXY_STANDOFF_SCALE_LENGTHS * galaxy.scaleLength, { kind: 'galaxy', galaxy });
+
+const MILKY_WAY = { name: 'Milky Way', centre: [0, 0, 0] };
+const MILKY_WAY_DESTINATION = {
+  name: 'Milky Way, seen from above',
+  group: 'Galaxies',
+  target: MILKY_WAY.centre,
+  subject: { kind: 'galaxy', galaxy: MILKY_WAY },
+  arrival: () => MILKY_WAY_ABOVE,
+};
 
 export function listDestinations({ nearby, nebulae, galaxies }) {
-  const fixed = (name, group, target, arrival) => ({ name, group, target, arrival: () => arrival });
-  const approach = (name, group, target, standoff) => ({ name, group, target, arrival: (from) => backOff(from, target, standoff) });
   return [
-    approach('Sun', 'Stars', SUN_POSITION, STAR_STANDOFF),
-    ...BODIES.filter((body) => body.kind !== 'star').map(solarBody),
-    fixed('Milky Way, seen from above', 'Galaxies', [0, 0, 0], MILKY_WAY_ABOVE),
+    SUN_DESTINATION,
+    ...BODIES.filter((body) => body.kind !== 'star').map(bodyDestination),
+    MILKY_WAY_DESTINATION,
     ...nearby
       .filter((star) => star.name)
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((star) => approach(star.name, 'Stars', star.position, STAR_STANDOFF)),
-    ...nebulae
-      .filter((nebula) => !/^G\d/.test(nebula.name))
-      .map((nebula) => approach(nebula.name, 'Nebulae', nebula.present, NEBULA_STANDOFF_RADII * nebulaRadius(nebula))),
-    ...galaxies.map((galaxy) => approach(galaxy.name, 'Galaxies', galaxy.centre, GALAXY_STANDOFF_SCALE_LENGTHS * galaxy.scaleLength)),
+      .map(starDestination),
+    ...nebulae.filter((nebula) => !/^G\d/.test(nebula.name)).map(nebulaDestination),
+    ...galaxies.map(galaxyDestination),
   ];
 }
