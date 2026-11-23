@@ -13,7 +13,8 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, placeBodies } from './solar-system.js';
-import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres, highestGroundNearKm } from './terrain.js';
+import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
+import { createGroundPatches } from './ground-patches.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
 import { add, dot, normalize, orthonormal, rotateAbout, scale, subtract } from './vectors.js';
@@ -36,10 +37,6 @@ const GROUND_VIEW_SHARE_OF_RADIUS = 0.12;
 const GROUND_VIEW_HIGHEST_KM = 400;
 const GROUND_VIEW_FULL_SHARE_OF_HIGHEST = 0.5;
 const COLLISION_FOOTPRINT_METRES = 0.05;
-const GROUND_RESOLUTIONS = [0.25, 0.35, 0.5, 0.7];
-const GROUND_RESOLUTION_JUDGED_OVER_FRAMES = 30;
-const GROUND_FRAME_TOO_SLOW = 1 / 45;
-const GROUND_FRAME_ROOMY = 1 / 58;
 const KM_PER_LY = KM_PER_PC / LY_PER_PC;
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
@@ -542,31 +539,7 @@ function followSolarSystem() {
   if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) solarFrame = null;
 }
 
-let ceiling = null;
-const groundDetail = { level: 2, tooSlow: GROUND_RESOLUTIONS.length, frames: 0, seconds: 0 };
-
-function judgeGroundResolution(seconds, groundShown) {
-  if (!groundShown) {
-    Object.assign(groundDetail, { tooSlow: GROUND_RESOLUTIONS.length, frames: 0, seconds: 0 });
-    return;
-  }
-  groundDetail.frames++;
-  groundDetail.seconds += seconds;
-  if (groundDetail.frames < GROUND_RESOLUTION_JUDGED_OVER_FRAMES) return;
-  const average = groundDetail.seconds / groundDetail.frames;
-  if (average > GROUND_FRAME_TOO_SLOW && groundDetail.level > 0) {
-    groundDetail.tooSlow = groundDetail.level;
-    groundDetail.level--;
-  } else if (average < GROUND_FRAME_ROOMY && groundDetail.level + 1 < groundDetail.tooSlow) groundDetail.level++;
-  groundDetail.frames = 0;
-  groundDetail.seconds = 0;
-}
-
-function ceilingNear(body, settings, frame) {
-  const key = `${body.name} ${frame.anchor.join(' ')} ${Math.round(frame.altitudeKm)}`;
-  if (ceiling?.key !== key) ceiling = { key, topKm: highestGroundNearKm(settings, frame.up, body.radiusKm, frame.altitudeKm) };
-  return ceiling.topKm;
-}
+let groundPatches = null;
 
 function groundInView() {
   if (!solarFrame) return null;
@@ -579,7 +552,10 @@ function groundInView() {
   if (frame.altitudeKm > highest) return null;
   const fullyGround = highest * GROUND_VIEW_FULL_SHARE_OF_HIGHEST;
   const blend = Math.min(1, Math.max(0, (highest - frame.altitudeKm) / (highest - fullyGround)));
-  return { body, settings, cameraLocalKm, frame, topKm: ceilingNear(body, settings, frame), blend: blend * blend * (3 - 2 * blend) };
+  const aboveGroundKm = Math.max(0, Math.hypot(...cameraLocalKm) - lowestDistanceKm(body, fromBodyLocal(body, cameraLocalKm)));
+  const seen = { body, settings, cameraLocalKm, frame, aboveGroundKm, blend: blend * blend * (3 - 2 * blend) };
+  const { tanHalf, pixelAngle } = eyeView();
+  return { ...seen, ...groundPatches.visible(seen, { basis: { right: toBodyLocal(body, game.basis.right), up: toBodyLocal(body, game.basis.up), forward: toBodyLocal(body, game.basis.forward) }, tanHalf, pixelAngle, sun: toBodyLocal(body, body.sunward) }) };
 }
 
 function bodiesInView() {
@@ -651,7 +627,6 @@ function frame(now) {
   if (eyeStars) {
     frameSeed = (frameSeed + 1) >>> 0;
     const ground = groundInView();
-    judgeGroundResolution(seconds, ground !== null);
     renderer.renderEye({
       view: eyeView(),
       nebulae,
@@ -663,7 +638,6 @@ function frame(now) {
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
       ground,
-      groundResolution: GROUND_RESOLUTIONS[groundDetail.level],
       warp: warpView,
       adaptation,
       longExposure: longExposureShown(),
@@ -976,6 +950,7 @@ if (!renderer) {
     warpOptics = optics;
     renderer.loadWarpTable(optics);
   });
+  groundPatches = createGroundPatches(renderer.releasePatch);
   loadBodyMaps(new URL('data/planets/', window.location.href), (layer, maps) => {
     renderer.loadBodyMap(layer, maps);
     groundMaps[layer] = maps.ground ?? null;

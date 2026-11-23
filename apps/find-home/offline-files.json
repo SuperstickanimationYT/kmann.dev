@@ -1,5 +1,5 @@
 {
-  "bytes": 1570093,
+  "bytes": 1587054,
   "files": [
     "./",
     "data/nearby-star-names.json",
@@ -23,6 +23,7 @@
     "js/destinations.js",
     "js/galaxies.js",
     "js/gl.js",
+    "js/ground-patches.js",
     "js/main.js",
     "js/milky-way.js",
     "js/modes.js",
@@ -40,6 +41,7 @@
     "js/ship.js",
     "js/solar-system.js",
     "js/stars.js",
+    "js/terrain-worker.js",
     "js/terrain.js",
     "js/vectors.js",
     "js/warp.js",

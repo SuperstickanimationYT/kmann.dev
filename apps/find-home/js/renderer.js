@@ -7,12 +7,15 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX, GROUND_FRAGMENT,
-  MAX_BODIES, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
+  GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, MAX_BODIES, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
+  PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
+  SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
+import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { apparentMagnitude, MAPPED_BODIES } from './solar-system.js';
-import { mapCoordinates } from './terrain.js';
+import { mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
 const NEBULA_LIGHT_PER_IONIZING = 3700 / 1e49;
@@ -141,6 +144,13 @@ const BODY_COLOUR_UNIT = 5;
 const BODY_HEIGHT_UNIT = 6;
 const BODY_MAP_SIZE = [1024, 512];
 const GROUND_VIEW_UNIT = 7;
+const SHADOW_MAP_UNIT = 8;
+const GROUND_DETAIL_UNIT = 9;
+const GROUND_DETAIL_TEXELS_PER_CELL = 4;
+const GROUND_DETAIL_SEED = 2;
+const SHADOW_SLOPE_BIAS = 3;
+const SHADOW_CONSTANT_BIAS = 4;
+const NO_SHADOWS = { uShadowsOn: 0 };
 const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5 };
 const SUN_DISK_GLOW = 2;
 const HIDDEN_BEHIND_FOREGROUND = true;
@@ -158,19 +168,56 @@ function groundUniforms(ground, seen) {
     uGroundRadius: ground.body.radiusKm,
     uGroundExcess: ground.frame.excess,
     uGroundFromAnchor: ground.frame.fromAnchor,
-    uGroundShape: [ground.settings.lowKm, ground.settings.rangeKm, ground.settings.roughness, ground.settings.craters],
     uGroundSea: ground.settings.sea ? 1 : 0,
     uGroundAir: [...air.tint, air.scaleKm],
     uGroundGlow: [...air.glow, air.hazeKm],
     uGroundSunset: air.sunset,
     uGroundOvercast: air.overcast ?? 0,
+    uGroundRoughness: ground.settings.roughness,
     uGroundMeridian: ground.body.meridian,
     uGroundCameraUp: ground.frame.up,
     uGroundCameraUv: mapCoordinates(ground.frame.up),
-    uGroundTopKm: ground.topKm,
     uGroundBlend: ground.blend,
   };
 }
+
+function bodyLocalBasis(body, { right, up, forward }) {
+  const { meridian, north } = body;
+  const east = [north[1] * meridian[2] - north[2] * meridian[1], north[2] * meridian[0] - north[0] * meridian[2], north[0] * meridian[1] - north[1] * meridian[0]];
+  const local = (v) => [meridian, east, north].map((axis) => v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2]);
+  return { uLocalRight: local(right), uLocalUp: local(up), uLocalForward: local(forward) };
+}
+
+function groundDetailTexels() {
+  const period = GROUND_DETAIL_PERIOD_CELLS;
+  const size = period * GROUND_DETAIL_TEXELS_PER_CELL;
+  const random = createRandom(GROUND_DETAIL_SEED);
+  const lattice = Float32Array.from({ length: period ** 3 }, () => random.next());
+  const at = (x, y, z) => lattice[((z % period) * period + (y % period)) * period + (x % period)];
+  const texels = new Uint8Array(size ** 3 * 4);
+  const byte = (value) => Math.round(Math.min(1, Math.max(0, value)) * 255);
+  for (let k = 0; k < size; k++) for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+    const p = [i, j, k].map((texel) => (texel + 0.5) / GROUND_DETAIL_TEXELS_PER_CELL);
+    const [x, y, z] = p.map(Math.floor);
+    const f = p.map((value, axis) => value - [x, y, z][axis]);
+    const u = f.map((t) => t * t * t * (t * (t * 6 - 15) + 10));
+    const du = f.map((t) => 30 * t * t * (t * (t - 2) + 1));
+    const a = at(x, y, z), b = at(x + 1, y, z), d = at(x, y + 1, z), e = at(x + 1, y + 1, z);
+    const g = at(x, y, z + 1), h = at(x + 1, y, z + 1), m = at(x, y + 1, z + 1), n = at(x + 1, y + 1, z + 1);
+    const xy = a - b - d + e, yz = a - d - g + m, zx = a - b - g + h, xyz = -a + b + d - e + g - h - m + n;
+    const value = a + (b - a) * u[0] + (d - a) * u[1] + (g - a) * u[2] + xy * u[0] * u[1] + yz * u[1] * u[2] + zx * u[2] * u[0] + xyz * u[0] * u[1] * u[2];
+    const slope = [
+      du[0] * (b - a + xy * u[1] + zx * u[2] + xyz * u[1] * u[2]),
+      du[1] * (d - a + yz * u[2] + xy * u[0] + xyz * u[2] * u[0]),
+      du[2] * (g - a + zx * u[0] + yz * u[1] + xyz * u[0] * u[1]),
+    ];
+    const index = ((k * size + j) * size + i) * 4;
+    slope.forEach((value, axis) => (texels[index + axis] = byte(0.5 + value / (2 * GROUND_DETAIL_SLOPE_RANGE))));
+    texels[index + 3] = byte(value);
+  }
+  return { size, texels };
+}
+
 const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
 const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
@@ -226,7 +273,30 @@ export function createRenderer(canvas, armMap, galaxies) {
 
   const skyProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FRAGMENT);
   const eyeProgram = createProgram(gl, FULLSCREEN_VERTEX, EYE_FRAGMENT);
-  const groundProgram = createProgram(gl, FULLSCREEN_VERTEX, GROUND_FRAGMENT);
+  const groundSkyProgram = createProgram(gl, FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT);
+  const patchProgram = createProgram(gl, PATCH_VERTEX, PATCH_FRAGMENT);
+  const shadowProgram = createProgram(gl, SHADOW_VERTEX, SHADOW_FRAGMENT);
+  let shadowMaps = null;
+  const groundDetailTexture = (() => {
+    const { size, texels } = groundDetailTexels();
+    const texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + GROUND_DETAIL_UNIT);
+    gl.bindTexture(gl.TEXTURE_3D, texture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, size, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, texels);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    for (const wrap of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, wrap, gl.REPEAT);
+    gl.activeTexture(gl.TEXTURE0);
+    return texture;
+  })();
+  const patchIndexBuffer = gl.createBuffer();
+  const patchIndexCount = (() => {
+    const indices = patchIndices();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, patchIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+    return indices.length;
+  })();
   let groundTarget = null;
   const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
   const cameraStarProgram = createProgram(gl, CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT);
@@ -449,25 +519,158 @@ export function createRenderer(canvas, armMap, galaxies) {
     return target;
   }
 
-  function groundTargetFitting(resolution) {
-    const width = Math.max(1, Math.round(canvas.width * resolution));
-    const height = Math.max(1, Math.round(canvas.height * resolution));
-    if (!groundTarget || groundTarget.width !== width || groundTarget.height !== height) {
-      groundTarget?.destroy();
-      groundTarget = createTarget(gl, width, height);
-    }
+  function groundTargetFitting() {
+    const { width, height } = canvas;
+    if (groundTarget?.width === width && groundTarget.height === height) return groundTarget;
+    groundTarget?.destroy();
+    const target = createTarget(gl, width, height);
+    const depth = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT32F, width, height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+    groundTarget = { ...target, destroy: () => {
+      target.destroy();
+      gl.deleteRenderbuffer(depth);
+    } };
     return groundTarget;
   }
 
-  function drawGround(view, bodies, ground, resolution) {
-    const target = groundTargetFitting(resolution);
+  function uploadPatch(patch) {
+    const buffer = gl.createBuffer();
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, patch.vertices, gl.STATIC_DRAW);
+    const stride = PATCH_FLOATS * 4;
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, 12);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 24);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, patchIndexBuffer);
+    gl.bindVertexArray(null);
+    patch.gpu = { buffer, vao };
+    patch.vertices = null;
+  }
+
+  function releasePatch(patch) {
+    if (!patch.gpu) return;
+    gl.deleteBuffer(patch.gpu.buffer);
+    gl.deleteVertexArray(patch.gpu.vao);
+    patch.gpu = null;
+  }
+
+  function drawPatches(program, patches, camera) {
+    for (const patch of patches) {
+      if (!patch.gpu) uploadPatch(patch);
+      setUniforms(gl, program, {
+        uPatchFromCamera: patch.centreKm.map((value, axis) => (value - camera[axis]) * 1000),
+        uPatchCentreKm: patch.centreKm,
+        uPatchSpacing: patch.spacingMetres,
+      });
+      gl.bindVertexArray(patch.gpu.vao);
+      gl.drawElements(gl.TRIANGLES, patchIndexCount, gl.UNSIGNED_SHORT, 0);
+    }
+  }
+
+  function shadowMapsReady() {
+    if (shadowMaps) return shadowMaps;
+    const texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + SHADOW_MAP_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT32F, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, SHADOW_CASCADES);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+    gl.activeTexture(gl.TEXTURE0);
+    const framebuffers = Array.from({ length: SHADOW_CASCADES }, (_, layer) => {
+      const framebuffer = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, texture, 0, layer);
+      gl.drawBuffers([gl.NONE]);
+      gl.readBuffer(gl.NONE);
+      return framebuffer;
+    });
+    shadowMaps = { texture, framebuffers };
+    return shadowMaps;
+  }
+
+  function drawShadows(ground) {
+    const { light, casters, cameraLocalKm } = ground;
+    if (!light) return NO_SHADOWS;
+    const { texture, framebuffers } = shadowMapsReady();
+    const cameraMetres = cameraLocalKm.map((value) => value * 1000);
+    const along = (axis) => cameraMetres[0] * axis[0] + cameraMetres[1] * axis[1] + cameraMetres[2] * axis[2];
+    const centres = light.halvesKm.map((halfKm) => [light.right, light.up].map((axis) => Math.round(along(axis) / ((2 * halfKm * 1000) / SHADOW_MAP_SIZE))));
+    const cascades = light.halvesKm.map((halfKm, layer) => {
+      const half = halfKm * 1000;
+      const texel = (2 * half) / SHADOW_MAP_SIZE;
+      const shift = [light.right, light.up].map((axis, i) => centres[layer][i] * texel - along(axis));
+      return [...shift, half, light.depthKm * 1000];
+    });
+    const lightUniforms = { uShadowRight: light.right, uShadowUp: light.up, uShadowSun: light.sun };
+    const drawnFor = JSON.stringify([centres, light.halvesKm, light.sun, casters.map((patch) => patch.key)]);
+    if (drawnFor !== shadowMaps.drawnFor) {
+      shadowMaps.drawnFor = drawnFor;
+      renderShadowMaps(framebuffers, cascades, lightUniforms, casters, cameraLocalKm);
+    }
+    gl.activeTexture(gl.TEXTURE0 + SHADOW_MAP_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
+    gl.activeTexture(gl.TEXTURE0);
+    return { ...lightUniforms, uShadowsOn: 1, cascades: new Float32Array(cascades.flat()) };
+  }
+
+  function renderShadowMaps(framebuffers, cascades, lightUniforms, casters, cameraLocalKm) {
+    gl.useProgram(shadowProgram.program);
+    setUniforms(gl, shadowProgram, lightUniforms);
+    gl.viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    gl.clearDepth(1);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(SHADOW_SLOPE_BIAS, SHADOW_CONSTANT_BIAS);
+    cascades.forEach((cascade, layer) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[layer]);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+      setUniforms(gl, shadowProgram, { uShadowCascade: cascade });
+      drawPatches(shadowProgram, casters, cameraLocalKm);
+    });
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.disable(gl.DEPTH_TEST);
+  }
+
+  function drawGround(view, bodies, ground) {
+    const shadows = drawShadows(ground);
+    const target = groundTargetFitting();
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.viewport(0, 0, target.width, target.height);
-    gl.useProgram(groundProgram.program);
-    setUniforms(gl, groundProgram, viewUniforms({ ...view, pixelAngle: view.pixelAngle / resolution }));
-    setBodies(groundProgram, bodies, ground);
+    gl.useProgram(groundSkyProgram.program);
+    setUniforms(gl, groundSkyProgram, viewUniforms(view));
+    setBodies(groundSkyProgram, bodies, ground);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    gl.useProgram(patchProgram.program);
+    setUniforms(gl, patchProgram, { ...viewUniforms(view), ...bodyLocalBasis(ground.body, view.basis), ...shadows });
+    if (shadows.cascades) setArray(gl, patchProgram, 'uShadowCascades', shadows.cascades, 4);
+    gl.uniform1i(patchProgram.uniforms.uShadowMaps, SHADOW_MAP_UNIT);
+    gl.activeTexture(gl.TEXTURE0 + GROUND_DETAIL_UNIT);
+    gl.bindTexture(gl.TEXTURE_3D, groundDetailTexture);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(patchProgram.uniforms.uGroundDetail, GROUND_DETAIL_UNIT);
+    setBodies(patchProgram, bodies, ground);
+    gl.clearDepth(1);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    drawPatches(patchProgram, ground.drawn, ground.cameraLocalKm);
+    gl.disable(gl.DEPTH_TEST);
+    gl.bindVertexArray(null);
     return target.textures[0];
   }
 
@@ -477,7 +680,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, ground, groundResolution, warp, adaptation, longExposure }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, ground, warp, adaptation, longExposure }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution && !warp) {
@@ -487,7 +690,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       drawSky({ ...view, pixelAngle: view.pixelAngle / skyResolution }, nebulae, stars.reaches, 1, seed);
     }
 
-    const groundView = ground && !warp ? drawGround(view, bodies, ground, groundResolution) : null;
+    const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.useProgram(eyeProgram.program);
@@ -588,5 +791,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, releasePatch };
 }

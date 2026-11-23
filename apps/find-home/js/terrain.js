@@ -28,39 +28,52 @@ function lattice(x, y, z, seed) {
 const smooth = (f) => f * f * (3 - 2 * f);
 const quintic = (f) => f * f * f * (f * (f * 6 - 15) + 10);
 const LATTICE_SHIFT_STEPS = [0.618034, 0.414214, 0.732051];
-const latticeShift = (seed) => LATTICE_SHIFT_STEPS.map((step) => ((seed + 1) * step) % 1);
-const inShiftedCells = (offset, cell, seed) => {
-  const shift = latticeShift(seed);
-  return offset.map((value, axis) => value / cell + shift[axis]);
-};
+const SHIFTS = Array.from({ length: 1024 }, (_, seed) => LATTICE_SHIFT_STEPS.map((step) => ((seed + 1) * step) % 1));
 const mix = (a, b, t) => a + (b - a) * t;
 
 function octaveCells(anchor, octave) {
   const perAnchor = 2 << octave;
-  return anchor.map((cell) => cell * perAnchor);
+  return [anchor[0] * perAnchor, anchor[1] * perAnchor, anchor[2] * perAnchor];
 }
 
 function octaveNoise(cells, offset, cell, seed) {
-  const scaled = inShiftedCells(offset, cell, seed);
-  const whole = scaled.map(Math.floor);
-  const [fx, fy, fz] = scaled.map((value, axis) => quintic(value - whole[axis]));
-  const [x, y, z] = whole.map((value, axis) => cells[axis] + value);
-  const corner = (dx, dy, dz) => lattice(x + dx, y + dy, z + dz, seed);
+  const shift = SHIFTS[seed];
+  const sx = offset[0] / cell + shift[0];
+  const sy = offset[1] / cell + shift[1];
+  const sz = offset[2] / cell + shift[2];
+  const wx = Math.floor(sx);
+  const wy = Math.floor(sy);
+  const wz = Math.floor(sz);
+  const fx = quintic(sx - wx);
+  const fy = quintic(sy - wy);
+  const fz = quintic(sz - wz);
+  const x = cells[0] + wx;
+  const y = cells[1] + wy;
+  const z = cells[2] + wz;
   return mix(
-    mix(mix(corner(0, 0, 0), corner(1, 0, 0), fx), mix(corner(0, 1, 0), corner(1, 1, 0), fx), fy),
-    mix(mix(corner(0, 0, 1), corner(1, 0, 1), fx), mix(corner(0, 1, 1), corner(1, 1, 1), fx), fy),
+    mix(mix(lattice(x, y, z, seed), lattice(x + 1, y, z, seed), fx), mix(lattice(x, y + 1, z, seed), lattice(x + 1, y + 1, z, seed), fx), fy),
+    mix(mix(lattice(x, y, z + 1, seed), lattice(x + 1, y, z + 1, seed), fx), mix(lattice(x, y + 1, z + 1, seed), lattice(x + 1, y + 1, z + 1, seed), fx), fy),
     fz,
   );
 }
 
 function craterDepth(cells, offset, cell, octave) {
-  const scaled = inShiftedCells(offset, cell, octave);
-  const whole = scaled.map(Math.floor);
-  const [x, y, z] = whole.map((value, axis) => cells[axis] + value);
+  const shift = SHIFTS[octave];
+  const sx = offset[0] / cell + shift[0];
+  const sy = offset[1] / cell + shift[1];
+  const sz = offset[2] / cell + shift[2];
+  const wx = Math.floor(sx);
+  const wy = Math.floor(sy);
+  const wz = Math.floor(sz);
+  const x = cells[0] + wx;
+  const y = cells[1] + wy;
+  const z = cells[2] + wz;
   if (lattice(x, y, z, 100 + octave) > CRATER_CHANCE) return 0;
-  const centre = [200, 300, 400].map((seed, axis) => whole[axis] + 0.3 + 0.4 * lattice(x, y, z, seed + octave));
+  const cx = wx + 0.3 + 0.4 * lattice(x, y, z, 200 + octave);
+  const cy = wy + 0.3 + 0.4 * lattice(x, y, z, 300 + octave);
+  const cz = wz + 0.3 + 0.4 * lattice(x, y, z, 400 + octave);
   const radius = 0.06 + 0.14 * lattice(x, y, z, 500 + octave);
-  const distance = Math.hypot(...scaled.map((value, axis) => value - centre[axis])) / radius;
+  const distance = Math.sqrt((sx - cx) ** 2 + (sy - cy) ** 2 + (sz - cz) ** 2) / radius;
   const bowl = distance < 1 ? distance * distance - 1 : 0;
   const rim = 0.35 * Math.exp(-(((distance - 1) / 0.22) ** 2));
   return 0.2 * radius * cell * (bowl + rim);
@@ -130,31 +143,6 @@ export function groundHeightMetres(ground, up, anchor, offset, footprint) {
 
 export const detailReachKm = (ground) => (ground.roughness * ANCHOR_METRES) / 1000 + (ground.land ? COAST_DROP_METRES / 2000 : 0);
 
-const farthestVisibleKm = (radiusKm, topKm) => 2 * Math.sqrt(2 * radiusKm * Math.max(topKm, 0.001) + topKm * topKm);
-
-export function highestGroundNearKm(ground, up, radiusKm, cameraAltitudeKm) {
-  const { heights } = ground;
-  const globalTop = ground.lowKm + ground.rangeKm + detailReachKm(ground);
-  const reachKm = farthestVisibleKm(radiusKm, globalTop - ground.lowKm + Math.max(cameraAltitudeKm, 0));
-  const reach = Math.min(Math.PI, reachKm / radiusKm);
-  const [u, v] = mapCoordinates(up);
-  const latitude = (0.5 - v) * Math.PI;
-  const rowsReach = Math.ceil((reach / Math.PI) * heights.height) + 1;
-  const centreRow = Math.floor(v * heights.height);
-  const nearPole = Math.abs(latitude) + reach >= Math.PI / 2;
-  const columnsReach = nearPole ? heights.width : Math.ceil((reach / Math.cos(Math.abs(latitude) + reach) / (2 * Math.PI)) * heights.width) + 1;
-  const centreColumn = Math.floor(u * heights.width);
-  let highest = 0;
-  for (let row = Math.max(0, centreRow - rowsReach); row <= Math.min(heights.height - 1, centreRow + rowsReach); row++) {
-    for (let step = -Math.min(columnsReach, heights.width / 2); step <= Math.min(columnsReach, heights.width / 2); step++) {
-      const column = (((centreColumn + step) % heights.width) + heights.width) % heights.width;
-      highest = Math.max(highest, heights.values[row * heights.width + column]);
-    }
-  }
-  const mappedTop = ground.lowKm + (highest / 255) * ground.rangeKm;
-  return Math.max(mappedTop, ground.land ? 0 : -Infinity) + detailReachKm(ground);
-}
-
 export function groundFrame(localKm, radiusKm) {
   const localMetres = localKm.map((value) => value * 1000);
   const anchor = localMetres.map((value) => Math.floor(value / ANCHOR_METRES));
@@ -165,4 +153,119 @@ export function groundFrame(localKm, radiusKm) {
   const up = localKm.map((value) => value / distance);
   const surfaceOffset = fromAnchor.map((value, axis) => value - up[axis] * altitudeKm * 1000);
   return { anchor, fromAnchor, excess, altitudeKm, up, surfaceOffset };
+}
+
+export const PATCH_CELLS = 32;
+export const PATCH_SIDE = PATCH_CELLS + 1;
+export const PATCH_FLOATS = 7;
+const PATCH_RING = PATCH_SIDE + 2;
+const SKIRT_SHARE_OF_EDGE = 0.02;
+const SHALLOWEST_SKIRT_METRES = 2;
+
+export const CUBE_FACES = [
+  { normal: [1, 0, 0], across: [0, 1, 0], along: [0, 0, 1] },
+  { normal: [-1, 0, 0], across: [0, -1, 0], along: [0, 0, 1] },
+  { normal: [0, 1, 0], across: [-1, 0, 0], along: [0, 0, 1] },
+  { normal: [0, -1, 0], across: [1, 0, 0], along: [0, 0, 1] },
+  { normal: [0, 0, 1], across: [0, 1, 0], along: [-1, 0, 0] },
+  { normal: [0, 0, -1], across: [0, 1, 0], along: [1, 0, 0] },
+];
+
+export const patchEdgeMetres = (radiusKm, level) => ((Math.PI / 2) * radiusKm * 1000) / 2 ** level;
+
+export function faceDirection(face, s, t) {
+  const { normal, across, along } = CUBE_FACES[face];
+  const a = Math.tan((s * Math.PI) / 4);
+  const b = Math.tan((t * Math.PI) / 4);
+  const point = normal.map((value, axis) => value + a * across[axis] + b * along[axis]);
+  const length = Math.hypot(...point);
+  return point.map((value) => value / length);
+}
+
+export function patchCorners({ level, ix, iy }) {
+  const span = 2 / 2 ** level;
+  return { s: -1 + ix * span, t: -1 + iy * span, span };
+}
+
+function surfacePoints(ground, radiusKm, { face, level, ix, iy }) {
+  const radius = radiusKm * 1000;
+  const { s, t, span } = patchCorners({ level, ix, iy });
+  const step = span / PATCH_CELLS;
+  const footprint = patchEdgeMetres(radiusKm, level) / PATCH_CELLS;
+  const points = new Float64Array(PATCH_RING * PATCH_RING * 3);
+  const wet = new Uint8Array(PATCH_RING * PATCH_RING);
+  let lowest = Infinity;
+  let highest = -Infinity;
+  for (let j = 0; j < PATCH_RING; j++) {
+    for (let i = 0; i < PATCH_RING; i++) {
+      const up = faceDirection(face, s + (i - 1) * step, t + (j - 1) * step);
+      const surface = up.map((value) => value * radius);
+      const anchor = surface.map((value) => Math.floor(value / ANCHOR_METRES));
+      const offset = surface.map((value, axis) => value - anchor[axis] * ANCHOR_METRES);
+      const { height, seaLevel } = groundHeightMetres(ground, up, anchor, offset, footprint);
+      const top = Math.max(height, seaLevel);
+      const index = j * PATCH_RING + i;
+      wet[index] = height < seaLevel ? 1 : 0;
+      up.forEach((value, axis) => (points[index * 3 + axis] = value * (radius + top)));
+      lowest = Math.min(lowest, top);
+      highest = Math.max(highest, top);
+    }
+  }
+  return { points, wet, lowest, highest };
+}
+
+function outwardNormal(points, i, j) {
+  const at = (x, y, axis) => points[(y * PATCH_RING + x) * 3 + axis];
+  const east = [0, 1, 2].map((axis) => at(i + 1, j, axis) - at(i - 1, j, axis));
+  const north = [0, 1, 2].map((axis) => at(i, j + 1, axis) - at(i, j - 1, axis));
+  const normal = [east[1] * north[2] - east[2] * north[1], east[2] * north[0] - east[0] * north[2], east[0] * north[1] - east[1] * north[0]];
+  const outward = normal[0] * at(i, j, 0) + normal[1] * at(i, j, 1) + normal[2] * at(i, j, 2) < 0 ? -1 : 1;
+  const length = Math.hypot(...normal) * outward;
+  return normal.map((value) => value / length);
+}
+
+const PATCH_EDGES = [
+  (k) => [k, 0],
+  (k) => [k, PATCH_CELLS],
+  (k) => [0, k],
+  (k) => [PATCH_CELLS, k],
+];
+
+export function buildPatch(ground, radiusKm, patch) {
+  const { points, wet, lowest, highest } = surfacePoints(ground, radiusKm, patch);
+  const { s, t, span } = patchCorners(patch);
+  const centre = faceDirection(patch.face, s + span / 2, t + span / 2).map((value) => value * (radiusKm * 1000 + (lowest + highest) / 2));
+  const skirt = Math.max(SHALLOWEST_SKIRT_METRES, patchEdgeMetres(radiusKm, patch.level) * SKIRT_SHARE_OF_EDGE);
+  const vertices = new Float32Array((PATCH_SIDE * PATCH_SIDE + PATCH_EDGES.length * PATCH_SIDE) * PATCH_FLOATS);
+  let farthest = 0;
+  const write = (vertex, i, j, drop) => {
+    const ring = (j + 1) * PATCH_RING + i + 1;
+    const point = [0, 1, 2].map((axis) => points[ring * 3 + axis]);
+    const fromCentre = Math.hypot(...point);
+    const placed = point.map((value, axis) => value - (value / fromCentre) * drop - centre[axis]);
+    farthest = Math.max(farthest, Math.hypot(...placed));
+    vertices.set([...placed, ...outwardNormal(points, i + 1, j + 1), wet[ring]], vertex * PATCH_FLOATS);
+  };
+  for (let j = 0; j < PATCH_SIDE; j++) for (let i = 0; i < PATCH_SIDE; i++) write(j * PATCH_SIDE + i, i, j, 0);
+  PATCH_EDGES.forEach((edgeVertex, edge) => {
+    for (let k = 0; k < PATCH_SIDE; k++) write(PATCH_SIDE * PATCH_SIDE + edge * PATCH_SIDE + k, ...edgeVertex(k), skirt);
+  });
+  return { vertices, centreKm: centre.map((value) => value / 1000), boundKm: farthest / 1000, spacingMetres: patchEdgeMetres(radiusKm, patch.level) / PATCH_CELLS };
+}
+
+export function patchIndices() {
+  const indices = [];
+  const at = (i, j) => j * PATCH_SIDE + i;
+  for (let j = 0; j < PATCH_CELLS; j++) {
+    for (let i = 0; i < PATCH_CELLS; i++) indices.push(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j), at(i + 1, j + 1), at(i, j + 1));
+  }
+  PATCH_EDGES.forEach((edgeVertex, edge) => {
+    const skirtAt = (k) => PATCH_SIDE * PATCH_SIDE + edge * PATCH_SIDE + k;
+    for (let k = 0; k < PATCH_CELLS; k++) {
+      const top = at(...edgeVertex(k));
+      const nextTop = at(...edgeVertex(k + 1));
+      indices.push(top, nextTop, skirtAt(k + 1), top, skirtAt(k + 1), skirtAt(k));
+    }
+  });
+  return new Uint16Array(indices);
 }
