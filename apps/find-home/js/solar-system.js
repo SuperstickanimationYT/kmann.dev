@@ -13,6 +13,7 @@ const MOON_DISTANCE_KM = 384400;
 const MOON_ELEMENTS_EPOCH_DAYS = -1.5;
 const EARTH_SHARE_OF_MOON_OFFSET = 1 / 82.3;
 const DAYS_PER_YEAR = 365.25;
+const ORBIT_PATH_POINTS = 256;
 
 const SATELLITE_ORBITS = {
   Titan: { laplacePole: [36.4, 84.0], a: 1221900, e: 0.029, meanLongitude: 11.7, periapsisLongitude: 208, periodDays: 15.945448, apsisDegreesPerYear: 0.502, parentShare: 8978.1371 / (37931206.23 + 8978.1371) },
@@ -73,31 +74,51 @@ function eclipticToFrame([x, y, z]) {
   return equatorialToFrame([x, y * c - z * s, y * s + z * c]);
 }
 
-function planetOffsetAu(name, centuries) {
+function planetElements(name, centuries) {
   const [a, e, i, L, perihelion, node] = PLANET_ORBITS[name].map(([value, rate]) => value + rate * centuries);
-  return orbitPoint({ a, e, inclination: i * DEGREES, node: node * DEGREES, periapsisArgument: (perihelion - node) * DEGREES, meanAnomaly: (L - perihelion) * DEGREES });
+  return { a, e, inclination: i * DEGREES, node: node * DEGREES, periapsisArgument: (perihelion - node) * DEGREES, meanAnomaly: (L - perihelion) * DEGREES };
 }
 
-function moonOffsetKm(daysSinceJ2000) {
+const planetOffsetAu = (name, centuries) => orbitPoint(planetElements(name, centuries));
+
+function moonElements(daysSinceJ2000) {
   const days = daysSinceJ2000 - MOON_ELEMENTS_EPOCH_DAYS;
-  return scale(orbitPoint({
-    a: 1,
+  return {
+    a: MOON_DISTANCE_KM,
     e: 0.0549,
     inclination: 5.1454 * DEGREES,
     node: (125.1228 - 0.0529538083 * days) * DEGREES,
     periapsisArgument: (318.0634 + 0.1643573223 * days) * DEGREES,
     meanAnomaly: (115.3654 + 13.0649929509 * days) * DEGREES,
-  }), MOON_DISTANCE_KM);
+  };
 }
 
-function satelliteOffsetEquatorialKm(orbit, days) {
+function satellitePlane(orbit) {
   const pole = equatorialDirection(...orbit.laplacePole);
   const reference = normalize(cross([0, 0, 1], pole));
-  const across = cross(pole, reference);
+  return { reference, across: cross(pole, reference) };
+}
+
+function satelliteElements(orbit, days) {
   const periapsisLongitude = orbit.periapsisLongitude + orbit.apsisDegreesPerYear * (days / DAYS_PER_YEAR);
   const meanLongitude = orbit.meanLongitude + (360 / orbit.periodDays) * days;
-  const [x, y] = orbitPoint({ a: orbit.a, e: orbit.e, inclination: 0, node: 0, periapsisArgument: periapsisLongitude * DEGREES, meanAnomaly: (meanLongitude - periapsisLongitude) * DEGREES });
-  return add(scale(reference, x), scale(across, y));
+  return { a: orbit.a, e: orbit.e, inclination: 0, node: 0, periapsisArgument: periapsisLongitude * DEGREES, meanAnomaly: (meanLongitude - periapsisLongitude) * DEGREES };
+}
+
+const satelliteToFrame = ({ reference, across }) => ([x, y]) => equatorialToFrame(add(scale(reference, x), scale(across, y)));
+const parentOf = (name) => BODIES.find((body) => body.name === name).parent;
+
+const tracedBackFromNow = (elements, toFrame) =>
+  Array.from({ length: ORBIT_PATH_POINTS }, (_, step) => toFrame(orbitPoint({ ...elements, meanAnomaly: elements.meanAnomaly - (2 * Math.PI * step) / ORBIT_PATH_POINTS })));
+
+export function orbitPaths(ms) {
+  const days = (ms - J2000_MS) / MS_PER_DAY;
+  const centuries = days / DAYS_PER_CENTURY;
+  return [
+    ...Object.keys(PLANET_ORBITS).map((name) => ({ name, parent: 'Sun', pointsKm: tracedBackFromNow(planetElements(name, centuries), (point) => scale(eclipticToFrame(point), KM_PER_AU)) })),
+    { name: 'Moon', parent: 'Earth', pointsKm: tracedBackFromNow(moonElements(days), eclipticToFrame) },
+    ...Object.entries(SATELLITE_ORBITS).map(([name, orbit]) => ({ name, parent: parentOf(name), pointsKm: tracedBackFromNow(satelliteElements(orbit, days), satelliteToFrame(satellitePlane(orbit))) })),
+  ];
 }
 
 function equatorialDirection(ra, dec) {
@@ -116,13 +137,13 @@ export function placeBodies(ms) {
   const centuries = days / DAYS_PER_CENTURY;
   const fromSun = new Map([['Sun', [0, 0, 0]]]);
   for (const name of Object.keys(PLANET_ORBITS)) fromSun.set(name, scale(eclipticToFrame(planetOffsetAu(name, centuries)), KM_PER_AU));
-  const moonOffset = eclipticToFrame(moonOffsetKm(days));
+  const moonOffset = eclipticToFrame(orbitPoint(moonElements(days)));
   const earth = subtract(fromSun.get('Earth'), scale(moonOffset, EARTH_SHARE_OF_MOON_OFFSET));
   fromSun.set('Earth', earth);
   fromSun.set('Moon', add(earth, moonOffset));
   for (const [name, orbit] of Object.entries(SATELLITE_ORBITS)) {
-    const parent = BODIES.find((body) => body.name === name).parent;
-    const offset = equatorialToFrame(satelliteOffsetEquatorialKm(orbit, days));
+    const parent = parentOf(name);
+    const offset = satelliteToFrame(satellitePlane(orbit))(orbitPoint(satelliteElements(orbit, days)));
     const parentCentre = subtract(fromSun.get(parent), scale(offset, orbit.parentShare));
     fromSun.set(parent, parentCentre);
     fromSun.set(name, add(parentCentre, offset));

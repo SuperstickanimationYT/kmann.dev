@@ -70,6 +70,11 @@
   background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
 }
 
+.fh-dock [aria-pressed="true"] {
+  border-color: var(--link);
+  background: #164a7a;
+}
+
 .fh-dock [data-more][aria-expanded="true"] {
   border-color: var(--link);
 }

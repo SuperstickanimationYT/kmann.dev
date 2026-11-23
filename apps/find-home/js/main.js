@@ -14,7 +14,8 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
-import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, placeBodies } from './solar-system.js';
+import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, orbitPaths, placeBodies } from './solar-system.js';
+import { drawOrbits } from './orbits.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
@@ -256,6 +257,28 @@ function setMusic(wanted) {
 }
 
 const labelsShown = () => game.mode.labels && labelsToggle.checked;
+const orbitsButton = $('[data-orbits]');
+const orbitsShown = () => game.mode.solarSystem && orbitsButton.getAttribute('aria-pressed') === 'true';
+
+function setOrbits(shown) {
+  orbitsButton.setAttribute('aria-pressed', String(shown));
+  clearGuides();
+}
+
+function drawOrbitLines(context, width, height) {
+  const seen = bodiesInView();
+  if (!seen) return;
+  const offsets = new Map(seen.map(({ body, offsetKm }) => [body.name, offsetKm]));
+  drawOrbits(context, {
+    paths: orbitPaths(Date.now()),
+    offsetOf: (name) => offsets.get(name),
+    bodies: seen.map(({ body, offsetKm }) => ({ offsetKm, radiusKm: body.radiusKm })),
+    basis: game.basis,
+    tanHalf: eyeTanHalf(),
+    width,
+    height,
+  });
+}
 const outOfPlay = () => game.over && game.mode.scored;
 
 function setMode(name) {
@@ -270,6 +293,7 @@ function setMode(name) {
   modeSelect.value = modeFromName(name);
   labelsField.hidden = !mode.labels;
   selectField.hidden = !mode.selecting;
+  orbitsButton.hidden = !mode.solarSystem;
   longExposureField.hidden = !mode.longExposure;
   solarNote.hidden = !mode.solarSystem;
   clockLabel.textContent = mode.clockLabel;
@@ -742,7 +766,7 @@ function frame(now) {
     });
     eyeStarsChanged = false;
   }
-  if (labelsShown() || selection) refreshGuides(now);
+  if (labelsShown() || selection || orbitsShown()) refreshGuides(now);
   $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
   $('[data-speed]').textContent = formatSpeed(game.speed);
   $('[data-energy]').textContent = !game.mode.scored ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
@@ -765,6 +789,7 @@ function refreshGuides(now) {
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
   if (photo || warp || !atlasFrame.hidden) return;
+  if (orbitsShown()) drawOrbitLines(context, width, height);
   if (labelsShown()) drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
   if (selection) followSelection(context, now);
 }
@@ -1137,6 +1162,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyJ') jump();
   else if (event.code === 'KeyC') faceDirection(game.basis.forward);
   else if (event.code === 'KeyM') toggleAtlas();
+  else if (event.code === 'KeyO' && game.mode.solarSystem) setOrbits(!orbitsShown());
   else if (event.code === 'KeyL' && game.mode.labels) setLabels(!labelsToggle.checked);
   else if (event.code === 'KeyP' && game.mode.longExposure) setLongExposure(!longExposureToggle.checked);
   else if (event.code === 'Escape') {
@@ -1193,6 +1219,7 @@ giveUpButton.addEventListener('click', () => {
   faceDirection(subtract(SUN_POSITION, game.camera));
 });
 $('[data-jump]').addEventListener('click', jump);
+orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
 const moreButton = $('[data-more]');
 const showPanelState = () => moreButton.setAttribute('aria-expanded', String(studioPanelOpen()));
 moreButton.addEventListener('click', () => {
