@@ -33,6 +33,7 @@
     "js/music/player.js",
     "js/music/theory.js",
     "js/nebulae.js",
+    "js/picking.js",
     "js/population.js",
     "js/practice.js",
     "js/random.js",

@@ -12,7 +12,7 @@ const isCatalogueDesignation = (name) => /^G\d/.test(name);
 const subtract = (a, b) => a.map((value, i) => value - b[i]);
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
-function formatDistance(parsecs) {
+export function formatDistance(parsecs) {
   const lightYears = parsecs * LY_PER_PC;
   if (lightYears >= 1e6) return `${(lightYears / 1e6).toFixed(1)} million ly`;
   if (lightYears >= 100) return `${Math.round(lightYears).toLocaleString('en')} ly`;
