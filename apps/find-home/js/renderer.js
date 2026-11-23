@@ -168,9 +168,9 @@ const NO_CLOUDS = [0, 0, 0, 0];
 const CLOUD_SETTING_ORDER = ['baseKm', 'topKm', 'extinctionPerKm', 'coverShift'];
 const AIRLESS = { tint: [0, 0, 0], scaleKm: 0, glow: [0, 0, 0], hazeKm: 1, sunset: [0, 0, 0] };
 
-function groundUniforms(ground, seen) {
+function groundUniforms(ground, shown) {
   if (!ground) return NO_GROUND;
-  const index = seen.slice(0, MAX_BODIES).findIndex(({ body }) => body.name === ground.body.name);
+  const index = shown.findIndex(({ body }) => body.name === ground.body.name);
   if (index < 0) return NO_GROUND;
   const air = ground.settings.air ?? AIRLESS;
   return {
@@ -233,7 +233,15 @@ const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
 const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
 
-function bodyArrays(seen, mapRelief) {
+const brightnessRank = ({ body, offsetKm }) => (body.kind === 'star' ? -Infinity : apparentMagnitude(body, offsetKm));
+
+function brightestInDistanceOrder(seen) {
+  if (seen.length <= MAX_BODIES) return seen;
+  const kept = new Set([...seen].sort((a, b) => brightnessRank(a) - brightnessRank(b)).slice(0, MAX_BODIES));
+  return seen.filter((entry) => kept.has(entry));
+}
+
+function bodyArrays(shown, mapRelief) {
   const arrays = {
     uBodyPlace: new Float32Array(MAX_BODIES * 4),
     uBodyOccluder: new Float32Array(MAX_BODIES * 4),
@@ -243,7 +251,6 @@ function bodyArrays(seen, mapRelief) {
     uBodyLook: new Float32Array(MAX_BODIES * 4),
     uBodyMap: new Float32Array(MAX_BODIES * 4),
   };
-  const shown = seen.slice(0, MAX_BODIES);
   const ringed = shown.findIndex(({ body }) => body.rings);
   const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringed >= 0 ? shown[ringed].body.radiusKm : 0 };
   shown.forEach(({ body, offsetKm }, i) => {
@@ -370,8 +377,9 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
 
   function setBodies(program, seen, ground) {
-    const { arrays, count, rings } = bodyArrays(seen ?? [], mapRelief);
-    const groundValues = groundUniforms(ground, seen ?? []);
+    const shown = brightestInDistanceOrder(seen ?? []);
+    const { arrays, count, rings } = bodyArrays(shown, mapRelief);
+    const groundValues = groundUniforms(ground, shown);
     setUniforms(gl, program, groundValues);
     if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
     for (const [name, values] of Object.entries(arrays)) setArray(gl, program, name, values, name === 'uBodySun' || name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);

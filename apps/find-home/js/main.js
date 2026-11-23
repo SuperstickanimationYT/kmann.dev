@@ -14,7 +14,7 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
-import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, orbitPaths, placeBodies } from './solar-system.js';
+import { holdingBody, KM_PER_PC, loadBodyMaps, lowestAltitudeKm, orbitPaths, placeBodies } from './solar-system.js';
 import { drawOrbits } from './orbits.js';
 import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
@@ -648,7 +648,7 @@ function moveInSolarFrame(shiftKm) {
 
 function lowestDistanceKm(holder, offsetKm) {
   const ground = groundFor(holder);
-  if (!ground) return holder.radiusKm + LOWEST_ALTITUDE_KM;
+  if (!ground) return holder.radiusKm + lowestAltitudeKm(holder);
   const frame = groundFrame(toBodyLocal(holder, offsetKm), holder.radiusKm);
   if (frame.altitudeKm > GROUND_CHECK_KM) return holder.radiusKm;
   const { height, seaLevel } = groundHeightMetres(ground, frame.up, frame.anchor, frame.surfaceOffset, COLLISION_FOOTPRINT_METRES);
