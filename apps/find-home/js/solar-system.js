@@ -244,7 +244,7 @@ export const BODIES = [
   { name: 'Saturn', kind: 'giant', rings: true, radiusKm: 58232, pole: [40.589, 83.537], spin: [38.9, 810.7939024], tint: [0.88, 0.8, 0.62], magnitude: -8.88 },
   { name: 'Uranus', kind: 'giant', radiusKm: 25362, pole: [257.311, -15.175], spin: [203.81, -501.1600928], tint: [0.66, 0.85, 0.88], magnitude: -7.19 },
   { name: 'Titan', kind: 'hazy', parent: 'Saturn', radiusKm: 2574.76, pole: [39.4827, 83.4279], spin: [186.5855, 22.5769768], tint: [0.8, 0.56, 0.3], magnitude: -1.28, map: 'titan', mapKmPerPixel: 15.8, roughness: 0, ground: { roughness: 0.03, craters: 0.1, viewFromKm: 120, air: { tint: [0.5, 0.33, 0.15], scaleKm: 21, glow: [0.6, 0.42, 0.2], hazeKm: 8, sunset: [0.4, 0.22, 0.08], overcast: 0.9 } } },
-  { name: 'Neptune', kind: 'giant', radiusKm: 24622, pole: [299.36, 43.46], spin: [249.978, 541.1397757], tint: [0.36, 0.5, 0.85], magnitude: -6.87 },
+  { name: 'Neptune', kind: 'giant', radiusKm: 24622, pole: [299.36, 43.46], spin: [249.978, 541.1397757], tint: [0.51, 0.69, 0.79], magnitude: -6.87 },
   { name: 'Phobos', kind: 'rocky', parent: 'Mars', synchronous: true, radiusKm: 11.08, tint: [0.42, 0.4, 0.38], magnitude: 11.8 },
   { name: 'Deimos', kind: 'rocky', parent: 'Mars', synchronous: true, radiusKm: 6.2, tint: [0.48, 0.45, 0.42], magnitude: 12.89 },
   { name: 'Io', kind: 'rocky', parent: 'Jupiter', synchronous: true, radiusKm: 1821.49, tint: [0.9, 0.82, 0.45], magnitude: -1.68 },

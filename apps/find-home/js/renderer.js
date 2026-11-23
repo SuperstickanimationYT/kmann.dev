@@ -14,6 +14,7 @@ import {
   SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
+import { createGiantPainter } from './giant-painter.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { apparentMagnitude, MAPPED_BODIES, sunShareVisible } from './solar-system.js';
 import { mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
@@ -244,7 +245,7 @@ function brightestInDistanceOrder(seen) {
   return seen.filter((entry) => kept.has(entry));
 }
 
-function bodyArrays(shown, mapRelief) {
+function bodyArrays(shown, mapRelief, giants) {
   const arrays = {
     uBodyPlace: new Float32Array(MAX_BODIES * 4),
     uBodyOccluder: new Float32Array(MAX_BODIES * 4),
@@ -262,6 +263,8 @@ function bodyArrays(shown, mapRelief) {
     const angularRadius = Math.asin(Math.min(1, body.radiusKm / distance));
     const direction = offsetKm.map((value) => value / distance);
     const star = body.kind === 'star';
+    const relief = mapRelief[body.mapLayer] ?? 0;
+    const giantFaces = body.kind === 'giant' ? giants.facesOf(body.name) : null;
     const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
     arrays.uBodyOccluder.set([...direction, star ? 0 : angularRadius], i * 4);
@@ -273,8 +276,8 @@ function bodyArrays(shown, mapRelief) {
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), BODY_KIND_CODES[body.kind]], i * 4);
     arrays.uBodyMap.set([
       mapped ? body.mapLayer : -1,
-      mapped ? mapRelief[body.mapLayer] : 0,
-      body.roughness ?? 0,
+      giantFaces ? giantFaces.now : relief,
+      giantFaces ? giantFaces.next : body.roughness ?? 0,
       star ? 0 : starPointBrightness(apparentMagnitude(body, offsetKm)),
     ], i * 4);
   });
@@ -382,9 +385,11 @@ export function createRenderer(canvas, armMap, galaxies) {
     mapRelief[layer] = relief;
   }
 
+  const giants = createGiantPainter(gl, emptyVao);
+
   function setBodies(program, seen, ground) {
     const shown = brightestInDistanceOrder(seen ?? []);
-    const { arrays, count, rings } = bodyArrays(shown, mapRelief);
+    const { arrays, count, rings } = bodyArrays(shown, mapRelief, giants);
     const groundValues = groundUniforms(ground, shown);
     setUniforms(gl, program, groundValues);
     if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
@@ -400,6 +405,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(program.uniforms.uBodyColour, BODY_COLOUR_UNIT);
       gl.uniform1i(program.uniforms.uBodyHeight, BODY_HEIGHT_UNIT);
+      giants.bind(program);
     }
   }
 
@@ -790,7 +796,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, ground, warp, adaptation, longExposure }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (skyResolution && !warp) {
@@ -800,6 +806,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       drawSky({ ...view, pixelAngle: view.pixelAngle / skyResolution }, nebulae, stars.reaches, 1, seed);
     }
 
+    giants.advance(bodies ?? [], view.pixelAngle, cloudSeconds);
     const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
