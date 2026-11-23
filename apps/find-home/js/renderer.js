@@ -150,6 +150,9 @@ const NO_MORPH = [0, 0, 1];
 const GROUND_DETAIL_UNIT = 9;
 const CLOUD_BILLOWS_UNIT = 10;
 const CLOUD_VIEW_UNIT = 11;
+const CLOUD_HISTORY_UNIT = 12;
+const CLOUD_HISTORY_DEPTH_UNIT = 13;
+const CLOUD_PASS_OUTPUTS = 2;
 const CLOUD_RESOLUTION_SHARE = 0.5;
 const CLOUD_BILLOWS_WIDTH = 1024 * 2 ** (CLOUD_BAKED_OCTAVES - 1);
 const GROUND_DETAIL_TEXELS_PER_CELL = 4;
@@ -308,7 +311,9 @@ export function createRenderer(canvas, armMap, galaxies) {
   })();
   let groundTarget = null;
   let cloudBillows = null;
-  let cloudTarget = null;
+  let cloudTargets = [];
+  let cloudFrame = 0;
+  let previousCloudView = null;
   const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
   const cameraStarProgram = createProgram(gl, CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT);
   const developProgram = createProgram(gl, FULLSCREEN_VERTEX, DEVELOP_FRAGMENT);
@@ -677,29 +682,53 @@ export function createRenderer(canvas, armMap, galaxies) {
     return cloudBillows;
   }
 
-  function cloudTargetFitting(width, height) {
+  function cloudTargetsFitting(width, height) {
     const wanted = [width, height].map((size) => Math.ceil(size * CLOUD_RESOLUTION_SHARE));
-    if (cloudTarget?.width === wanted[0] && cloudTarget.height === wanted[1]) return cloudTarget;
-    cloudTarget?.destroy();
-    cloudTarget = createTarget(gl, ...wanted);
-    return cloudTarget;
+    if (cloudTargets[0]?.width === wanted[0] && cloudTargets[0].height === wanted[1]) return cloudTargets;
+    cloudTargets.forEach((target) => target.destroy());
+    cloudTargets = [0, 1].map(() => createTarget(gl, ...wanted, CLOUD_PASS_OUTPUTS));
+    previousCloudView = null;
+    return cloudTargets;
+  }
+
+  function cloudHistoryUniforms(ground) {
+    const previous = previousCloudView?.body === ground.body.name ? previousCloudView : null;
+    if (!previous) return { uCloudHistoryOn: 0 };
+    return {
+      uCloudHistoryOn: 1,
+      uPreviousLocalRight: previous.local.uLocalRight,
+      uPreviousLocalUp: previous.local.uLocalUp,
+      uPreviousLocalForward: previous.local.uLocalForward,
+      uPreviousGroundCamera: previous.camera,
+      uPreviousTanHalf: previous.tanHalf,
+    };
   }
 
   function drawClouds(view, bodies, ground, groundView) {
-    const target = cloudTargetFitting(groundView.width, groundView.height);
+    const targets = cloudTargetsFitting(groundView.width, groundView.height);
+    cloudFrame += 1;
+    const target = targets[cloudFrame % 2];
+    const history = targets[(cloudFrame + 1) % 2];
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.viewport(0, 0, target.width, target.height);
     gl.useProgram(cloudProgram.program);
-    setUniforms(gl, cloudProgram, viewUniforms(view));
+    setUniforms(gl, cloudProgram, { ...viewUniforms(view), ...cloudHistoryUniforms(ground), uCloudFrame: cloudFrame });
     gl.activeTexture(gl.TEXTURE0 + GROUND_VIEW_UNIT);
     gl.bindTexture(gl.TEXTURE_2D, groundView.textures[0]);
+    gl.activeTexture(gl.TEXTURE0 + CLOUD_HISTORY_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, history.textures[0]);
+    gl.activeTexture(gl.TEXTURE0 + CLOUD_HISTORY_DEPTH_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, history.textures[1]);
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(cloudProgram.uniforms.uGroundView, GROUND_VIEW_UNIT);
+    gl.uniform1i(cloudProgram.uniforms.uCloudHistory, CLOUD_HISTORY_UNIT);
+    gl.uniform1i(cloudProgram.uniforms.uCloudHistoryDepth, CLOUD_HISTORY_DEPTH_UNIT);
     gl.uniform1i(cloudProgram.uniforms.uGroundDetail, GROUND_DETAIL_UNIT);
     gl.uniform1i(cloudProgram.uniforms.uCloudBillows, CLOUD_BILLOWS_UNIT);
     setBodies(cloudProgram, bodies, ground);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    previousCloudView = { body: ground.body.name, local: bodyLocalBasis(ground.body, view.basis), camera: [...ground.cameraLocalKm], tanHalf: [...view.tanHalf] };
     return target.textures[0];
   }
 

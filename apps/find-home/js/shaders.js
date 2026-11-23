@@ -476,7 +476,7 @@ uniform float uLongExposure;
 ${COCKPIT}
 ${WARP}
 in vec2 vUv;
-out vec4 outColour;
+layout(location = 0) out vec4 outColour;
 
 uint hashUint(uint x) {
   x ^= x >> 16;
@@ -761,6 +761,7 @@ const float GROUND_HIT = 2.0;
 const int CLOUD_STEPS = 16;
 const float CLOUD_STEP_BLUR_SHARE = 0.5;
 const ivec4 CLOUD_JITTER_ORDER = ivec4(0, 2, 3, 1);
+const float CLOUD_GOLDEN_STEP = 0.618034;
 const float CLOUD_LONGEST_MARCH_KM = 50.0;
 const float CLOUD_LIT_ALBEDO = 0.8;
 const float CLOUD_DARK_BASE_SHARE = 0.4;
@@ -942,17 +943,23 @@ float cloudDensity(float coverage, vec3 fromCamera, float blurMetres, int octave
   return cloudDensityFor(coverage, uGroundFromAnchor + fromCamera * 1000.0, share, blurMetres, octaves);
 }
 
-vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm) {
+uniform float uCloudFrame;
+
+vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
+  depthKm = -1.0;
   if (!cloudsHere()) return vec4(0.0);
   vec2 span = cloudSlabSpan(ray);
   float enter = max(span.x, 0.0);
   float leave = min(min(span.y, nearestSolidKm), enter + CLOUD_LONGEST_MARCH_KM);
   if (span.y <= 0.0 || leave <= enter) return vec4(0.0);
+  depthKm = 0.5 * (enter + leave);
   ivec2 pixel = ivec2(gl_FragCoord.xy) & 1;
-  float jitter = (float(CLOUD_JITTER_ORDER[pixel.x + 2 * pixel.y]) + 0.5) / 4.0;
+  float jitter = fract((float(CLOUD_JITTER_ORDER[pixel.x + 2 * pixel.y]) + 0.5) / 4.0 + uCloudFrame * CLOUD_GOLDEN_STEP);
   float coverageIn = cloudCoverageAt(normalize(uGroundCamera + ray * enter));
   float coverageOut = cloudCoverageAt(normalize(uGroundCamera + ray * leave));
   if (max(coverageIn, coverageOut) < CLOUD_LEAST_COVERAGE) return vec4(0.0);
+  float depthWeight = 0.0;
+  float weightedDepth = 0.0;
   float sunProbeKm = CLOUD_SUN_PROBE_SHARE * (uGroundClouds.y - uGroundClouds.x);
   float phase = 1.0 + CLOUD_FORWARD_GLOW * pow(max(dot(ray, sun), 0.0), 6.0);
   vec3 skyBehind = groundSky(ray, sun, normalize(uGroundCamera));
@@ -979,9 +986,12 @@ vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm) {
       float share = (length(uGroundCamera + ray * t) - uGroundRadius - uGroundClouds.x) / (uGroundClouds.y - uGroundClouds.x);
       vec3 scattered = CLOUD_LIT_ALBEDO * (sunlit * daylight + skylit * mix(CLOUD_DARK_BASE_SHARE, 1.0, share));
       light += clear * opacity * mix(scattered, skyBehind, 1.0 - exp(-t * hazePerKm));
+      depthWeight += clear * opacity;
+      weightedDepth += clear * opacity * t;
       clear *= 1.0 - opacity;
     }
   }
+  if (depthWeight > CLOUD_LEAST_COVERAGE) depthKm = weightedDepth / depthWeight;
   return vec4(light, 1.0 - clear);
 }
 
@@ -1297,8 +1307,38 @@ float farthestGroundKm() {
   return farthest;
 }
 
+uniform sampler2D uCloudHistory;
+uniform sampler2D uCloudHistoryDepth;
+uniform float uCloudHistoryOn;
+uniform vec3 uPreviousLocalRight;
+uniform vec3 uPreviousLocalUp;
+uniform vec3 uPreviousLocalForward;
+uniform vec3 uPreviousGroundCamera;
+uniform vec2 uPreviousTanHalf;
+layout(location = 1) out vec4 outCloudDepth;
+
+const float CLOUD_HISTORY_WEIGHT = 0.85;
+const float CLOUD_HISTORY_DEPTH_TOLERANCE = 0.15;
+
+vec2 previousUv(vec3 fromPrevious) {
+  float ahead = dot(fromPrevious, uPreviousLocalForward);
+  if (ahead <= 0.0) return vec2(-1.0);
+  return vec2(dot(fromPrevious, uPreviousLocalRight) / (ahead * uPreviousTanHalf.x), dot(fromPrevious, uPreviousLocalUp) / (ahead * uPreviousTanHalf.y)) * 0.5 + 0.5;
+}
+
 void main() {
-  outColour = cloudsSeenFrom(groundLocal(viewDirection()), groundLocal(uBodySun[uGround]), farthestGroundKm());
+  vec3 ray = groundLocal(viewDirection());
+  float depthKm;
+  vec4 current = cloudsSeenFrom(ray, groundLocal(uBodySun[uGround]), farthestGroundKm(), depthKm);
+  outColour = current;
+  outCloudDepth = vec4(depthKm, 0.0, 0.0, 1.0);
+  if (uCloudHistoryOn < 0.5 || depthKm <= 0.0) return;
+  vec3 fromPrevious = uGroundCamera + ray * depthKm - uPreviousGroundCamera;
+  vec2 uv = previousUv(fromPrevious);
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return;
+  float expected = length(fromPrevious);
+  if (abs(texture(uCloudHistoryDepth, uv).r - expected) > CLOUD_HISTORY_DEPTH_TOLERANCE * expected) return;
+  outColour = mix(current, texture(uCloudHistory, uv), CLOUD_HISTORY_WEIGHT);
 }`;
 
 export const EYE_FRAGMENT = `#version 300 es
