@@ -13,6 +13,7 @@ import { describeStar, drawEdgeArrow, drawGuides, formatDistance } from './pract
 import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
+import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, LOWEST_ALTITUDE_KM, placeBodies } from './solar-system.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
@@ -805,7 +806,7 @@ function toggleExposure() {
     timer: setInterval(exposeFrame, CAMERA.realSecondsPerFrame * 1000),
   };
   game.exposures += 1;
-  exposeButton.textContent = 'Stop exposure';
+  exposeButton.textContent = 'Stop photo';
   atlasFrame.hidden = true;
   clearGuides();
   exposeFrame();
@@ -823,7 +824,7 @@ function exposeFrame() {
 function stopExposure() {
   clearInterval(photo.timer);
   photo.running = false;
-  exposeButton.textContent = 'Start exposure';
+  exposeButton.textContent = 'Photo';
   developPhoto();
 }
 
@@ -831,7 +832,7 @@ function closePhoto() {
   if (photo) clearInterval(photo.timer);
   photo = null;
   photoFrame.hidden = true;
-  exposeButton.textContent = 'Start exposure';
+  exposeButton.textContent = 'Photo';
 }
 
 function developPhoto() {
@@ -1192,6 +1193,16 @@ giveUpButton.addEventListener('click', () => {
   faceDirection(subtract(SUN_POSITION, game.camera));
 });
 $('[data-jump]').addEventListener('click', jump);
+const moreButton = $('[data-more]');
+const showPanelState = () => moreButton.setAttribute('aria-expanded', String(studioPanelOpen()));
+moreButton.addEventListener('click', () => {
+  toggleStudioPanel();
+  showPanelState();
+});
+window.addEventListener('resize', showPanelState);
+const dock = $('[data-dock]');
+new ResizeObserver(() => stage.style.setProperty('--dock-height', `${dock.offsetHeight}px`)).observe(dock);
+showPanelState();
 $('[data-align]').addEventListener('click', () => faceDirection(game.basis.forward));
 modeSelect.addEventListener('change', () => setMode(modeSelect.value));
 $('[data-select-form]').addEventListener('submit', (event) => {

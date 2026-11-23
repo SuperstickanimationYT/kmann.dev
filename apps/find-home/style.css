@@ -1,6 +1,102 @@
 .fh-stage {
+  --dock-height: 58px;
   overflow: hidden;
   touch-action: none;
+}
+
+.fh-dock {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: var(--dock-height);
+  padding: 9px 12px;
+  border-top: 1px solid var(--edge);
+  background: rgba(3, 8, 15, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.fh-dock-select {
+  display: flex;
+  flex: 1 1 260px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fh-dock-select input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: #071627;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+}
+
+.fh-dock-buttons {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fh-dock button {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fh-dock button:hover {
+  background: #133659;
+}
+
+.fh-dock .fh-primary {
+  background: linear-gradient(103deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.fh-dock [data-more][aria-expanded="true"] {
+  border-color: var(--link);
+}
+
+.fh-dock :focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.fh-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .fh-dock-buttons {
+    flex-basis: 100%;
+  }
+
+  .fh-dock-buttons button {
+    flex: 1 1 0;
+    padding: 8px 6px;
+  }
 }
 
 .fh-stage [hidden] {
@@ -101,7 +197,7 @@
 .fh-status {
   position: absolute;
   z-index: 2;
-  inset: auto 16px 18px;
+  inset: auto 16px calc(var(--dock-height) + 14px);
   margin: 0;
   text-align: center;
   font-size: 14px;
@@ -188,7 +284,7 @@
 .fh-touch {
   position: absolute;
   right: 16px;
-  bottom: 56px;
+  bottom: calc(var(--dock-height) + 56px);
   display: none;
   grid-template-columns: repeat(2, 52px);
   gap: 10px;

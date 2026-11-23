@@ -118,3 +118,13 @@ window.visualViewport?.addEventListener('resize', () => {
   if (narrow.matches && !drag) snapToStop(remembered().stop ?? DEFAULT_STOP);
 });
 applyLayout();
+
+export function studioPanelOpen() {
+  if (narrow.matches) return nearestStop(panel.getBoundingClientRect().height) > 0;
+  return !body.classList.contains('studio-collapsed');
+}
+
+export function toggleStudioPanel() {
+  if (narrow.matches) snapToStop(studioPanelOpen() ? 0 : DEFAULT_STOP);
+  else setCollapsed(studioPanelOpen());
+}
