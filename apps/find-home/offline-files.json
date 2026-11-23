@@ -1,5 +1,5 @@
 {
-  "bytes": 1696663,
+  "bytes": 1700673,
   "files": [
     "./",
     "data/nearby-star-names.json",
@@ -55,6 +55,7 @@
     "../../assets/img/mark.svg",
     "../../assets/css/site.css",
     "../../assets/css/studio.css",
+    "../../assets/js/studio.js",
     "../../assets/js/offline.js"
   ]
 }
