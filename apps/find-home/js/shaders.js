@@ -854,45 +854,89 @@ float sunThroughRings(int i, vec3 surface) {
 }
 
 const float STAR_KIND = 3.0;
-const float CORONA_BRIGHTNESS = 1.2;
-const float CORONA_INNER_FALLOFF = 7.0;
-const float CORONA_POLAR_FALLOFF = 4.5;
-const float CORONA_STREAMER_FALLOFF = 1.9;
-const float CORONA_STREAMER_SHARE = 0.75;
-const vec4 CORONA_HELMET_ANGLES = vec4(1.25, 1.95, -1.4, -2.05);
-const float CORONA_HELMET_WIDTH_AT_BASE = 0.4;
-const float CORONA_HELMET_WIDTH_ALOFT = 0.2;
-const float CORONA_HELMET_CUSP_RADII = 2.5;
-const float CORONA_FIELD_BEND = 0.45;
-const float CORONA_WAVINESS = 0.012;
-const float CORONA_RAY_CONTRAST = 0.5;
-const vec3 CORONA_COLOUR = vec3(1.0, 0.96, 0.9);
+const int CORONA_STREAMERS = 5;
+const vec4 CORONA_STREAMER_SHAPE[CORONA_STREAMERS] = vec4[](
+  vec4(1.05, 0.7, 1.0, 0.08),
+  vec4(-0.2, 0.42, 0.75, -0.06),
+  vec4(-1.95, 0.55, 0.65, -0.1),
+  vec4(2.95, 0.62, 0.85, 0.12),
+  vec4(-1.1, 0.34, 0.35, 0.05)
+);
+const float CORONA_CONVERGENCE = 1.4;
+const float CORONA_CONVERGENCE_HEIGHT = 0.9;
+const float CORONA_PINCH_REACH = 1.3;
+const float CORONA_HOLE_DENSITY = 0.35;
+const float CORONA_STREAMER_DENSITY = 2.6;
+const float CORONA_GAIN = 4.5;
+const float CORONA_TONE = 1.0;
+const float CORONA_LOOP_HEIGHT = 0.3;
+const float CORONA_REACH_RADII = 1.1;
+const float CORONA_TAPER = 0.8;
+const float CORONA_TAPER_RADII = 2.5;
+const float CORONA_THREAD_CONTRAST = 0.16;
+const float CORONA_PLUME_CONTRAST = 0.4;
+const vec3 CORONA_COLOUR = vec3(1.0, 0.98, 0.96);
 bool starHit = false;
 
-float coronaRootAngle(float positionAngle, float radii) {
-  float fromPole = abs(positionAngle);
-  float bentAway = CORONA_FIELD_BEND * sin(2.0 * fromPole) * (1.0 - 1.0 / radii);
-  float wave = CORONA_WAVINESS * sin(3.0 * radii + 5.0 * positionAngle) * (1.0 - 1.0 / radii);
-  return sign(positionAngle) * (fromPole - bentAway) + wave;
+float angleApart(float a, float b) {
+  return atan(sin(a - b), cos(a - b));
+}
+
+float coronaRootAngle(float positionAngle, float climb) {
+  float root = positionAngle;
+  for (int k = 0; k < CORONA_STREAMERS; k++) {
+    vec4 streamer = CORONA_STREAMER_SHAPE[k];
+    float off = angleApart(positionAngle, streamer.x + streamer.w * climb);
+    float reach = off / (CORONA_PINCH_REACH * streamer.y);
+    float pinch = exp(-reach * reach);
+    root += pinch * (off * CORONA_CONVERGENCE * climb - streamer.w * climb);
+  }
+  return root;
+}
+
+float coronaThread(float root, float cells) {
+  float x = fract(root / 6.2831853) * cells;
+  float cell = floor(x);
+  float next = mod(cell + 1.0, cells);
+  float a = fract(sin(cell * 127.1 + cells) * 43758.5453);
+  float b = fract(sin(next * 127.1 + cells) * 43758.5453);
+  float t = fract(x);
+  return 2.0 * mix(a, b, t * t * (3.0 - 2.0 * t)) - 1.0;
 }
 
 vec3 coronaLight(int i, vec3 direction) {
   vec3 centre = uBodyPlace[i].xyz;
   float apart = atan(length(cross(direction, centre)), dot(direction, centre));
-  float radii = apart / uBodyPlace[i].w;
-  if (uCoronaShown <= 0.0 || radii < 1.0) return vec3(0.0);
+  float radii = max(apart / uBodyPlace[i].w, 1.0);
+  if (uCoronaShown <= 0.0) return vec3(0.0);
   vec3 northOnSky = normalize(uBodyNorth[i] - centre * dot(uBodyNorth[i], centre));
   vec3 outward = direction - centre * dot(direction, centre);
   float positionAngle = atan(dot(outward, cross(centre, northOnSky)), dot(outward, northOnSky));
-  float root = coronaRootAngle(positionAngle, radii);
-  float helmetWidth = mix(CORONA_HELMET_WIDTH_AT_BASE, CORONA_HELMET_WIDTH_ALOFT, smoothstep(1.0, CORONA_HELMET_CUSP_RADII, radii));
-  vec4 offHelmet = atan(sin(root - CORONA_HELMET_ANGLES), cos(root - CORONA_HELMET_ANGLES)) / helmetWidth;
-  vec4 helmets = exp(-offHelmet * offHelmet);
-  float equatorial = max(0.5 * pow(abs(sin(root)), 6.0), max(max(helmets.x, helmets.y), max(helmets.z, helmets.w)));
-  float rays = 1.0 + CORONA_RAY_CONTRAST * (0.5 * sin(7.0 * root + 1.3) + 0.3 * sin(13.0 * root + 4.1) + 0.2 * sin(29.0 * root + 2.2) + 0.15 * sin(53.0 * root));
-  float outer = pow(radii, -mix(CORONA_POLAR_FALLOFF, CORONA_STREAMER_FALLOFF, equatorial)) * mix(1.0 - CORONA_STREAMER_SHARE, 1.0, equatorial) * rays;
-  float inner = pow(radii, -CORONA_INNER_FALLOFF);
-  return CORONA_COLOUR * CORONA_BRIGHTNESS * uCoronaShown * (inner + outer) * smoothstep(1.0, 1.01, radii);
+  float climb = 1.0 - exp((1.0 - radii) / CORONA_CONVERGENCE_HEIGHT);
+  float root = coronaRootAngle(positionAngle, climb);
+  float taper = 1.0 - CORONA_TAPER * smoothstep(1.0, CORONA_TAPER_RADII, radii);
+  float streamers = 0.0;
+  for (int k = 0; k < CORONA_STREAMERS; k++) {
+    vec4 streamer = CORONA_STREAMER_SHAPE[k];
+    float off = abs(angleApart(root, streamer.x)) / (streamer.y * taper);
+    streamers = max(streamers, streamer.z * (1.0 - smoothstep(0.35, 1.15, off)));
+  }
+  float resolved = smoothstep(8.0, 40.0, uBodyPlace[i].w / uPixelAngle);
+  float threads = resolved * (0.5 * coronaThread(root, 37.0) + 0.3 * coronaThread(root, 83.0) + 0.2 * coronaThread(root, 171.0));
+  float contrast = mix(CORONA_PLUME_CONTRAST, CORONA_THREAD_CONTRAST, min(streamers, 1.0));
+  float density = mix(1.0, mix(CORONA_HOLE_DENSITY, CORONA_STREAMER_DENSITY, streamers) * (1.0 + contrast * threads), smoothstep(0.0, CORONA_LOOP_HEIGHT, radii - 1.0));
+  float falloff = 2.565 * pow(radii, -17.0) + 1.425 * pow(radii, -7.0) + 0.0532 * pow(radii, -2.5);
+  float reached = (radii - 1.0) / CORONA_REACH_RADII;
+  float shown = 1.0 - exp(-CORONA_GAIN * exp(-reached * reached) * pow(falloff * density, CORONA_TONE));
+  return CORONA_COLOUR * shown * uCoronaShown;
+}
+
+vec3 coronaBehind(vec3 direction) {
+  if (uCoronaShown <= 0.0) return vec3(0.0);
+  for (int i = 0; i < ${MAX_BODIES}; i++) {
+    if (i < uBodyCount && uBodyLook[i].w == STAR_KIND && dot(direction, uBodyPlace[i].xyz) > 0.0) return coronaLight(i, direction);
+  }
+  return vec3(0.0);
 }
 
 vec4 bodiesColour(vec3 direction) {
@@ -908,7 +952,7 @@ vec4 bodiesColour(vec3 direction) {
     float miss = length(direction * along - place.xyz);
     float pointSigma = POINT_SIGMA_PIXELS * uPixelAngle;
     float unresolved = 1.0 - smoothstep(0.5, 2.0, radius / uPixelAngle);
-    float cover = along > 0.0 ? clamp((radius - miss) / max(fwidth(miss), 1e-9) + 0.5, 0.0, 1.0) : 0.0;
+    float cover = along > 0.0 ? clamp((radius - miss) / uPixelAngle + 0.5, 0.0, 1.0) : 0.0;
     if (along > 0.0) points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
     if (along > 0.0 && uBodyLook[i].w == STAR_KIND) points += coronaLight(i, direction);
     if (cover <= 0.0) {
@@ -920,7 +964,10 @@ vec4 bodiesColour(vec3 direction) {
     starHit = uBodyLook[i].w == STAR_KIND;
     vec3 body = shadeBody(i, direction, hit, radius);
     if (i == uRingedBody) body *= sunThroughRings(i, direction * hit);
-    if (ring.a <= 0.0) return vec4(body * cover + points, cover);
+    if (ring.a <= 0.0) {
+      vec3 behind = starHit || cover >= 1.0 ? vec3(0.0) : coronaBehind(direction) * (1.0 - cover);
+      return vec4(body * cover + behind + points, cover);
+    }
     if (ringHit < hit) return vec4(ring.rgb + body * cover * (1.0 - ring.a) + points, 1.0 - (1.0 - ring.a) * (1.0 - cover));
     return vec4(body * cover + ring.rgb * (1.0 - cover) + points, cover + ring.a * (1.0 - cover));
   }
@@ -1653,6 +1700,9 @@ out float vSpread;
 out float vSize;
 out float vGlare;
 uniform float uLongExposure;
+uniform float uSunVisible;
+
+const float BRIGHTER_THAN_ANY_OTHER_STAR = -15.0;
 
 vec3 bandFluxes(float colour) {
   float redIndex = min(1.4, 0.62 * colour + 0.04);
@@ -1726,6 +1776,7 @@ void main() {
   vec3 tint = bandFluxes(aLook.y) * extinction / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), tint.b);
   vColour = mix(vec3(0.9, 0.93, 1.0), tint, colourShare) * brightness;
+  if (seenMagnitude < BRIGHTER_THAN_ANY_OTHER_STAR) vColour *= uSunVisible;
   vSpread = 1.0 + max(0.0, 4.0 - seenMagnitude) * 0.5;
   vGlare = clamp(-1.0 - seenMagnitude, 0.0, 10.0);
   vSize = seenMagnitude < 6.8 ? min(128.0, ceil(vSpread * 4.0 + vGlare * 10.0)) : 0.0;
