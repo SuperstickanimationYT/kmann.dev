@@ -755,7 +755,8 @@ const float ANCHOR_METRES = ${ANCHOR_METRES}.0;
 const float WATER_FRESNEL_HEAD_ON = 0.02;
 const float GROUND_HIT = 2.0;
 const int CLOUD_STEPS = 16;
-const float CLOUD_STEP_BLUR_SHARE = 0.35;
+const float CLOUD_STEP_BLUR_SHARE = 0.5;
+const ivec4 CLOUD_JITTER_ORDER = ivec4(0, 2, 3, 1);
 const float CLOUD_LONGEST_MARCH_KM = 50.0;
 const float CLOUD_LIT_ALBEDO = 0.8;
 const float CLOUD_DARK_BASE_SHARE = 0.4;
@@ -770,6 +771,9 @@ const float CLOUD_DOME_EROSION = 0.25;
 const float CLOUD_SHADOW_BLUR_METRES = 200.0;
 const vec4 CLOUD_CELL_WEIGHTS = vec4(0.45, 0.28, 0.17, 0.1);
 const ivec4 CLOUD_CELL_OCTAVES = ivec4(3, 4, 6, 7);
+const ivec3 CLOUD_REGION_OCTAVES = ivec3(0, 1, 2);
+const vec3 CLOUD_REGION_WEIGHTS = vec3(0.5, 0.3, 0.2);
+const float CLOUD_REGION_SWING = 1.6;
 const float CLOUD_FLAT_BASE_SHARE = 0.12;
 const float CLOUD_DOME_START_SHARE = 0.35;
 const float CLOUD_SUN_PROBE_SHARE = 0.35;
@@ -901,6 +905,15 @@ float cloudCoverageAt(vec3 up) {
   return smoothstep(CLOUD_CLEAR_BILLOWS, CLOUD_OVERCAST_BILLOWS, textureLod(uCloudBillows, groundUv(up), 0.0).r + uGroundClouds.w);
 }
 
+float cloudRegionalCoverage(float coverage, vec3 offset) {
+  float region = 0.0;
+  for (int i = 0; i < 3; i++) {
+    int octave = CLOUD_REGION_OCTAVES[i];
+    region += CLOUD_REGION_WEIGHTS[i] * (groundDetail(octave, offset, ANCHOR_METRES / float(2 << octave), 970 + i).w - 0.5);
+  }
+  return clamp(coverage * (1.0 + CLOUD_REGION_SWING * region * 2.0), 0.0, 1.0);
+}
+
 float cloudCells(vec3 offset, float blurMetres, int octaves) {
   float cells = 0.0;
   for (int i = 0; i < octaves; i++) {
@@ -931,7 +944,8 @@ vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm) {
   float enter = max(span.x, 0.0);
   float leave = min(min(span.y, nearestSolidKm), enter + CLOUD_LONGEST_MARCH_KM);
   if (span.y <= 0.0 || leave <= enter) return vec4(0.0);
-  float jitter = float(hashUint(uint(gl_FragCoord.x) + hashUint(uint(gl_FragCoord.y)))) / 4294967295.0;
+  ivec2 pixel = ivec2(gl_FragCoord.xy) & 1;
+  float jitter = (float(CLOUD_JITTER_ORDER[pixel.x + 2 * pixel.y]) + 0.5) / 4.0;
   float coverageIn = cloudCoverageAt(normalize(uGroundCamera + ray * enter));
   float coverageOut = cloudCoverageAt(normalize(uGroundCamera + ray * leave));
   if (max(coverageIn, coverageOut) < CLOUD_LEAST_COVERAGE) return vec4(0.0);
@@ -945,7 +959,7 @@ vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm) {
     float along = (float(i) + jitter) / float(CLOUD_STEPS);
     float t = mix(enter, leave, along * along);
     float stepKm = (leave - enter) * 2.0 * max(along, 0.5 / float(CLOUD_STEPS)) / float(CLOUD_STEPS);
-    float coverage = mix(coverageIn, coverageOut, along * along);
+    float coverage = cloudRegionalCoverage(mix(coverageIn, coverageOut, along * along), uGroundFromAnchor + ray * t * 1000.0);
     float blurMetres = max(uPixelAngle * t, CLOUD_STEP_BLUR_SHARE * stepKm) * 1000.0;
     float density = cloudDensity(coverage, ray * t, blurMetres, CLOUD_ALL_CELL_OCTAVES);
     if (density > 0.0) {
@@ -971,7 +985,7 @@ float sunThroughClouds(vec3 up, vec3 sun, vec3 offset, float footprint) {
   if (!cloudsHere()) return 1.0;
   float sunHeight = max(dot(sun, up), 0.05);
   float towardSunKm = 0.5 * (uGroundClouds.x + uGroundClouds.y) / sunHeight;
-  float coverage = cloudCoverageAt(normalize(up * uGroundRadius + sun * towardSunKm));
+  float coverage = cloudRegionalCoverage(cloudCoverageAt(normalize(up * uGroundRadius + sun * towardSunKm)), offset + sun * towardSunKm * 1000.0);
   if (coverage < CLOUD_LEAST_COVERAGE) return 1.0;
   float thicknessKm = uGroundClouds.y - uGroundClouds.x;
   float density = 0.0;
