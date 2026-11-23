@@ -25,6 +25,7 @@ const EQUATORIAL_TO_GALACTIC = [
 ];
 
 const FAINT_NEIGHBOURS = [70890];
+const MODERN_PARALLAX_MAS = { 71683: 750.81, 71681: 750.81, 70890: 768.07 };
 const COLUMNS = { '-source': 'I/311/hip2', '-out.max': '20000', '-out': 'HIP,RArad,DErad,Plx,pmRA,pmDE,Hpmag,B-V' };
 const queries = [
   new URLSearchParams({ ...COLUMNS, Hpmag: `<${MAGNITUDE_LIMIT}`, Plx: `>${PARALLAX_FLOOR_MAS}` }),
@@ -80,7 +81,7 @@ const stars = rows.map(([hip, ra, dec, parallax, pmRa, pmDec, magnitude, colour]
     hip: Number(hip),
     ra: Number(ra) * DEGREES,
     dec: Number(dec) * DEGREES,
-    parallax: Number(parallax),
+    parallax: MODERN_PARALLAX_MAS[Number(hip)] ?? Number(parallax),
     pmRa: Number(pmRa),
     pmDec: Number(pmDec),
     magnitude: Number(magnitude),
