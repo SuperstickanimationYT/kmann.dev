@@ -33,6 +33,7 @@
     <h2 data-pick-title></h2>
     <p data-pick-kind></p>
     <dl data-pick-facts></dl>
+    <div class="fh-actions fh-pick-warp"><button type="button" class="fh-primary" data-pick-warp>Warp here</button></div>
   </aside>
   <p class="fh-status" data-status hidden></p>
   <div class="fh-touch" data-touch>
@@ -80,13 +81,14 @@
           <option value="explore">Explore: fly anywhere, no goal</option>
         </select>
       </label>
-      <form class="fh-field" data-go-to-form data-go-to-field hidden>
-        <label for="fh-go-to" class="fh-go-to-label">Go to</label>
+      <form class="fh-field" data-select-form data-select-field hidden>
+        <label for="fh-select" class="fh-go-to-label">Select</label>
         <div class="fh-actions fh-go-to">
-          <input id="fh-go-to" type="search" list="fh-go-to-list" data-go-to placeholder="Sun, Rigel, Orion Nebula…" autocomplete="off">
-          <button type="submit" class="fh-primary">Warp</button>
+          <input id="fh-select" type="search" list="fh-select-list" data-select placeholder="Sun, Rigel, Orion Nebula…" autocomplete="off">
+          <button type="submit">Select</button>
+          <button type="button" class="fh-primary" data-warp-selection>Warp</button>
         </div>
-        <datalist id="fh-go-to-list" data-go-to-list></datalist>
+        <datalist id="fh-select-list" data-select-list></datalist>
       </form>
       <label class="fh-check" data-labels-field hidden>
         <input type="checkbox" data-labels checked>
