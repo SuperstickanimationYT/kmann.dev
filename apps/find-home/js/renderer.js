@@ -7,7 +7,8 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, DEVELOP_FRAGMENT, EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, DEVELOP_FRAGMENT,
+  EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, MAX_BODIES, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
   SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
@@ -147,6 +148,10 @@ const GROUND_VIEW_UNIT = 7;
 const SHADOW_MAP_UNIT = 8;
 const NO_MORPH = [0, 0, 1];
 const GROUND_DETAIL_UNIT = 9;
+const CLOUD_BILLOWS_UNIT = 10;
+const CLOUD_VIEW_UNIT = 11;
+const CLOUD_RESOLUTION_SHARE = 0.5;
+const CLOUD_BILLOWS_WIDTH = 1024 * 2 ** (CLOUD_BAKED_OCTAVES - 1);
 const GROUND_DETAIL_TEXELS_PER_CELL = 4;
 const GROUND_DETAIL_SEED = 2;
 const SHADOW_SLOPE_BIAS = 3;
@@ -156,6 +161,8 @@ const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, haz
 const SUN_DISK_GLOW = 2;
 const HIDDEN_BEHIND_FOREGROUND = true;
 const NO_GROUND = { uGround: { int: -1 } };
+const NO_CLOUDS = [0, 0, 0, 0];
+const CLOUD_SETTING_ORDER = ['baseKm', 'topKm', 'extinctionPerKm', 'coverShift'];
 const AIRLESS = { tint: [0, 0, 0], scaleKm: 0, glow: [0, 0, 0], hazeKm: 1, sunset: [0, 0, 0] };
 
 function groundUniforms(ground, seen) {
@@ -169,7 +176,7 @@ function groundUniforms(ground, seen) {
     uGroundRadius: ground.body.radiusKm,
     uGroundExcess: ground.frame.excess,
     uGroundFromAnchor: ground.frame.fromAnchor,
-    uGroundSea: ground.settings.sea ? 1 : 0,
+    uGroundClouds: ground.settings.clouds ? CLOUD_SETTING_ORDER.map((name) => ground.settings.clouds[name]) : NO_CLOUDS,
     uGroundAir: [...air.tint, air.scaleKm],
     uGroundGlow: [...air.glow, air.hazeKm],
     uGroundSunset: air.sunset,
@@ -275,6 +282,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   const skyProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FRAGMENT);
   const eyeProgram = createProgram(gl, FULLSCREEN_VERTEX, EYE_FRAGMENT);
   const groundSkyProgram = createProgram(gl, FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT);
+  const cloudProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_FRAGMENT);
   const patchProgram = createProgram(gl, PATCH_VERTEX, PATCH_FRAGMENT);
   const shadowProgram = createProgram(gl, SHADOW_VERTEX, SHADOW_FRAGMENT);
   let shadowMaps = null;
@@ -299,6 +307,8 @@ export function createRenderer(canvas, armMap, galaxies) {
     return indices.length;
   })();
   let groundTarget = null;
+  let cloudBillows = null;
+  let cloudTarget = null;
   const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
   const cameraStarProgram = createProgram(gl, CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT);
   const developProgram = createProgram(gl, FULLSCREEN_VERTEX, DEVELOP_FRAGMENT);
@@ -650,11 +660,60 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.disable(gl.DEPTH_TEST);
   }
 
+  function bakedCloudBillows() {
+    if (cloudBillows) return cloudBillows;
+    const target = createTarget(gl, CLOUD_BILLOWS_WIDTH, CLOUD_BILLOWS_WIDTH / 2);
+    const program = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_BILLOWS_FRAGMENT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+    gl.viewport(0, 0, target.width, target.height);
+    gl.useProgram(program.program);
+    gl.bindVertexArray(emptyVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.deleteProgram(program.program);
+    [cloudBillows] = target.textures;
+    gl.bindTexture(gl.TEXTURE_2D, cloudBillows);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.deleteFramebuffer(target.framebuffer);
+    return cloudBillows;
+  }
+
+  function cloudTargetFitting(width, height) {
+    const wanted = [width, height].map((size) => Math.ceil(size * CLOUD_RESOLUTION_SHARE));
+    if (cloudTarget?.width === wanted[0] && cloudTarget.height === wanted[1]) return cloudTarget;
+    cloudTarget?.destroy();
+    cloudTarget = createTarget(gl, ...wanted);
+    return cloudTarget;
+  }
+
+  function drawClouds(view, bodies, ground, groundView) {
+    const target = cloudTargetFitting(groundView.width, groundView.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+    gl.viewport(0, 0, target.width, target.height);
+    gl.useProgram(cloudProgram.program);
+    setUniforms(gl, cloudProgram, viewUniforms(view));
+    gl.activeTexture(gl.TEXTURE0 + GROUND_VIEW_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, groundView.textures[0]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(cloudProgram.uniforms.uGroundView, GROUND_VIEW_UNIT);
+    gl.uniform1i(cloudProgram.uniforms.uGroundDetail, GROUND_DETAIL_UNIT);
+    gl.uniform1i(cloudProgram.uniforms.uCloudBillows, CLOUD_BILLOWS_UNIT);
+    setBodies(cloudProgram, bodies, ground);
+    gl.bindVertexArray(emptyVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return target.textures[0];
+  }
+
   function drawGround(view, bodies, ground) {
     const shadows = drawShadows(ground);
+    const billows = ground.settings.clouds ? bakedCloudBillows() : null;
     const target = groundTargetFitting();
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.viewport(0, 0, target.width, target.height);
+    gl.activeTexture(gl.TEXTURE0 + GROUND_DETAIL_UNIT);
+    gl.bindTexture(gl.TEXTURE_3D, groundDetailTexture);
+    gl.activeTexture(gl.TEXTURE0 + CLOUD_BILLOWS_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, billows);
+    gl.activeTexture(gl.TEXTURE0);
     gl.useProgram(groundSkyProgram.program);
     setUniforms(gl, groundSkyProgram, viewUniforms(view));
     setBodies(groundSkyProgram, bodies, ground);
@@ -665,10 +724,8 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, patchProgram, { ...viewUniforms(view), ...bodyLocalBasis(ground.body, view.basis), ...shadows });
     if (shadows.cascades) setArray(gl, patchProgram, 'uShadowCascades', shadows.cascades, 4);
     gl.uniform1i(patchProgram.uniforms.uShadowMaps, SHADOW_MAP_UNIT);
-    gl.activeTexture(gl.TEXTURE0 + GROUND_DETAIL_UNIT);
-    gl.bindTexture(gl.TEXTURE_3D, groundDetailTexture);
-    gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(patchProgram.uniforms.uGroundDetail, GROUND_DETAIL_UNIT);
+    gl.uniform1i(patchProgram.uniforms.uCloudBillows, CLOUD_BILLOWS_UNIT);
     setBodies(patchProgram, bodies, ground);
     gl.clearDepth(1);
     gl.clear(gl.DEPTH_BUFFER_BIT);
@@ -677,7 +734,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     drawPatches(patchProgram, ground.drawn, ground.cameraLocalKm);
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
-    return target.textures[0];
+    return { ground: target.textures[0], clouds: billows ? drawClouds(view, bodies, ground, target) : null };
   }
 
   function setCockpit(program, cockpit) {
@@ -705,8 +762,13 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform1i(eyeProgram.uniforms.uSky, 0);
     if (groundView) {
       gl.activeTexture(gl.TEXTURE0 + GROUND_VIEW_UNIT);
-      gl.bindTexture(gl.TEXTURE_2D, groundView);
+      gl.bindTexture(gl.TEXTURE_2D, groundView.ground);
+      gl.activeTexture(gl.TEXTURE0 + CLOUD_VIEW_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D, groundView.clouds);
+      gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(eyeProgram.uniforms.uGroundView, GROUND_VIEW_UNIT);
+      gl.uniform1i(eyeProgram.uniforms.uCloudView, CLOUD_VIEW_UNIT);
+      setUniforms(gl, eyeProgram, { uCloudsOn: groundView.clouds ? 1 : 0 });
     }
     setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0 });
     setCockpit(eyeProgram, cockpit);
