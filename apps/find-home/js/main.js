@@ -17,7 +17,7 @@ import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js
 import { createGroundPatches } from './ground-patches.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae } from './stars.js';
-import { add, dot, normalize, orthonormal, rotateAbout, scale, subtract } from './vectors.js';
+import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
 const MAX_PIXEL_RATIO = 1.25;
@@ -370,10 +370,51 @@ function jump() {
     showStatus(`Not enough warp: ${formatWarpTime(game.energy)} left, enough for ${formatLightYears(game.energy)}.`);
     return;
   }
+  if (game.mode.instantWarp) {
+    land(lightYears);
+    showStatus(`Jumped ${formatLightYears(lightYears)}.`);
+    viewChanged();
+    return;
+  }
   startWarp(lightYears, null);
 }
 
-const warpReady = () => !intro && !photo?.running && !warp && warpOptics && eyeStars && !outOfPlay();
+const warpReady = () => !intro && !photo?.running && !warp && !aim && warpOptics && eyeStars && !outOfPlay();
+
+const AIM_SECONDS_PER_HALF_TURN = 0.8;
+const QUICKEST_AIM_SECONDS = 0.2;
+const ALREADY_AIMED_RADIANS = 1e-4;
+let aim = null;
+
+function aimThen(direction, done) {
+  const target = normalize(direction);
+  const angle = Math.acos(Math.max(-1, Math.min(1, dot(game.ship.forward, target))));
+  game.head = { yaw: 0, pitch: 0 };
+  if (angle < ALREADY_AIMED_RADIANS) {
+    done();
+    return;
+  }
+  const sideways = Math.abs(angle - Math.PI) < ALREADY_AIMED_RADIANS ? game.ship.up : normalize(cross(game.ship.forward, target));
+  const seconds = Math.max(QUICKEST_AIM_SECONDS, (AIM_SECONDS_PER_HALF_TURN * angle) / Math.PI);
+  aim = { from: game.ship, axis: sideways, angle, seconds, startedAt: performance.now(), done };
+}
+
+function advanceAim(now) {
+  const progress = Math.min(1, (now - aim.startedAt) / 1000 / aim.seconds);
+  const eased = progress * progress * (3 - 2 * progress);
+  game.ship = rotateBasis(aim.from, aim.axis, aim.angle * eased);
+  aimView();
+  if (progress < 1) return;
+  const { done } = aim;
+  aim = null;
+  done();
+}
+
+function arriveNow(destination) {
+  arrive(destination);
+  showStatus(`Arrived at ${destination.name}.`);
+  viewChanged();
+}
 
 function startWarp(lightYears, destination) {
   renderer.captureSkyCube({ camera: game.camera, nebulae, stars: eyeStars });
@@ -389,6 +430,10 @@ function goTo(name) {
   }
   if (!warpReady()) return;
   const arrival = destination.arrival(game.camera);
+  if (game.mode.instantWarp) {
+    aimThen(subtract(destination.target, game.camera), () => arriveNow(destination));
+    return;
+  }
   faceDirection(subtract(arrival, game.camera));
   startWarp(Math.hypot(...subtract(arrival, game.camera)) * LY_PER_PC, destination);
 }
@@ -421,8 +466,10 @@ function advanceWarp(now) {
   const stage = warpStage(elapsed);
   if (stage.arrived && !warp.arrived) {
     warp.arrived = true;
-    if (warp.destination) arrive(warp.destination);
-    else land(warp.lightYears);
+    if (warp.destination) {
+      arrive(warp.destination);
+      warp.axis = [...game.ship.forward];
+    } else land(warp.lightYears);
     refreshEyeStars(now);
     renderer.captureSkyCube({ camera: game.camera, nebulae, stars: eyeStars });
   }
@@ -449,13 +496,12 @@ function arrive(destination) {
   game.camera = destination.arrival(game.camera);
   faceDirection(subtract(destination.target, game.camera), destination.up);
   if (destination.speed) game.speed = Math.max(game.mode.slowestSpeed, destination.speed);
-  warp.axis = [...game.ship.forward];
   game.jumps += 1;
   eyeStars = null;
 }
 
 function flightStep(seconds) {
-  if (intro || photo?.running || warp) return;
+  if (intro || photo?.running || warp || aim) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
@@ -632,6 +678,7 @@ function frame(now) {
   if (!intro && !game.over && game.mode.scored && !photo?.running && !warp && document.visibilityState === 'visible') game.clock += seconds;
   if (intro) advanceIntro(now);
   const warpView = warp ? advanceWarp(now) : null;
+  if (aim) advanceAim(now);
   adaptation = adaptEyes(adaptation, warpView?.glareLux ?? 0, seconds);
   flightStep(seconds);
   followSolarSystem();
@@ -646,7 +693,7 @@ function frame(now) {
       starsChanged: eyeStarsChanged,
       seed: frameSeed,
       skyResolution: nextSkyResolution(),
-      cockpit: { ...cockpitUniforms(game.ship), enabled: true },
+      cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
       ground,
@@ -808,7 +855,7 @@ function claimInView(clientX, clientY) {
     const depth = dot(offset, game.basis.forward);
     if (depth <= 0) continue;
     const distance = Math.hypot(...offset);
-    if (!throughWindow(game.ship, scale(offset, 1 / distance))) continue;
+    if (game.mode.cockpit && !throughWindow(game.ship, scale(offset, 1 / distance))) continue;
     if (eyeStars.precise[i * 6 + 3] + 5 * Math.log10(distance / 10) > EYE_LIMIT) continue;
     const x = box.left + ((dot(offset, game.basis.right) / depth / tanX) * 0.5 + 0.5) * box.width;
     const y = box.top + (0.5 - (dot(offset, game.basis.up) / depth / tanY) * 0.5) * box.height;
@@ -843,7 +890,12 @@ view.addEventListener('pointerdown', (event) => {
 view.addEventListener('pointermove', (event) => {
   if (!drag) return;
   const perPixel = EYE_FIELD_HEIGHT / stage.clientHeight;
-  turnHead(-(event.clientX - drag.x) * perPixel, (event.clientY - drag.y) * perPixel);
+  const across = (event.clientX - drag.x) * perPixel;
+  const down = (event.clientY - drag.y) * perPixel;
+  if (game.mode.dragSteersShip && !aim) {
+    game.ship = turn(turn(game.ship, 'up', across), 'right', down);
+    aimView();
+  } else turnHead(-across, down);
   drag.x = event.clientX;
   drag.y = event.clientY;
 });

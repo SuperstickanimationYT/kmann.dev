@@ -16,6 +16,9 @@ export const MODES = {
     topSpeed: SHIP.thrusterTopSpeed,
     slowestSpeed: THRUSTER_SLOWEST_SPEED,
     solarSystem: false,
+    cockpit: true,
+    instantWarp: false,
+    dragSteersShip: false,
     greeting: () => null,
   },
   practice: {
@@ -29,6 +32,9 @@ export const MODES = {
     topSpeed: SHIP.thrusterTopSpeed,
     slowestSpeed: THRUSTER_SLOWEST_SPEED,
     solarSystem: false,
+    cockpit: true,
+    instantWarp: false,
+    dragSteersShip: false,
     greeting: (labelsOn) =>
       labelsOn ? 'Practice: labels on. Click any star to identify it.' : 'Practice: labels hidden. Click a star to check whether it is the Sun.',
   },
@@ -43,6 +49,9 @@ export const MODES = {
     topSpeed: EXPLORE_TOP_SPEED,
     slowestSpeed: EXPLORE_SLOWEST_SPEED,
     solarSystem: true,
+    cockpit: false,
+    instantWarp: true,
+    dragSteersShip: true,
     greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Pick a place under Go to, planets included.',
   },
 };
