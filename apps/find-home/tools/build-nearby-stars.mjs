@@ -10,7 +10,7 @@ const DEGREES = Math.PI / 180;
 const OUTPUT = new URL('../data/nearby-stars.bin', import.meta.url);
 const NAMES_OUTPUT = new URL('../data/nearby-star-names.json', import.meta.url);
 const NAMES = {
-  32349: 'Sirius', 30438: 'Canopus', 71683: 'Alpha Centauri', 69673: 'Arcturus', 91262: 'Vega',
+  32349: 'Sirius', 30438: 'Canopus', 71683: 'Alpha Centauri A', 71681: 'Alpha Centauri B', 70890: 'Proxima Centauri', 69673: 'Arcturus', 91262: 'Vega',
   24608: 'Capella', 24436: 'Rigel', 37279: 'Procyon', 27989: 'Betelgeuse', 7588: 'Achernar',
   97649: 'Altair', 21421: 'Aldebaran', 80763: 'Antares', 65474: 'Spica', 37826: 'Pollux',
   113368: 'Fomalhaut', 11767: 'Polaris', 68702: 'Hadar', 62434: 'Mimosa', 60718: 'Acrux',
@@ -24,13 +24,13 @@ const EQUATORIAL_TO_GALACTIC = [
   [-0.867666149, -0.1980763734, 0.4559837762],
 ];
 
-const query = new URLSearchParams({
-  '-source': 'I/311/hip2',
-  '-out.max': '20000',
-  '-out': 'HIP,RArad,DErad,Plx,pmRA,pmDE,Hpmag,B-V',
-  Hpmag: `<${MAGNITUDE_LIMIT}`,
-  Plx: `>${PARALLAX_FLOOR_MAS}`,
-});
+const FAINT_NEIGHBOURS = [70890];
+const MODERN_PARALLAX_MAS = { 71683: 750.81, 71681: 750.81, 70890: 768.07 };
+const COLUMNS = { '-source': 'I/311/hip2', '-out.max': '20000', '-out': 'HIP,RArad,DErad,Plx,pmRA,pmDE,Hpmag,B-V' };
+const queries = [
+  new URLSearchParams({ ...COLUMNS, Hpmag: `<${MAGNITUDE_LIMIT}`, Plx: `>${PARALLAX_FLOOR_MAS}` }),
+  new URLSearchParams({ ...COLUMNS, HIP: FAINT_NEIGHBOURS.join(',') }),
+];
 
 const rotate = (vector) => EQUATORIAL_TO_GALACTIC.map((row) => row[0] * vector[0] + row[1] * vector[1] + row[2] * vector[2]);
 
@@ -63,20 +63,25 @@ function toGalactic({ hip, ra, dec, parallax, pmRa, pmDec, magnitude, colour }) 
   };
 }
 
-const response = await fetch(`https://vizier.cds.unistra.fr/viz-bin/asu-tsv?${query}`);
-const rows = (await response.text())
-  .split('\n')
-  .filter((line) => line && !line.startsWith('#'))
-  .slice(3)
-  .map((line) => line.split('\t').map((cell) => cell.trim()))
-  .filter((cells) => cells.length === 8 && cells.every((cell) => cell !== ''));
+async function catalogueRows(query) {
+  const response = await fetch(`https://vizier.cds.unistra.fr/viz-bin/asu-tsv?${query}`);
+  return (await response.text())
+    .split('\n')
+    .filter((line) => line && !line.startsWith('#'))
+    .slice(3)
+    .map((line) => line.split('\t').map((cell) => cell.trim()))
+    .filter((cells) => cells.length === 8 && cells.every((cell) => cell !== ''));
+}
+
+const rows = (await Promise.all(queries.map(catalogueRows))).flat();
+if (!rows.length) throw new Error('VizieR returned no rows');
 
 const stars = rows.map(([hip, ra, dec, parallax, pmRa, pmDec, magnitude, colour]) =>
   toGalactic({
     hip: Number(hip),
     ra: Number(ra) * DEGREES,
     dec: Number(dec) * DEGREES,
-    parallax: Number(parallax),
+    parallax: MODERN_PARALLAX_MAS[Number(hip)] ?? Number(parallax),
     pmRa: Number(pmRa),
     pmDec: Number(pmDec),
     magnitude: Number(magnitude),

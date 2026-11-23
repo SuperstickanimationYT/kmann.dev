@@ -28,6 +28,9 @@ const SKY_RESOLUTION_PHOTO = 1;
 const EYE_BUDGET = 60000;
 const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
+const REGATHER_SHARE_OF_NEAREST_STAR = 0.5;
+const STAR_STRIDE = 6;
+const STAR_DISTANCE_SLOT = 5;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
 const SOLAR_REACH_PC = 0.05;
@@ -102,6 +105,7 @@ function turn(basis, axisName, angle) {
 let game;
 let eyeStars = null;
 let eyeAnchor = null;
+let eyeNearestStarPc = Infinity;
 let eyeGatheredAt = 0;
 let eyeStarsChanged = false;
 let photo = null;
@@ -188,7 +192,7 @@ function beginIntro() {
 }
 
 function startCutscene(now) {
-  const alphaCentauri = nearby.find((star) => star.name === 'Alpha Centauri').position;
+  const alphaCentauri = nearby.find((star) => star.name === 'Alpha Centauri A').position;
   const distance = Math.hypot(...subtract(SUN_POSITION, intro.home.camera)) * LY_PER_PC;
   const cutscene = createCutscene({
     home: intro.home,
@@ -593,12 +597,20 @@ function nextSkyResolution() {
   return 0;
 }
 
+function nearestStarPc(stars) {
+  let nearest = Infinity;
+  for (let i = STAR_DISTANCE_SLOT; i < stars.precise.length; i += STAR_STRIDE) nearest = Math.min(nearest, stars.precise[i]);
+  return nearest;
+}
+
 function refreshEyeStars(now) {
   if (!nearby.length) return;
   const drift = eyeAnchor ? Math.hypot(...subtract(game.camera, eyeAnchor)) : Infinity;
-  if (eyeStars && (drift < REGATHER_DISTANCE || now - eyeGatheredAt < REGATHER_INTERVAL)) return;
+  const regatherAfter = eyeStars ? Math.min(REGATHER_DISTANCE, REGATHER_SHARE_OF_NEAREST_STAR * eyeNearestStarPc) : 0;
+  if (eyeStars && (drift < regatherAfter || now - eyeGatheredAt < REGATHER_INTERVAL)) return;
   eyeAnchor = [...game.camera];
   eyeStars = gatherStars({ camera: eyeAnchor, limit: EYE_LIMIT, budget: EYE_BUDGET, armMap, nebulae, nearby });
+  eyeNearestStarPc = nearestStarPc(eyeStars);
   eyeGatheredAt = now;
   eyeStarsChanged = true;
 }
