@@ -19,6 +19,7 @@ export const MODES = {
     cockpit: true,
     instantWarp: false,
     dragSteersShip: false,
+    picking: false,
     greeting: () => null,
   },
   practice: {
@@ -35,12 +36,13 @@ export const MODES = {
     cockpit: true,
     instantWarp: false,
     dragSteersShip: false,
+    picking: false,
     greeting: (labelsOn) =>
       labelsOn ? 'Practice: labels on. Click any star to identify it.' : 'Practice: labels hidden. Click a star to check whether it is the Sun.',
   },
   explore: {
     scored: false,
-    labels: true,
+    labels: false,
     goTo: true,
     longExposure: true,
     clockLabel: 'Explore',
@@ -52,7 +54,8 @@ export const MODES = {
     cockpit: false,
     instantWarp: true,
     dragSteersShip: true,
-    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Pick a place under Go to, planets included.',
+    picking: true,
+    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Pick a place under Go to, or click anything in view to see what it is.',
   },
 };
 

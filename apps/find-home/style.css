@@ -43,6 +43,57 @@
   color: var(--text-strong);
 }
 
+.fh-pick {
+  position: absolute;
+  z-index: 3;
+  top: 40px;
+  left: 16px;
+  width: min(290px, calc(100% - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.fh-pick h2 {
+  margin: 0 28px 2px 0;
+  font-size: 16px;
+  color: var(--text-strong);
+}
+
+.fh-pick p {
+  margin: 0 0 8px;
+}
+
+.fh-pick dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.fh-pick dd {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.fh-pick-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 18px;
+  cursor: pointer;
+}
+
 .fh-status {
   position: absolute;
   z-index: 2;
