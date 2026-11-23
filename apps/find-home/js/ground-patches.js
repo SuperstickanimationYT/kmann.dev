@@ -6,6 +6,9 @@ const CELL_PIXELS = 8;
 const MOST_GRAZING_SHARE = 0.1;
 const FINEST_VERTEX_SPACING_METRES = 0.25;
 const KEPT_PATCHES = 2500;
+const MORPH_SHARE_OF_REACH = 0.4;
+const PREFETCH_SHARE_OF_REACH = 1.5;
+const LATE_SPLIT_FADE_MS = 400;
 export const SHADOW_MAP_SIZE = 1024;
 const MOST_OVERCAST_WITH_SHADOWS = 0.8;
 const LOWEST_SUN_WITH_SHADOWS = -0.05;
@@ -87,30 +90,39 @@ export function createGroundPatches(release) {
 
     const gather = (judge) => {
       const chosen = [];
-      const visit = (face, level, ix, iy) => {
+      const visit = (face, level, ix, iy, parent) => {
         const key = keyOf(body, face, level, ix, iy);
         const patch = patches.get(key);
         if (!patch) {
-          wanted.push({ key, face, level, ix, iy, distance: 0 });
+          wanted.push({ key, face, level, ix, iy, distance: 0, early: false });
           return;
         }
         patch.seenFrame = seenFrame;
         const verdict = judge(patch, level);
         if (!verdict) return;
-        if (level < finestLevel && verdict.finer) {
+        if (level < finestLevel && (verdict.finer || verdict.soon)) {
           const children = [0, 1, 2, 3].map((child) => ({ face, level: level + 1, ix: ix * 2 + (child & 1), iy: iy * 2 + (child >> 1) }));
           const ready = children.map((child) => patches.get(keyOf(body, face, child.level, child.ix, child.iy)));
-          if (ready.every(Boolean)) {
-            children.forEach((child) => visit(child.face, child.level, child.ix, child.iy));
+          if (verdict.finer && ready.every(Boolean)) {
+            children.forEach((child) => visit(child.face, child.level, child.ix, child.iy, { patch, reachKm: verdict.reachKm }));
             return;
           }
           ready.forEach((child) => child && (child.seenFrame = seenFrame));
-          children.forEach((child, i) => !ready[i] && wanted.push({ ...child, key: keyOf(body, face, child.level, child.ix, child.iy), distance: verdict.distance }));
+          children.forEach((child, i) => !ready[i] && wanted.push({ ...child, key: keyOf(body, face, child.level, child.ix, child.iy), distance: verdict.distance, early: !verdict.finer }));
         }
+        if (verdict.reachKm !== undefined) morphFromParent(patch, parent);
         chosen.push(patch);
       };
       CUBE_FACES.forEach((_, face) => visit(face, 0, 0, 0));
       return chosen;
+    };
+
+    const now = performance.now();
+    const morphFromParent = (patch, parent) => {
+      if (patch.drawnFrame !== seenFrame - 1) patch.splitAt = parent?.patch.drawnFrame === seenFrame - 1 ? now : -Infinity;
+      patch.drawnFrame = seenFrame;
+      const reachMetres = (parent?.reachKm ?? 0) * 1000;
+      patch.morph = [reachMetres, reachMetres * (1 - MORPH_SHARE_OF_REACH), Math.min(1, (now - patch.splitAt) / LATE_SPLIT_FADE_MS)];
     };
 
     const seenFromCamera = (patch, level) => {
@@ -124,7 +136,9 @@ export function createGroundPatches(release) {
       const fromCentre = Math.hypot(...patch.centreKm);
       const facing = Math.abs(patch.centreKm.reduce((sum, value, axis) => sum + value * (camera[axis] - value), 0)) / (fromCentre * Math.max(distance, 1e-9));
       const foreshortening = Math.sqrt(Math.max(MOST_GRAZING_SHARE, Math.min(1, facing)));
-      return { distance, finer: (distance - patch.boundKm) * pixelAngle * CELL_PIXELS < spacingKm(level) * foreshortening };
+      const reachKm = (spacingKm(level) * foreshortening) / (pixelAngle * CELL_PIXELS);
+      const nearestKm = distance - patch.boundKm;
+      return { distance, reachKm, finer: nearestKm < reachKm, soon: nearestKm < reachKm * PREFETCH_SHARE_OF_REACH };
     };
 
     const light = lightFrame(ground, sun);
@@ -141,7 +155,7 @@ export function createGroundPatches(release) {
 
     const drawn = gather(seenFromCamera).sort((a, b) => distanceBetween(a.centreKm, camera) - a.boundKm - (distanceBetween(b.centreKm, camera) - b.boundKm));
     const casters = light ? gather(castingShadow) : [];
-    wanted.sort((a, b) => a.level - b.level || a.distance - b.distance);
+    wanted.sort((a, b) => a.early - b.early || a.level - b.level || a.distance - b.distance);
     for (const request of wanted) {
       if (building.size >= BUILDERS * BUILDS_QUEUED_PER_BUILDER) break;
       if (building.has(request.key)) continue;

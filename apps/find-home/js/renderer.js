@@ -145,6 +145,7 @@ const BODY_HEIGHT_UNIT = 6;
 const BODY_MAP_SIZE = [1024, 512];
 const GROUND_VIEW_UNIT = 7;
 const SHADOW_MAP_UNIT = 8;
+const NO_MORPH = [0, 0, 1];
 const GROUND_DETAIL_UNIT = 9;
 const GROUND_DETAIL_TEXELS_PER_CELL = 4;
 const GROUND_DETAIL_SEED = 2;
@@ -549,6 +550,10 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, 12);
     gl.enableVertexAttribArray(2);
     gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 24);
+    gl.enableVertexAttribArray(3);
+    gl.vertexAttribPointer(3, 3, gl.FLOAT, false, stride, 28);
+    gl.enableVertexAttribArray(4);
+    gl.vertexAttribPointer(4, 3, gl.FLOAT, false, stride, 40);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, patchIndexBuffer);
     gl.bindVertexArray(null);
     patch.gpu = { buffer, vao };
@@ -569,6 +574,7 @@ export function createRenderer(canvas, armMap, galaxies) {
         uPatchFromCamera: patch.centreKm.map((value, axis) => (value - camera[axis]) * 1000),
         uPatchCentreKm: patch.centreKm,
         uPatchSpacing: patch.spacingMetres,
+        uMorph: patch.morph ?? NO_MORPH,
       });
       gl.bindVertexArray(patch.gpu.vao);
       gl.drawElements(gl.TRIANGLES, patchIndexCount, gl.UNSIGNED_SHORT, 0);
