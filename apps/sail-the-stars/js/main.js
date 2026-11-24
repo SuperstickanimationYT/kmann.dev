@@ -816,7 +816,22 @@ const bodyEast = (body) => [
 ];
 const toBodyLocal = (body, vector) => [dot(vector, body.meridian), dot(vector, bodyEast(body)), dot(vector, body.north)];
 const fromBodyLocal = (body, [x, y, z]) => add(add(scale(body.meridian, x), scale(bodyEast(body), y)), scale(body.north, z));
-const groundFor = (body) => (body.ground && body.mapLayer >= 0 ? groundMaps[body.mapLayer] ?? null : null);
+const INVENT_GROUND_WITHIN_RADII = 3;
+let inventedGround = null;
+
+function groundFor(body) {
+  if (body.invented) return inventedGround?.name === body.name ? inventedGround.settings : null;
+  return body.ground && body.mapLayer >= 0 ? groundMaps[body.mapLayer] ?? null : null;
+}
+
+function inventGroundBelow() {
+  const body = solarFrame && bodyNamed(solarFrame.holder);
+  if (!body?.invented || inventedGround?.name === body.name) return;
+  if (Math.hypot(...solarFrame.offsetKm) > INVENT_GROUND_WITHIN_RADII * body.radiusKm) return;
+  const settings = renderer.inventGround(body, toBodyLocal(body, body.sunward));
+  inventedGround = settings && { name: body.name, settings };
+}
+
 const spokenName = (body) => (body.name === 'Moon' ? 'the Moon' : body.name);
 const frameOffsetKm = (body, frame) => (frame.coRotating ? fromBodyLocal(body, frame.localKm) : frame.offsetKm);
 
@@ -994,6 +1009,7 @@ function frame(now) {
   flightStep(seconds);
   if (menu) holdMenuView();
   followSolarSystem();
+  inventGroundBelow();
   refreshEyeStars(now);
   if (eyeStars) {
     frameSeed = (frameSeed + 1) >>> 0;
