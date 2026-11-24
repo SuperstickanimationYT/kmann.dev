@@ -124,6 +124,14 @@ function giantLook(palette, synchronous, random) {
 const THIN_AIR = { gas: { depth: [0.035, 0.08, 0.19], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } };
 const DEEP_AIR = { gas: { depth: [0.03, 0.07, 0.16], scaleKm: 60 }, dust: { depth: [0.2, 0.2, 0.2], light: [0.16, 0.16, 0.16], scaleKm: 60, forwardness: 0.4, sunDimming: 0.5 } };
 
+const LIQUID_WATER_KELVIN = [215, 300];
+const LEAST_MASS_FOR_MAGNETIC_FIELD = 0.6;
+const COOLEST_QUIET_STAR_KELVIN = 3000;
+
+const couldBeInhabited = ({ kelvin, earthMasses, earthRadii }, star) =>
+  earthRadii < LARGEST_ROCKY_EARTH_RADII && kelvin > LIQUID_WATER_KELVIN[0] && kelvin < LIQUID_WATER_KELVIN[1]
+  && earthMasses >= LEAST_MASS_FOR_MAGNETIC_FIELD && star.kelvin >= COOLEST_QUIET_STAR_KELVIN;
+
 const isWet = ({ kelvin }) => kelvin > WET_KELVIN[0] && kelvin < WET_KELVIN[1];
 
 function rockyTint({ kelvin }, random) {
@@ -178,6 +186,7 @@ function buildSystem(data, index) {
       lamp,
       measured: planet,
       tideLocked: synchronous,
+      civilization: couldBeInhabited(planet, data) ? { lamps: { dim: light, bright: light } } : undefined,
       holdKm: Math.min(HOLD_RADII * bodyRadiusKm, HOLD_SHARE_OF_ORBIT * orbit.a),
       orbit,
       spinHours: random.between(...SPIN_HOURS),
