@@ -5,7 +5,7 @@ import { bodyDestination, galaxyDestination, listDestinations, nebulaDestination
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { describePick, UNNAMED_STAR } from './picking.js';
-import { MODES, modeFromName } from './modes.js';
+import { DEFAULT_MODE, MODES, modeFromName } from './modes.js';
 import { KOTO_GARDEN } from './music/koto-garden.js';
 import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
@@ -95,6 +95,8 @@ const longExposureToggle = $('[data-long-exposure]');
 const selectInput = $('[data-select]');
 const selectList = $('[data-select-list]');
 const solarNote = $('[data-solar-note]');
+const exploreBrief = $('[data-explore-brief]');
+const missionBrief = $('[data-mission-brief]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -345,6 +347,8 @@ function showCompanionButtons() {
 
 const outOfPlay = () => game.over && game.mode.scored;
 
+const leavingExplore = () => game.mode === MODES.explore && modeSelect.value !== 'explore';
+
 function setMode(name) {
   const mode = MODES[modeFromName(name)];
   game.mode = mode;
@@ -363,12 +367,14 @@ function setMode(name) {
   if (!mode.solarSystem) timePanel.hidden = true;
   longExposureField.hidden = !mode.longExposure;
   solarNote.hidden = !mode.solarSystem;
+  exploreBrief.hidden = mode !== MODES.explore;
+  missionBrief.hidden = mode === MODES.explore;
   clockLabel.textContent = mode.clockLabel;
   giveUpButton.textContent = mode.sunButton;
   restartButton.textContent = mode.restartButton;
   const url = new URL(window.location.href);
   url.searchParams.set('seed', game.seed);
-  if (mode === MODES.mission) url.searchParams.delete('mode');
+  if (mode === MODES[DEFAULT_MODE]) url.searchParams.delete('mode');
   else url.searchParams.set('mode', modeSelect.value);
   window.history.replaceState(null, '', url);
   clearSelection();
@@ -1421,7 +1427,7 @@ const dock = $('[data-dock]');
 new ResizeObserver(() => stage.style.setProperty('--dock-height', `${dock.offsetHeight}px`)).observe(dock);
 showPanelState();
 $('[data-align]').addEventListener('click', () => faceDirection(game.basis.forward));
-modeSelect.addEventListener('change', () => setMode(modeSelect.value));
+modeSelect.addEventListener('change', () => (leavingExplore() ? newGame() : setMode(modeSelect.value)));
 $('[data-select-form]').addEventListener('submit', (event) => {
   event.preventDefault();
   selectNamed(selectInput.value);

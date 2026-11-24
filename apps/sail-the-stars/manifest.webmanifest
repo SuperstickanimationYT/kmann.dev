@@ -1,7 +1,7 @@
 {
-  "name": "Find Home",
-  "short_name": "Find Home",
-  "description": "Lost outside the Milky Way with only your eyes and a wide-field camera. Find the Sun.",
+  "name": "Sail the Stars",
+  "short_name": "Sail the Stars",
+  "description": "Explore the universe from the ground of a moon to the far side of the Milky Way, or play Find Home: lost outside the galaxy, find the Sun.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

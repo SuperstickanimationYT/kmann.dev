@@ -59,4 +59,5 @@ export const MODES = {
   },
 };
 
-export const modeFromName = (name) => (name in MODES ? name : 'mission');
+export const DEFAULT_MODE = 'explore';
+export const modeFromName = (name) => (name in MODES ? name : DEFAULT_MODE);
