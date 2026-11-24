@@ -45,7 +45,9 @@ const STAR_DISTANCE_SLOT = 5;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
 const SOLAR_REACH_PC = 0.05;
-const CO_ROTATION_RADII = 3;
+const LANDING_REARM_KM = 1;
+const SPIN_SEEN_PIXELS = 1;
+const SPIN_FRAMES_TO_SHARPEN = 30;
 const GROUND_CHECK_KM = 60;
 const GROUND_VIEW_SHARE_OF_RADIUS = 0.12;
 const GROUND_VIEW_HIGHEST_KM = 400;
@@ -311,6 +313,36 @@ function drawOrbitLines(context, width, height) {
     height,
   });
 }
+const followButton = $('[data-follow]');
+const rotateButton = $('[data-rotate-with]');
+let following = true;
+let rotatingWith = null;
+
+function setFollowing(on) {
+  following = on;
+  if (!on) rotatingWith = null;
+}
+
+function setRotatingWith(name) {
+  rotatingWith = name;
+  if (name) following = true;
+}
+
+function showCompanionButtons() {
+  const holder = solarFrame ? bodyNamed(solarFrame.holder) : null;
+  const near = Boolean(holder) && holder.kind !== 'star';
+  followButton.hidden = !near;
+  rotateButton.hidden = !near;
+  if (!near) return;
+  const name = spokenName(holder);
+  const label = (button, text, on) => {
+    if (button.textContent !== text) button.textContent = text;
+    if (button.getAttribute('aria-pressed') !== String(on)) button.setAttribute('aria-pressed', String(on));
+  };
+  label(followButton, `Follow ${name}`, following);
+  label(rotateButton, `Rotate with ${name}`, rotatingWith === holder.name);
+}
+
 const outOfPlay = () => game.over && game.mode.scored;
 
 function setMode(name) {
@@ -617,9 +649,13 @@ function arrive(destination) {
   if (destination.speed) game.speed = Math.max(game.mode.slowestSpeed, destination.speed);
   game.jumps += 1;
   eyeStars = null;
+  if (game.mode.solarSystem) setFollowing(true);
 }
 
+let thrusting = false;
+
 function flightStep(seconds) {
+  thrusting = false;
   if (intro || photo?.running || warp || aim || glide) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
@@ -627,7 +663,8 @@ function flightStep(seconds) {
     (held.has('KeyW') || held.has('thrust+') ? 1 : 0) - (held.has('KeyS') || held.has('thrust-') ? 1 : 0),
   ];
   let moved = false;
-  if (move.some(Boolean)) {
+  thrusting = move.some(Boolean);
+  if (thrusting) {
     const pcPerSecond = game.speed / LY_PER_PC;
     const step = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, move[2]));
     const shift = scale(step, pcPerSecond * seconds);
@@ -660,13 +697,14 @@ const bodyEast = (body) => [
 const toBodyLocal = (body, vector) => [dot(vector, body.meridian), dot(vector, bodyEast(body)), dot(vector, body.north)];
 const fromBodyLocal = (body, [x, y, z]) => add(add(scale(body.meridian, x), scale(bodyEast(body), y)), scale(body.north, z));
 const groundFor = (body) => (body.ground && body.mapLayer >= 0 ? groundMaps[body.mapLayer] ?? null : null);
+const spokenName = (body) => (body.name === 'Moon' ? 'the Moon' : body.name);
 const frameOffsetKm = (body, frame) => (frame.coRotating ? fromBodyLocal(body, frame.localKm) : frame.offsetKm);
 
 function enterSolarFrame() {
   if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) return null;
   const fromSunKm = scale(subtract(game.camera, SUN_POSITION), KM_PER_PC);
   const holder = holdingBody(solarBodies, fromSunKm);
-  return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), coRotating: false, localKm: null, camera: null, landed: false };
+  return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), coRotating: false, localKm: null, camera: null, landed: false, landingArmed: true, body: holder };
 }
 
 function moveInSolarFrame(shiftKm) {
@@ -695,18 +733,44 @@ function followSolarSystem() {
   solarFrame ??= enterSolarFrame();
   if (!solarFrame) return;
   const previous = bodyNamed(solarFrame.holder);
-  const fromSunKm = add(previous.fromSunKm, frameOffsetKm(previous, solarFrame));
+  const carriedFrom = following ? previous.fromSunKm : solarFrame.body.fromSunKm;
+  const fromSunKm = add(carriedFrom, frameOffsetKm(previous, solarFrame));
   const holder = holdingBody(solarBodies, fromSunKm);
+  if (rotatingWith && rotatingWith !== holder.name) setRotatingWith(null);
   let offsetKm = subtract(fromSunKm, holder.fromSunKm);
   const lowest = lowestDistanceKm(holder, offsetKm);
   const distance = Math.hypot(...offsetKm);
   const landed = distance <= lowest;
   if (landed) offsetKm = scale(offsetKm, lowest / distance);
-  if (landed && !solarFrame.landed) showStatus(`Touched down on ${holder.name === 'Moon' ? 'the Moon' : holder.name}.`);
+  const landingArmed = solarFrame.landingArmed || distance - lowest > LANDING_REARM_KM;
+  const touchedDown = landed && landingArmed && thrusting;
+  if (touchedDown) {
+    showStatus(`Touched down on ${spokenName(holder)}.`);
+    if (holder.kind !== 'star') setRotatingWith(holder.name);
+  }
   game.camera = add(SUN_POSITION, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
-  const coRotating = holder.kind !== 'star' && Math.hypot(...offsetKm) < CO_ROTATION_RADII * holder.radiusKm;
-  solarFrame = { holder: holder.name, offsetKm, coRotating, localKm: coRotating ? toBodyLocal(holder, offsetKm) : null, camera: game.camera, landed };
+  const coRotating = rotatingWith === holder.name;
+  if (coRotating && solarFrame.coRotating && solarFrame.holder === holder.name) turnWithSpin(solarFrame.body, holder);
+  solarFrame = { holder: holder.name, offsetKm, coRotating, localKm: coRotating ? toBodyLocal(holder, offsetKm) : null, camera: game.camera, landed, landingArmed: landingArmed && !touchedDown, body: holder };
   if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) solarFrame = null;
+}
+
+let spinSinceSharpSky = 0;
+
+function turnWithSpin(before, after) {
+  if (aim || glide || warp || photo?.running) return;
+  const carried = (vector) => fromBodyLocal(after, toBodyLocal(before, vector));
+  const spin = Math.hypot(...subtract(after.meridian, before.meridian));
+  if (!spin) return;
+  game.ship = orthonormal(carried(game.ship.forward), carried(game.ship.up));
+  game.basis = viewBasis(game.ship, game.head);
+  spinSinceSharpSky += spin;
+  const seenSpin = SPIN_SEEN_PIXELS * (fieldHeight / view.height);
+  if (spin * SPIN_FRAMES_TO_SHARPEN > seenSpin) viewChanged();
+  else if (spinSinceSharpSky > seenSpin) {
+    skySharp = false;
+    spinSinceSharpSky = 0;
+  }
 }
 
 let groundPatches = null;
@@ -830,6 +894,7 @@ function frame(now) {
   $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
   $('[data-speed]').textContent = formatSpeed(game.speed);
   if (game.mode.solarSystem) showSimTime(now);
+  showCompanionButtons();
   $('[data-energy]').textContent = !game.mode.scored ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
   requestAnimationFrame(frame);
 }
@@ -1330,6 +1395,8 @@ giveUpButton.addEventListener('click', () => {
 });
 $('[data-jump]').addEventListener('click', jump);
 orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
+followButton.addEventListener('click', () => setFollowing(!following));
+rotateButton.addEventListener('click', () => setRotatingWith(rotatingWith ? null : solarFrame?.holder ?? null));
 timeButton.addEventListener('click', () => {
   timePanel.hidden = !timePanel.hidden;
   timeButton.setAttribute('aria-pressed', String(!timePanel.hidden));
