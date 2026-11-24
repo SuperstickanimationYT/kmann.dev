@@ -1,6 +1,6 @@
 # Sail the Stars
 
-Explore is the default mode. Find Home, the game this started as, is its scored mode.
+The main menu offers Explore, Mission and Practice. Mission is Find Home, the game this started as; Practice is the same search with labels.
 
 ## Goal of Explore mode
 

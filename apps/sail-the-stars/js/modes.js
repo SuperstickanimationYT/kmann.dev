@@ -59,5 +59,20 @@ export const MODES = {
   },
 };
 
+export const MENU_SCENE = {
+  scored: false,
+  labels: false,
+  selecting: false,
+  longExposure: false,
+  topSpeed: 0,
+  slowestSpeed: 0,
+  solarSystem: true,
+  cockpit: false,
+  glideWarp: false,
+  dragSteersShip: false,
+  picking: false,
+  greeting: () => null,
+};
+
 export const DEFAULT_MODE = 'explore';
 export const modeFromName = (name) => (name in MODES ? name : DEFAULT_MODE);

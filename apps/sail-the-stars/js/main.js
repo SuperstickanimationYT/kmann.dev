@@ -5,7 +5,8 @@ import { bodyDestination, galaxyDestination, listDestinations, nebulaDestination
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { describePick, UNNAMED_STAR } from './picking.js';
-import { DEFAULT_MODE, MODES, modeFromName } from './modes.js';
+import { menuScene, turnedApart } from './menu-scene.js';
+import { DEFAULT_MODE, MENU_SCENE, MODES, modeFromName } from './modes.js';
 import { KOTO_GARDEN } from './music/koto-garden.js';
 import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
@@ -67,6 +68,7 @@ const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
 const MUSIC_STORAGE_KEY = 'find-home-music';
+const MENU_STEADY_PIXELS = 0.5;
 const MUSIC_FADE_SECONDS = 1.5;
 const MUSIC_TEMPO = { from: 72, to: 200 };
 
@@ -102,6 +104,8 @@ const selectList = $('[data-select-list]');
 const solarNote = $('[data-solar-note]');
 const exploreBrief = $('[data-explore-brief]');
 const missionBrief = $('[data-mission-brief]');
+const menuFrame = $('[data-menu]');
+const menuResume = $('[data-menu-resume]');
 
 const armMap = buildArmMap();
 const galaxies = placeGalaxies(GALAXIES);
@@ -183,6 +187,78 @@ function newGame(seed = randomSeed(), modeName = modeSelect.value) {
   ending.hidden = true;
   setMode(modeName);
   if (game.mode === MODES.mission) playIntro();
+}
+
+let menu = null;
+
+const menuView = () => menuScene(placeBodies(simNow()), view.width / view.height);
+
+function parkedGame() {
+  return { game, solarFrame, fieldHeight, following, rotatingWith, modeLabel: menuFrame.querySelector(`[data-menu-mode="${modeSelect.value}"] strong`).textContent };
+}
+
+function openMenu() {
+  if (menu) return;
+  if (warp) {
+    showStatus('Wait until you drop out of warp.');
+    return;
+  }
+  endIntro();
+  closePhoto();
+  atlasFrame.hidden = true;
+  timePanel.hidden = true;
+  timeButton.setAttribute('aria-pressed', 'false');
+  aim = null;
+  glide = null;
+  held.clear();
+  clearSelection();
+  hideStatus();
+  menu = { parked: game ? parkedGame() : null };
+  const { earth, offsetKm, ship } = menuView();
+  const head = { yaw: 0, pitch: 0 };
+  game = { camera: add(SUN_POSITION, scale(add(earth.fromSunKm, offsetKm), 1 / KM_PER_PC)), ship, head, basis: viewBasis(ship, head), speed: 0, energy: 0, clock: 0, over: false, mode: MENU_SCENE };
+  following = true;
+  rotatingWith = null;
+  holdMenuView();
+  eyeStars = null;
+  viewChanged();
+  menuResume.hidden = !menu.parked;
+  if (menu.parked) menuResume.firstElementChild.textContent = `Continue ${menu.parked.modeLabel}`;
+  menuFrame.hidden = false;
+  document.body.classList.add('fh-menu-open');
+}
+
+function holdMenuView() {
+  const { earth, offsetKm, ship, fieldHeight: field } = menuView();
+  solarFrame = { holder: earth.name, offsetKm, coRotating: false, localKm: null, camera: game.camera, landed: false, landingArmed: true, body: earth };
+  if (field !== fieldHeight) setField(field);
+  if (turnedApart(ship, game.ship) < MENU_STEADY_PIXELS * (fieldHeight / view.height)) return;
+  game.ship = ship;
+  aimView();
+}
+
+function closeMenu() {
+  menu = null;
+  menuFrame.hidden = true;
+  document.body.classList.remove('fh-menu-open');
+  solarFrame = null;
+  setFollowing(true);
+  view.focus({ preventScroll: true });
+}
+
+function resumeFromMenu() {
+  const { parked } = menu;
+  closeMenu();
+  ({ game, solarFrame, following, rotatingWith } = parked);
+  eyeStars = null;
+  setField(parked.fieldHeight);
+  aimView();
+}
+
+function startFromMenu(modeName) {
+  closeMenu();
+  newGame(randomSeed(), modeName);
+  if (game.mode === MODES.explore) startNearEarth();
 }
 
 let intro = null;
@@ -694,7 +770,7 @@ let thrusting = false;
 
 function flightStep(seconds) {
   thrusting = false;
-  if (intro || photo?.running || warp || aim || glide) return;
+  if (menu || intro || photo?.running || warp || aim || glide) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
@@ -905,6 +981,7 @@ function frame(now) {
   if (glide) advanceGlide(now);
   adaptation = adaptEyes(adaptation, warpView?.glareLux ?? 0, seconds);
   flightStep(seconds);
+  if (menu) holdMenuView();
   followSolarSystem();
   refreshEyeStars(now);
   if (eyeStars) {
@@ -925,7 +1002,7 @@ function frame(now) {
       warp: warpView,
       adaptation,
       longExposure: longExposureShown(),
-      blurMotion: motionBlurToggle.checked && !warpView && !intro && !photo,
+      blurMotion: motionBlurToggle.checked && !warpView && !intro && !photo && !menu,
     });
     eyeStarsChanged = false;
   }
@@ -1355,6 +1432,10 @@ function zoomWithKey(event) {
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', (event) => {
   if (event.target.closest?.('select, input, textarea')) return;
+  if (menu) {
+    if (event.code === 'Escape' && menu.parked) resumeFromMenu();
+    return;
+  }
   if (intro) {
     event.preventDefault();
     if (intro.waiting) beginIntro();
@@ -1477,6 +1558,9 @@ $('[data-pick-close]').addEventListener('click', clearSelection);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
 longExposureToggle.addEventListener('change', () => setLongExposure(longExposureToggle.checked));
+$('[data-menu-open]').addEventListener('click', openMenu);
+menuResume.addEventListener('click', resumeFromMenu);
+menuFrame.querySelectorAll('[data-menu-mode]').forEach((button) => button.addEventListener('click', () => startFromMenu(button.dataset.menuMode)));
 restartButton.addEventListener('click', () => newGame());
 $('[data-new-game]').addEventListener('click', () => newGame());
 new ResizeObserver(resize).observe(stage);
@@ -1485,10 +1569,12 @@ if (!renderer) {
   showStatus(rendererProblem, 3600);
 } else {
   const requested = Number(new URL(window.location.href).searchParams.get('seed'));
-  const modeName = modeFromName(new URL(window.location.href).searchParams.get('mode'));
+  const requestedMode = new URL(window.location.href).searchParams.get('mode');
   const seeded = Number.isInteger(requested) && requested > 0;
-  newGame(seeded ? requested : randomSeed(), modeName);
-  if (!seeded && game.mode === MODES.explore) startNearEarth();
+  if (seeded || requestedMode) {
+    newGame(seeded ? requested : randomSeed(), modeFromName(requestedMode));
+    if (!seeded && game.mode === MODES.explore) startNearEarth();
+  } else openMenu();
   resize();
   loadWarpOptics('data/warp-optics.bin').then((optics) => {
     warpOptics = optics;
