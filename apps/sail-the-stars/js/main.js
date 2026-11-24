@@ -63,6 +63,7 @@ const START_CLEARANCE = 15000;
 
 const WRONG_CLAIM_SECONDS = 3600;
 const PICK_RADIUS_PX = 10;
+const MOON_PICKABLE_ORBIT_PX = 30;
 const TAP_DISTANCE = 6;
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
@@ -1250,6 +1251,13 @@ function clickedStarPick(star) {
   return { ...pick, destination: starDestination({ name: title === UNNAMED_STAR ? 'an unnamed star' : title, position }) };
 }
 
+function planetStandingInFor(body, pixelsPerKm) {
+  const planet = body.parent && bodyNamed(body.parent);
+  if (!planet) return body;
+  const orbitPx = Math.hypot(...subtract(body.fromSunKm, planet.fromSunKm)) * pixelsPerKm;
+  return orbitPx < MOON_PICKABLE_ORBIT_PX ? planet : body;
+}
+
 function pickablesAt(x, y) {
   const star = nearestStarAt(x, y);
   const picks = [];
@@ -1260,9 +1268,10 @@ function pickablesAt(x, y) {
     const spot = spotOnStage(offset);
     if (!spot) continue;
     const distanceKm = Math.hypot(...offsetKm);
-    const discPx = (body.radiusKm / distanceKm) * pixelsPerTan;
+    const pixelsPerKm = pixelsPerTan / distanceKm;
+    const discPx = body.radiusKm * pixelsPerKm;
     const miss = Math.max(0, Math.hypot(spot.x - x, spot.y - y) - discPx);
-    if (miss <= PICK_RADIUS_PX) picks.push(Object.assign(body.kind === 'star' ? sunPick() : bodyPick(body), { miss }));
+    if (miss <= PICK_RADIUS_PX) picks.push(Object.assign(body.kind === 'star' ? sunPick() : bodyPick(planetStandingInFor(body, pixelsPerKm)), { miss }));
   }
   const deepSky = [
     ...nebulae.map(nebulaPick),
