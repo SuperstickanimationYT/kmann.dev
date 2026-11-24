@@ -38,7 +38,7 @@ export const MODES = {
     dragSteersShip: false,
     picking: false,
     greeting: (labelsOn) =>
-      labelsOn ? 'Practice: labels on. Click any star to identify it.' : 'Practice: labels hidden. Click a star to check whether it is the Sun.',
+      labelsOn ? 'Practice: labels on. Tap or click any star to identify it.' : 'Practice: labels hidden. Tap or click a star to check whether it is the Sun.',
   },
   explore: {
     scored: false,
@@ -55,7 +55,7 @@ export const MODES = {
     glideWarp: true,
     dragSteersShip: true,
     picking: true,
-    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Click anything in view, or type a name under Select, then press Warp to fly there.',
+    greeting: () => 'Explore: no goal, no fuel limit. Thrusters go from 1 m/s to a million ly/s. Tap or click anything in view, or type a name under Select, then press Warp to fly there.',
   },
 };
 

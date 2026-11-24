@@ -26,6 +26,7 @@ import { drawOrbits } from './orbits.js';
 import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
+import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen } from './touch-controls.js';
 import { drainageOf } from './river-ribbons.js';
 import { riversNear } from './rivers.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
@@ -67,9 +68,9 @@ const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
 
 const WRONG_CLAIM_SECONDS = 3600;
-const PICK_RADIUS_PX = 10;
+const PICK_RADIUS_PX = { mouse: 10, touch: 22 };
 const MOON_PICKABLE_ORBIT_PX = 30;
-const TAP_DISTANCE = 6;
+const TAP_DISTANCE = { mouse: 6, touch: 12 };
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
@@ -96,6 +97,8 @@ const crosshair = $('[data-crosshair]');
 const modeSelect = $('[data-mode]');
 const clockLabel = $('[data-clock-label]');
 const giveUpButton = $('[data-give-up]');
+const alignButton = $('.fh-dock [data-align]');
+const energyField = $('[data-energy-field]');
 const labelsToggle = $('[data-labels]');
 const labelsField = $('[data-labels-field]');
 const introFrame = $('[data-intro]');
@@ -219,7 +222,7 @@ function openMenu() {
   timeButton.setAttribute('aria-pressed', 'false');
   aim = null;
   glide = null;
-  held.clear();
+  letGo();
   clearSelection();
   hideStatus();
   menu = { parked: game ? parkedGame() : null };
@@ -488,6 +491,8 @@ function setMode(name) {
   exploreBrief.hidden = mode !== MODES.explore;
   missionBrief.hidden = mode === MODES.explore;
   clockLabel.textContent = mode.clockLabel;
+  alignButton.hidden = !mode.cockpit;
+  energyField.hidden = touchScreen.matches && !mode.scored;
   giveUpButton.textContent = mode.sunButton;
   restartButton.textContent = mode.restartButton;
   const url = new URL(window.location.href);
@@ -583,6 +588,12 @@ function eyeTanHalf() {
 }
 
 const held = new Set();
+const stick = createThumbStick($('[data-stick]'));
+
+function letGo() {
+  held.clear();
+  stick.release();
+}
 
 function aimView() {
   game.basis = viewBasis(game.ship, game.head);
@@ -875,9 +886,9 @@ function flightStep(seconds) {
   thrusting = false;
   if (menu || intro || photo?.running || warp || aim || glide) return;
   const move = [
-    (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0),
+    (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0) + stick.push.across,
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
-    (held.has('KeyW') || held.has('thrust+') ? 1 : 0) - (held.has('KeyS') || held.has('thrust-') ? 1 : 0),
+    (held.has('KeyW') ? 1 : 0) - (held.has('KeyS') ? 1 : 0) + stick.push.along,
   ];
   let moved = false;
   thrusting = move.some(Boolean);
@@ -1167,6 +1178,7 @@ function frame(now) {
   placeCrosshair();
   $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
   $('[data-speed]').textContent = formatSpeed(game.speed);
+  if (touchScreen.matches) showSpeedOnDial(game.speed, { slowest: game.mode.slowestSpeed, top: game.mode.topSpeed, label: formatSpeed(game.speed) });
   if (game.mode.solarSystem) showSimTime(now);
   showCompanionButtons();
   $('[data-energy]').textContent = !game.mode.scored ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
@@ -1326,7 +1338,7 @@ function spotOnStage(offset) {
   };
 }
 
-function nearestStarAt(x, y) {
+function nearestStarAt([x, y], reachPx) {
   if (!eyeStars) return null;
   const shift = subtract(game.camera, eyeAnchor);
   let nearest = null;
@@ -1338,7 +1350,7 @@ function nearestStarAt(x, y) {
     if (game.mode.cockpit && !throughWindow(game.ship, scale(offset, 1 / distance))) continue;
     if (eyeStars.precise[i * 6 + 3] + 5 * Math.log10(distance / 10) > EYE_LIMIT) continue;
     const miss = Math.hypot(spot.x - x, spot.y - y);
-    if (miss <= PICK_RADIUS_PX && (!nearest || miss < nearest.miss)) {
+    if (miss <= reachPx && (!nearest || miss < nearest.miss)) {
       nearest = { kind: eyeStars.kinds[i], name: eyeStars.names[i], absolute: eyeStars.precise[i * 6 + 3], colour: eyeStars.precise[i * 6 + 4], distance, miss, offset };
     }
   }
@@ -1350,8 +1362,8 @@ function stagePoint(clientX, clientY) {
   return [clientX - box.left, clientY - box.top];
 }
 
-function claimInView(clientX, clientY) {
-  claim(nearestStarAt(...stagePoint(clientX, clientY)));
+function claimInView(clientX, clientY, reachPx) {
+  claim(nearestStarAt(stagePoint(clientX, clientY), reachPx));
 }
 
 const SELECTION_RING_PX = 12;
@@ -1429,8 +1441,8 @@ function planetStandingInFor(body, pixelsPerKm) {
   return orbitPx < MOON_PICKABLE_ORBIT_PX ? planet : body;
 }
 
-function pickablesAt(x, y) {
-  const star = nearestStarAt(x, y);
+function pickableAt([x, y], reachPx) {
+  const star = nearestStarAt([x, y], reachPx);
   const picks = [];
   if (star) picks.push({ ...clickedStarPick(star), miss: star.miss });
   const pixelsPerTan = stage.clientHeight / 2 / eyeTanHalf()[1];
@@ -1442,7 +1454,7 @@ function pickablesAt(x, y) {
     const pixelsPerKm = pixelsPerTan / distanceKm;
     const discPx = body.radiusKm * pixelsPerKm;
     const miss = Math.max(0, Math.hypot(spot.x - x, spot.y - y) - discPx);
-    if (miss <= PICK_RADIUS_PX) picks.push(Object.assign(body.kind === 'star' ? starBodyPick(body) : bodyPick(planetStandingInFor(body, pixelsPerKm)), { miss }));
+    if (miss <= reachPx) picks.push(Object.assign(body.kind === 'star' ? starBodyPick(body) : bodyPick(planetStandingInFor(body, pixelsPerKm)), { miss }));
   }
   const deepSky = [
     ...nebulae.map(nebulaPick),
@@ -1452,13 +1464,13 @@ function pickablesAt(x, y) {
     const spot = spotOnStage(place.locate());
     if (!spot) continue;
     const miss = Math.hypot(spot.x - x, spot.y - y);
-    if (miss <= PICK_RADIUS_PX) picks.push({ ...place, miss });
+    if (miss <= reachPx) picks.push({ ...place, miss });
   }
   return picks.sort((a, b) => a.miss - b.miss)[0] ?? null;
 }
 
-function selectInView(clientX, clientY) {
-  selection = pickablesAt(...stagePoint(clientX, clientY));
+function selectInView(clientX, clientY, reachPx) {
+  selection = pickableAt(stagePoint(clientX, clientY), reachPx);
   selectionShownAt = -Infinity;
   if (!selection) clearSelection();
 }
@@ -1533,39 +1545,29 @@ function finish(found) {
   ending.hidden = false;
 }
 
-const fingers = new Map();
-let pinchSpread = null;
-
-function fingerSpread() {
-  const [first, second] = [...fingers.values()];
-  return Math.max(1, Math.hypot(first.x - second.x, first.y - second.y));
-}
-
-function liftFinger(event) {
-  fingers.delete(event.pointerId);
-  pinchSpread = null;
-}
+const fingers = createTwoFingerGesture({
+  zoomBy,
+  rollBy(angle) {
+    if (warp || aim || glide || intro || menu) return;
+    game.ship = turn(game.ship, 'forward', -angle);
+    aimView();
+  },
+});
+const handOf = ({ pointerType }) => (pointerType === 'touch' ? 'touch' : 'mouse');
 
 let drag = null;
 view.addEventListener('pointerdown', (event) => {
   if (photo?.running) return;
   view.focus();
   view.setPointerCapture(event.pointerId);
-  fingers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (fingers.size > 1) {
-    pinchSpread = fingers.size === 2 ? fingerSpread() : null;
+  if (fingers.put(event) > 1) {
     drag = null;
     return;
   }
-  drag = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY };
+  drag = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, tap: !closeTouchPanels() };
 });
 view.addEventListener('pointermove', (event) => {
-  if (fingers.has(event.pointerId)) fingers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (pinchSpread) {
-    const spread = fingerSpread();
-    zoomBy(spread / pinchSpread);
-    pinchSpread = spread;
-  }
+  fingers.move(event);
   if (!drag) return;
   const perPixel = fieldHeight / stage.clientHeight;
   const across = (event.clientX - drag.x) * perPixel;
@@ -1578,14 +1580,14 @@ view.addEventListener('pointermove', (event) => {
   drag.y = event.clientY;
 });
 view.addEventListener('pointerup', (event) => {
-  liftFinger(event);
-  const tapped = drag && !warp && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < TAP_DISTANCE;
-  if (tapped && game.mode.picking) selectInView(event.clientX, event.clientY);
-  else if (tapped) claimInView(event.clientX, event.clientY);
-  drag = null;
+  const staying = fingers.lift(event);
+  const tapped = drag?.tap && !warp && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < TAP_DISTANCE[handOf(event)];
+  if (tapped && game.mode.picking) selectInView(event.clientX, event.clientY, PICK_RADIUS_PX[handOf(event)]);
+  else if (tapped) claimInView(event.clientX, event.clientY, PICK_RADIUS_PX[handOf(event)]);
+  drag = staying && { x: staying.x, y: staying.y, tap: false };
 });
 view.addEventListener('pointercancel', (event) => {
-  liftFinger(event);
+  fingers.lift(event);
   drag = null;
 });
 view.addEventListener(
@@ -1650,10 +1652,10 @@ window.addEventListener('keydown', (event) => {
   } else zoomWithKey(event);
 });
 window.addEventListener('keyup', (event) => held.delete(event.code));
-window.addEventListener('blur', () => held.clear());
+window.addEventListener('blur', letGo);
 
-document.querySelectorAll('[data-thrust]').forEach((button) => {
-  const key = button.dataset.thrust === '1' ? 'thrust+' : 'thrust-';
+document.querySelectorAll('[data-hold]').forEach((button) => {
+  const key = button.dataset.hold;
   button.addEventListener('pointerdown', (event) => {
     event.preventDefault();
     button.setPointerCapture(event.pointerId);
@@ -1661,9 +1663,7 @@ document.querySelectorAll('[data-thrust]').forEach((button) => {
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, () => held.delete(key));
 });
-document.querySelectorAll('[data-speed-change]').forEach((button) => {
-  button.addEventListener('click', () => changeSpeed(Number(button.dataset.speedChange)));
-});
+const showSpeedOnDial = createSpeedDial($('[data-speed-dial]'), changeSpeed);
 $('[data-zoom-in]').addEventListener('click', () => zoomBy(ZOOM_STEP));
 $('[data-zoom-out]').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
 $('[data-zoom-reset]').addEventListener('click', resetZoom);
@@ -1677,9 +1677,10 @@ function toggleAtlas() {
   }
   atlasFrame.hidden = !atlasFrame.hidden;
   if (!atlasFrame.hidden && photo && !photo.running) closePhoto();
+  setTray(false);
 }
 
-photoCanvas.addEventListener('click', (event) => !photo?.running && claimInView(event.clientX, event.clientY));
+photoCanvas.addEventListener('click', (event) => !photo?.running && claimInView(event.clientX, event.clientY, PICK_RADIUS_PX[handOf(event)]));
 $('[data-photo-close]').addEventListener('click', closePhoto);
 $('[data-intro-skip]').addEventListener('click', endIntro);
 introFrame.addEventListener('pointerdown', (event) => intro?.waiting && !event.target.closest('[data-intro-skip]') && beginIntro());
@@ -1704,6 +1705,7 @@ orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
 followButton.addEventListener('click', () => setFollowing(!following));
 rotateButton.addEventListener('click', () => setRotatingWith(rotatingWith ? null : solarFrame?.holder ?? null));
 timeButton.addEventListener('click', () => {
+  setTray(false);
   timePanel.hidden = !timePanel.hidden;
   timeButton.setAttribute('aria-pressed', String(!timePanel.hidden));
 });
@@ -1717,16 +1719,64 @@ simDateInput.addEventListener('change', () => {
   if (Number.isFinite(chosen)) changeTime(() => jumpTo(chosen));
 });
 const moreButton = $('[data-more]');
-const showPanelState = () => moreButton.setAttribute('aria-expanded', String(studioPanelOpen()));
+const dock = $('[data-dock]');
+const trayButton = $('[data-tray]');
+const fullscreenButton = $('[data-fullscreen]');
+const trayOpen = () => dock.classList.contains('fh-tray-open');
+const sheetOpen = () => document.body.classList.contains('fh-sheet-open');
+const showPanelState = () => moreButton.setAttribute('aria-expanded', String(touchScreen.matches ? sheetOpen() : studioPanelOpen()));
+
+function setTray(open) {
+  dock.classList.toggle('fh-tray-open', open);
+  trayButton.setAttribute('aria-expanded', String(open));
+}
+
+function setSheet(open) {
+  document.body.classList.toggle('fh-sheet-open', open);
+  showPanelState();
+}
+
+function closeTouchPanels() {
+  const anyOpen = touchScreen.matches && (trayOpen() || sheetOpen());
+  setTray(false);
+  setSheet(false);
+  return anyOpen;
+}
+
+trayButton.addEventListener('click', () => setTray(!trayOpen()));
 moreButton.addEventListener('click', () => {
+  if (touchScreen.matches) {
+    setTray(false);
+    setSheet(!sheetOpen());
+    return;
+  }
   toggleStudioPanel();
   showPanelState();
 });
+const sheetHandle = document.querySelector('[data-studio-handle]');
+for (const type of ['pointerdown', 'click']) {
+  sheetHandle.addEventListener(
+    type,
+    (event) => {
+      if (!touchScreen.matches) return;
+      event.stopImmediatePropagation();
+      if (type === 'click') setSheet(false);
+    },
+    { capture: true },
+  );
+}
+fullscreenButton.hidden = !document.fullscreenEnabled;
+fullscreenButton.addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen();
+});
+document.addEventListener('fullscreenchange', () => {
+  fullscreenButton.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
+});
 window.addEventListener('resize', showPanelState);
-const dock = $('[data-dock]');
 new ResizeObserver(() => stage.style.setProperty('--dock-height', `${dock.offsetHeight}px`)).observe(dock);
 showPanelState();
-$('[data-align]').addEventListener('click', () => faceDirection(game.basis.forward));
+document.querySelectorAll('[data-align]').forEach((button) => button.addEventListener('click', () => faceDirection(game.basis.forward)));
 modeSelect.addEventListener('change', () => (leavingExplore() ? newGame() : setMode(modeSelect.value)));
 $('[data-select-form]').addEventListener('submit', (event) => {
   event.preventDefault();

@@ -14,7 +14,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  min-height: var(--dock-height);
+  min-height: 58px;
   padding: 9px 12px;
   border-top: 1px solid var(--edge);
   background: rgba(3, 8, 15, 0.82);
@@ -451,35 +451,6 @@
   }
 }
 
-.fh-touch {
-  position: absolute;
-  right: 16px;
-  bottom: calc(var(--dock-height) + 56px);
-  display: none;
-  grid-template-columns: repeat(2, 52px);
-  gap: 10px;
-}
-
-.fh-touch button {
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  width: 52px;
-  height: 52px;
-  border: 1px solid var(--edge);
-  border-radius: 50%;
-  background: rgba(7, 22, 39, 0.7);
-  color: var(--text-strong);
-  font-size: 18px;
-}
-
-@media (pointer: coarse) {
-  .fh-touch {
-    display: grid;
-  }
-}
-
 .fh-zoom {
   display: flex;
 }
@@ -775,4 +746,354 @@
   font-size: 12px;
   text-align: center;
   color: var(--text-strong);
+}
+
+.fh-touch-only {
+  display: none;
+}
+
+.fh-touch {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .studio {
+    --studio-bar-height: 0px;
+    --edge-left: max(12px, env(safe-area-inset-left));
+    --edge-right: max(12px, env(safe-area-inset-right));
+    --edge-top: max(10px, env(safe-area-inset-top));
+  }
+
+  .studio .studio-stage,
+  .studio-collapsed .studio-stage {
+    inset: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .studio .studio-bar {
+    inset: var(--edge-top) auto auto var(--edge-left);
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    backdrop-filter: none;
+  }
+
+  .studio .studio-title {
+    display: none;
+  }
+
+  .fh-hud {
+    top: var(--edge-top);
+    right: var(--edge-right);
+    left: calc(var(--edge-left) + 44px);
+    gap: 1px 12px;
+    font-size: 12px;
+    text-shadow: 0 1px 3px #000;
+  }
+
+  .fh-hud-speed {
+    display: none;
+  }
+
+  .fh-dock {
+    gap: 8px;
+    padding: 7px var(--edge-right) max(7px, env(safe-area-inset-bottom)) var(--edge-left);
+  }
+
+  .fh-dock button {
+    min-height: 44px;
+  }
+
+  .fh-dock-select {
+    flex: 1 1 calc(100% - 60px);
+    order: 1;
+  }
+
+  .fh-dock-select input {
+    font-size: 16px;
+  }
+
+  .fh-dock-buttons {
+    display: contents;
+  }
+
+  .fh-dock-buttons > :is(button, .fh-zoom) {
+    flex: 1 1 auto;
+  }
+
+  .fh-dock .fh-zoom button {
+    flex: 1 1 44px;
+  }
+
+  .fh-dock:not(.fh-tray-open) .fh-dock-buttons > *,
+  .fh-dock .fh-dock-buttons > [hidden] {
+    display: none;
+  }
+
+  .fh-dock:not(.fh-tray-open):has(.fh-dock-select[hidden]) .fh-dock-buttons > :is([data-jump], [data-expose], [data-atlas-open], .fh-touch-only[data-align]):not([hidden]) {
+    display: block;
+  }
+
+  .fh-touch-only {
+    display: block;
+  }
+
+  .fh-dock .fh-tray-toggle {
+    flex: 0 0 52px;
+    order: 2;
+    margin-left: auto;
+    padding: 0;
+    font-size: 20px;
+  }
+
+  .fh-dock .fh-tray-toggle[aria-expanded="true"] {
+    border-color: var(--link);
+    background: #164a7a;
+  }
+
+  .fh-touch {
+    position: absolute;
+    inset: auto var(--edge-right) calc(var(--dock-height) + 14px) var(--edge-left);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+
+  .fh-touch :is(.fh-stick, .fh-dial, button) {
+    border: 1px solid var(--edge-bright);
+    background: rgba(7, 22, 39, 0.55);
+    color: var(--text-strong);
+    text-shadow: 0 1px 3px #000;
+    touch-action: none;
+    pointer-events: auto;
+  }
+
+  .fh-stage:has(.fh-tray-open, [data-select]:focus, :is(.fh-ending, .fh-photo, .fh-atlas):not([hidden])) .fh-touch {
+    display: none;
+  }
+
+  .fh-stick {
+    position: relative;
+    width: 128px;
+    height: 128px;
+    border-radius: 50%;
+  }
+
+  .fh-stick::before {
+    content: '\25B2';
+    position: absolute;
+    inset: 4px 0 auto;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .fh-stick::after {
+    content: '\25BC';
+    position: absolute;
+    inset: auto 0 4px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .fh-stick-knob {
+    position: absolute;
+    inset: 36px;
+    border: 1px solid var(--link);
+    border-radius: 50%;
+    background: rgba(61, 143, 221, 0.4);
+    pointer-events: none;
+  }
+
+  .fh-touch-right {
+    display: grid;
+    grid-template: 1fr 1fr / 56px 92px;
+    gap: 8px;
+    height: 144px;
+  }
+
+  .fh-touch-right button {
+    display: grid;
+    place-content: center;
+    gap: 2px;
+    border-radius: 14px;
+    font: inherit;
+    font-size: 16px;
+    text-align: center;
+  }
+
+  .fh-touch-right button:active {
+    background: rgba(22, 74, 122, 0.85);
+  }
+
+  .fh-touch-right small,
+  .fh-dial span {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .fh-dial {
+    --turned: 0px;
+    display: flex;
+    grid-area: 1 / 2 / 3 / 3;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px;
+    border-radius: 14px;
+    text-align: center;
+  }
+
+  .fh-touch .fh-dial {
+    background:
+      repeating-linear-gradient(to bottom, rgba(143, 196, 242, 0.55) 0 1px, transparent 1px 8px) left 0 top var(--turned) / 7px 40px repeat-y,
+      repeating-linear-gradient(to bottom, rgba(143, 196, 242, 0.55) 0 1px, transparent 1px 8px) right 0 top var(--turned) / 7px 40px repeat-y,
+      rgba(7, 22, 39, 0.55);
+  }
+
+  .fh-dial strong {
+    font-size: 13px;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fh-status {
+    inset: calc(var(--edge-top) + 46px) 16px auto;
+    font-size: 13px;
+  }
+
+  .fh-pick,
+  .fh-time {
+    inset: calc(var(--edge-top) + 46px) auto auto var(--edge-left);
+    width: min(300px, calc(100% - var(--edge-left) - var(--edge-right)));
+    max-height: calc(100% - var(--dock-height) - var(--edge-top) - 60px);
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+
+  .fh-stage:has(.fh-time:not([hidden])) .fh-pick {
+    display: none;
+  }
+
+  .fh-stage:has(:is(.fh-time, .fh-pick):not([hidden])) .fh-status {
+    display: none;
+  }
+
+  .fh-atlas {
+    inset: calc(var(--edge-top) + 46px) var(--edge-right) calc(var(--dock-height) + 8px) var(--edge-left);
+  }
+
+  .fh-photo figcaption {
+    bottom: calc(var(--dock-height) + 12px);
+  }
+
+  .fh-photo .fh-close {
+    top: calc(var(--edge-top) + 40px);
+    right: var(--edge-right);
+  }
+
+  .fh-pick-close,
+  .fh-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .fh-pick-close {
+    top: 0;
+    right: 0;
+  }
+
+  .fh-actions button,
+  .fh-ending button,
+  .fh-time-date input,
+  .studio-panel :is(select, input[type="number"]) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .fh-check {
+    min-height: 44px;
+  }
+
+  .studio .studio-panel,
+  .studio-collapsed .studio-panel {
+    inset: auto 0 0;
+    z-index: 6;
+    display: none;
+    width: auto;
+    height: 72dvh;
+    border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
+    background: rgba(11, 33, 55, 0.96);
+    transition: none;
+  }
+
+  .fh-sheet-open .studio-panel {
+    display: flex;
+  }
+
+  .studio-collapsed .studio-panel-body {
+    display: block;
+  }
+
+  .studio .studio-handle {
+    justify-content: space-between;
+    padding: 14px 16px;
+  }
+
+  .studio .studio-handle::after {
+    content: 'Close';
+  }
+
+  .studio .studio-grabber {
+    display: none;
+  }
+
+  .studio .studio-panel-body {
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (pointer: coarse) and (orientation: landscape) {
+  .studio .studio-panel,
+  .studio-collapsed .studio-panel {
+    inset: 0 0 0 auto;
+    width: min(400px, 62vw);
+    height: auto;
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+  }
+
+  .fh-pick,
+  .fh-time {
+    left: calc(var(--edge-left) + 142px);
+  }
+
+  .fh-status {
+    right: 170px;
+    left: 160px;
+  }
+}
+
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+  .fh-dock-select {
+    flex: 1 1 200px;
+  }
+
+  .fh-dock .fh-dock-buttons > :is([data-time-open], [data-menu-open]):not([hidden]) {
+    display: block;
+    flex: 0 0 auto;
+    order: 2;
+  }
+
+  .fh-dock .fh-tray-toggle {
+    order: 3;
+  }
+
+  .fh-tray-open .fh-dock-select {
+    flex-basis: calc(100% - 240px);
+  }
 }
