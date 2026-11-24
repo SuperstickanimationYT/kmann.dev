@@ -350,7 +350,7 @@ function bodyArrays(shown, mapRelief, giants) {
     const giantFaces = body.kind === 'giant' ? giants.facesOf(body.name) : null;
     const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
-    arrays.uBodyOccluder.set([...direction, star || body.shades || edgeOn(body, direction) ? 0 : angularRadius * (1 - (body.flattening ?? 0))], i * 4);
+    arrays.uBodyOccluder.set([...direction, star || body.shades || edgeOn(body, direction) ? 0 : angularRadius], i * 4);
     arrays.uBodySun.set([...body.sunward, body.sunAngularRadius], i * 4);
     body.eclipsers.forEach(({ offsetKm: eclipserKm, radiusKm, reddens }, k) =>
       arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));

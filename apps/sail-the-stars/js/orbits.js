@@ -1,3 +1,4 @@
+import { equatorKm } from './solar-system.js';
 import { add, cross, dot, scale, subtract } from './vectors.js';
 
 const ORBIT_RGB = '143, 196, 255';
@@ -47,7 +48,15 @@ function negativeSpans(a, b, c) {
   return a > 0 ? [[low, high]] : [[-Infinity, low], [high, Infinity]];
 }
 
-function hiddenSpans(from, to, { centre, radiusSquared }) {
+function hiderOf({ offsetKm, radiusKm, flattening, north }, toCamera) {
+  const axis = flattening ? toCamera(north) : null;
+  const rounded = axis ? (point) => add(point, scale(axis, dot(point, axis) * (1 / (1 - flattening) - 1))) : (point) => point;
+  return { rounded, centre: rounded(toCamera(offsetKm)), radiusSquared: equatorKm({ radiusKm, flattening }) ** 2 };
+}
+
+function hiddenSpans(seenFrom, seenTo, { rounded, centre, radiusSquared }) {
+  const from = rounded(seenFrom);
+  const to = rounded(seenTo);
   const along = subtract(to, from);
   const fromCentre = subtract(from, centre);
   const insideBody = negativeSpans(dot(along, along), 2 * dot(fromCentre, along), dot(fromCentre, fromCentre) - radiusSquared);
@@ -91,7 +100,7 @@ export function drawOrbits(context, { paths, offsetOf, bodies, basis, tanHalf, w
   const toScreen = ([x, y, z]) => [((x / z / tanHalf[0]) * 0.5 + 0.5) * width, (0.5 - (y / z / tanHalf[1]) * 0.5) * height];
   const hiders = bodies
     .filter(({ offsetKm, radiusKm }) => (radiusKm / Math.hypot(...offsetKm)) * pixelsPerTan >= SMALLEST_HIDING_DISC_PX)
-    .map(({ offsetKm, radiusKm }) => ({ centre: toCamera(offsetKm), radiusSquared: radiusKm * radiusKm }));
+    .map((body) => hiderOf(body, toCamera));
   const shownPieces = (from, to) => {
     const inView = clipToView(from, to, tanHalf);
     return inView ? visiblePieces(inView, hiders) : [];

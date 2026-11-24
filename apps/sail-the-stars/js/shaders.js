@@ -74,11 +74,27 @@ float starburst(vec2 offset, float reach) {
 
 const BODY_OCCLUDERS = `
 uniform vec4 uBodyOccluder[${MAX_BODIES}];
+uniform vec3 uBodyNorth[${MAX_BODIES}];
+uniform float uBodyFlattening[${MAX_BODIES}];
 uniform int uBodyCount;
+
+bool behindOblate(int i, vec3 direction) {
+  float stretch = 1.0 / (1.0 - uBodyFlattening[i]) - 1.0;
+  vec3 north = uBodyNorth[i];
+  vec3 centre = uBodyOccluder[i].xyz;
+  vec3 ray = normalize(direction + north * dot(direction, north) * stretch);
+  vec3 roundedCentre = centre + north * dot(centre, north) * stretch;
+  float along = dot(ray, roundedCentre);
+  return along > 0.0 && length(ray * along - roundedCentre) < sin(uBodyOccluder[i].w) * pow(1.0 - uBodyFlattening[i], -1.0 / 3.0);
+}
 
 bool behindBody(vec3 direction) {
   for (int i = 0; i < ${MAX_BODIES}; i++) {
     if (i >= uBodyCount) break;
+    if (uBodyFlattening[i] > 0.0) {
+      if (uBodyOccluder[i].w > 0.0 && behindOblate(i, direction)) return true;
+      continue;
+    }
     if (uBodyOccluder[i].w > 0.0 && dot(direction, uBodyOccluder[i].xyz) > cos(uBodyOccluder[i].w)) return true;
   }
   return false;
@@ -1536,6 +1552,8 @@ const float RINGLET_CONTRAST = 0.45;
 const float RINGLET_ALBEDO_CONTRAST = 0.25;
 const float RING_SHADOW_SOFTNESS = 0.004;
 const float RING_FLATTEST_VIEW = 1e-3;
+const vec2 F_RING_KM = vec2(140155.0, 140205.0);
+const float F_RING_DEPTH = 0.6;
 const int RING_SAMPLES = 2;
 const int RING_SHADOW_SAMPLES = 3;
 const float RING_SHADOW_LEAST_FACING = 0.05;
@@ -1577,9 +1595,16 @@ vec2 ringDepths(float r, float w) {
     + 2.0 * band(r, w, 110000.0, 117580.0)
     + 0.6 * band(r, w, 122170.0, 133423.0)
     + 0.45 * band(r, w, 133745.0, 136485.0)
-    + 0.3 * band(r, w, 136527.0, 136775.0)
-    + 0.6 * band(r, w, 140155.0, 140205.0);
+    + 0.3 * band(r, w, 136527.0, 136775.0);
   return max(vec2(dusty, icy), 0.0);
+}
+
+vec4 ringLook(float depth, vec3 albedo, float viewSlant, float sunSlant, bool litFace) {
+  float scattered = depth / viewSlant * exp(-depth / viewSlant);
+  if (litFace) scattered = sunSlant / (sunSlant + viewSlant) * (1.0 - exp(-depth * (1.0 / sunSlant + 1.0 / viewSlant)));
+  else if (abs(sunSlant - viewSlant) >= 1e-3) scattered = sunSlant / (sunSlant - viewSlant) * (exp(-depth / sunSlant) - exp(-depth / viewSlant));
+  float cover = 1.0 - exp(-depth / viewSlant);
+  return vec4(albedo * RING_BRIGHTNESS * min(scattered, RING_BRIGHTEST_SHARE), cover);
 }
 
 vec4 ringSheet(float rKm, float footprint, float ringlet, float viewSlant, float sunSlant, bool litFace) {
@@ -1587,10 +1612,7 @@ vec4 ringSheet(float rKm, float footprint, float ringlet, float viewSlant, float
   float depth = (depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlet);
   if (depth <= 0.0) return vec4(0.0);
   vec3 albedo = (RING_DUSTY_COLOUR * depths.x + RING_ICY_COLOUR * depths.y) / (depths.x + depths.y) * (1.0 + RINGLET_ALBEDO_CONTRAST * ringlet);
-  float scattered = depth / viewSlant * exp(-depth / viewSlant);
-  if (litFace) scattered = sunSlant / (sunSlant + viewSlant) * (1.0 - exp(-depth * (1.0 / sunSlant + 1.0 / viewSlant)));
-  else if (abs(sunSlant - viewSlant) >= 1e-3) scattered = sunSlant / (sunSlant - viewSlant) * (exp(-depth / sunSlant) - exp(-depth / viewSlant));
-  return vec4(albedo * RING_BRIGHTNESS * min(scattered, RING_BRIGHTEST_SHARE), 1.0 - exp(-depth / viewSlant));
+  return ringLook(depth, albedo, viewSlant, sunSlant, litFace);
 }
 
 float ringRadiusKm(vec3 fromCentre, float radius) {
@@ -1620,6 +1642,7 @@ vec4 ringSeen(int i, vec3 direction, out float ringHit) {
     float off = (float(k) + 0.5) / float(RING_SAMPLES) - 0.5;
     seen += ringSheet(rKm + off * footprint, footprint / float(RING_SAMPLES), ringlet, viewSlant, sunSlant, litFace) / float(RING_SAMPLES);
   }
+  seen += band(rKm, footprint, F_RING_KM.x, F_RING_KM.y) * ringLook(F_RING_DEPTH, RING_ICY_COLOUR, viewSlant, sunSlant, litFace);
   if (seen.a <= 0.0) return vec4(0.0);
   vec3 roundedSun = normalize(rounded(i, sun));
   vec3 roundedPlace = rounded(i, fromCentre);

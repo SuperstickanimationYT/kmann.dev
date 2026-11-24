@@ -10,11 +10,12 @@ const LOWEST_ALTITUDE_KM = 30;
 const LOWEST_ALTITUDE_RADII = 0.5;
 export const lowestAltitudeKm = (body) => Math.min(LOWEST_ALTITUDE_KM, LOWEST_ALTITUDE_RADII * body.radiusKm);
 
+export const equatorKm = ({ radiusKm, flattening = 0 }) => radiusKm * (1 - flattening) ** (-1 / 3);
+
 export function radiusBelowKm({ radiusKm, flattening, north }, offsetKm) {
   if (!flattening) return radiusKm;
   const sinLatitude = dot(offsetKm, north) / Math.hypot(...offsetKm);
-  const equatorKm = radiusKm * (1 - flattening) ** (-1 / 3);
-  return equatorKm / Math.sqrt(1 - sinLatitude ** 2 + (sinLatitude / (1 - flattening)) ** 2);
+  return equatorKm({ radiusKm, flattening }) / Math.sqrt(1 - sinLatitude ** 2 + (sinLatitude / (1 - flattening)) ** 2);
 }
 const J2000_MS = Date.UTC(2000, 0, 1, 12);
 const MS_PER_DAY = 86400000;

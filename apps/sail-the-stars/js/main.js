@@ -422,7 +422,7 @@ function drawOrbitLines(context, width, height) {
   drawOrbits(context, {
     paths: system.paths(simNow()),
     offsetOf: (name) => offsets.get(name),
-    bodies: seen.map(({ body, offsetKm }) => ({ offsetKm, radiusKm: body.radiusKm })),
+    bodies: seen.map(({ body, offsetKm }) => ({ ...body, offsetKm })),
     basis: game.basis,
     tanHalf: eyeTanHalf(),
     width,
