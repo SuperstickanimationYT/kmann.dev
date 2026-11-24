@@ -1,5 +1,5 @@
 {
-  "bytes": 6716879,
+  "bytes": 6731133,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -97,6 +97,7 @@
     "js/terraforming.js",
     "js/terrain-worker.js",
     "js/terrain.js",
+    "js/touch-controls.js",
     "js/vectors.js",
     "js/warp.js",
     "manifest.webmanifest",

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Sail the Stars &mdash; kmann314</title>
 <meta name="description" content="Explore the universe from the ground of a moon to the far side of the Milky Way, or play Find Home: lost outside the galaxy, find the Sun.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
@@ -26,9 +26,9 @@
   <div class="fh-crosshair" data-crosshair aria-hidden="true" hidden></div>
   <div class="fh-hud" aria-live="polite">
     <span><span data-clock-label>Mission clock</span> <strong data-clock>0:00:00</strong></span>
-    <span>Thrusters <strong data-speed></strong></span>
+    <span class="fh-hud-speed">Thrusters <strong data-speed></strong></span>
     <span data-sim-date-field hidden>Date <strong data-sim-date></strong></span>
-    <span>Warp left <strong data-energy></strong></span>
+    <span data-energy-field>Warp left <strong data-energy></strong></span>
   </div>
   <aside class="fh-pick" data-pick hidden aria-live="polite">
     <button type="button" class="fh-pick-close" data-pick-close aria-label="Close the details">&times;</button>
@@ -56,7 +56,7 @@
   <nav class="fh-dock" data-dock aria-label="Controls">
     <form class="fh-dock-select" data-select-form data-select-field hidden>
       <label for="fh-select" class="fh-visually-hidden">Select a place</label>
-      <input id="fh-select" type="search" list="fh-select-list" data-select placeholder="Select: Sun, Rigel, Orion Nebula…" autocomplete="off" enterkeyhint="go">
+      <input id="fh-select" type="search" list="fh-select-list" data-select placeholder="Select: Sun, Rigel, Orion Nebula…" autocomplete="off" autocapitalize="off" enterkeyhint="go">
       <button type="button" class="fh-primary" data-warp-selection>Warp</button>
       <datalist id="fh-select-list" data-select-list></datalist>
     </form>
@@ -73,16 +73,27 @@
         <button type="button" data-zoom-reset title="Field of view, top to bottom. Click for the normal view (0)">50&deg;</button>
         <button type="button" data-zoom-in title="Zoom in (+)" aria-label="Zoom in">+</button>
       </div>
+      <button type="button" class="fh-touch-only" data-align title="Point the ship where you look (C)" hidden>Point ship</button>
       <button type="button" data-give-up>Give up</button>
       <button type="button" data-menu-open title="Back to the main menu">Menu</button>
+      <button type="button" class="fh-touch-only" data-fullscreen hidden>Full screen</button>
       <button type="button" data-more aria-expanded="true" title="Mode, settings, camera, help">More</button>
     </div>
+    <button type="button" class="fh-touch-only fh-tray-toggle" data-tray aria-expanded="false" aria-label="All controls">&#9776;</button>
   </nav>
   <div class="fh-touch" data-touch>
-    <button type="button" data-speed-change="2" aria-label="Fly faster">+</button>
-    <button type="button" data-thrust="1" aria-label="Fly forward">&#9650;</button>
-    <button type="button" data-speed-change="0.5" aria-label="Fly slower">&minus;</button>
-    <button type="button" data-thrust="-1" aria-label="Fly backward">&#9660;</button>
+    <div class="fh-stick" data-stick role="group" aria-label="Fly forward, back and sideways">
+      <span class="fh-stick-knob" data-knob></span>
+    </div>
+    <div class="fh-touch-right">
+      <button type="button" data-hold="KeyR" aria-label="Fly up">&#9650;<small>Up</small></button>
+      <button type="button" data-hold="KeyF" aria-label="Fly down"><small>Down</small>&#9660;</button>
+      <div class="fh-dial" data-speed-dial role="slider" tabindex="0" aria-orientation="vertical" aria-label="Thruster speed">
+        <span aria-hidden="true">faster</span>
+        <strong data-dial-speed></strong>
+        <span aria-hidden="true">slower</span>
+      </div>
+    </div>
   </div>
   <figure class="fh-photo" data-photo-frame hidden>
     <canvas data-photo aria-label="Long exposure of your current view. Click a star to claim it."></canvas>
@@ -117,7 +128,7 @@
   <div class="studio-panel-body">
     <div class="fh-panel">
       <p class="fh-brief" data-explore-brief>
-        Fly anywhere, from the surface of a moon to the far side of the Milky Way. Click anything in view, or type a
+        Fly anywhere, from the surface of a moon to the far side of the Milky Way. Tap or click anything in view, or type a
         name under Select, then press Warp. For a challenge, switch the mode to Mission.
       </p>
       <p class="fh-brief" data-mission-brief hidden>
@@ -205,7 +216,7 @@
           <li><kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> thruster speed &middot; <kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; <kbd>O</kbd> orbits, <kbd>,</kbd><kbd>.</kbd> time slower, faster, <kbd>/</kbd> pause time and <kbd>P</kbd> long-exposure view (Explore)</li>
           <li><kbd>+</kbd><kbd>&minus;</kbd> or <kbd>Ctrl</kbd> <kbd>Wheel</kbd> zoom &middot; <kbd>0</kbd> normal view</li>
           <li>Click a star through a window to claim it</li>
-          <li>Touch: drag to look &middot; hold <kbd>&#9650;</kbd><kbd>&#9660;</kbd> to fly &middot; round <kbd>+</kbd><kbd>&minus;</kbd> speed &middot; pinch to zoom</li>
+          <li>Touch: drag to look &middot; thumb stick to fly, farther is faster &middot; <kbd>Up</kbd><kbd>Down</kbd> to climb or sink &middot; slide the speed dial, or tap its top or bottom half &middot; pinch to zoom &middot; twist two fingers to roll &middot; <kbd>&#9776;</kbd> for everything else</li>
         </ul>
       </fieldset>
 
