@@ -6,6 +6,7 @@ import { ALL_BINS, ARMED_BINS, colourIndex, luminosityOf, YOUNG_BINS } from './p
 import { createRandom } from './random.js';
 
 export const STAR_FLOATS = 6;
+const STAR_DISTANCE = 5;
 export const KIND = { field: 0, cluster: 1, catalogue: 2, sun: 3 };
 
 const NEARBY_BYTES = 24;
@@ -146,9 +147,10 @@ function createCollector({ camera, axis, tanHalf, limit, nearbyActive }) {
   const values = [];
   const kinds = [];
   const names = [];
+  const keys = [];
   const cosHalf = axis ? 1 / Math.sqrt(1 + tanHalf * tanHalf) : -2;
 
-  const add = (present, velocity, absolute, colour, kind, name = null) => {
+  const add = (present, velocity, absolute, colour, kind, key, name = null) => {
     const delay = Math.hypot(present[0] - camera[0], present[1] - camera[1], present[2] - camera[2]) * LY_PER_PC;
     const seen = positionSeenAt(present, velocity, delay);
     const rx = seen[0] - camera[0];
@@ -161,6 +163,7 @@ function createCollector({ camera, axis, tanHalf, limit, nearbyActive }) {
     values.push(rx, ry, rz, absolute, colour, distance);
     kinds.push(kind);
     names.push(name);
+    keys.push(key);
   };
 
   const shadowedByCatalogue = (present, absolute) => {
@@ -169,7 +172,7 @@ function createCollector({ camera, axis, tanHalf, limit, nearbyActive }) {
     return fromSun < NEARBY_REACH && absolute + 5 * Math.log10(Math.max(fromSun, 0.1) / 10) < NEARBY_LIMIT;
   };
 
-  return { add, shadowedByCatalogue, count: () => kinds.length, values, kinds, names };
+  return { add, shadowedByCatalogue, count: () => kinds.length, values, kinds, names, keys };
 }
 
 function addFieldStars(collector, bin, binIndex, cell, density, ix, iy, iz) {
@@ -181,7 +184,7 @@ function addFieldStars(collector, bin, binIndex, cell, density, ix, iy, iz) {
     const colour = colourIndex(absolute, random.next());
     const velocity = [random.normal() * bin.speedSpread, random.normal() * bin.speedSpread, random.normal() * bin.speedSpread * 0.6];
     if (collector.shadowedByCatalogue(present, absolute)) continue;
-    collector.add(present, velocity, absolute, colour, KIND.field);
+    collector.add(present, velocity, absolute, colour, KIND.field, absolute);
   }
 }
 
@@ -195,7 +198,7 @@ function addClusterStars(collector, nebulae, binIndex, bin) {
       const present = nebula.present.map((value) => value + sigma * 0.6 * random.normal());
       const absolute = bin.absolute + random.next() - 0.5;
       const velocity = [random.normal() * 3, random.normal() * 3, random.normal() * 2];
-      collector.add(present, velocity, absolute, colourIndex(absolute, random.next()), KIND.cluster, nebula.name);
+      collector.add(present, velocity, absolute, colourIndex(absolute, random.next()), KIND.cluster, absolute, nebula.name);
     }
   });
 }
@@ -280,9 +283,9 @@ export function gatherStars({ camera, axis = null, tanHalf = 0, limit, budget, a
 
   const resolved = (absolute) => reaches[nearestBinIndex(absolute)] > 0;
   nearby.forEach((star) => {
-    if (resolved(star.absolute)) collector.add(star.position, star.velocity, star.absolute, star.colour, KIND.catalogue, star.name);
+    if (resolved(star.absolute)) collector.add(star.position, star.velocity, star.absolute, star.colour, KIND.catalogue, star, star.name);
   });
-  if (resolved(SUN_ABSOLUTE)) collector.add(SUN_POSITION, SUN_VELOCITY, SUN_ABSOLUTE, 0.65, KIND.sun, 'Sun');
+  if (resolved(SUN_ABSOLUTE)) collector.add(SUN_POSITION, SUN_VELOCITY, SUN_ABSOLUTE, 0.65, KIND.sun, 'Sun', 'Sun');
 
   return {
     count: collector.count(),
@@ -290,6 +293,33 @@ export function gatherStars({ camera, axis = null, tanHalf = 0, limit, budget, a
     precise: collector.values,
     kinds: Uint8Array.from(collector.kinds),
     names: collector.names,
+    keys: collector.keys,
     reaches,
   };
+}
+
+function nearestSightings(lists) {
+  const sightings = new Map();
+  lists.forEach(({ stars, anchor }) => stars.keys.forEach((key, index) => {
+    const distance = stars.precise[index * STAR_FLOATS + STAR_DISTANCE];
+    if (!(sightings.get(key)?.distance <= distance)) sightings.set(key, { stars, anchor, index, distance });
+  }));
+  return [...sightings.values()];
+}
+
+export function starsOfBoth(departure, arrival) {
+  const sightings = nearestSightings([departure, arrival]);
+  const kinds = Uint8Array.from(sightings, ({ stars, index }) => stars.kinds[index]);
+  const names = sightings.map(({ stars, index }) => stars.names[index]);
+  const keys = sightings.map(({ stars, index }) => stars.keys[index]);
+  const measuredFrom = (anchor) => {
+    const precise = [];
+    sightings.forEach(({ stars, anchor: seenFrom, index }) => {
+      const [x, y, z, absolute, colour] = stars.precise.slice(index * STAR_FLOATS, (index + 1) * STAR_FLOATS);
+      const offset = [x, y, z].map((value, axis) => value + (seenFrom[axis] - anchor[axis]));
+      precise.push(...offset, absolute, colour, Math.hypot(...offset));
+    });
+    return { anchor, stars: { count: sightings.length, values: Float32Array.from(precise), precise, kinds, names, keys, reaches: arrival.stars.reaches } };
+  };
+  return { departing: measuredFrom(departure.anchor), arriving: measuredFrom(arrival.anchor), landed: arrival };
 }

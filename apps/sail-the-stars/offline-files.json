@@ -1,5 +1,5 @@
 {
-  "bytes": 5987082,
+  "bytes": 5993619,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -52,6 +52,7 @@
     "js/giant-shader.js",
     "js/giants.js",
     "js/gl.js",
+    "js/glide-path.js",
     "js/ground-patches.js",
     "js/invented-ground.js",
     "js/main.js",
