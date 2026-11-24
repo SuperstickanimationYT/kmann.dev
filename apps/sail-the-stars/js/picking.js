@@ -2,6 +2,7 @@ import { LY_PER_PC } from './milky-way.js';
 import { formatDistance } from './practice.js';
 import { KM_PER_PC } from './solar-system.js';
 import { KIND } from './stars.js';
+import { speculationShown } from './speculation.js';
 
 const SUN_ABSOLUTE_MAGNITUDE = 4.83;
 const SUN_KELVIN = 5772;
@@ -91,7 +92,8 @@ function starFacts(pick) {
   };
 }
 
-function exoplanetKind({ kind, invented }) {
+function exoplanetKind({ kind, invented, civilization }) {
+  if (civilization && speculationShown()) return 'Rocky planet, surface and civilization made up';
   if (invented) return 'Rocky planet, surface made up';
   return kind === 'hazy' ? 'Small gas planet, clouds made up' : 'Giant planet, clouds made up';
 }

@@ -15,6 +15,7 @@ import {
   SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
+import { speculationShown } from './speculation.js';
 import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
@@ -190,6 +191,7 @@ const LATTICE_UNIT = 18;
 const INVENTED_COLOUR_UNIT = 23;
 const INVENTED_LAND_UNIT = 24;
 const CITY_LIGHTS_UNIT = 25;
+const EARTH_LAMPS = { dim: [1, 0.58, 0.24], bright: [1, 0.84, 0.6] };
 const LATTICE_ORIGIN = 4096;
 
 const nearestToZero = (index) => (index < LATTICE_PERIOD / 2 ? index : index - LATTICE_PERIOD) + LATTICE_ORIGIN;
@@ -510,6 +512,16 @@ export function createRenderer(canvas, armMap, galaxies) {
     cityLightsOn = true;
   }
 
+  const litAtNight = (body) => (body.civilization ? speculationShown() && inventedGround.isPainted(body) : cityLightsOn && body.cityLights > 0);
+
+  function cityLightUniforms(shown) {
+    const lit = shown.findIndex(({ body }) => litAtNight(body));
+    if (lit < 0) return { uLitBody: { int: lit } };
+    const { radiusKm, cityLights, civilization } = shown[lit].body;
+    const { dim, bright } = civilization?.lamps ?? EARTH_LAMPS;
+    return { uLitBody: { int: lit }, uLitBodyKm: radiusKm, uCityLightsOn: cityLights ?? 1, uCitiesInvented: civilization ? 1 : 0, uLampDim: dim, uLampBright: bright };
+  }
+
   let motionBlur = null;
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
@@ -525,8 +537,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     inventedGround.bind(program, shown);
     if (program.uniforms.uCityLights) {
       gl.uniform1i(program.uniforms.uCityLights, CITY_LIGHTS_UNIT);
-      const lit = cityLightsOn ? shown.findIndex(({ body }) => body.cityLights > 0) : -1;
-      setUniforms(gl, program, { uLitBody: { int: lit }, uLitBodyKm: lit >= 0 ? shown[lit].body.radiusKm : 1, uCityLightsOn: lit >= 0 ? shown[lit].body.cityLights : 0 });
+      setUniforms(gl, program, cityLightUniforms(shown));
     }
     const { arrays, count, rings } = bodyArrays(shown, mapRelief, giants);
     const groundValues = groundUniforms(ground, shown);

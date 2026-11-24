@@ -19,6 +19,7 @@ function groundKind(kelvin) {
   return kelvin < 850 ? BARE_WORLD : LAVA_WORLD;
 }
 
+const twoChannels = (pixels, first) => Uint8Array.from({ length: pixels.length / 2 }, (_, k) => pixels[(k >> 1) * 4 + first + (k & 1)]);
 const channel = (pixels, index) => Uint8Array.from({ length: pixels.length / 4 }, (_, texel) => pixels[texel * 4 + index]);
 
 export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, landUnit }) {
@@ -40,8 +41,8 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     gl.activeTexture(gl.TEXTURE0);
     gl.activeTexture(gl.TEXTURE0 + landUnit);
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R8, ...SHAPE_SIZE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texStorage2D(gl.TEXTURE_2D, Math.log2(SHAPE_SIZE[0]) + 1, gl.RG8, ...SHAPE_SIZE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -87,7 +88,8 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     const land = channel(pixels, 1);
     gl.activeTexture(gl.TEXTURE0 + landUnit);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RED, gl.UNSIGNED_BYTE, land);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RG, gl.UNSIGNED_BYTE, twoChannels(pixels, 1));
+    gl.generateMipmap(gl.TEXTURE_2D);
     gl.activeTexture(gl.TEXTURE0);
     return {
       ...kind,
@@ -115,11 +117,13 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     return baked.ground;
   }
 
+  const isPainted = (body) => body.name === baked?.name;
+
   function bind(target, shown) {
     if (target.uniforms.uInventedColour) gl.uniform1i(target.uniforms.uInventedColour, colourUnit);
     if (target.uniforms.uInventedLand) gl.uniform1i(target.uniforms.uInventedLand, landUnit);
-    setUniforms(gl, target, { uInventedBody: { int: shown.findIndex(({ body }) => body.name === baked?.name) } });
+    setUniforms(gl, target, { uInventedBody: { int: shown.findIndex(({ body }) => isPainted(body)) } });
   }
 
-  return { groundOf, bind };
+  return { groundOf, bind, isPainted };
 }

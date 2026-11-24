@@ -17,6 +17,7 @@ import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { CLOUD_MAP_SIZE } from './shaders.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies } from './solar-system.js';
+import { showSpeculation, speculationShown } from './speculation.js';
 import { withExoplanetHosts } from './exoplanets.js';
 import { SOLAR_SYSTEM, systemNamed, systemNear, withinSystem } from './planetary-systems.js';
 import { drawOrbits } from './orbits.js';
@@ -100,6 +101,7 @@ const restartButton = $('[data-restart]');
 const selectField = $('[data-select-field]');
 const longExposureField = $('[data-long-exposure-field]');
 const motionBlurToggle = $('[data-motion-blur]');
+const speculationToggle = $('[data-speculation]');
 const longExposureToggle = $('[data-long-exposure]');
 const selectInput = $('[data-select]');
 const selectList = $('[data-select-list]');
@@ -816,7 +818,7 @@ const bodyEast = (body) => [
 ];
 const toBodyLocal = (body, vector) => [dot(vector, body.meridian), dot(vector, bodyEast(body)), dot(vector, body.north)];
 const fromBodyLocal = (body, [x, y, z]) => add(add(scale(body.meridian, x), scale(bodyEast(body), y)), scale(body.north, z));
-const INVENT_GROUND_WITHIN_RADII = 3;
+const INVENT_GROUND_WITHIN_RADII = 8;
 let inventedGround = null;
 
 function groundFor(body) {
@@ -1600,6 +1602,8 @@ labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-pick-close]').addEventListener('click', clearSelection);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
+speculationToggle.checked = speculationShown();
+speculationToggle.addEventListener('change', () => showSpeculation(speculationToggle.checked));
 longExposureToggle.addEventListener('change', () => setLongExposure(longExposureToggle.checked));
 $('[data-menu-open]').addEventListener('click', openMenu);
 menuResume.addEventListener('click', resumeFromMenu);

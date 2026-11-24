@@ -659,8 +659,12 @@ const float CITY_LIGHTS_SPAN = 135.0;
 const float CITY_LIGHTS_DUSK = 0.02;
 const float CITY_LIGHTS_FULL_NIGHT = -0.12;
 const float CITY_LIGHTS_GAIN = 1.15;
-const vec3 CITY_LIGHTS_DIM = vec3(1.0, 0.58, 0.24);
-const vec3 CITY_LIGHTS_BRIGHT = vec3(1.0, 0.84, 0.6);
+uniform float uCitiesInvented;
+uniform vec3 uLampDim;
+uniform vec3 uLampBright;
+uniform sampler2D uInventedLand;
+const float TOWN_OCTAVES = 4.0;
+const float TOWN_CONTRAST = 4.5;
 const float DISTRICT_CONTRAST = 1.6;
 const float CLOUD_LAMPLIGHT = 0.17;
 const float LAMP_POOL_LIGHT = 0.06;
@@ -694,14 +698,29 @@ float lampsWithin(vec2 uv, float footprintKm) {
   return shares * mix(LAMP_POOL_LIGHT, 1.0, smoothstep(LAMP_POOL_KM, LAMP_POINT_KM, footprintKm));
 }
 
+float mappedCityLevel(vec2 uv, float footprint) {
+  float row = (uv.y * 180.0 - (90.0 - CITY_LIGHTS_NORTH)) / CITY_LIGHTS_SPAN;
+  if (row <= 0.0 || row >= 1.0) return 0.0;
+  float texel = 6.2831853 / float(textureSize(uCityLights, 0).x);
+  return textureLod(uCityLights, vec2(uv.x, row), max(log2(footprint / texel), 0.0)).r * uCityLightsOn;
+}
+
+float inventedCityLevel(vec2 uv, float footprint) {
+  float texel = 6.2831853 / float(textureSize(uInventedLand, 0).x);
+  float level = textureLod(uInventedLand, uv, max(log2(footprint / texel), 0.0)).g;
+  float octaves = clamp(log2(texel / footprint), 0.0, TOWN_OCTAVES);
+  if (level <= 0.004 || octaves <= 0.0) return level;
+  float longitude = (uv.x - 0.5) * 6.2831853;
+  float latitude = (0.5 - uv.y) * 3.1415927;
+  vec3 local = vec3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude));
+  return clamp(level * (1.0 + TOWN_CONTRAST * detailNoise(local / texel, octaves)), 0.0, 1.0);
+}
+
 vec3 cityGlow(int body, vec2 uv, float footprint, float sunHeight) {
   if (body != uLitBody || sunHeight >= CITY_LIGHTS_DUSK) return vec3(0.0);
-  float row = (uv.y * 180.0 - (90.0 - CITY_LIGHTS_NORTH)) / CITY_LIGHTS_SPAN;
-  if (row <= 0.0 || row >= 1.0) return vec3(0.0);
-  float texel = 6.2831853 / float(textureSize(uCityLights, 0).x);
-  float level = textureLod(uCityLights, vec2(uv.x, row), max(log2(footprint / texel), 0.0)).r * uCityLightsOn;
+  float level = uCitiesInvented > 0.5 ? inventedCityLevel(uv, footprint) : mappedCityLevel(uv, footprint);
   float night = 1.0 - smoothstep(CITY_LIGHTS_FULL_NIGHT, CITY_LIGHTS_DUSK, sunHeight);
-  return CITY_LIGHTS_GAIN * night * mix(CITY_LIGHTS_DIM, CITY_LIGHTS_BRIGHT, level) * level;
+  return CITY_LIGHTS_GAIN * night * mix(uLampDim, uLampBright, level) * level;
 }
 
 vec3 cityLights(int body, vec2 uv, float footprint, float facing, float sunHeight) {
@@ -1076,6 +1095,9 @@ const float EARTH_RADIUS_KM = 6371.0;
 const float LAND_RISE_KM = 14.0;
 const float SEA_FLOOR_KM = 8.0;
 const float MOUNTAIN_KM = 5.0;
+const float CITY_LIGHT_LIFT = 0.8;
+const float COAST_CROWDING = 22.0;
+const float FROZEN_LAND_SETTLED = 0.6;
 const float FROZEN_SEA_KM = 0.05;
 const float HIGHLAND_KM = 10.0;
 const float HILL_KM = 3.5;
@@ -1104,6 +1126,7 @@ struct Invented {
   vec3 dryAlbedo;
   float solid;
   float heightKm;
+  float settled;
 };
 
 vec3 cellHash(vec3 cell) {
@@ -1161,6 +1184,21 @@ vec3 broadWarp(vec3 p) {
   return vec3(broadNoise(p), broadNoise(p + 9.2), broadNoise(p + 18.4)) - 0.5;
 }
 
+float citiesNear(vec3 local, float scale, float seed) {
+  vec3 p = local * scale + seed;
+  vec3 base = floor(p - 0.5);
+  float glow = 0.0;
+  for (int n = 0; n < 8; n++) {
+    vec3 cell = base + vec3(n & 1, (n >> 1) & 1, (n >> 2) & 1);
+    vec3 random = cellHash(cell);
+    vec3 centre = normalize(cell + 0.25 + 0.5 * random - seed) * scale + seed;
+    float size = 0.04 + 0.16 * random.x * random.x;
+    float reach = length(p - centre) / size;
+    glow += smoothstep(0.4, 0.75, random.y) * (exp(-2.0 * reach * reach) + 0.1 * exp(-reach));
+  }
+  return glow;
+}
+
 float inventedCloud(vec3 local, vec3 warp, float seed, float sunHeight, float tideLocked, float footprint) {
   vec3 streaky = vec3(local.xy, local.z * 2.0) * 2.4 + seed + 1.8 * warp;
   float octaves = clamp(log2(1.0 / (CLOUD_FINE_SCALE * footprint)), 0.0, MAX_DETAIL_OCTAVES);
@@ -1174,7 +1212,7 @@ bool isSeaWorld(float kelvin) {
 }
 
 Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin, float tideLocked, float footprint, bool bareGround) {
-  Invented made = Invented(tint, vec3(0.0), 0.0, 0.0, kelvin, tint, 1.0, 0.0);
+  Invented made = Invented(tint, vec3(0.0), 0.0, 0.0, kelvin, tint, 1.0, 0.0, 0.0);
   float sunHeight = dot(local, sun);
   vec3 p = local * 1.7 + seed;
   vec3 warp = broadWarp(p * 1.3);
@@ -1204,6 +1242,12 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
     if (bareGround) {
       float mountains = MOUNTAIN_KM * max(detailNoise(local * RELIEF_SCALE + seed, octaves), 0.0) * smoothstep(0.0, 0.06, aboveSea);
       made.heightKm = aboveSea > 0.0 ? LAND_RISE_KM * aboveSea + mountains : mix(SEA_FLOOR_KM * aboveSea, FROZEN_SEA_KM, ice);
+      float coast = exp(-COAST_CROWDING * max(aboveSea, 0.0));
+      float region = smoothstep(0.42, 0.62, terrain(local * 5.0 + seed + 33.0));
+      float roads = smoothstep(0.07, 0.0, abs(terrain(local * 16.0 + seed + 2.0 * warp) - 0.5)) * smoothstep(0.4, 0.65, broadNoise(local * 60.0 + seed));
+      float cities = citiesNear(local, 16.0, seed) + 0.8 * citiesNear(local, 45.0, seed) + 0.5 * citiesNear(local, 110.0, seed);
+      float crowded = mix(0.3, 1.0, coast) * mix(0.15, 1.0, region);
+      made.settled = land * mix(1.0, FROZEN_LAND_SETTLED, ice) * crowded * max(3.2 * cities + 0.4 * roads - 0.09, 0.0);
     }
     float relief = max(land, 0.25 * ice);
     if (relief > 0.0) made.slope = RELIEF_STRENGTH * relief * reliefSlope(local * RELIEF_SCALE + seed, octaves);
@@ -1234,7 +1278,6 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
 }
 
 uniform sampler2D uInventedColour;
-uniform sampler2D uInventedLand;
 uniform int uInventedBody;
 const float INVENTED_TEXEL = 6.2831853 / ${INVENTED_COLOUR_WIDTH}.0;
 const float INVENTED_COVER_OCTAVES = 3.0;
@@ -1266,7 +1309,7 @@ float inventedCover(float cover, vec3 local, float footprint) {
 
 Invented paintedSeaWorld(vec3 local, vec2 uv, float seed, float footprint) {
   vec4 paint = inventedPaint(uv, footprint);
-  Invented made = Invented(paint.rgb, vec3(0.0), 0.0, inventedCover(paint.a, local, footprint), 0.0, paint.rgb, 1.0, 0.0);
+  Invented made = Invented(paint.rgb, vec3(0.0), 0.0, inventedCover(paint.a, local, footprint), 0.0, paint.rgb, 1.0, 0.0, 0.0);
   if (made.cloud > CLOUD_HIDES_SURFACE) return made;
   float coastTexel = 6.2831853 / float(textureSize(uInventedLand, 0).x);
   float solid = textureLod(uInventedLand, uv, 0.0).r;
@@ -1338,7 +1381,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   }
 
   vec3 sun = uBodySun[i].xyz;
-  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, 0.0, albedo, 1.0, 0.0);
+  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, 0.0, albedo, 1.0, 0.0, 0.0);
   if (invented) {
     bool painted = i == uInventedBody && isSeaWorld(map.z);
     if (painted) made = paintedSeaWorld(local, uv, map.y, footprint);
@@ -1366,11 +1409,12 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   if (invented) {
     vec3 halfway = normalize(sun - direction);
     lit += made.water * daylight * sunHeight * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
-    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight * (0.62 + 0.38 * made.cloud), 0.95 * sqrt(made.cloud));
+    cloudsOver = 0.95 * sqrt(made.cloud);
+    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight * (0.62 + 0.38 * made.cloud), cloudsOver);
   }
   lit *= sunlightToSurface(i, dot(normal, sun)) * sunlightReaching(i, normal) * uStarlight;
   vec3 glow = invented && made.kelvin > 850.0 ? thermalGlow(i, made.kelvin) : uBodyGlow[i].rgb * (0.45 + 1.6 * albedo.g) * (0.45 + 0.55 * mu);
-  vec3 lamps = mix(cityLights(i, uv, footprint, mu, dot(normal, sun)), cityGlowOnClouds(i, uv, footprint, dot(normal, sun)), cloudsOver);
+  vec3 lamps = mix((1.0 - made.water) * cityLights(i, uv, footprint, mu, dot(normal, sun)), cityGlowOnClouds(i, uv, footprint, dot(normal, sun)), cloudsOver);
   float brightest = max(1.0, max(glow.r, uBodyGlow[i].r));
   return (lit + lamps + glow) / brightest;
 }
@@ -2455,7 +2499,7 @@ void main() {
   vec3 local = vec3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude));
   Invented made = inventSurface(local, uInventedSun, uInventedTint, uInventedPlanet.x, uInventedPlanet.y, uInventedPlanet.z, uInventedFootprint, true);
   if (uInventedShape.x > 0.5) {
-    outColour = vec4((made.heightKm - uInventedShape.y) / uInventedShape.z, made.solid, 0.0, 1.0);
+    outColour = vec4((made.heightKm - uInventedShape.y) / uInventedShape.z, made.solid, pow(clamp(made.settled, 0.0, 1.0), CITY_LIGHT_LIFT), 1.0);
     return;
   }
   bool hot = uInventedPlanet.y > HOT_PLANET_KELVIN;

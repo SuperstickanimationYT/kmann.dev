@@ -1,5 +1,5 @@
 {
-  "bytes": 2767159,
+  "bytes": 2772211,
   "files": [
     "./",
     "data/nearby-star-names.json",
@@ -55,6 +55,7 @@
     "js/ship.js",
     "js/sim-clock.js",
     "js/solar-system.js",
+    "js/speculation.js",
     "js/stars.js",
     "js/terrain-worker.js",
     "js/terrain.js",
