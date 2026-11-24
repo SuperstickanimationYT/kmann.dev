@@ -189,6 +189,7 @@ const HIDDEN_BEHIND_FOREGROUND = true;
 const LATTICE_UNIT = 18;
 const INVENTED_COLOUR_UNIT = 23;
 const INVENTED_LAND_UNIT = 24;
+const CITY_LIGHTS_UNIT = 25;
 const LATTICE_ORIGIN = 4096;
 
 const nearestToZero = (index) => (index < LATTICE_PERIOD / 2 ? index : index - LATTICE_PERIOD) + LATTICE_ORIGIN;
@@ -492,6 +493,23 @@ export function createRenderer(canvas, armMap, galaxies) {
     cloudNearby = null;
   }
 
+  let cityLightsOn = false;
+
+  function loadCityLights(image) {
+    gl.activeTexture(gl.TEXTURE0 + CITY_LIGHTS_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    gl.texStorage2D(gl.TEXTURE_2D, Math.floor(Math.log2(image.width)) + 1, gl.R8, image.width, image.height);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RED, gl.UNSIGNED_BYTE, image);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.activeTexture(gl.TEXTURE0);
+    image.close();
+    cityLightsOn = true;
+  }
+
   let motionBlur = null;
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
@@ -505,6 +523,11 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, program, { uCloudMapOn: cloudMapOn ? 1 : 0, uGroundCloudsMapped: ground?.settings.clouds?.mapped ? 1 : 0 });
     const shown = brightestInDistanceOrder(seen ?? []);
     inventedGround.bind(program, shown);
+    if (program.uniforms.uCityLights) {
+      gl.uniform1i(program.uniforms.uCityLights, CITY_LIGHTS_UNIT);
+      const lit = cityLightsOn ? shown.findIndex(({ body }) => body.cityLights > 0) : -1;
+      setUniforms(gl, program, { uLitBody: { int: lit }, uLitBodyKm: lit >= 0 ? shown[lit].body.radiusKm : 1, uCityLightsOn: lit >= 0 ? shown[lit].body.cityLights : 0 });
+    }
     const { arrays, count, rings } = bodyArrays(shown, mapRelief, giants);
     const groundValues = groundUniforms(ground, shown);
     setUniforms(gl, program, groundValues);
@@ -1144,5 +1167,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, inventGround: inventedGround.groundOf, releasePatch };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, loadCityLights, widestTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), inventGround: inventedGround.groundOf, releasePatch };
 }
