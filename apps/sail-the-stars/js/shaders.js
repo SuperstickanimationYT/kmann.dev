@@ -671,6 +671,18 @@ const float TOWN_CONTRAST = 4.5;
 const float FAINT_TOWN_GAIN = 6.0;
 const float DISTRICT_CONTRAST = 1.6;
 const float CLOUD_LAMPLIGHT = 0.17;
+const float CLUMP_FAINTEST = 0.1;
+const float CLUMP_FULL = 0.9;
+const vec2 AVENUE_BLOCK_KM = vec2(0.7, 0.9);
+const float AVENUE_HALF_WIDTH_KM = 0.011;
+const float AVENUE_LIGHT = 0.25;
+const float DISTRICT_KM = 2.2;
+const float DISTRICT_BEND_KM = 2.6;
+const float SMALLEST_BLOCK_KM = 0.09;
+const float STREET_HALF_WIDTH_KM = 0.007;
+const float LAMP_SPACING_KM = 0.04;
+const float BUILDING_KM = 0.036;
+const float BUILDING_LIGHT = 0.3;
 const float LAMP_POOL_LIGHT = 0.06;
 const float LAMP_POOL_KM = 0.0003;
 const float LAMP_POINT_KM = 0.003;
@@ -684,21 +696,78 @@ float districtShare(vec2 place, float cellKm, float footprintKm) {
   return max(1.0 + seen * DISTRICT_CONTRAST * (smoothNoise(vec3(place / cellKm, cellKm)) - 0.5), 0.0);
 }
 
-float lampShare(vec2 place, float cellKm, float gathering, float footprintKm) {
+vec3 placeChance(vec2 cell) {
+  vec2 wrapped = mod(cell, 1024.0);
+  return fract(sin(vec3(dot(wrapped, vec2(12.71, 31.17)), dot(wrapped, vec2(26.95, 18.33)), dot(wrapped, vec2(41.93, 28.91)))) * 4375.85);
+}
+
+float clumpShare(vec2 place, float cellKm, float footprintKm) {
   float seen = 1.0 - smoothstep(0.2, 0.6, footprintKm / cellKm);
   if (seen <= 0.0) return 1.0;
-  vec2 p = place / cellKm;
-  vec2 cell = mod(floor(p), 1024.0);
-  vec3 chance = fract(sin(vec3(dot(cell, vec2(12.71, 31.17)), dot(cell, vec2(26.95, 18.33)), dot(cell, vec2(41.93, 28.91)))) * 4375.85);
-  vec2 off = fract(p) - 0.5 - 0.5 * (chance.xy - 0.5);
-  return mix(1.0, gathering / 3.1415927 * exp(-gathering * dot(off, off)) * 3.0 * chance.z * chance.z, seen);
+  float clump = 0.6 * smoothNoise(vec3(place / cellKm, 17.0 * cellKm)) + 0.4 * smoothNoise(vec3(place.yx * 2.7 / cellKm, 5.0));
+  return mix(1.0, smoothstep(CLUMP_FAINTEST, CLUMP_FULL, clump) * 2.0, seen);
+}
+
+float bump(float away, float width, float spacing) {
+  return spacing / (width * 1.7724539) * exp(-away * away / (width * width));
+}
+
+float streetShare(vec2 place, vec2 block, float seed, float footprintKm) {
+  float row = floor(place.x / block.x);
+  vec3 chance = placeChance(vec2(row, seed));
+  float main = step(0.8, chance.x);
+  float width = STREET_HALF_WIDTH_KM + 0.5 * footprintKm;
+  float line = bump((fract(place.x / block.x) - 0.5 - 0.3 * (chance.y - 0.5)) * block.x, width, block.x);
+  float lampsSeen = 1.0 - smoothstep(0.2, 0.6, footprintKm / LAMP_SPACING_KM);
+  float lamp = floor(place.y / LAMP_SPACING_KM + chance.z);
+  float along = (fract(place.y / LAMP_SPACING_KM + chance.z) - 0.5) * LAMP_SPACING_KM;
+  float lamps = bump(along, STREET_HALF_WIDTH_KM + 0.5 * footprintKm, LAMP_SPACING_KM) * (0.4 + 1.2 * placeChance(vec2(lamp, row + seed)).x);
+  float quarter = floor(place.y / (block.y * 3.0) + chance.y);
+  float built = mix(0.3 + 1.4 * placeChance(vec2(quarter, row + seed)).y, 1.0, main);
+  return line * built * mix(0.62, 2.5, main) * mix(1.0, lamps, lampsSeen);
+}
+
+float avenueShare(vec2 place, float seed, float footprintKm) {
+  float seen = 1.0 - smoothstep(0.15, 0.45, footprintKm / AVENUE_BLOCK_KM.x);
+  vec2 cell = place / AVENUE_BLOCK_KM;
+  vec2 shift = vec2(placeChance(vec2(floor(cell.x), seed)).x, placeChance(vec2(seed, floor(cell.y))).y);
+  vec2 off = (fract(cell) - 0.5 - 0.5 * (shift - 0.5)) * AVENUE_BLOCK_KM;
+  float width = AVENUE_HALF_WIDTH_KM + 0.5 * footprintKm;
+  vec2 lamp = placeChance(floor(place / LAMP_SPACING_KM)).xy;
+  vec2 broken = mix(vec2(1.0), 0.5 + lamp, 1.0 - smoothstep(0.2, 0.6, footprintKm / LAMP_SPACING_KM));
+  float lines = 0.5 * (broken.x * bump(off.x, width, AVENUE_BLOCK_KM.x) + broken.y * bump(off.y, width, AVENUE_BLOCK_KM.y));
+  return mix(1.0, lines, seen);
+}
+
+float buildingShare(vec2 place, float footprintKm) {
+  float seen = 1.0 - smoothstep(0.2, 0.6, footprintKm / BUILDING_KM);
+  vec2 cell = place / BUILDING_KM;
+  vec3 chance = placeChance(floor(cell));
+  vec2 off = fract(cell) - 0.5 - 0.6 * (chance.xy - 0.5);
+  return mix(1.0, 60.0 / 3.1415927 * exp(-60.0 * dot(off, off)) * 3.0 * chance.z * chance.z, seen);
+}
+
+float cityPlanShare(vec2 place, float footprintKm) {
+  if (footprintKm > 0.45 * AVENUE_BLOCK_KM.x) return 1.0;
+  float seen = 1.0 - smoothstep(0.15, 0.45, footprintKm / SMALLEST_BLOCK_KM);
+  vec2 bent = place + DISTRICT_BEND_KM * (vec2(smoothNoise(vec3(place / DISTRICT_KM, 3.0)), smoothNoise(vec3(place / DISTRICT_KM, 9.5))) - 0.5);
+  vec2 district = floor(bent / DISTRICT_KM);
+  vec3 chance = placeChance(district);
+  float turn = 1.5707963 * chance.x;
+  vec2 inDistrict = place - district * DISTRICT_KM;
+  vec2 turned = mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * inDistrict;
+  float seed = floor(chance.z * 997.0);
+  float avenues = avenueShare(turned, seed, footprintKm);
+  if (seen <= 0.0) return mix(1.0, avenues, AVENUE_LIGHT);
+  vec2 block = SMALLEST_BLOCK_KM * vec2(1.0 + chance.y, 1.0 + 1.6 * chance.z);
+  float streets = 0.5 * (streetShare(turned, block, seed, footprintKm) + streetShare(turned.yx, block.yx, seed + 41.0, footprintKm));
+  return mix(mix(1.0, mix(streets, buildingShare(turned, footprintKm), BUILDING_LIGHT), seen), avenues, AVENUE_LIGHT);
 }
 
 float lampsWithin(vec2 uv, float footprintKm) {
   float strip = (floor(uv.y * LAMP_STRIPS) + 0.5) / LAMP_STRIPS;
   vec2 place = vec2((uv.x - 0.5) * 2.0 * sin(strip * 3.1415927), uv.y) * 3.1415927 * uLitBodyKm;
-  float shares = districtShare(place, 2.6, footprintKm) * districtShare(place, 0.7, footprintKm) * lampShare(place, 0.9, 9.0, footprintKm);
-  if (footprintKm < 0.12) shares *= lampShare(place, 0.18, 18.0, footprintKm) * lampShare(place, 0.045, 60.0, footprintKm);
+  float shares = districtShare(place, 2.6, footprintKm) * clumpShare(place, 0.7, footprintKm) * cityPlanShare(place, footprintKm);
   return shares * mix(LAMP_POOL_LIGHT, 1.0, smoothstep(LAMP_POOL_KM, LAMP_POINT_KM, footprintKm));
 }
 
@@ -1215,8 +1284,8 @@ uniform vec4 uMappedTerrain;
 uniform vec2 uTerrainLook;
 const float COAST_FRAY_KM = 0.5;
 const float MAPPED_MOUNTAIN_SHARE = 0.25;
-const vec3 GREENERY = vec3(0.075, 0.13, 0.04);
-const vec3 DRY_GREENERY = vec3(0.2, 0.18, 0.08);
+const vec3 GREENERY = vec3(0.13, 0.22, 0.08);
+const vec3 DRY_GREENERY = vec3(0.34, 0.31, 0.17);
 
 float mappedAboveSea(vec3 local, float fray) {
   vec2 uv = vec2(atan(local.y, local.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(local.z, -1.0, 1.0)) / 3.1415927);
