@@ -5,6 +5,9 @@ import { ANCHOR_METRES, COAST_ROUGHNESS, GROUND_OCTAVES } from './terrain.js';
 export const MAX_NEBULAE = 64;
 export const MAX_GALAXIES = 4;
 export const MAX_BODIES = 12;
+export const GROUND_HIT = 2;
+export const SHUTTER_SHARE = 0.5;
+export const LONGEST_BLUR_PIXELS = 40;
 export const MAX_HAZY = 4;
 export const CLOUD_NEARBY_WIDTH = 1024;
 export const CLOUD_MAP_SIZE = [3072, 1536];
@@ -380,7 +383,7 @@ void main() {
   outColour = vec4(light * uOutputScale, 1.0);
 }`;
 
-const COCKPIT = `
+export const COCKPIT = `
 uniform vec3 uShipRight;
 uniform vec3 uShipUp;
 uniform vec3 uShipForward;
@@ -1323,7 +1326,7 @@ uniform float uGroundRoughness;
 
 const float ANCHOR_METRES = ${ANCHOR_METRES}.0;
 const float WATER_FRESNEL_HEAD_ON = 0.02;
-const float GROUND_HIT = 2.0;
+const float GROUND_HIT = ${GROUND_HIT.toFixed(1)};
 const int CLOUD_STEPS = 24;
 const int CLOUD_FEWEST_STEPS = 12;
 const float CLOUD_STEP_KM = 0.3;
@@ -2184,8 +2187,21 @@ out float vSpread;
 out float vSize;
 out float vGlare;
 out float vSpikeReach;
+out vec2 vStreak;
+out float vSprite;
 uniform float uLongExposure;
 uniform float uSunVisible;
+uniform vec3 uStarShift;
+
+vec2 streakPixels(vec3 offset, vec2 ndc) {
+  if (uWarpAxis.w > 0.5) return vec2(0.0);
+  vec3 past = offset + uStarShift;
+  float ahead = dot(past, uForward);
+  if (ahead <= 0.0) return vec2(0.0);
+  vec2 pastNdc = vec2(dot(past, uRight), dot(past, uUp)) / ahead / uTanHalf;
+  vec2 streak = (ndc - pastNdc) * uTanHalf / uPixelAngle * ${SHUTTER_SHARE.toFixed(2)};
+  return streak * min(1.0, ${LONGEST_BLUR_PIXELS.toFixed(1)} / max(length(streak), 1e-6));
+}
 
 const float BRIGHTER_THAN_ANY_OTHER_STAR = -15.0;
 ${EYE_SPIKES}
@@ -2268,7 +2284,15 @@ void main() {
   vSize = seenMagnitude < 6.8 ? min(128.0, ceil(vSpread * 4.0 + vGlare * 10.0)) : 0.0;
   vSpikeReach = clamp((SPIKE_FAINTEST_MAGNITUDE - seenMagnitude) * SPIKE_PIXELS_PER_MAGNITUDE, 0.0, SPIKE_LONGEST_REACH);
   vSize = max(vSize, ceil(2.0 * vSpikeReach));
-  gl_PointSize = vSize;
+  vStreak = vec2(0.0);
+  vSprite = vSize;
+  if (vSize > 0.0) {
+    vStreak = streakPixels(offset, ndc);
+    vSprite += ceil(length(vStreak));
+    vColour *= sqrt(vSpread / (vSpread + length(vStreak)));
+    ndc -= 0.5 * vStreak * uPixelAngle / uTanHalf;
+  }
+  gl_PointSize = vSprite;
   gl_Position = vec4(ndc, 0.0, 1.0);
 }`;
 
@@ -2279,10 +2303,14 @@ in float vSpread;
 in float vSize;
 in float vGlare;
 in float vSpikeReach;
+in vec2 vStreak;
+in float vSprite;
 out vec4 outColour;
 ${EYE_SPIKES}
 void main() {
-  vec2 offset = (gl_PointCoord - 0.5) * vSize;
+  vec2 offset = (gl_PointCoord - 0.5) * vSprite;
+  vec2 halfStreak = vec2(0.5, -0.5) * vStreak;
+  offset -= halfStreak * clamp(dot(offset, halfStreak) / max(dot(halfStreak, halfStreak), 1e-6), -1.0, 1.0);
   float r2 = dot(offset, offset);
   float r = sqrt(r2);
   float core = exp(-r2 / (2.0 * 0.6 * 0.6 * vSpread * vSpread / 1.21));
