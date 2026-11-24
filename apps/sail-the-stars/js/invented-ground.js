@@ -63,7 +63,7 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     if (!terrain) return { uMappedTerrain: [0, 0, 0, 0] };
     const layer = heightLayerOf(body.name);
     const range = heightRangeOf(layer);
-    return { uMappedTerrain: [layer, terrain.seaLevelKm, range.lowKm, range.rangeKm], uTerrainLook: [terrain.greenery, terrain.cloudiness] };
+    return { uMappedTerrain: [layer, terrain.seaLevelKm, range.lowKm, range.rangeKm], uGreenery: terrain.greenery };
   }
 
   function draw(framebuffer, [width, height], body, sunLocal, shape) {

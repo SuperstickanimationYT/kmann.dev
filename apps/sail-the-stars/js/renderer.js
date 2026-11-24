@@ -1,5 +1,6 @@
 import { createByteTarget, createContext, createProgram, createTarget, setUniforms } from './gl.js';
 import { createInventedGround } from './invented-ground.js';
+import { SIMULATED_CLOUD_MAPS } from './clouds.js';
 import {
   ARMED_NORMAL, BAR_ANGLE, BAR_ANGULAR_SPEED, DISK, LY_PER_PC, MAP_HALF_WIDTH, MAP_SIZE, PC_PER_YEAR_PER_KM_S,
   positionSeenAt, SUN_RADIUS,
@@ -8,12 +9,13 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT, EARTH_CLOUDS,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, LATTICE_PERIOD, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
   SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
+  SIMULATED_CLOUD_SIZE,
 } from './shaders.js';
 import { createSettlementPainter, settlementShown } from './settlements.js';
 import { speculationShown } from './speculation.js';
@@ -166,6 +168,7 @@ const GROUND_DETAIL_UNIT = 9;
 const CLOUD_BILLOWS_UNIT = 10;
 const CLOUD_MAP_UNIT = 16;
 const CLOUD_MAP_LAYERS = 2;
+const SIMULATED_CLOUDS_UNIT = 27;
 const CLOUD_NEARBY_UNIT = 17;
 const CLOUD_NEARBY_DRIFT_KM = 12;
 const CLOUD_VIEW_UNIT = 11;
@@ -338,6 +341,7 @@ function bodyArrays(shown, mapRelief, giants) {
     uBodyMap: new Float32Array(MAX_BODIES * 4),
     uBodyGlow: new Float32Array(MAX_BODIES * 4),
     uBodyLamp: new Float32Array(MAX_BODIES * 4),
+    uBodyClouds: new Float32Array(MAX_BODIES * 4),
   };
   const ringed = shown.findIndex(({ body }) => body.rings);
   const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringed >= 0 ? shown[ringed].body.radiusKm : 0 };
@@ -360,6 +364,7 @@ function bodyArrays(shown, mapRelief, giants) {
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), body.invented ? INVENTED_ROCKY_CODE : BODY_KIND_CODES[body.kind]], i * 4);
     arrays.uBodyGlow.set([...(body.shines ? MIRROR_GLOW : body.glow ?? NO_GLOW), 1 - (body.lightShare ?? 1)], i * 4);
     arrays.uBodyLamp.set([...(body.lamp ?? UNLIT_LAMP), body.tideLocked ? 1 : 0], i * 4);
+    arrays.uBodyClouds.set([body.invented?.cloudMap ?? EARTH_CLOUDS, body.cloudTurn ?? 0, body.invented?.terrain?.cloudiness ?? 1, body.tideLocked ? 1 : 0], i * 4);
     arrays.uBodyMap.set([
       mapped ? body.mapLayer : -1,
       giantFaces ? giantFaces.now : body.invented?.seed ?? relief,
@@ -507,6 +512,27 @@ export function createRenderer(canvas, armMap, galaxies) {
     cloudNearby = null;
   }
 
+  let simulatedClouds = null;
+
+  function prepareSimulatedClouds() {
+    simulatedClouds = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, simulatedClouds);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, Math.floor(Math.log2(SIMULATED_CLOUD_SIZE[0])) + 1, gl.RG8, ...SIMULATED_CLOUD_SIZE, SIMULATED_CLOUD_MAPS);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
+  function loadSimulatedClouds(layer, image) {
+    gl.activeTexture(gl.TEXTURE0 + SIMULATED_CLOUDS_UNIT);
+    if (!simulatedClouds) prepareSimulatedClouds();
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, ...SIMULATED_CLOUD_SIZE, 1, gl.RG, gl.UNSIGNED_BYTE, image);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+    gl.activeTexture(gl.TEXTURE0);
+    cloudNearby = null;
+  }
+
   let cityLightsOn = false;
 
   function loadCityLights(image) {
@@ -558,7 +584,8 @@ export function createRenderer(canvas, armMap, galaxies) {
     if (cloudNearby) setUniforms(gl, program, { uCloudNearbyUp: cloudNearby.up, uCloudNearbyEast: cloudNearby.east });
     if (program.uniforms.uLattice) gl.uniform1i(program.uniforms.uLattice, LATTICE_UNIT);
     if (program.uniforms.uCloudMap) gl.uniform1i(program.uniforms.uCloudMap, CLOUD_MAP_UNIT);
-    setUniforms(gl, program, { uCloudMapOn: cloudMapOn ? 1 : 0, uGroundCloudsMapped: ground?.settings.clouds?.mapped ? 1 : 0 });
+    if (program.uniforms.uSimulatedClouds) gl.uniform1i(program.uniforms.uSimulatedClouds, SIMULATED_CLOUDS_UNIT);
+    setUniforms(gl, program, { uSimulatedCloudsOn: simulatedClouds ? 1 : 0, uCloudMapOn: cloudMapOn ? 1 : 0, uGroundCloudsMapped: ground?.settings.clouds?.mapped ? 1 : 0 });
     const shown = brightestInDistanceOrder(seen ?? []);
     inventedGround.bind(program, shown);
     if (program.uniforms.uCityLights) {
@@ -967,8 +994,9 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
 
   function bakeNearbyClouds(bodies, ground) {
-    const { up } = ground.frame;
-    const { radiusKm } = ground.body;
+    const { radiusKm, cloudTurn = 0 } = ground.body;
+    const [x, y, z] = ground.frame.up;
+    const up = [x * Math.cos(cloudTurn) + y * Math.sin(cloudTurn), y * Math.cos(cloudTurn) - x * Math.sin(cloudTurn), z];
     if (cloudNearby?.body === ground.body.name && Math.hypot(...up.map((value, axis) => value - cloudNearby.up[axis])) * radiusKm < CLOUD_NEARBY_DRIFT_KM) return;
     const acrossPole = Math.hypot(up[0], up[1]);
     cloudNearby = { body: ground.body.name, up: [...up], east: acrossPole > 0 ? [-up[1] / acrossPole, up[0] / acrossPole, 0] : [0, 1, 0] };
@@ -1206,5 +1234,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, loadCityLights, widestTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), inventGround: inventedGround.groundOf, releasePatch };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, loadSimulatedClouds, loadCityLights, widestTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), inventGround: inventedGround.groundOf, releasePatch };
 }

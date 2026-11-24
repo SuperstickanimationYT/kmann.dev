@@ -15,7 +15,8 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
-import { CLOUD_MAP_SIZE } from './shaders.js';
+import { loadCloudMapsOf } from './clouds.js';
+import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
 import { withExoplanetHosts } from './exoplanets.js';
@@ -845,6 +846,7 @@ const frameOffsetKm = (body, frame) => (frame.coRotating ? fromBodyLocal(body, f
 function enterSystem(entered) {
   system = entered;
   solarBodies = system.place(simNow());
+  loadCloudMapsOf(solarBodies, SIMULATED_CLOUD_SIZE, renderer.loadSimulatedClouds, () => showStatus('A cloud map failed to load; some planets show no clouds.'));
 }
 
 function enterSolarFrame() {

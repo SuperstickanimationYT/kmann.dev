@@ -1,3 +1,4 @@
+import { cloudTurn } from './clouds.js';
 import { DEGREES, equatorialToFrame, SUN_POSITION } from './milky-way.js';
 import { settlementOf } from './settlements.js';
 import { mirrorLight, mirrorsAround, terraformed } from './terraforming.js';
@@ -603,6 +604,7 @@ export function placeBodies(ms) {
     ...(body.synchronous ? synchronousFacing.get(body.name) : orientation(body, days)),
     cloudMeridian: body.cloudSpin && orientation({ ...body, spin: body.cloudSpin }, days).meridian,
     fromSunKm: fromSun.get(body.name),
+    cloudTurn: cloudTurn(ms),
     mapLayer: body.invented ? -1 : MAPPED_BODIES.findIndex(({ name }) => name === body.name),
   }));
   const venus = facing.find(({ name }) => name === 'Venus');

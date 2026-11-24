@@ -23,6 +23,7 @@ const MIRROR_PERIOD_MS = MS_PER_DAY;
 const COLD_LOOK_SHIFT_KELVIN = 40;
 const WARMEST_SEA_LOOK_KELVIN = 299;
 const VENUS_SEED = 23;
+const VENUS_CLOUD_MAP = 4;
 
 const LIGHT = [[STARTS, 1], [SHADE_FINISHED, 0], [2950, 0], [3050, 0.2], [MIRROR_STARTS - 20, 0.2], [MIRROR_STARTS, 0], [MIRROR_FINISHED, 1]];
 const KELVIN = [[STARTS, 735], [SHADE_FINISHED, 715], [2760, 304], [2900, 217], [CO2_FROZEN, 190], [MIRROR_STARTS, 190], [5750, 287], [LAST_CHANGE, 288]];
@@ -83,6 +84,7 @@ function paintedLook(year) {
     cloudSpin: undefined,
     invented: {
       seed: VENUS_SEED,
+      cloudMap: VENUS_CLOUD_MAP,
       kelvin,
       version,
       shapeVersion: `${Math.round(seaLevelKm * 10)} ${Math.round(kelvin / 10)}`,
