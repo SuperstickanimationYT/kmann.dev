@@ -907,9 +907,9 @@ export function createRenderer(canvas, armMap, galaxies) {
   function bakeNearbyClouds(bodies, ground) {
     const { up } = ground.frame;
     const { radiusKm } = ground.body;
-    if (cloudNearby && Math.hypot(...up.map((value, axis) => value - cloudNearby.up[axis])) * radiusKm < CLOUD_NEARBY_DRIFT_KM) return;
+    if (cloudNearby?.body === ground.body.name && Math.hypot(...up.map((value, axis) => value - cloudNearby.up[axis])) * radiusKm < CLOUD_NEARBY_DRIFT_KM) return;
     const acrossPole = Math.hypot(up[0], up[1]);
-    cloudNearby = { up: [...up], east: acrossPole > 0 ? [-up[1] / acrossPole, up[0] / acrossPole, 0] : [0, 1, 0] };
+    cloudNearby = { body: ground.body.name, up: [...up], east: acrossPole > 0 ? [-up[1] / acrossPole, up[0] / acrossPole, 0] : [0, 1, 0] };
     gl.bindFramebuffer(gl.FRAMEBUFFER, cloudNearbyTarget.framebuffer);
     gl.viewport(0, 0, CLOUD_NEARBY_WIDTH, CLOUD_NEARBY_WIDTH);
     gl.useProgram(cloudNearbyProgram.program);
