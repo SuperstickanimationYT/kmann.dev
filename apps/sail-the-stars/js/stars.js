@@ -13,6 +13,7 @@ const NEARBY_REACH = 1000;
 const NEARBY_LIMIT = 6.5;
 const CLUSTER_LIGHT_PER_IONIZING = 2e5 / 1e50;
 const MAX_POISSON_EXACT = 30;
+const NEAREST_SPRITE_PC = 1e-8;
 const CROWDING_SAMPLES = 160;
 
 export const SUN_ABSOLUTE = 4.83;
@@ -154,7 +155,7 @@ function createCollector({ camera, axis, tanHalf, limit, nearbyActive }) {
     const ry = seen[1] - camera[1];
     const rz = seen[2] - camera[2];
     const distance = Math.hypot(rx, ry, rz);
-    if (distance < 1e-6) return;
+    if (distance < NEAREST_SPRITE_PC) return;
     if (absolute + 5 * Math.log10(distance / 10) > limit) return;
     if (axis && (rx * axis[0] + ry * axis[1] + rz * axis[2]) / distance < cosHalf) return;
     values.push(rx, ry, rz, absolute, colour, distance);

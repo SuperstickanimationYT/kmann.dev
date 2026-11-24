@@ -90,6 +90,8 @@ const GIANTS = {
 
 export const GIANT_NAMES = Object.keys(GIANTS);
 
+export const giantLookOf = (body) => body.giantLook ?? GIANTS[body.name];
+
 const padded = (rows, length, width) => {
   const values = new Float32Array(length * width);
   rows.forEach((row, k) => values.set(row, k * width));
@@ -102,8 +104,7 @@ function wakeUniform({ wake, spots }) {
   return [north * DEGREES, (east - wake.degreesWest) * DEGREES, wake.degreesWest * DEGREES, wake.strength];
 }
 
-export function giantUniforms(name) {
-  const giant = GIANTS[name];
+export function giantUniforms(giant) {
   const { bands, jets, spots } = giant;
   return {
     values: {
