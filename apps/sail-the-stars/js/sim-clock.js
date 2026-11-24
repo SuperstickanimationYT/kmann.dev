@@ -5,11 +5,18 @@ export const LATEST_MS = Date.UTC(2050, 0, 1);
 
 const RATES = [
   [SECONDS_PER_YEAR, '1 year'],
+  [SECONDS_PER_YEAR / 4, '3 months'],
   [SECONDS_PER_YEAR / 12, '1 month'],
   [7 * SECONDS_PER_DAY, '1 week'],
+  [3 * SECONDS_PER_DAY, '3 days'],
   [SECONDS_PER_DAY, '1 day'],
+  [5 * 3600, '5 hours'],
   [3600, '1 hour'],
+  [15 * 60, '15 minutes'],
+  [5 * 60, '5 minutes'],
   [60, '1 minute'],
+  [15, '15 seconds'],
+  [5, '5 seconds'],
   [1, 'real time'],
 ];
 const LADDER = [...RATES.map(([rate, label]) => [-rate, label]), [0, 'paused'], ...[...RATES].reverse()];
