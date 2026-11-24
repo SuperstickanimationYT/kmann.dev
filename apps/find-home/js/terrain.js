@@ -20,7 +20,7 @@ function hashUint(value) {
   return (x ^ (x >>> 16)) >>> 0;
 }
 
-function lattice(x, y, z, seed) {
+export function lattice(x, y, z, seed) {
   const mixed = Math.imul(x >>> 0, 73856093) ^ Math.imul(y >>> 0, 19349663) ^ Math.imul(z >>> 0, 83492791) ^ Math.imul(seed, 2654435761 | 0);
   return hashUint(mixed) / UINT_SCALE;
 }
