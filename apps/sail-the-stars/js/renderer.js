@@ -1,4 +1,5 @@
 import { createByteTarget, createContext, createProgram, createTarget, setUniforms } from './gl.js';
+import { createInventedGround } from './invented-ground.js';
 import {
   ARMED_NORMAL, BAR_ANGLE, BAR_ANGULAR_SPEED, DISK, LY_PER_PC, MAP_HALF_WIDTH, MAP_SIZE, PC_PER_YEAR_PER_KM_S,
   positionSeenAt, SUN_RADIUS,
@@ -186,6 +187,8 @@ const REDDENING_ECLIPSER_SIGN = -1;
 const CORONA_FADE_SHARE = 0.004;
 const HIDDEN_BEHIND_FOREGROUND = true;
 const LATTICE_UNIT = 18;
+const INVENTED_COLOUR_UNIT = 23;
+const INVENTED_LAND_UNIT = 24;
 const LATTICE_ORIGIN = 4096;
 
 const nearestToZero = (index) => (index < LATTICE_PERIOD / 2 ? index : index - LATTICE_PERIOD) + LATTICE_ORIGIN;
@@ -492,6 +495,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   let motionBlur = null;
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
+  const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT });
 
   function setBodies(program, seen, ground, pixelAngle = 0) {
     if (program.uniforms.uCloudNearby) gl.uniform1i(program.uniforms.uCloudNearby, CLOUD_NEARBY_UNIT);
@@ -500,6 +504,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     if (program.uniforms.uCloudMap) gl.uniform1i(program.uniforms.uCloudMap, CLOUD_MAP_UNIT);
     setUniforms(gl, program, { uCloudMapOn: cloudMapOn ? 1 : 0, uGroundCloudsMapped: ground?.settings.clouds?.mapped ? 1 : 0 });
     const shown = brightestInDistanceOrder(seen ?? []);
+    inventedGround.bind(program, shown);
     const { arrays, count, rings } = bodyArrays(shown, mapRelief, giants);
     const groundValues = groundUniforms(ground, shown);
     setUniforms(gl, program, groundValues);
@@ -968,7 +973,7 @@ export function createRenderer(canvas, armMap, galaxies) {
 
   function drawGround(view, bodies, ground) {
     const shadows = drawShadows(ground);
-    const billows = ground.settings.clouds ? bakedCloudBillows() : null;
+    const billows = ground.settings.clouds && !ground.settings.invented ? bakedCloudBillows() : null;
     if (ground.settings.clouds?.mapped) bakeNearbyClouds(bodies, ground);
     const target = groundTargetFitting();
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
@@ -998,7 +1003,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     drawPatches(patchProgram, ground.drawn, ground.cameraLocalKm);
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
-    const clouds = billows ? drawClouds(view, bodies, ground, target) : null;
+    const clouds = ground.settings.clouds ? drawClouds(view, bodies, ground, target) : null;
     return { ground: target.textures[0], clouds: clouds?.textures[0] ?? null, cloudDepth: clouds?.textures[1] ?? null };
   }
 
@@ -1139,5 +1144,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, releasePatch };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, inventGround: inventedGround.groundOf, releasePatch };
 }

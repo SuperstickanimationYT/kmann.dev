@@ -14,6 +14,7 @@ export const CLOUD_MAP_SIZE = [3072, 1536];
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const LATTICE_PERIOD = 64;
+export const INVENTED_COLOUR_WIDTH = 4096;
 export const TABLE_WIDTH = 64;
 export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4, armedUnresolved: 5 };
 export const UNRESOLVED_NEAREST = 0.1;
@@ -1005,6 +1006,17 @@ const float CRATER_FINER = 2.7;
 const float CRATER_SMALLEST_PIXELS = 3.0;
 const float CRATER_DEPTH = 0.42;
 const float CRATER_WOBBLE = 0.35;
+const float CRATER_DEEPEST_KM = 3.0;
+const float CRATER_DEEP_FROM_KM = 90.0;
+const float EARTH_RADIUS_KM = 6371.0;
+const float LAND_RISE_KM = 14.0;
+const float SEA_FLOOR_KM = 8.0;
+const float MOUNTAIN_KM = 5.0;
+const float FROZEN_SEA_KM = 0.05;
+const float HIGHLAND_KM = 10.0;
+const float HILL_KM = 3.5;
+const float LAVA_PLAIN_KM = -0.6;
+const float COAST_HALF_WIDTH = 0.02;
 const float CRATER_RAY_LIGHT = 0.16;
 const float RELIEF_SCALE = 5.0;
 const float RELIEF_PROBE = 0.2;
@@ -1025,13 +1037,23 @@ struct Invented {
   float water;
   float cloud;
   float kelvin;
+  vec3 dryAlbedo;
+  float solid;
+  float heightKm;
 };
 
 vec3 cellHash(vec3 cell) {
   return vec3(textureLod(uLattice, (cell + 0.5) / ${LATTICE_PERIOD}.0, 0.0).r, textureLod(uLattice, (cell.yzx + 17.5) / ${LATTICE_PERIOD}.0, 0.0).r, textureLod(uLattice, (cell.zxy + 41.5) / ${LATTICE_PERIOD}.0, 0.0).r);
 }
 
-vec4 craters(vec3 local, float seed, float footprint) {
+float craterFloorKm(float radiusKm, float reach) {
+  float bowl = reach < 1.0 ? reach * reach - 1.0 : 0.0;
+  float rim = 0.25 * exp(-(reach - 1.0) * (reach - 1.0) / 0.04);
+  return CRATER_DEEPEST_KM * (1.0 - exp(-radiusKm / CRATER_DEEP_FROM_KM)) * (bowl + rim);
+}
+
+vec4 craters(vec3 local, float seed, float footprint, out float heightKm) {
+  heightKm = 0.0;
   vec3 slope = vec3(0.0);
   float light = 0.0;
   float wobble = detailNoise(local * 14.0 + seed, 3.0);
@@ -1051,6 +1073,7 @@ vec4 craters(vec3 local, float seed, float footprint) {
       vec3 off = p - surfaceCentre;
       float reach = length(off) / size * (1.0 + CRATER_WOBBLE * wobble);
       if (reach > 2.0) continue;
+      heightKm += shown * craterFloorKm(size / scale * EARTH_RADIUS_KM, reach);
       float inner = 1.6 * smoothstep(0.3, 0.75, reach) * (1.0 - smoothstep(0.8, 1.05, reach));
       float outer = -0.9 * smoothstep(0.9, 1.15, reach) * exp(-3.0 * max(reach - 1.1, 0.0)) * (2.0 - reach);
       slope += shown * CRATER_DEPTH * (0.5 + 0.8 * random.z) * (inner + outer) * off / max(length(off), 1e-4);
@@ -1082,16 +1105,20 @@ float inventedCloud(vec3 local, vec3 warp, float seed, float sunHeight, float ti
   return smoothstep(0.5, 0.78, billow + gathered);
 }
 
-Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin, float tideLocked, float footprint) {
-  Invented made = Invented(tint, vec3(0.0), 0.0, 0.0, kelvin);
+bool isSeaWorld(float kelvin) {
+  return kelvin > 175.0 && kelvin < 300.0;
+}
+
+Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin, float tideLocked, float footprint, bool bareGround) {
+  Invented made = Invented(tint, vec3(0.0), 0.0, 0.0, kelvin, tint, 1.0, 0.0);
   float sunHeight = dot(local, sun);
   vec3 p = local * 1.7 + seed;
   vec3 warp = broadWarp(p * 1.3);
-  bool wet = kelvin > 175.0 && kelvin < 300.0;
+  bool wet = isSeaWorld(kelvin);
   if (wet) {
-    if (sunHeight < -0.1) return made;
+    if (!bareGround && sunHeight < -0.1) return made;
     made.cloud = inventedCloud(local, warp, seed, sunHeight, tideLocked, footprint);
-    if (made.cloud > CLOUD_HIDES_SURFACE) return made;
+    if (!bareGround && made.cloud > CLOUD_HIDES_SURFACE) return made;
   }
   float plains = terrain(p + 1.1 * warp);
   float fine = terrain(p * 6.0 + 3.0 * warp);
@@ -1100,18 +1127,27 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
     float poleward = local.z * local.z;
     float warmth = tideLocked > 0.5 ? kelvin + 42.0 * sunHeight + 14.0 : kelvin + 32.0 - 60.0 * poleward;
     warmth += 26.0 * (fine - 0.5) + 30.0 * (plains - 0.5);
-    float land = smoothstep(SEA_LEVEL, SEA_LEVEL + max(0.004, 2.0 * footprint), plains + 0.12 * (fine - 0.5));
+    float aboveSea = plains + 0.12 * (fine - 0.5) - SEA_LEVEL;
+    float land = smoothstep(0.0, max(0.004, 2.0 * footprint), aboveSea);
     float ice = smoothstep(FREEZING_KELVIN + 3.0, FREEZING_KELVIN - 3.0, warmth - 5.0 * land);
     float crack = ice > 0.0 && land < 1.0 ? 1.0 - smoothstep(0.0, 0.035, abs(terrain(p * 3.4 + 5.0 * warp) - 0.5)) : 0.0;
     vec3 ground = tint * (0.55 + 0.9 * fine);
     vec3 frozen = INVENTED_ICE * (0.8 + 0.3 * fine) * (1.0 - 0.22 * crack * (1.0 - land));
     made.albedo = mix(mix(INVENTED_OCEAN, ground, land), frozen, ice);
     made.water = (1.0 - land) * (1.0 - ice);
+    made.dryAlbedo = mix(ground, frozen, ice);
+    made.solid = max(smoothstep(-COAST_HALF_WIDTH, COAST_HALF_WIDTH, aboveSea), ice);
+    if (bareGround) {
+      float mountains = MOUNTAIN_KM * max(detailNoise(local * RELIEF_SCALE + seed, octaves), 0.0) * smoothstep(0.0, 0.06, aboveSea);
+      made.heightKm = aboveSea > 0.0 ? LAND_RISE_KM * aboveSea + mountains : mix(SEA_FLOOR_KM * aboveSea, FROZEN_SEA_KM, ice);
+    }
     float relief = max(land, 0.25 * ice);
     if (relief > 0.0) made.slope = RELIEF_STRENGTH * relief * reliefSlope(local * RELIEF_SCALE + seed, octaves);
     return made;
   }
-  vec4 cratered = kelvin < MELTING_KELVIN ? craters(local, seed, footprint) : vec4(0.0);
+  float craterKm = 0.0;
+  vec4 cratered = kelvin < MELTING_KELVIN ? craters(local, seed, footprint, craterKm) : vec4(0.0);
+  if (bareGround) made.heightKm = HIGHLAND_KM * (plains - 0.5) + HILL_KM * detailNoise(local * RELIEF_SCALE + seed, octaves) + craterKm;
   made.slope = RELIEF_STRENGTH * reliefSlope(local * RELIEF_SCALE + seed, octaves) + cratered.xyz;
   if (kelvin <= 175.0) {
     float stain = smoothstep(0.48, 0.62, plains);
@@ -1129,6 +1165,43 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
   made.kelvin = mix(made.kelvin, made.kelvin * mix(1.08, 0.78, crust), molten);
   made.albedo *= mix(1.0, 0.4, molten);
   made.slope *= 1.0 - 0.8 * molten;
+  made.heightKm = mix(made.heightKm, LAVA_PLAIN_KM, 0.85 * molten);
+  return made;
+}
+
+uniform sampler2D uInventedColour;
+uniform sampler2D uInventedLand;
+uniform int uInventedBody;
+const float INVENTED_TEXEL = 6.2831853 / ${INVENTED_COLOUR_WIDTH}.0;
+const float INVENTED_COVER_OCTAVES = 3.0;
+const float INVENTED_COVER_FRAYING = 1.3;
+const float PAINTED_RELIEF_OCTAVES = 4.0;
+
+vec4 inventedPaint(vec2 uv, float footprint) {
+  vec4 texel = textureLod(uInventedColour, uv, max(log2(footprint / INVENTED_TEXEL), 0.0));
+  return vec4(texel.rgb * texel.rgb, texel.a);
+}
+
+float inventedCover(float cover, vec3 local, float footprint) {
+  float fray = 4.0 * cover * (1.0 - cover);
+  float octaves = clamp(log2(INVENTED_TEXEL / footprint) + 1.0, 0.0, INVENTED_COVER_OCTAVES);
+  if (fray <= 0.01 || octaves <= 0.0) return cover;
+  return clamp(cover + INVENTED_COVER_FRAYING * fray * detailNoise(0.37 * local / INVENTED_TEXEL, octaves), 0.0, 1.0);
+}
+
+Invented paintedSeaWorld(vec3 local, vec2 uv, float seed, float footprint) {
+  vec4 paint = inventedPaint(uv, footprint);
+  Invented made = Invented(paint.rgb, vec3(0.0), 0.0, inventedCover(paint.a, local, footprint), 0.0, paint.rgb, 1.0, 0.0);
+  if (made.cloud > CLOUD_HIDES_SURFACE) return made;
+  float coastTexel = 6.2831853 / float(textureSize(uInventedLand, 0).x);
+  float solid = textureLod(uInventedLand, uv, 0.0).r;
+  float nearCoast = 4.0 * solid * (1.0 - solid);
+  if (nearCoast > 0.0) solid += COAST_ROUGHNESS * nearCoast * detailNoise(local / coastTexel, clamp(log2(coastTexel / footprint), 0.0, MAX_DETAIL_OCTAVES));
+  float edge = clamp(0.5 * footprint / coastTexel, COAST_SHARPEST, 0.5);
+  float land = smoothstep(0.5 - edge, 0.5 + edge, solid);
+  made.albedo = mix(INVENTED_OCEAN, paint.rgb, land);
+  made.water = 1.0 - land;
+  if (land > 0.0) made.slope = RELIEF_STRENGTH * land * reliefSlope(local * RELIEF_SCALE + seed, clamp(log2(1.0 / (RELIEF_SCALE * footprint)), 0.0, PAINTED_RELIEF_OCTAVES));
   return made;
 }
 
@@ -1190,9 +1263,11 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   }
 
   vec3 sun = uBodySun[i].xyz;
-  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, 0.0);
+  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, 0.0, albedo, 1.0, 0.0);
   if (invented) {
-    made = inventSurface(local, bodyLocal(sun, frame), look.rgb, map.y, map.z, uBodyLamp[i].w, footprint);
+    bool painted = i == uInventedBody && isSeaWorld(map.z);
+    if (painted) made = paintedSeaWorld(local, uv, map.y, footprint);
+    else made = inventSurface(local, bodyLocal(sun, frame), look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
     albedo = made.albedo;
     vec3 slope = made.slope.x * frame.meridian + made.slope.y * frame.east + made.slope.z * frame.north;
     shaded = normalize(normal - (slope - normal * dot(slope, normal)));
@@ -1591,6 +1666,16 @@ vec2 groundUv(vec3 up) {
   return uGroundCameraUv + vec2(eastOfCamera / 6.2831853, -northOfCamera / 3.1415927);
 }
 
+const float HOTTEST_GROUND_KELVIN = 4000.0;
+
+bool groundInvented() {
+  return uBodyLook[uGround].w == BODY_INVENTED;
+}
+
+vec4 inventedGround(vec3 up, float footprintMetres) {
+  return inventedPaint(groundUv(up), footprintMetres / (1000.0 * uGroundRadius));
+}
+
 float groundLayer() {
   return uBodyMap[uGround].x;
 }
@@ -1729,11 +1814,32 @@ vec4 cloudSheetFrom(vec3 ray, vec3 sun, float shellKm, float nearestSolidKm, boo
   return vec4(light * opacity, opacity);
 }
 
+const float INVENTED_SHEET_FROM_KM = 20.0;
+const float INVENTED_SHEET_ONLY_KM = 60.0;
+const float CLOUDY_DAYLIGHT = 0.3;
+
+float inventedSheetShare() {
+  return groundInvented() ? smoothstep(INVENTED_SHEET_FROM_KM, INVENTED_SHEET_ONLY_KM, cameraAltitudeKm()) : 0.0;
+}
+
+vec4 inventedCloudSheet(vec3 ray, vec3 sun, float nearestSolidKm, out float hitKm) {
+  hitKm = shellCrossings(0.5 * (uGroundClouds.x + uGroundClouds.y), ray).x;
+  if (hitKm <= 0.0 || hitKm > nearestSolidKm) return vec4(0.0);
+  vec3 up = normalize(uGroundCamera + ray * hitKm);
+  float footprint = uPixelAngle * hitKm / uGroundRadius;
+  float cover = inventedCover(inventedPaint(groundUv(up), footprint).a, up, footprint);
+  float sunHeight = dot(sun, up);
+  vec3 light = CLOUD_ALBEDO * max(sunHeight, 0.0) * smoothstep(-0.02, 0.05, sunHeight) * (0.62 + 0.38 * cover) * sunlightToSurface(uGround, sunHeight) * uSunVisible;
+  float opacity = 0.95 * sqrt(cover);
+  return vec4(light * uStarlight * opacity, opacity);
+}
+
 float cloudCoverageAt(vec3 up, float blurMetres) {
   if (uGroundCloudsMapped > 0.5) {
     vec2 mapped = cloudNearby(up, blurMetres);
     return mapped.x * (1.0 - CLOUD_HIGH_LIFTED * highCloudShare(mapped.y));
   }
+  if (groundInvented()) return inventedGround(up, blurMetres).a;
   return smoothstep(CLOUD_CLEAR_BILLOWS, CLOUD_OVERCAST_BILLOWS, textureLod(uCloudBillows, groundUv(up), 0.0).r + uGroundClouds.w);
 }
 
@@ -1915,7 +2021,15 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
 vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
   float sheetShare = cloudSheetShare();
   depthKm = -1.0;
-  vec4 volume = sheetShare < 1.0 ? cloudVolumeFrom(ray, sun, nearestSolidKm, depthKm) : vec4(0.0);
+  float inventedShare = inventedSheetShare();
+  vec4 volume = max(sheetShare, inventedShare) < 1.0 ? cloudVolumeFrom(ray, sun, nearestSolidKm, depthKm) : vec4(0.0);
+  volume.rgb *= uStarlight;
+  if (groundInvented()) {
+    float sheetKm;
+    vec4 sheet = inventedShare > 0.0 ? inventedCloudSheet(ray, sun, nearestSolidKm, sheetKm) : vec4(0.0);
+    if (inventedShare > 0.5) depthKm = sheetKm;
+    return mix(volume, sheet, inventedShare);
+  }
   if (uGroundCloudsMapped < 0.5) return volume;
   float sheetKm;
   vec4 sheet = sheetShare > 0.0 ? cloudSheetFrom(ray, sun, mix(uGroundClouds.x, uGroundClouds.y, CLOUD_SHEET_HEIGHT_SHARE), nearestSolidKm, false, sheetKm) : vec4(0.0);
@@ -1936,6 +2050,8 @@ float sunThroughClouds(vec3 up, vec3 sun, vec3 offset, float footprint) {
   if (!cloudsHere()) return 1.0;
   float sheetShare = cloudSheetShare();
   if (sheetShare >= 1.0) return cloudSheetShadow(up, sun, 0.0);
+  float inventedShare = inventedSheetShare();
+  if (inventedShare >= 1.0) return 1.0;
   float sunHeight = max(dot(sun, up), 0.05);
   float towardSunKm = 0.5 * (uGroundClouds.x + uGroundClouds.y) / sunHeight;
   float coverage = cloudRegionalCoverage(cloudCoverageAt(normalize(up * uGroundRadius + sun * towardSunKm), max(footprint, CLOUD_SHADOW_BLUR_METRES)), offset + sun * towardSunKm * 1000.0);
@@ -1949,11 +2065,51 @@ float sunThroughClouds(vec3 up, vec3 sun, vec3 offset, float footprint) {
     density += cloudDensityFor(coverage, offset + sun * alongKm * 1000.0, share, max(footprint, CLOUD_SHADOW_BLUR_METRES), 0.0, CLOUD_COARSE_CELL_OCTAVES);
   }
   float through = exp(-uGroundClouds.z * density / float(samples) * thicknessKm / sunHeight);
+  if (groundInvented()) return mix(CLOUDY_DAYLIGHT + (1.0 - CLOUDY_DAYLIGHT) * through, 1.0, inventedShare);
   return sheetShare > 0.0 ? mix(through, cloudSheetShadow(up, sun, 0.0), sheetShare) : through;
 }
 
+const float HOT_PLANET_KELVIN = 850.0;
+const float COOLEST_GLOW_KELVIN = 500.0;
+const int MOTTLE_OCTAVES[3] = int[3](0, 2, 4);
+const float MOTTLE_WEIGHTS[3] = float[3](0.6, 0.5, 0.45);
+const int LAVA_VEIN_OCTAVES[3] = int[3](3, 6, 9);
+const float LAVA_VEIN_HEAT[3] = float[3](1.0, 0.85, 0.6);
+const float LAVA_VEIN_WIDTH = 0.06;
+const float LAVA_VEIN_SEEN_SHARE = 0.15;
+const float LAVA_CRUST_KELVIN_SHARE = 0.78;
+const float LAVA_VEIN_KELVIN_SHARE = 1.4;
+
+float inventedMottle(vec3 offset, float footprint) {
+  float total = 0.0;
+  for (int k = 0; k < 3; k++) {
+    int octave = MOTTLE_OCTAVES[k];
+    float cell = ANCHOR_METRES / float(2 << octave);
+    total += MOTTLE_WEIGHTS[k] * octaveFade(cell, footprint) * (groundDetail(octave, offset, cell, 910 + k).w - 0.5);
+  }
+  return total;
+}
+
+float lavaKelvin(float kelvin, vec3 offset, float footprint) {
+  float veins = 0.0;
+  float shown = 0.0;
+  for (int k = 0; k < 3; k++) {
+    int octave = LAVA_VEIN_OCTAVES[k];
+    float cell = ANCHOR_METRES / float(2 << octave);
+    float fade = octaveFade(cell * LAVA_VEIN_SEEN_SHARE, footprint);
+    shown = max(shown, fade);
+    veins = max(veins, fade * LAVA_VEIN_HEAT[k] * (1.0 - smoothstep(0.0, LAVA_VEIN_WIDTH, abs(groundDetail(octave, offset, cell, 920 + k).w - 0.5))));
+  }
+  float molten = smoothstep(MELTING_KELVIN - 150.0, MELTING_KELVIN + 350.0, kelvin);
+  return kelvin * mix(1.0, mix(LAVA_CRUST_KELVIN_SHARE, LAVA_VEIN_KELVIN_SHARE, veins), shown * molten);
+}
+
 vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float footprint, vec3 ray, vec3 sun, vec3 upHere, float sunVisible) {
-  vec3 albedo = textureLod(uBodyColour, vec3(groundUv(up), groundLayer()), 0.0).rgb;
+  bool invented = groundInvented();
+  vec4 painted = invented ? inventedGround(up, footprint) : textureLod(uBodyColour, vec3(groundUv(up), groundLayer()), 0.0);
+  vec3 albedo = painted.rgb;
+  if (invented) albedo *= 1.0 + inventedMottle(offset, footprint);
+  vec3 seaAlbedo = invented ? INVENTED_OCEAN : OCEAN_ALBEDO;
   float fineCell = ANCHOR_METRES / float(2 << 12);
   float coarseCell = ANCHOR_METRES / float(2 << 7);
   float grain = octaveFade(fineCell, footprint) * (groundDetail(12, offset, fineCell, 900).w - 0.5)
@@ -1970,7 +2126,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
     float facing = clamp(dot(-ray, normal), 0.0, 1.0);
     float fresnel = WATER_FRESNEL_HEAD_ON + (1.0 - WATER_FRESNEL_HEAD_ON) * pow(1.0 - facing, 5.0);
     vec3 skyInWater = groundSky(normalize(reflect(ray, normal) + normal * 0.02), sun, up);
-    lit = OCEAN_ALBEDO * (max(sunHeight, 0.0) * sunlight * shadow + ambient) * (1.0 - fresnel) + skyInWater * fresnel + sunlight * shadow * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
+    lit = seaAlbedo * (max(sunHeight, 0.0) * sunlight * shadow + ambient) * (1.0 - fresnel) + skyInWater * fresnel + sunlight * shadow * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
   } else {
     lit = albedo * (max(dot(normal, sun), 0.0) * sunlight * shadow + ambient);
   }
@@ -1978,13 +2134,17 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
     float haze = 1.0 - exp(-t * airDensityHere() / uGroundGlow.w);
     lit = mix(lit, groundSky(normalize(ray + upHere * 0.02), sun, upHere), haze);
   }
-  return lit;
+  lit *= uStarlight;
+  float groundKelvin = painted.a * HOTTEST_GROUND_KELVIN;
+  if (!invented || uBodyMap[uGround].z <= HOT_PLANET_KELVIN || groundKelvin <= COOLEST_GLOW_KELVIN) return lit;
+  vec3 glow = thermalGlow(uGround, lavaKelvin(groundKelvin, offset, footprint));
+  return (lit + glow) / max(1.0, glow.r);
 }
 
 vec4 skyOverGround(vec3 direction) {
   vec3 ray = groundLocal(direction);
   vec3 sun = groundLocal(uBodySun[uGround].xyz);
-  vec3 sky = groundSky(ray, sun, normalize(uGroundCamera));
+  vec3 sky = groundSky(ray, sun, normalize(uGroundCamera)) * uStarlight;
   float veil = max(clamp(dot(sky, vec3(0.3, 0.5, 0.2)) * SKY_VEIL_GAIN, 0.0, 1.0), min(1.0, uGroundOvercast * OVERCAST_VEIL_GAIN));
   return vec4(sky, veil);
 }
@@ -2179,6 +2339,27 @@ void main() {
   vec3 local = vec3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude));
   float mapTexel = 6.2831853 / MAP_WIDTH;
   outColour = vec4(cloudBillows(local, local / mapTexel, ${CLOUD_BAKED_OCTAVES}.0), 0.0, 0.0, 1.0);
+}`;
+
+export const INVENTED_GROUND_FRAGMENT = `#version 300 es
+${EYE_SHARED}
+uniform vec3 uInventedTint;
+uniform vec3 uInventedSun;
+uniform vec3 uInventedPlanet;
+uniform vec3 uInventedShape;
+uniform float uInventedFootprint;
+void main() {
+  float longitude = (vUv.x - 0.5) * 6.2831853;
+  float latitude = (0.5 - vUv.y) * 3.1415927;
+  vec3 local = vec3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude));
+  Invented made = inventSurface(local, uInventedSun, uInventedTint, uInventedPlanet.x, uInventedPlanet.y, uInventedPlanet.z, uInventedFootprint, true);
+  if (uInventedShape.x > 0.5) {
+    outColour = vec4((made.heightKm - uInventedShape.y) / uInventedShape.z, made.solid, 0.0, 1.0);
+    return;
+  }
+  bool hot = uInventedPlanet.y > HOT_PLANET_KELVIN;
+  bool wet = isSeaWorld(uInventedPlanet.y);
+  outColour = vec4(sqrt(max(wet ? made.dryAlbedo : made.albedo, 0.0)), hot ? made.kelvin / HOTTEST_GROUND_KELVIN : made.cloud);
 }`;
 
 export const CLOUD_NEARBY_FRAGMENT = `#version 300 es
