@@ -24,6 +24,50 @@ void main() {
   gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
+const CAMERA_SPIKES = `
+float spikeCross(vec2 offset, float width, float reach) {
+  vec2 away = abs(offset);
+  vec2 across = exp(-away * away / (2.0 * width * width));
+  vec2 along = exp(-away / reach);
+  return across.y * along.x + across.x * along.y;
+}
+`;
+
+const EYE_SPIKES = `
+const float SPIKE_FAINTEST_MAGNITUDE = 2.0;
+const float SPIKE_PIXELS_PER_MAGNITUDE = 7.0;
+const float SPIKE_LONGEST_REACH = 190.0;
+const float SPIKE_WIDTH = 0.75;
+const float SPIKE_LIGHT = 0.8;
+const int SPIKE_LAYERS = 3;
+const float LAYER_SPIKES[SPIKE_LAYERS] = float[](13.0, 31.0, 73.0);
+const float LAYER_REACH[SPIKE_LAYERS] = float[](1.0, 0.85, 0.6);
+const float LAYER_LIGHT[SPIKE_LAYERS] = float[](1.0, 0.6, 0.4);
+
+float spikeHash(float n) {
+  return fract(sin(n * 127.1 + 3.7) * 43758.5453);
+}
+
+float starburst(vec2 offset, float reach) {
+  float r = length(offset);
+  if (r >= reach) return 0.0;
+  float turn = atan(offset.y, offset.x) / 6.2831853 + 0.5;
+  float total = 0.0;
+  for (int layer = 0; layer < SPIKE_LAYERS; layer++) {
+    float count = LAYER_SPIKES[layer];
+    float cell = min(floor(turn * count), count - 1.0);
+    float seed = cell + 100.0 * float(layer);
+    float centre = cell + 0.5 + 0.7 * (spikeHash(seed) - 0.5);
+    float aside = r * sin(min(abs(turn * count - centre) / count * 6.2831853, 1.5707963));
+    float boldness = spikeHash(seed + 41.3);
+    float share = r / (reach * LAYER_REACH[layer] * mix(0.4, 1.0, boldness));
+    float fade = max(1.0 - share, 0.0);
+    total += LAYER_LIGHT[layer] * mix(0.35, 1.0, boldness) * fade * fade * exp(-aside * aside / (2.0 * SPIKE_WIDTH * SPIKE_WIDTH));
+  }
+  return SPIKE_LIGHT * total;
+}
+`;
+
 const BODY_OCCLUDERS = `
 uniform vec4 uBodyOccluder[${MAX_BODIES}];
 uniform int uBodyCount;
@@ -1209,6 +1253,12 @@ vec4 throughHaze(vec4 behind, Haze haze) {
   return vec4(haze.light + haze.clear * behind.rgb, 1.0 - (1.0 - behind.a) * dot(haze.clear, vec3(1.0 / 3.0)));
 }
 
+${EYE_SPIKES}
+float spikeReachOf(float pointBrightness) {
+  float magnitude = 6.5 - log(max(pointBrightness, 1e-6) / 0.2) / (0.16 * log(10.0));
+  return max(SPIKE_FAINTEST_MAGNITUDE - magnitude, 0.0) * SPIKE_PIXELS_PER_MAGNITUDE;
+}
+
 vec4 bodiesColour(vec3 direction) {
   vec3 points = vec3(0.0);
   Haze haze = NO_HAZE;
@@ -1229,6 +1279,11 @@ vec4 bodiesColour(vec3 direction) {
     float unresolved = 1.0 - smoothstep(0.5, 2.0, radius / uPixelAngle);
     float cover = along > 0.0 ? clamp((radius - miss) / uPixelAngle + 0.5, 0.0, 1.0) : 0.0;
     if (along > 0.0) points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
+    float spikeReach = spikeReachOf(uBodyMap[i].w);
+    if (along > 0.0 && unresolved > 0.0 && spikeReach > 0.0 && miss < spikeReach * uPixelAngle) {
+      vec2 offset = vec2(dot(direction - place.xyz, uRight), dot(direction - place.xyz, uUp)) / uPixelAngle;
+      points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * starburst(offset, spikeReach);
+    }
     if (along > 0.0 && uBodyLook[i].w == STAR_KIND) points += coronaLight(i, direction);
     if (cover <= 0.0) {
       if (ring.a > 0.0) return throughHaze(vec4(ring.rgb + points, ring.a), haze);
@@ -2001,6 +2056,7 @@ const float SUN_GLARE_CORE = 0.6;
 const float SUN_GLARE_CORE_DEGREES = 0.7;
 const float SUN_GLARE_WIDE = 0.15;
 const float SUN_GLARE_WIDE_DEGREES = 6.0;
+const float SUN_SPIKE_LIGHT = 1.5;
 
 int sunIndex() {
   for (int i = 0; i < ${MAX_BODIES}; i++) {
@@ -2031,6 +2087,8 @@ vec3 sunGlare(vec3 direction) {
   vec3 toSun = uBodyPlace[sun].xyz;
   float degreesOff = degrees(acos(clamp(dot(direction, toSun), -1.0, 1.0)));
   float spread = SUN_GLARE_CORE * exp(-degreesOff / SUN_GLARE_CORE_DEGREES) + SUN_GLARE_WIDE * exp(-degreesOff / SUN_GLARE_WIDE_DEGREES);
+  vec2 onScreen = vec2(dot(direction - toSun, uRight), dot(direction - toSun, uUp)) / uPixelAngle;
+  if (degreesOff < 90.0) spread += SUN_SPIKE_LIGHT * starburst(onScreen, SPIKE_LONGEST_REACH);
   vec3 tint = uBodyLook[sun].rgb * sunlightThroughAir(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera));
   return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunVisible;
 }
@@ -2105,10 +2163,12 @@ out vec3 vColour;
 out float vSpread;
 out float vSize;
 out float vGlare;
+out float vSpikeReach;
 uniform float uLongExposure;
 uniform float uSunVisible;
 
 const float BRIGHTER_THAN_ANY_OTHER_STAR = -15.0;
+${EYE_SPIKES}
 
 vec3 bandFluxes(float colour) {
   float redIndex = min(1.4, 0.62 * colour + 0.04);
@@ -2186,6 +2246,8 @@ void main() {
   vSpread = 1.0 + max(0.0, 4.0 - seenMagnitude) * 0.5;
   vGlare = clamp(-1.0 - seenMagnitude, 0.0, 10.0);
   vSize = seenMagnitude < 6.8 ? min(128.0, ceil(vSpread * 4.0 + vGlare * 10.0)) : 0.0;
+  vSpikeReach = clamp((SPIKE_FAINTEST_MAGNITUDE - seenMagnitude) * SPIKE_PIXELS_PER_MAGNITUDE, 0.0, SPIKE_LONGEST_REACH);
+  vSize = max(vSize, ceil(2.0 * vSpikeReach));
   gl_PointSize = vSize;
   gl_Position = vec4(ndc, 0.0, 1.0);
 }`;
@@ -2196,7 +2258,9 @@ in vec3 vColour;
 in float vSpread;
 in float vSize;
 in float vGlare;
+in float vSpikeReach;
 out vec4 outColour;
+${EYE_SPIKES}
 void main() {
   vec2 offset = (gl_PointCoord - 0.5) * vSize;
   float r2 = dot(offset, offset);
@@ -2204,7 +2268,8 @@ void main() {
   float core = exp(-r2 / (2.0 * 0.6 * 0.6 * vSpread * vSpread / 1.21));
   float halo = (0.05 + 0.06 * vGlare) * exp(-r / (0.9 * vSpread + 1.5 * vGlare));
   float edge = 1.0 - smoothstep(0.3 * vSize, 0.5 * vSize, r);
-  outColour = vec4(vColour * (core + halo * edge), 1.0);
+  float spikes = vSpikeReach > 0.0 ? min(vSpikeReach / 8.0, 1.0) * starburst(offset, vSpikeReach) : 0.0;
+  outColour = vec4(vColour * (core + halo * edge + spikes), 1.0);
 }`;
 
 export const SKY_FROM_CUBE_FRAGMENT = `#version 300 es
@@ -2229,9 +2294,13 @@ uniform vec3 uAnchorShift;
 uniform float uElectronsPerNanomaggy;
 uniform float uElectronsPerUnit;
 uniform float uPsfPixels;
+const float SPIKE_FAINTEST_RATE = 1.0;
+const float SPIKE_PIXELS_PER_LOG = 2.5;
+const float SPIKE_LONGEST_REACH = 25.0;
 out vec3 vRate;
 out float vSigma;
 out float vSize;
+out float vSpikeReach;
 
 vec3 bandFluxes(float colour) {
   float redIndex = min(1.4, 0.62 * colour + 0.04);
@@ -2255,7 +2324,8 @@ void main() {
   vSigma = uPsfPixels;
   float brightness = max(vRate.g, max(vRate.r, vRate.b));
   float halo = brightness > 0.05 ? min(56.0, 6.0 * log(1.0 + brightness * 20.0)) : 0.0;
-  vSize = min(64.0, ceil(2.0 * (4.0 * vSigma + halo) + 2.0));
+  vSpikeReach = min(SPIKE_LONGEST_REACH, SPIKE_PIXELS_PER_LOG * max(log(brightness / SPIKE_FAINTEST_RATE), 0.0));
+  vSize = max(min(64.0, ceil(2.0 * (4.0 * vSigma + halo) + 2.0)), ceil(7.0 * vSpikeReach));
   gl_PointSize = vSize;
   gl_Position = vec4(ndc, 0.0, 1.0);
 }`;
@@ -2265,14 +2335,22 @@ precision highp float;
 in vec3 vRate;
 in float vSigma;
 in float vSize;
+in float vSpikeReach;
 out vec4 outColour;
+${CAMERA_SPIKES}
+const float SPIKE_LIGHT = 0.04;
 void main() {
   vec2 offset = (gl_PointCoord - 0.5) * vSize;
   float r2 = dot(offset, offset);
   float core = exp(-r2 / (2.0 * vSigma * vSigma)) / (6.2831853 * vSigma * vSigma);
   float wing = 3.0 * vSigma;
   float halo = 1.0 / (3.14159265 * wing * wing) / pow(1.0 + r2 / (wing * wing), 2.0);
-  outColour = vec4(vRate * (0.94 * core + 0.06 * halo), 1.0);
+  float spikes = 0.0;
+  if (vSpikeReach > 0.0) {
+    float edge = 1.0 - smoothstep(0.35 * vSize, 0.5 * vSize, sqrt(r2));
+    spikes = edge * spikeCross(offset, vSigma, vSpikeReach) / (4.0 * vSpikeReach * 2.5066 * vSigma);
+  }
+  outColour = vec4(vRate * (0.94 * core + 0.06 * halo + SPIKE_LIGHT * spikes), 1.0);
 }`;
 
 export const SAMPLE_LOG_FLOOR = -40;
