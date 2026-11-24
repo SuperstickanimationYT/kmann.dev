@@ -115,7 +115,8 @@ function galaxyUniforms(galaxies, camera) {
 function setArray(gl, program, name, values, size) {
   const location = program.uniforms[name];
   if (!location) return;
-  if (size === 3) gl.uniform3fv(location, values);
+  if (size === 1) gl.uniform1fv(location, values);
+  else if (size === 3) gl.uniform3fv(location, values);
   else gl.uniform4fv(location, values);
 }
 
@@ -305,6 +306,7 @@ function brightestInDistanceOrder(seen) {
   return seen.filter((entry) => kept.has(entry));
 }
 
+const VALUES_PER_BODY = { uBodyNorth: 3, uBodyMeridian: 3, uBodyFlattening: 1 };
 const NO_STAR_SHIFT = [0, 0, 0];
 const SEEN_RADII = 1.5;
 const RINGS_SEEN_RADII = 2.5;
@@ -330,6 +332,7 @@ function bodyArrays(shown, mapRelief, giants) {
     uBodySun: new Float32Array(MAX_BODIES * 4),
     uBodyEclipser: new Float32Array(MAX_BODIES * ECLIPSERS_PER_BODY * 4),
     uBodyNorth: new Float32Array(MAX_BODIES * 3),
+    uBodyFlattening: new Float32Array(MAX_BODIES),
     uBodyMeridian: new Float32Array(MAX_BODIES * 3),
     uBodyLook: new Float32Array(MAX_BODIES * 4),
     uBodyMap: new Float32Array(MAX_BODIES * 4),
@@ -347,11 +350,12 @@ function bodyArrays(shown, mapRelief, giants) {
     const giantFaces = body.kind === 'giant' ? giants.facesOf(body.name) : null;
     const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
-    arrays.uBodyOccluder.set([...direction, star || body.shades || edgeOn(body, direction) ? 0 : angularRadius], i * 4);
+    arrays.uBodyOccluder.set([...direction, star || body.shades || edgeOn(body, direction) ? 0 : angularRadius * (1 - (body.flattening ?? 0))], i * 4);
     arrays.uBodySun.set([...body.sunward, body.sunAngularRadius], i * 4);
     body.eclipsers.forEach(({ offsetKm: eclipserKm, radiusKm, reddens }, k) =>
       arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
     arrays.uBodyNorth.set(body.north, i * 3);
+    arrays.uBodyFlattening[i] = body.flattening ?? 0;
     arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), body.invented ? INVENTED_ROCKY_CODE : BODY_KIND_CODES[body.kind]], i * 4);
     arrays.uBodyGlow.set([...(body.shines ? MIRROR_GLOW : body.glow ?? NO_GLOW), 1 - (body.lightShare ?? 1)], i * 4);
@@ -567,7 +571,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     if (groundValues.uGround.int >= 0 && program.uniforms.uGroundAnchor) gl.uniform3iv(program.uniforms.uGroundAnchor, ground.frame.anchor);
     const haze = hazeUniforms(shown);
     setUniforms(gl, program, { uHazeBody: haze.bodies });
-    for (const [name, values] of Object.entries({ ...arrays, ...haze.arrays })) setArray(gl, program, name, values, name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
+    for (const [name, values] of Object.entries({ ...arrays, ...haze.arrays })) setArray(gl, program, name, values, VALUES_PER_BODY[name] ?? 4);
     const sunUneclipsed = sunShareVisible(seen ?? [], standingOn?.name);
     const sunVisible = standingOn?.lightShare ?? sunUneclipsed;
     const sunSeen = sunUneclipsed * (standingOn?.sunThroughShade ?? 1);

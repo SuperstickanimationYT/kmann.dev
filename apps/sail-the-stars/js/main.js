@@ -16,7 +16,7 @@ import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warp
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { CLOUD_MAP_SIZE } from './shaders.js';
-import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies } from './solar-system.js';
+import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
 import { withExoplanetHosts } from './exoplanets.js';
 import { SOLAR_SYSTEM, systemNamed, systemNear, withinSystem } from './planetary-systems.js';
@@ -861,7 +861,7 @@ function moveInSolarFrame(shiftKm) {
 
 function lowestDistanceKm(holder, offsetKm) {
   const ground = groundFor(holder);
-  if (!ground) return holder.radiusKm + lowestAltitudeKm(holder);
+  if (!ground) return radiusBelowKm(holder, offsetKm) + lowestAltitudeKm(holder);
   const frame = groundFrame(toBodyLocal(holder, offsetKm), holder.radiusKm);
   if (frame.altitudeKm > GROUND_CHECK_KM) return holder.radiusKm;
   const { height, seaLevel } = groundHeightMetres(ground, frame.up, frame.anchor, frame.surfaceOffset, COLLISION_FOOTPRINT_METRES);

@@ -572,6 +572,7 @@ uniform float uSunSeen;
 uniform float uCoronaShown;
 uniform float uBodyReach[${MAX_BODIES}];
 uniform vec3 uBodyNorth[${MAX_BODIES}];
+uniform float uBodyFlattening[${MAX_BODIES}];
 uniform vec3 uBodyMeridian[${MAX_BODIES}];
 uniform vec4 uBodyLook[${MAX_BODIES}];
 uniform vec4 uBodyMap[${MAX_BODIES}];
@@ -1053,6 +1054,18 @@ uniform vec4 uHazeDustLight[${MAX_HAZY}];
 uniform vec4 uHazeLayer[${MAX_HAZY}];
 uniform vec4 uHazeLayerShape[${MAX_HAZY}];
 
+vec3 rounded(int i, vec3 place) {
+  return place + uBodyNorth[i] * dot(place, uBodyNorth[i]) * (1.0 / (1.0 - uBodyFlattening[i]) - 1.0);
+}
+
+float equatorialRadius(int i) {
+  return sin(uBodyPlace[i].w) * pow(1.0 - uBodyFlattening[i], -1.0 / 3.0);
+}
+
+vec3 surfaceNormal(int i, vec3 fromCentre) {
+  return normalize(uBodyFlattening[i] > 0.0 ? rounded(i, rounded(i, fromCentre)) : fromCentre);
+}
+
 struct Haze {
   vec3 light;
   vec3 clear;
@@ -1423,7 +1436,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec4 place = uBodyPlace[i];
   vec4 look = uBodyLook[i];
   vec4 map = uBodyMap[i];
-  vec3 normal = normalize(direction * hit - place.xyz);
+  vec3 normal = surfaceNormal(i, direction * hit - place.xyz);
   float mu = max(dot(normal, -direction), 0.0);
   if (look.w == BODY_STAR) return look.rgb * (0.4 + 0.6 * mu);
   bool invented = look.w == BODY_INVENTED;
@@ -1523,6 +1536,9 @@ const float RINGLET_CONTRAST = 0.45;
 const float RINGLET_ALBEDO_CONTRAST = 0.25;
 const float RING_SHADOW_SOFTNESS = 0.004;
 const float RING_FLATTEST_VIEW = 1e-3;
+const int RING_SAMPLES = 2;
+const int RING_SHADOW_SAMPLES = 3;
+const float RING_SHADOW_LEAST_FACING = 0.05;
 const vec3 RING_DUSTY_COLOUR = vec3(0.6, 0.55, 0.5);
 const vec3 RING_ICY_COLOUR = vec3(0.86, 0.78, 0.64);
 
@@ -1566,6 +1582,17 @@ vec2 ringDepths(float r, float w) {
   return max(vec2(dusty, icy), 0.0);
 }
 
+vec4 ringSheet(float rKm, float footprint, float ringlet, float viewSlant, float sunSlant, bool litFace) {
+  vec2 depths = ringDepths(rKm, footprint);
+  float depth = (depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlet);
+  if (depth <= 0.0) return vec4(0.0);
+  vec3 albedo = (RING_DUSTY_COLOUR * depths.x + RING_ICY_COLOUR * depths.y) / (depths.x + depths.y) * (1.0 + RINGLET_ALBEDO_CONTRAST * ringlet);
+  float scattered = depth / viewSlant * exp(-depth / viewSlant);
+  if (litFace) scattered = sunSlant / (sunSlant + viewSlant) * (1.0 - exp(-depth * (1.0 / sunSlant + 1.0 / viewSlant)));
+  else if (abs(sunSlant - viewSlant) >= 1e-3) scattered = sunSlant / (sunSlant - viewSlant) * (exp(-depth / sunSlant) - exp(-depth / viewSlant));
+  return vec4(albedo * RING_BRIGHTNESS * min(scattered, RING_BRIGHTEST_SHARE), 1.0 - exp(-depth / viewSlant));
+}
+
 float ringRadiusKm(vec3 fromCentre, float radius) {
   return length(fromCentre) / radius * uRingedBodyKm;
 }
@@ -1579,39 +1606,55 @@ vec4 ringSeen(int i, vec3 direction, out float ringHit) {
   float hit = dot(centre, north) / (abs(facing) < RING_FLATTEST_VIEW ? sign(facing + 1e-9) * RING_FLATTEST_VIEW : facing);
   vec3 fromCentre = direction * hit - centre;
   float rKm = ringRadiusKm(fromCentre, radius);
-  float footprint = max(fwidth(rKm), 1.0);
+  vec3 outward = normalize(fromCentre);
+  vec3 radialGain = outward - north * dot(outward, direction) / (abs(facing) < RING_FLATTEST_VIEW ? RING_FLATTEST_VIEW : facing);
+  float footprint = max(uPixelAngle * abs(hit) / radius * uRingedBodyKm * length(radialGain), 1.0);
   if (hit <= 0.0 || rKm + footprint < RING_INNER_KM || rKm - footprint > RING_OUTER_KM) return vec4(0.0);
-  float ringlet = ringlets(rKm, footprint);
-  vec2 depths = ringDepths(rKm, footprint);
-  float depth = (depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlet);
-  if (depth <= 0.0) return vec4(0.0);
-  vec3 albedo = (RING_DUSTY_COLOUR * depths.x + RING_ICY_COLOUR * depths.y) / (depths.x + depths.y) * (1.0 + RINGLET_ALBEDO_CONTRAST * ringlet);
   vec3 sun = uBodySun[i].xyz;
   float viewSlant = max(abs(facing), RING_FLATTEST_VIEW);
   float sunSlant = max(abs(dot(sun, north)), RING_FLATTEST_VIEW);
   bool litFace = sign(dot(sun, north)) == sign(-dot(centre, north));
-  float scattered = depth / viewSlant * exp(-depth / viewSlant);
-  if (litFace) scattered = sunSlant / (sunSlant + viewSlant) * (1.0 - exp(-depth * (1.0 / sunSlant + 1.0 / viewSlant)));
-  else if (abs(sunSlant - viewSlant) >= 1e-3) scattered = sunSlant / (sunSlant - viewSlant) * (exp(-depth / sunSlant) - exp(-depth / viewSlant));
-  float towardSun = dot(fromCentre, sun);
-  float offShadowAxis = length(fromCentre - sun * towardSun) / radius;
+  vec4 seen = vec4(0.0);
+  float ringlet = ringlets(rKm, footprint);
+  for (int k = 0; k < RING_SAMPLES; k++) {
+    float off = (float(k) + 0.5) / float(RING_SAMPLES) - 0.5;
+    seen += ringSheet(rKm + off * footprint, footprint / float(RING_SAMPLES), ringlet, viewSlant, sunSlant, litFace) / float(RING_SAMPLES);
+  }
+  if (seen.a <= 0.0) return vec4(0.0);
+  vec3 roundedSun = normalize(rounded(i, sun));
+  vec3 roundedPlace = rounded(i, fromCentre);
+  float towardSun = dot(roundedPlace, roundedSun);
+  float offShadowAxis = length(roundedPlace - roundedSun * towardSun) / equatorialRadius(i);
   float inSaturnShadow = towardSun < 0.0 ? 1.0 - smoothstep(1.0 - RING_SHADOW_SOFTNESS, 1.0 + RING_SHADOW_SOFTNESS, offShadowAxis) : 0.0;
   ringHit = hit;
-  return vec4(albedo * RING_BRIGHTNESS * min(scattered, RING_BRIGHTEST_SHARE) * (1.0 - inSaturnShadow), 1.0 - exp(-depth / viewSlant));
+  return vec4(seen.rgb * (1.0 - inSaturnShadow), seen.a);
 }
 
-float sunThroughRings(int i, vec3 surface) {
+float sunThroughRings(int i, vec3 direction, float hit) {
   vec3 north = uBodyNorth[i];
   vec3 sun = uBodySun[i].xyz;
-  vec3 fromCentre = surface - uBodyPlace[i].xyz;
+  vec3 fromCentre = direction * hit - uBodyPlace[i].xyz;
   float sunRise = dot(sun, north);
   if (abs(sunRise) < 1e-6) return 1.0;
   float toPlane = -dot(fromCentre, north) / sunRise;
   if (toPlane <= 0.0) return 1.0;
-  float rKm = ringRadiusKm(fromCentre + sun * toPlane, sin(uBodyPlace[i].w));
-  float footprint = max(fwidth(rKm), 1.0);
-  vec2 depths = ringDepths(rKm, footprint);
-  return exp(-(depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlets(rKm, footprint)) / abs(sunRise));
+  float radius = sin(uBodyPlace[i].w);
+  vec3 shadowPlace = fromCentre + sun * toPlane;
+  float rKm = ringRadiusKm(shadowPlace, radius);
+  vec3 outward = normalize(shadowPlace);
+  vec3 surfaceGain = outward - north * dot(outward, sun) / sunRise;
+  vec3 normal = surfaceNormal(i, fromCentre);
+  vec3 viewGain = surfaceGain - normal * dot(surfaceGain, direction) / min(dot(normal, direction), -RING_SHADOW_LEAST_FACING);
+  float footprint = max(uPixelAngle * hit / radius * uRingedBodyKm * length(viewGain), 1.0);
+  if (rKm + footprint < RING_INNER_KM || rKm - footprint > RING_OUTER_KM) return 1.0;
+  float ringlet = ringlets(rKm, footprint);
+  float through = 0.0;
+  for (int k = 0; k < RING_SHADOW_SAMPLES; k++) {
+    float off = (float(k) + 0.5) / float(RING_SHADOW_SAMPLES) - 0.5;
+    vec2 depths = ringDepths(rKm + off * footprint, footprint / float(RING_SHADOW_SAMPLES));
+    through += exp(-(depths.x + depths.y) * (1.0 + RINGLET_CONTRAST * ringlet) / abs(sunRise)) / float(RING_SHADOW_SAMPLES);
+  }
+  return through;
 }
 
 const float STAR_KIND = 3.0;
@@ -1762,9 +1805,14 @@ vec4 bodiesColour(vec3 direction) {
     float ringHit = -1.0;
     vec4 ring = i == uRingedBody ? ringSeen(i, direction, ringHit) : vec4(0.0);
     vec4 place = uBodyPlace[i];
-    float along = dot(direction, place.xyz);
-    float radius = sin(place.w);
-    float miss = length(direction * along - place.xyz);
+    bool oblate = uBodyFlattening[i] > 0.0;
+    float radius = oblate ? equatorialRadius(i) : sin(place.w);
+    vec3 roundedRay = oblate ? rounded(i, direction) : direction;
+    float stretch = oblate ? length(roundedRay) : 1.0;
+    vec3 ray = roundedRay / stretch;
+    vec3 centre = oblate ? rounded(i, place.xyz) : place.xyz;
+    float along = dot(ray, centre);
+    float miss = length(ray * along - centre);
     float pointSigma = POINT_SIGMA_PIXELS * uPixelAngle;
     float unresolved = 1.0 - smoothstep(0.5, 2.0, radius / uPixelAngle);
     float cover = along > 0.0 ? clamp((radius - miss) / uPixelAngle + 0.5, 0.0, 1.0) : 0.0;
@@ -1786,10 +1834,10 @@ vec4 bodiesColour(vec3 direction) {
       continue;
     }
     float inside = min(miss, radius * 0.9999);
-    float hit = along - sqrt(radius * radius - inside * inside);
+    float hit = (along - sqrt(radius * radius - inside * inside)) / stretch;
     starHit = uBodyLook[i].w == STAR_KIND;
     vec3 body = shadeBody(i, direction, hit, radius);
-    if (i == uRingedBody) body *= sunThroughRings(i, direction * hit);
+    if (i == uRingedBody) body *= sunThroughRings(i, direction, hit);
     if (ring.a <= 0.0) {
       vec3 behind = starHit || cover >= 1.0 ? vec3(0.0) : coronaBehind(direction) * (1.0 - cover);
       return throughHaze(vec4(body * cover + behind + points, cover), haze);
@@ -1845,9 +1893,9 @@ const int THIN_CLOUD_STEPS = 8;
 const float CLOUD_STEP_BLUR_SHARE = 0.5;
 const ivec4 CLOUD_JITTER_ORDER = ivec4(0, 2, 3, 1);
 const float CLOUD_GOLDEN_STEP = 0.618034;
-const float CLOUD_LONGEST_MARCH_KM = 50.0;
+const float CLOUD_LONGEST_MARCH_KM = 160.0;
 const float CLOUD_LIT_ALBEDO = 0.8;
-const float CLOUD_DARK_BASE_SHARE = 0.4;
+const float CLOUD_DARK_BASE_SHARE = 0.75;
 const float CLOUD_CLEAR_BILLOWS = 0.4;
 const float CLOUD_OVERCAST_BILLOWS = 0.75;
 const float CLOUD_SPARSEST_CELL = 1.0;
@@ -1884,6 +1932,7 @@ const float CLOUD_OPAQUE_CLEARNESS = 0.02;
 uniform sampler2D uCloudBillows;
 const float SKY_BRIGHTNESS = 0.9;
 const float SKY_VEIL_GAIN = 2.5;
+const float CLEAR_SKY_LIGHT = 0.3;
 const float OVERCAST_SKY_LIGHT = 0.9;
 const float OVERCAST_VEIL_GAIN = 2.0;
 const float GROUND_GRAIN = 0.25;
@@ -1953,6 +2002,14 @@ float airDensityHere() {
   return exp(-max(cameraAltitudeKm(), 0.0) / uGroundAir.w);
 }
 
+float airDensityAlong(vec3 ray, float km) {
+  float from = max(cameraAltitudeKm(), 0.0);
+  float to = max(from + km * dot(ray, uGroundCameraUp) + km * km / (2.0 * uGroundRadius), 0.0);
+  float climb = (to - from) / uGroundAir.w;
+  if (abs(climb) < 1e-3) return exp(-from / uGroundAir.w);
+  return (exp(-from / uGroundAir.w) - exp(-to / uGroundAir.w)) / climb;
+}
+
 const float TOTALITY_SKYLIGHT = 0.02;
 const float TOTALITY_HORIZON_GLOW = 0.08;
 
@@ -1960,9 +2017,8 @@ float skylightLeft() {
   return mix(TOTALITY_SKYLIGHT, 1.0, uSunVisible);
 }
 
-vec3 groundSky(vec3 ray, vec3 sun, vec3 upHere) {
+vec3 skyThrough(float density, vec3 ray, vec3 sun, vec3 upHere) {
   if (uGroundAir.w <= 0.0) return vec3(0.0);
-  float density = airDensityHere();
   float viewHeight = dot(ray, upHere);
   float sunHeight = dot(sun, upHere);
   float day = smoothstep(-0.15, 0.05, sunHeight);
@@ -1975,6 +2031,10 @@ vec3 groundSky(vec3 ray, vec3 sun, vec3 upHere) {
   vec3 overcastSky = uGroundAir.rgb * day * SKY_BRIGHTNESS * (0.55 + 0.45 * max(viewHeight, 0.0)) * (0.8 + 0.4 * towardSun * towardSun);
   vec3 totalityHorizon = uGroundSunset * day * TOTALITY_HORIZON_GLOW * pow(1.0 - abs(viewHeight), 8.0);
   return mix(sky, overcastSky, uGroundOvercast) * skylightLeft() + totalityHorizon * (1.0 - uSunVisible);
+}
+
+vec3 groundSky(vec3 ray, vec3 sun, vec3 upHere) {
+  return skyThrough(airDensityHere(), ray, sun, upHere);
 }
 
 vec3 sunlightThroughAir(vec3 sun, vec3 upHere) {
@@ -2210,8 +2270,9 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
   float depthWeight = 0.0;
   float weightedDepth = 0.0;
   float phase = 1.0 + CLOUD_FORWARD_GLOW * pow(max(dot(ray, sun), 0.0), 6.0);
-  vec3 skyBehind = groundSky(ray, sun, normalize(uGroundCamera));
-  float hazePerKm = uGroundAir.w > 0.0 ? airDensityHere() / uGroundGlow.w : 0.0;
+  float densityToClouds = uGroundAir.w > 0.0 ? airDensityAlong(ray, enter) : 0.0;
+  vec3 skyBehind = skyThrough(densityToClouds, ray, sun, normalize(uGroundCamera));
+  float hazePerKm = densityToClouds / uGroundGlow.w;
   float clear = 1.0;
   vec3 light = vec3(0.0);
   bool mapped = uGroundCloudsMapped > 0.5;
@@ -2399,7 +2460,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   float sunHeight = dot(sun, up);
   float shadow = sunHeight > -0.05 ? sunVisible * (1.0 - uGroundOvercast) * sunThroughClouds(up, sun, offset, footprint) : 0.0;
   float skyDome = 0.5 + 0.5 * dot(normal, up);
-  vec3 ambient = uGroundAir.w > 0.0 ? uGroundAir.rgb * (0.18 + OVERCAST_SKY_LIGHT * uGroundOvercast * skyDome) * smoothstep(-0.15, 0.1, sunHeight) * skylightLeft() : vec3(0.0);
+  vec3 ambient = uGroundAir.w > 0.0 ? uGroundAir.rgb * (CLEAR_SKY_LIGHT + OVERCAST_SKY_LIGHT * uGroundOvercast * skyDome) * smoothstep(-0.15, 0.1, sunHeight) * skylightLeft() : vec3(0.0);
   vec3 lit;
   if (water) {
     vec3 halfway = normalize(sun - ray);
@@ -2412,8 +2473,9 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   }
   if (!water) lit += cityLights(uGround, uv, footprint / (1000.0 * uGroundRadius), dot(-ray, up), sunHeight);
   if (uGroundAir.w > 0.0) {
-    float haze = 1.0 - exp(-t * airDensityHere() / uGroundGlow.w);
-    lit = mix(lit, groundSky(normalize(ray + upHere * 0.02), sun, upHere), haze);
+    float density = airDensityAlong(ray, t);
+    float haze = 1.0 - exp(-t * density / uGroundGlow.w);
+    lit = mix(lit, skyThrough(density, normalize(ray + upHere * 0.02), sun, upHere), haze);
   }
   lit *= uStarlight;
   float groundKelvin = painted.a * HOTTEST_GROUND_KELVIN;
@@ -2826,8 +2888,8 @@ vec3 sunGlare(vec3 direction) {
   return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunSeen;
 }
 
-const float HAZE_LOWEST_SCALES = 1.5;
-const float HAZE_FULL_SCALES = 5.0;
+const float HAZE_LOWEST_SCALES = 0.8;
+const float HAZE_FULL_SCALES = 2.8;
 
 Haze hazeAboveGround(vec3 direction) {
   if (uGroundAir.w <= 0.0) return NO_HAZE;
