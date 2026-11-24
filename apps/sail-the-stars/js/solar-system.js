@@ -9,6 +9,14 @@ const HOLD_RADII = 200;
 const LOWEST_ALTITUDE_KM = 30;
 const LOWEST_ALTITUDE_RADII = 0.5;
 export const lowestAltitudeKm = (body) => Math.min(LOWEST_ALTITUDE_KM, LOWEST_ALTITUDE_RADII * body.radiusKm);
+
+export const equatorKm = ({ radiusKm, flattening = 0 }) => radiusKm * (1 - flattening) ** (-1 / 3);
+
+export function radiusBelowKm({ radiusKm, flattening, north }, offsetKm) {
+  if (!flattening) return radiusKm;
+  const sinLatitude = dot(offsetKm, north) / Math.hypot(...offsetKm);
+  return equatorKm({ radiusKm, flattening }) / Math.sqrt(1 - sinLatitude ** 2 + (sinLatitude / (1 - flattening)) ** 2);
+}
 const J2000_MS = Date.UTC(2000, 0, 1, 12);
 const MS_PER_DAY = 86400000;
 const DAYS_PER_CENTURY = 36525;
@@ -271,11 +279,11 @@ export const BODIES = [
   { name: 'Earth', reddensEclipses: true, kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3, haze: { gas: { depth: [0.046, 0.108, 0.265], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } }, ground: { roughness: 0.03, craters: 0, sea: true, clouds: { mapped: true, baseKm: 1.5, topKm: 6.5, extinctionPerKm: 3, coverShift: 0 }, air: { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] } } },
   { name: 'Moon', kind: 'rocky', parent: 'Earth', radiusKm: 1737.4, pole: [269.9949, 66.5392], spin: [38.3213, 13.17635815, -1.4e-12], tint: [0.6, 0.58, 0.55], magnitude: 0.21, map: 'moon', mapKmPerPixel: 10.7, roughness: 0.5, ground: { roughness: 0.06, craters: 1 } },
   { name: 'Mars', kind: 'rocky', radiusKm: 3389.5, pole: [317.269202, 54.432516], spin: [176.049863, 350.891982443297], tint: [0.7, 0.42, 0.25], magnitude: -1.52, map: 'mars', mapKmPerPixel: 20.8, roughness: 0.35, haze: { gas: { depth: [0, 0, 0], scaleKm: 11 }, dust: { depth: [0.2, 0.22, 0.25], light: [0.34, 0.26, 0.19], scaleKm: 11, forwardness: 0.4, sunDimming: 0.6 } }, ground: { roughness: 0.05, craters: 0.4, clouds: { baseKm: 14, topKm: 20, extinctionPerKm: 0.08, coverShift: -0.06 }, air: { tint: [0.78, 0.56, 0.38], scaleKm: 11, glow: [0.45, 0.6, 0.85], hazeKm: 30, sunset: [0.45, 0.6, 0.85] } } },
-  { name: 'Jupiter', kind: 'giant', radiusKm: 69911, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
-  { name: 'Saturn', kind: 'giant', rings: true, radiusKm: 58232, pole: [40.589, 83.537], spin: [38.9, 810.7939024], tint: [0.88, 0.8, 0.62], magnitude: -8.88 },
-  { name: 'Uranus', kind: 'giant', radiusKm: 25362, pole: [257.311, -15.175], spin: [203.81, -501.1600928], tint: [0.66, 0.85, 0.88], magnitude: -7.19 },
+  { name: 'Jupiter', kind: 'giant', radiusKm: 69911, flattening: 0.06487, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
+  { name: 'Saturn', kind: 'giant', rings: true, radiusKm: 58232, flattening: 0.09796, pole: [40.589, 83.537], spin: [38.9, 810.7939024], tint: [0.88, 0.8, 0.62], magnitude: -8.88 },
+  { name: 'Uranus', kind: 'giant', radiusKm: 25362, flattening: 0.02293, pole: [257.311, -15.175], spin: [203.81, -501.1600928], tint: [0.66, 0.85, 0.88], magnitude: -7.19 },
   { name: 'Titan', kind: 'hazy', parent: 'Saturn', radiusKm: 2574.76, pole: [39.4827, 83.4279], spin: [186.5855, 22.5769768], tint: [0.8, 0.56, 0.3], magnitude: -1.28, map: 'titan', mapKmPerPixel: 15.8, roughness: 0, haze: { gas: { depth: [0, 0, 0], scaleKm: 45 }, dust: { depth: [2, 2.4, 3.2], light: [2.9, 1.8, 0.85], scaleKm: 45, forwardness: 0.3, sunDimming: 0.1 }, layer: { light: [0.0022, 0.0027, 0.0042], heightKm: 450, thicknessKm: 30 } }, ground: { roughness: 0.03, craters: 0.1, viewFromKm: 120, air: { tint: [0.5, 0.33, 0.15], scaleKm: 21, glow: [0.6, 0.42, 0.2], hazeKm: 8, sunset: [0.4, 0.22, 0.08], overcast: 0.9 } } },
-  { name: 'Neptune', kind: 'giant', radiusKm: 24622, pole: [299.36, 43.46], spin: [249.978, 541.1397757], tint: [0.51, 0.69, 0.79], magnitude: -6.87 },
+  { name: 'Neptune', kind: 'giant', radiusKm: 24622, flattening: 0.01708, pole: [299.36, 43.46], spin: [249.978, 541.1397757], tint: [0.51, 0.69, 0.79], magnitude: -6.87 },
   { name: 'Phobos', kind: 'rocky', parent: 'Mars', synchronous: true, radiusKm: 11.08, tint: [0.42, 0.4, 0.38], magnitude: 11.8 },
   { name: 'Deimos', kind: 'rocky', parent: 'Mars', synchronous: true, radiusKm: 6.2, tint: [0.48, 0.45, 0.42], magnitude: 12.89 },
   { name: 'Io', kind: 'rocky', parent: 'Jupiter', synchronous: true, radiusKm: 1821.49, tint: [0.9, 0.82, 0.45], magnitude: -1.68 },
