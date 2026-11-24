@@ -1,6 +1,6 @@
 import { LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { EXOPLANET_HOSTS } from './exoplanets.js';
-import { systemNamed, systemOf } from './planetary-systems.js';
+import { SOLAR_SYSTEM, systemNamed, systemOf } from './planetary-systems.js';
 import { arrivalNear, BODIES, KM_PER_PC } from './solar-system.js';
 import { simNow } from './sim-clock.js';
 import { nebulaRadius } from './stars.js';
@@ -39,6 +39,7 @@ export const starDestination = (star) => (star.host ? hostDestination(star) : pl
 export const SUN_DESTINATION = starDestination({ name: 'Sun', position: SUN_POSITION, sun: true });
 
 function groupOf(body) {
+  if (body.kind === 'mirror') return `Made-up mirrors of ${body.parent}`;
   if (body.host) return `Planet of ${body.host}`;
   return body.parent ? `Moon of ${body.parent}` : 'Planets';
 }
@@ -75,10 +76,13 @@ const MILKY_WAY_DESTINATION = {
   arrival: () => MILKY_WAY_ABOVE,
 };
 
-export function listDestinations({ nearby, nebulae, galaxies }) {
+export const mirrorsNow = () => SOLAR_SYSTEM.place(simNow()).filter(({ kind }) => kind === 'mirror');
+
+export function listDestinations({ nearby, nebulae, galaxies, mirrors }) {
   return [
     SUN_DESTINATION,
     ...BODIES.filter((body) => body.kind !== 'star').map(bodyDestination),
+    ...mirrors.map(bodyDestination),
     MILKY_WAY_DESTINATION,
     ...nearby
       .filter((star) => star.name)

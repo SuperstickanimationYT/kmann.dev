@@ -1,7 +1,7 @@
 import { drawAtlas } from './atlas.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
-import { bodyDestination, galaxyDestination, listDestinations, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
+import { bodyDestination, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { describePick, UNNAMED_STAR } from './picking.js';
@@ -707,9 +707,13 @@ function warpToSelection() {
 }
 
 let destinationList = null;
+let listedMirrors = '';
 function destinations() {
-  if (!destinationList && nearby.length) {
-    destinationList = listDestinations({ nearby, nebulae, galaxies });
+  const mirrors = mirrorsNow();
+  const mirrorNames = mirrors.map(({ name }) => name).join();
+  if (nearby.length && (!destinationList || mirrorNames !== listedMirrors)) {
+    listedMirrors = mirrorNames;
+    destinationList = listDestinations({ nearby, nebulae, galaxies, mirrors });
     selectList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
   }
   return destinationList ?? [];
@@ -1344,7 +1348,13 @@ function showSelectionFacts() {
   pickPanel.hidden = false;
 }
 
+const dismantled = ({ kind, destination }) => kind === 'body' && destination.subject.body.kind === 'mirror' && system === SOLAR_SYSTEM && !solarBodies?.some(({ name }) => name === destination.name);
+
 function followSelection(context, now) {
+  if (dismantled(selection)) {
+    clearSelection();
+    return;
+  }
   const offset = selection.locate();
   if (offset) {
     selection.distance = Math.hypot(...offset);
