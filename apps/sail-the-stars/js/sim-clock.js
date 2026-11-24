@@ -1,9 +1,10 @@
 const SECONDS_PER_DAY = 86400;
 const SECONDS_PER_YEAR = 365.25 * SECONDS_PER_DAY;
 export const EARLIEST_MS = Date.UTC(1800, 0, 1);
-export const LATEST_MS = Date.UTC(2050, 0, 1);
+export const LATEST_MS = Date.UTC(3000, 0, 1);
 
 const RATES = [
+  [10 * SECONDS_PER_YEAR, '10 years'],
   [SECONDS_PER_YEAR, '1 year'],
   [SECONDS_PER_YEAR / 4, '3 months'],
   [SECONDS_PER_YEAR / 12, '1 month'],

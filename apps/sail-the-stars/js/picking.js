@@ -1,5 +1,6 @@
 import { LY_PER_PC } from './milky-way.js';
 import { formatDistance } from './practice.js';
+import { settlementShown } from './settlements.js';
 import { KM_PER_PC } from './solar-system.js';
 import { KIND } from './stars.js';
 import { speculationShown } from './speculation.js';
@@ -128,6 +129,7 @@ function bodyFacts(pick) {
   if (body.parent) facts.push(['Orbits', body.parent]);
   if (body.measured) return exoplanetFacts(body, facts);
   if (body.kind !== 'star') facts.push(['From the Sun', `${body.sunDistanceAu.toFixed(2)} AU`]);
+  if (settlementShown(body)) facts.push(['People (made up)', `about ${Number(body.settlement.people.toPrecision(2)).toLocaleString('en')}`]);
   const kind = body.parent ? `Moon of ${body.parent}` : BODY_KINDS[body.kind];
   return { title: body.name, kind, facts };
 }

@@ -15,6 +15,7 @@ import {
   SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
+import { createSettlementPainter, settlementShown } from './settlements.js';
 import { speculationShown } from './speculation.js';
 import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
@@ -191,6 +192,7 @@ const LATTICE_UNIT = 18;
 const INVENTED_COLOUR_UNIT = 23;
 const INVENTED_LAND_UNIT = 24;
 const CITY_LIGHTS_UNIT = 25;
+const SETTLEMENTS_UNIT = 26;
 const EARTH_LAMPS = { dim: [1, 0.58, 0.24], bright: [1, 0.84, 0.6] };
 const LATTICE_ORIGIN = 4096;
 
@@ -512,19 +514,33 @@ export function createRenderer(canvas, armMap, galaxies) {
     cityLightsOn = true;
   }
 
-  const litAtNight = (body) => (body.civilization ? speculationShown() && inventedGround.isPainted(body) : cityLightsOn && body.cityLights > 0);
+  function litAtNight(body) {
+    if (body.civilization) return speculationShown() && inventedGround.isPainted(body);
+    return body.settlement ? settlementShown(body) : cityLightsOn && body.cityLights > 0;
+  }
 
-  function cityLightUniforms(shown) {
-    const lit = shown.findIndex(({ body }) => litAtNight(body));
-    if (lit < 0) return { uLitBody: { int: lit } };
-    const { radiusKm, cityLights, civilization } = shown[lit].body;
-    const { dim, bright } = civilization?.lamps ?? EARTH_LAMPS;
-    return { uLitBody: { int: lit }, uLitBodyKm: radiusKm, uCityLightsOn: cityLights ?? 1, uCitiesInvented: civilization ? 1 : 0, uLampDim: dim, uLampBright: bright };
+  function largestLit(shown) {
+    const sizes = shown.map(({ body, offsetKm }) => (litAtNight(body) ? body.radiusKm / Math.hypot(...offsetKm) : 0));
+    const largest = Math.max(0, ...sizes);
+    return largest > 0 ? sizes.indexOf(largest) : -1;
+  }
+
+  function useCityLights(program, shown) {
+    const lit = largestLit(shown);
+    if (lit < 0) return setUniforms(gl, program, { uLitBody: { int: lit } });
+    const { radiusKm, cityLights, civilization, settlement } = shown[lit].body;
+    if (settlement) {
+      settlements.paint(shown[lit].body);
+      gl.uniform1i(program.uniforms.uInventedLand, SETTLEMENTS_UNIT);
+    }
+    const { dim, bright } = (civilization ?? settlement)?.lamps ?? EARTH_LAMPS;
+    setUniforms(gl, program, { uLitBody: { int: lit }, uLitBodyKm: radiusKm, uCityLightsOn: cityLights ?? 1, uCitiesInvented: civilization || settlement ? 1 : 0, uCityChannel: settlement ? [1, 0] : [0, 1], uLampDim: dim, uLampBright: bright });
   }
 
   let motionBlur = null;
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
+  const settlements = createSettlementPainter(gl, SETTLEMENTS_UNIT);
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT });
 
   function setBodies(program, seen, ground, pixelAngle = 0) {
@@ -537,7 +553,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     inventedGround.bind(program, shown);
     if (program.uniforms.uCityLights) {
       gl.uniform1i(program.uniforms.uCityLights, CITY_LIGHTS_UNIT);
-      setUniforms(gl, program, cityLightUniforms(shown));
+      useCityLights(program, shown);
     }
     const { arrays, count, rings } = bodyArrays(shown, mapRelief, giants);
     const groundValues = groundUniforms(ground, shown);
