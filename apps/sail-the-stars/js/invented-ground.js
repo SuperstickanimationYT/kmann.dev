@@ -9,11 +9,17 @@ const TILE_COUNT = TILES[0] * TILES[1];
 const SEA_WORLD_CLOUDS = { mapped: true, baseKm: 1.5, topKm: 6.5, extinctionPerKm: 3, coverShift: 0 };
 const EARTHLIKE_AIR = { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] };
 const SEA_WORLD = { roughness: 0.045, craters: 0, sea: true, lowKm: -2, rangeKm: 10, clouds: SEA_WORLD_CLOUDS, air: EARTHLIKE_AIR };
+const MAPPED_SEA_WORLD = { ...SEA_WORLD, lowKm: -4, rangeKm: 16 };
 const ICE_WORLD = { roughness: 0.05, craters: 0.4, lowKm: -8, rangeKm: 16 };
 const BARE_WORLD = { roughness: 0.06, craters: 1, lowKm: -8, rangeKm: 16 };
 const LAVA_WORLD = { roughness: 0.04, craters: 0, lowKm: -8, rangeKm: 16 };
 
-function groundKind(kelvin) {
+const kelvinOf = (body) => body.invented.kelvin ?? body.measured.kelvin;
+const sameLook = (painted, body) => painted?.name === body.name && painted.version === body.invented.version;
+
+function groundKind(body) {
+  if (body.invented.terrain) return MAPPED_SEA_WORLD;
+  const kelvin = kelvinOf(body);
   if (kelvin <= 175) return ICE_WORLD;
   if (kelvin < 300) return SEA_WORLD;
   return kelvin < 850 ? BARE_WORLD : LAVA_WORLD;
@@ -22,7 +28,7 @@ function groundKind(kelvin) {
 const twoChannels = (pixels, first) => Uint8Array.from({ length: pixels.length / 2 }, (_, k) => pixels[(k >> 1) * 4 + first + (k & 1)]);
 const channel = (pixels, index) => Uint8Array.from({ length: pixels.length / 4 }, (_, texel) => pixels[texel * 4 + index]);
 
-export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, landUnit }) {
+export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, landUnit, heightUnit, heightLayerOf, heightRangeOf }) {
   let colourBuffer = null;
   let program = null;
   let baking = null;
@@ -52,8 +58,16 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colour, 0);
   }
 
+  function terrainUniforms(body) {
+    const { terrain } = body.invented;
+    if (!terrain) return { uMappedTerrain: [0, 0, 0, 0] };
+    const layer = heightLayerOf(body.name);
+    const range = heightRangeOf(layer);
+    return { uMappedTerrain: [layer, terrain.seaLevelKm, range.lowKm, range.rangeKm], uTerrainLook: [terrain.greenery, terrain.cloudiness] };
+  }
+
   function draw(framebuffer, [width, height], body, sunLocal, shape) {
-    const { lowKm, rangeKm } = groundKind(body.measured.kelvin);
+    const { lowKm, rangeKm } = groundKind(body);
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.viewport(0, 0, width, height);
     gl.useProgram(program.program);
@@ -61,10 +75,12 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     setUniforms(gl, program, {
       uInventedTint: body.tint,
       uInventedSun: sunLocal,
-      uInventedPlanet: [body.invented.seed, body.measured.kelvin, body.tideLocked ? 1 : 0],
+      uInventedPlanet: [body.invented.seed, kelvinOf(body), body.tideLocked ? 1 : 0],
       uInventedShape: [shape ? 1 : 0, lowKm, rangeKm],
       uInventedFootprint: (2 * Math.PI) / width,
+      ...terrainUniforms(body),
     });
+    gl.uniform1i(program.uniforms.uBodyHeight, heightUnit);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
@@ -84,7 +100,7 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     const pixels = new Uint8Array(width * height * 4);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     target.destroy();
-    const kind = groundKind(body.measured.kelvin);
+    const kind = groundKind(body);
     const land = channel(pixels, 1);
     gl.activeTexture(gl.TEXTURE0 + landUnit);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -100,19 +116,22 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
   }
 
   function groundOf(body, sunLocal) {
-    if (baked?.name === body.name) return baked.ground;
-    baked = null;
+    if (sameLook(baked, body)) return baked.ground;
+    if (baked?.name !== body.name) baked = null;
+    if (body.invented.terrain && !heightRangeOf(heightLayerOf(body.name))) return null;
     if (!program) prepare();
-    if (baking?.name !== body.name) baking = { name: body.name, tile: 0 };
+    if (baking?.name !== body.name) baking = { name: body.name, body, tile: 0 };
     if (baking.tile < TILE_COUNT) {
-      drawColourTile(body, sunLocal, baking.tile);
+      drawColourTile(baking.body, sunLocal, baking.tile);
       baking.tile += 1;
       return null;
     }
     gl.activeTexture(gl.TEXTURE0 + colourUnit);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.activeTexture(gl.TEXTURE0);
-    baked = { name: body.name, ground: readShape(body, sunLocal) };
+    const { version, shapeVersion } = baking.body.invented;
+    const shape = baked && baked.shapeVersion === shapeVersion ? baked.ground : readShape(baking.body, sunLocal);
+    baked = { name: body.name, version, shapeVersion, ground: { ...shape, version } };
     baking = null;
     return baked.ground;
   }

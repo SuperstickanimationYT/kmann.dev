@@ -14,7 +14,7 @@ const BODY_CROSSING_SECONDS = 4;
 const SYSTEM_VIEW_ORBITS = 2.2;
 const SYSTEM_VIEW_RISE = 0.5;
 
-export const placedNow = (body) => systemOf(body).place(simNow()).find(({ name }) => name === body.name);
+export const placedNow = (body) => systemOf(body).place(simNow()).find(({ name }) => name === body.name) ?? body;
 const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
 const approach = (name, group, target, standoff, subject) => ({ name, group, target, subject, arrival: (from) => backOff(from, target, standoff) });
 

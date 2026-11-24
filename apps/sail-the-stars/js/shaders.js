@@ -592,6 +592,7 @@ const float BODY_STAR = 3.0;
 const float BODY_OCEAN_WORLD = 4.0;
 const float BODY_HAZY = 5.0;
 const float BODY_INVENTED = 6.0;
+const float BODY_MIRROR = 7.0;
 const float MAP_WIDTH = 1024.0;
 const float MAP_HEIGHT = 512.0;
 const float MAX_DETAIL_OCTAVES = 7.0;
@@ -709,7 +710,7 @@ float mappedCityLevel(vec2 uv, float footprint) {
 
 float inventedCityLevel(vec2 uv, float footprint) {
   float texel = 6.2831853 / float(textureSize(uInventedLand, 0).x);
-  float level = dot(textureLod(uInventedLand, uv, max(log2(footprint / texel), 0.0)).rg, uCityChannel);
+  float level = uCityLightsOn * dot(textureLod(uInventedLand, uv, max(log2(footprint / texel), 0.0)).rg, uCityChannel);
   float octaves = clamp(log2(texel / footprint), 0.0, TOWN_OCTAVES);
   if (level <= 0.004 || octaves <= 0.0) return min(level * mix(1.0, clamp(footprint / texel, 1.0, FAINT_TOWN_GAIN), uCityChannel.x), 1.0);
   float longitude = (uv.x - 0.5) * 6.2831853;
@@ -963,7 +964,7 @@ vec3 sunlightReaching(int i, vec3 surface) {
     hidden += share;
     if (eclipser.w < 0.0) bent += LIGHT_BENT_THROUGH_AIR * share;
   }
-  return vec3(max(1.0 - hidden, 0.0)) + bent;
+  return (vec3(max(1.0 - hidden, 0.0)) + bent) * (1.0 - uBodyGlow[i].w);
 }
 
 const int HAZE_STEPS_PER_SIDE = 8;
@@ -1209,6 +1210,19 @@ float inventedCloud(vec3 local, vec3 warp, float seed, float sunHeight, float ti
   return smoothstep(0.5, 0.78, billow + gathered);
 }
 
+uniform vec4 uMappedTerrain;
+uniform vec2 uTerrainLook;
+const float COAST_FRAY_KM = 0.5;
+const float MAPPED_MOUNTAIN_SHARE = 0.25;
+const vec3 GREENERY = vec3(0.075, 0.13, 0.04);
+const vec3 DRY_GREENERY = vec3(0.2, 0.18, 0.08);
+
+float mappedAboveSea(vec3 local, float fray) {
+  vec2 uv = vec2(atan(local.y, local.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(local.z, -1.0, 1.0)) / 3.1415927);
+  float km = uMappedTerrain.z + uMappedTerrain.w * mapHeight(uMappedTerrain.x, uv) - uMappedTerrain.y + COAST_FRAY_KM * fray;
+  return km / (km > 0.0 ? LAND_RISE_KM : SEA_FLOOR_KM);
+}
+
 bool isSeaWorld(float kelvin) {
   return kelvin > 175.0 && kelvin < 300.0;
 }
@@ -1231,18 +1245,24 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
     float poleward = local.z * local.z;
     float warmth = tideLocked > 0.5 ? kelvin + 42.0 * sunHeight + 14.0 : kelvin + 32.0 - 60.0 * poleward;
     warmth += 26.0 * (fine - 0.5) + 30.0 * (plains - 0.5);
-    float aboveSea = plains + 0.12 * (fine - 0.5) - SEA_LEVEL;
+    bool terrainMapped = uMappedTerrain.w > 0.0;
+    float aboveSea = terrainMapped ? mappedAboveSea(local, detailNoise(local * RELIEF_SCALE + seed, octaves)) : plains + 0.12 * (fine - 0.5) - SEA_LEVEL;
     float land = smoothstep(0.0, max(0.004, 2.0 * footprint), aboveSea);
     float ice = smoothstep(FREEZING_KELVIN + 3.0, FREEZING_KELVIN - 3.0, warmth - 5.0 * land);
     float crack = ice > 0.0 && land < 1.0 ? 1.0 - smoothstep(0.0, 0.035, abs(terrain(p * 3.4 + 5.0 * warp) - 0.5)) : 0.0;
     vec3 ground = tint * (0.55 + 0.9 * fine);
+    if (terrainMapped) {
+      made.cloud *= uTerrainLook.y;
+      float damp = smoothstep(0.3, 0.7, terrain(p * 2.3 + 7.0) + 0.25 * (0.5 - abs(abs(local.z) - 0.45)));
+      ground = mix(ground, mix(DRY_GREENERY, GREENERY, damp) * (0.6 + 0.8 * fine), uTerrainLook.x * smoothstep(0.45, 0.15, aboveSea));
+    }
     vec3 frozen = INVENTED_ICE * (0.8 + 0.3 * fine) * (1.0 - 0.22 * crack * (1.0 - land));
     made.albedo = mix(mix(INVENTED_OCEAN, ground, land), frozen, ice);
     made.water = (1.0 - land) * (1.0 - ice);
     made.dryAlbedo = mix(ground, frozen, ice);
     made.solid = max(smoothstep(-COAST_HALF_WIDTH, COAST_HALF_WIDTH, aboveSea), ice);
     if (bareGround) {
-      float mountains = MOUNTAIN_KM * max(detailNoise(local * RELIEF_SCALE + seed, octaves), 0.0) * smoothstep(0.0, 0.06, aboveSea);
+      float mountains = (terrainMapped ? MAPPED_MOUNTAIN_SHARE : 1.0) * MOUNTAIN_KM * max(detailNoise(local * RELIEF_SCALE + seed, octaves), 0.0) * smoothstep(0.0, 0.06, aboveSea);
       made.heightKm = aboveSea > 0.0 ? LAND_RISE_KM * aboveSea + mountains : mix(SEA_FLOOR_KM * aboveSea, FROZEN_SEA_KM, ice);
       float coast = exp(-COAST_CROWDING * max(aboveSea, 0.0));
       float region = smoothstep(0.42, 0.62, terrain(local * 5.0 + seed + 33.0));
@@ -1614,6 +1634,44 @@ vec4 throughHaze(vec4 behind, Haze haze) {
   return vec4(haze.light + haze.clear * behind.rgb, 1.0 - (1.0 - behind.a) * dot(haze.clear, vec3(1.0 / 3.0)));
 }
 
+const float MIRROR_TILES = 90.0;
+const float MIRROR_GAP = 0.12;
+
+vec2 gapsUpTo(vec2 tile) {
+  return floor(tile) * MIRROR_GAP + min(fract(tile), MIRROR_GAP);
+}
+
+vec3 mirrorLook(int i, vec2 place, float footprint, float facing) {
+  vec2 tile = place * MIRROR_TILES;
+  float seen = 1.0 - smoothstep(0.2, 0.7, footprint * MIRROR_TILES);
+  vec2 halfPixel = vec2(0.5 * max(footprint * MIRROR_TILES, 1e-3));
+  vec2 gaps = (gapsUpTo(tile + halfPixel) - gapsUpTo(tile - halfPixel)) / (2.0 * halfPixel);
+  float solid = (1.0 - gaps.x) * (1.0 - gaps.y);
+  vec3 chance = cellHash(vec3(floor(tile), 5.0));
+  float sunSide = dot(uBodySun[i].xyz, uBodyNorth[i]) * facing > 0.0 ? 1.0 : 0.0;
+  vec3 reflected = uBodyLook[i].rgb * mix(0.03, 0.55, sunSide) * (1.0 + seen * 0.5 * (chance.x - 0.5));
+  if (uBodyGlow[i].r > 0.0 && facing > 0.0) reflected = uBodyGlow[i].rgb * (0.75 + seen * 0.6 * (chance.y - 0.3));
+  return reflected * solid;
+}
+
+float mirrorCover(int i, vec3 direction, out vec3 colour) {
+  colour = vec3(0.0);
+  vec4 place = uBodyPlace[i];
+  float along = dot(direction, uBodyNorth[i]);
+  if (abs(along) < 1e-4) return 0.0;
+  float reach = dot(place.xyz, uBodyNorth[i]) / along;
+  if (reach <= 0.0) return 0.0;
+  float radius = sin(place.w);
+  vec3 spot = direction * reach - place.xyz;
+  float footprint = uPixelAngle * reach / radius;
+  float cover = clamp((1.0 - length(spot) / radius) / footprint + 0.5, 0.0, 1.0);
+  if (cover <= 0.0) return 0.0;
+  vec3 across = uBodyMeridian[i];
+  vec2 plane = vec2(dot(spot, across), dot(spot, cross(uBodyNorth[i], across))) / radius;
+  colour = mirrorLook(i, plane, footprint / max(abs(along), 0.05), -along);
+  return cover;
+}
+
 ${EYE_SPIKES}
 float spikeReachOf(float pointBrightness) {
   float magnitude = 6.5 - log(max(pointBrightness, 1e-6) / 0.2) / (0.16 * log(10.0));
@@ -1647,6 +1705,12 @@ vec4 bodiesColour(vec3 direction) {
       points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * starburst(offset, spikeReach);
     }
     if (along > 0.0 && uBodyLook[i].w == STAR_KIND) points += coronaLight(i, direction);
+    if (uBodyLook[i].w == BODY_MIRROR) {
+      vec3 mirror;
+      float mirrored = mirrorCover(i, direction, mirror);
+      if (mirrored > 0.5) return throughHaze(vec4(mirror + points, 1.0), haze);
+      continue;
+    }
     if (cover <= 0.0) {
       if (ring.a > 0.0) return throughHaze(vec4(ring.rgb + points, ring.a), haze);
       continue;

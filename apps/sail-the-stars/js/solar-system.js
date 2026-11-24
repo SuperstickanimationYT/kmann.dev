@@ -1,5 +1,6 @@
 import { DEGREES, equatorialToFrame, SUN_POSITION } from './milky-way.js';
 import { settlementOf } from './settlements.js';
+import { mirrorLight, mirrorsAround, terraformed } from './terraforming.js';
 import { add, cross, dot, normalize, rotateAbout, scale, subtract } from './vectors.js';
 
 export const KM_PER_PC = 3.0857e13;
@@ -268,7 +269,7 @@ export const BODIES = [
   { name: 'Mercury', kind: 'rocky', radiusKm: 2439.7, pole: [281.0103, 61.4155], spin: [329.5988, 6.1385108], tint: [0.55, 0.52, 0.5], magnitude: -0.6 },
   { name: 'Venus', kind: 'clouded', radiusKm: 6051.8, pole: [272.76, 67.16], spin: [160.2, -1.4813688], cloudSpin: [0, -90], tint: [0.93, 0.86, 0.68], magnitude: -4.47, map: 'venus', mapKmPerPixel: 37.1, roughness: 0, haze: { gas: { depth: [0, 0, 0], scaleKm: 5 }, dust: { depth: [0.3, 0.3, 0.33], light: [0.2, 0.19, 0.15], scaleKm: 5, forwardness: 0.3, sunDimming: 0.4 } }, ground: { roughness: 0.04, craters: 0.15, viewFromKm: 60, air: { tint: [0.8, 0.55, 0.26], scaleKm: 15.9, glow: [0.95, 0.7, 0.35], hazeKm: 20, sunset: [0.7, 0.4, 0.15], overcast: 1 } } },
   { name: 'Earth', reddensEclipses: true, kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3, haze: { gas: { depth: [0.046, 0.108, 0.265], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } }, ground: { roughness: 0.03, craters: 0, sea: true, clouds: { mapped: true, baseKm: 1.5, topKm: 6.5, extinctionPerKm: 3, coverShift: 0 }, air: { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] } } },
-  { name: 'Moon', kind: 'rocky', parent: 'Earth', radiusKm: 1737.4, pole: [269.9949, 66.5392], spin: [38.3213, 13.17635815], tint: [0.6, 0.58, 0.55], magnitude: 0.21, map: 'moon', mapKmPerPixel: 10.7, roughness: 0.5, ground: { roughness: 0.06, craters: 1 } },
+  { name: 'Moon', kind: 'rocky', parent: 'Earth', radiusKm: 1737.4, pole: [269.9949, 66.5392], spin: [38.3213, 13.17635815, -1.4e-12], tint: [0.6, 0.58, 0.55], magnitude: 0.21, map: 'moon', mapKmPerPixel: 10.7, roughness: 0.5, ground: { roughness: 0.06, craters: 1 } },
   { name: 'Mars', kind: 'rocky', radiusKm: 3389.5, pole: [317.269202, 54.432516], spin: [176.049863, 350.891982443297], tint: [0.7, 0.42, 0.25], magnitude: -1.52, map: 'mars', mapKmPerPixel: 20.8, roughness: 0.35, haze: { gas: { depth: [0, 0, 0], scaleKm: 11 }, dust: { depth: [0.2, 0.22, 0.25], light: [0.34, 0.26, 0.19], scaleKm: 11, forwardness: 0.4, sunDimming: 0.6 } }, ground: { roughness: 0.05, craters: 0.4, clouds: { baseKm: 14, topKm: 20, extinctionPerKm: 0.08, coverShift: -0.06 }, air: { tint: [0.78, 0.56, 0.38], scaleKm: 11, glow: [0.45, 0.6, 0.85], hazeKm: 30, sunset: [0.45, 0.6, 0.85] } } },
   { name: 'Jupiter', kind: 'giant', radiusKm: 69911, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
   { name: 'Saturn', kind: 'giant', rings: true, radiusKm: 58232, pole: [40.589, 83.537], spin: [38.9, 810.7939024], tint: [0.88, 0.8, 0.62], magnitude: -8.88 },
@@ -384,9 +385,23 @@ function precessionAngles(centuries) {
 const turnAboutZ = ([x, y, z], angle) => [x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle), z];
 const turnAboutY = ([x, y, z], angle) => [x * Math.cos(angle) + z * Math.sin(angle), y, z * Math.cos(angle) - x * Math.sin(angle)];
 
-function equatorOfDateToJ2000(vector, centuries) {
+const PRECESSION_FIT_CENTURIES = 10;
+const generalPrecession = (centuries) => polynomial([0, 1.3969713, 0.0003086], centuries) * DEGREES;
+
+function precessedBack(vector, centuries) {
   const { zeta, z, theta } = precessionAngles(centuries);
   return turnAboutZ(turnAboutY(turnAboutZ(vector, -z), theta), -zeta);
+}
+
+function turnAboutX([x, y, z], angle) {
+  return [x, y * Math.cos(angle) - z * Math.sin(angle), y * Math.sin(angle) + z * Math.cos(angle)];
+}
+
+function equatorOfDateToJ2000(vector, centuries) {
+  const fitted = precessedBack(vector, Math.min(centuries, PRECESSION_FIT_CENTURIES));
+  if (centuries <= PRECESSION_FIT_CENTURIES) return fitted;
+  const further = generalPrecession(centuries) - generalPrecession(PRECESSION_FIT_CENTURIES);
+  return turnAboutX(turnAboutZ(turnAboutX(fitted, -OBLIQUITY), -further), OBLIQUITY);
 }
 
 const pointAlong = (longitude, latitude, distance) =>
@@ -406,7 +421,7 @@ function moonFarOffsetKm(centuries) {
   const longitude = arguments_[4] + series(FAR_MOON_LONGITUDE_TERMS) * DEGREES;
   const latitude = series(FAR_MOON_LATITUDE_TERMS) * DEGREES;
   const [x, y, z] = pointAlong(longitude, latitude, series(MOON_DISTANCE_TERMS));
-  const obliquity = OBLIQUITY + polynomial([0, -0.0130042, -0.00000016, 0.0000005], centuries) * DEGREES;
+  const obliquity = OBLIQUITY + polynomial([0, -0.0130042, -0.00000016, 0.0000005], Math.min(centuries, PRECESSION_FIT_CENTURIES)) * DEGREES;
   const c = Math.cos(obliquity);
   const s = Math.sin(obliquity);
   return equatorialToFrame(equatorOfDateToJ2000([x, y * c - z * s, y * s + z * c], centuries));
@@ -480,7 +495,7 @@ function orientation(body, days) {
   if (body.name === 'Earth') return earthOrientation(days);
   const northEquatorial = equatorialDirection(...body.pole);
   const node = normalize(cross([0, 0, 1], northEquatorial));
-  const meridianEquatorial = rotateAbout(node, northEquatorial, (body.spin[0] + body.spin[1] * days) * DEGREES);
+  const meridianEquatorial = rotateAbout(node, northEquatorial, (body.spin[0] + body.spin[1] * days + (body.spin[2] ?? 0) * days ** 2) * DEGREES);
   return { north: equatorialToFrame(northEquatorial), meridian: equatorialToFrame(meridianEquatorial) };
 }
 
@@ -540,7 +555,7 @@ function eclipsersOf(body, bodies) {
   const sunDistance = Math.hypot(...body.fromSunKm);
   const sunRadius = Math.sin(body.sunAngularRadius);
   return bodies
-    .filter((other) => other !== body && other.kind !== 'star')
+    .filter((other) => other !== body && other.kind !== 'star' && other.kind !== 'mirror')
     .map((other) => {
       const offsetKm = subtract(other.fromSunKm, body.fromSunKm);
       const along = dot(offsetKm, body.sunward);
@@ -573,16 +588,20 @@ export function placeBodies(ms) {
     fromSun.set(parent, subtract(fromSun.get(parent), scale(offset, orbit.parentShare)));
   }
   for (const [name, offset] of satelliteOffsets) fromSun.set(name, add(fromSun.get(parentOf(name)), offset));
-  const facing = BODIES.map((body) => ({
+  const facing = BODIES.map((listed) => terraformed(listed, ms)).map((body) => ({
     ...body,
     ...(body.name === 'Earth' && { cityLights: cityLightsOn(ms) }),
     ...settlementOf(body.name, ms),
     ...(body.synchronous ? synchronousFacing.get(body.name) : orientation(body, days)),
     cloudMeridian: body.cloudSpin && orientation({ ...body, spin: body.cloudSpin }, days).meridian,
     fromSunKm: fromSun.get(body.name),
-    mapLayer: MAPPED_BODIES.indexOf(body),
+    mapLayer: body.invented ? -1 : MAPPED_BODIES.findIndex(({ name }) => name === body.name),
   }));
-  return inStarlight(facing, SUN_POSITION, SUN_RADIUS_KM);
+  const venus = facing.find(({ name }) => name === 'Venus');
+  const mirrors = mirrorsAround(venus, ms);
+  const lightDirection = mirrorLight(venus, mirrors);
+  if (lightDirection) venus.litFrom = lightDirection;
+  return inStarlight([...facing, ...mirrors], SUN_POSITION, SUN_RADIUS_KM);
 }
 
 export function inStarlight(bodies, starPosition, starRadiusKm) {
@@ -593,14 +612,14 @@ export function inStarlight(bodies, starPosition, starRadiusKm) {
       ...body,
       centre: add(starPosition, scale(body.fromSunKm, 1 / KM_PER_PC)),
       radius: body.radiusKm / KM_PER_PC,
-      sunward: sunDistanceKm > 0 ? scale(body.fromSunKm, -1 / sunDistanceKm) : [0, 0, 1],
+      sunward: body.litFrom ?? (sunDistanceKm > 0 ? scale(body.fromSunKm, -1 / sunDistanceKm) : [0, 0, 1]),
       sunDistanceAu: sunDistanceKm / KM_PER_AU,
       sunAngularRadius: sunDistanceKm > 0 ? Math.asin(Math.min(1, starRadiusKm / sunDistanceKm)) : 0,
     };
   });
   return placed.map((body) => {
     const eclipsers = eclipsersOf(body, placed);
-    return { ...body, eclipsers, sunlitShare: sunlitShare(body, eclipsers) };
+    return { ...body, eclipsers, sunlitShare: sunlitShare(body, eclipsers) * (body.lightShare ?? 1) };
   });
 }
 
