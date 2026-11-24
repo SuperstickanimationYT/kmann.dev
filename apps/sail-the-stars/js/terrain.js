@@ -57,6 +57,10 @@ function octaveNoise(cells, offset, cell, seed) {
   );
 }
 
+export function groundNoise(anchor, offset, octave, seed) {
+  return octaveNoise(octaveCells(anchor, octave), offset, ANCHOR_METRES / (2 << octave), seed);
+}
+
 function craterDepth(cells, offset, cell, octave) {
   const shift = SHIFTS[octave];
   const sx = offset[0] / cell + shift[0];

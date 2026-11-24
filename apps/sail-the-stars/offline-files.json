@@ -1,5 +1,5 @@
 {
-  "bytes": 6572540,
+  "bytes": 6602235,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -51,6 +51,7 @@
     "js/clouds.js",
     "js/cutscene.js",
     "js/destinations.js",
+    "js/detail-meshes.js",
     "js/dwarf-planets.js",
     "js/exoplanet-data.js",
     "js/exoplanets.js",
@@ -87,6 +88,8 @@
     "js/solar-system.js",
     "js/speculation.js",
     "js/stars.js",
+    "js/surface-details.js",
+    "js/surface-scatter.js",
     "js/terraforming.js",
     "js/terrain-worker.js",
     "js/terrain.js",

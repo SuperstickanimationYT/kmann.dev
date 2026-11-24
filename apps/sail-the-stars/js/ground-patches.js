@@ -1,4 +1,5 @@
 import { CUBE_FACES, detailReachKm, PATCH_CELLS, patchEdgeMetres } from './terrain.js';
+import { createSurfaceDetails } from './surface-details.js';
 
 const BUILDERS = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
 const BUILDS_QUEUED_PER_BUILDER = 2;
@@ -23,7 +24,8 @@ const SUN_DIRECTION_STEP = 1e-4;
 const keyOf = (body, face, level, ix, iy) => `${body} ${face} ${level} ${ix} ${iy}`;
 const distanceBetween = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-export function createGroundPatches(release) {
+export function createGroundPatches(release, releaseDetails) {
+  const details = createSurfaceDetails(releaseDetails);
   const builders = Array.from({ length: BUILDERS }, () => new Worker(new URL('./terrain-worker.js', import.meta.url), { type: 'module' }));
   const patches = new Map();
   const building = new Set();
@@ -127,14 +129,20 @@ export function createGroundPatches(release) {
       patch.morph = [reachMetres, reachMetres * (1 - MORPH_SHARE_OF_REACH), Math.min(1, (now - patch.splitAt) / LATE_SPLIT_FADE_MS)];
     };
 
-    const seenFromCamera = (patch, level) => {
+    const withinView = (patch) => {
       const distance = distanceBetween(patch.centreKm, camera);
       if (distance > patch.boundKm) {
         const farSideKm = Math.sqrt(Math.max(0, (Math.hypot(...patch.centreKm) + patch.boundKm) ** 2 - lowestKm ** 2));
-        if (distance - patch.boundKm > cameraHorizonKm + farSideKm) return null;
+        if (distance - patch.boundKm > cameraHorizonKm + farSideKm) return false;
         const offset = [0, 1, 2].map((axis) => patch.centreKm[axis] - camera[axis]);
-        if (frustum.some((plane) => plane[0] * offset[0] + plane[1] * offset[1] + plane[2] * offset[2] > patch.boundKm)) return null;
+        if (frustum.some((plane) => plane[0] * offset[0] + plane[1] * offset[1] + plane[2] * offset[2] > patch.boundKm)) return false;
       }
+      return true;
+    };
+
+    const seenFromCamera = (patch, level) => {
+      if (!withinView(patch)) return null;
+      const distance = distanceBetween(patch.centreKm, camera);
       const fromCentre = Math.hypot(...patch.centreKm);
       const facing = Math.abs(patch.centreKm.reduce((sum, value, axis) => sum + value * (camera[axis] - value), 0)) / (fromCentre * Math.max(distance, 1e-9));
       const foreshortening = Math.sqrt(Math.max(MOST_GRAZING_SHARE, Math.min(1, facing)));
@@ -166,7 +174,7 @@ export function createGroundPatches(release) {
       nextBuilder = (nextBuilder + 1) % BUILDERS;
     }
     evictUnseen();
-    return { drawn, casters, light };
+    return { drawn, casters, light, details: details.visible(ground, { withinView, light }) };
   }
 
   return { visible };

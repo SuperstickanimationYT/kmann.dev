@@ -8,10 +8,10 @@ const TILE_COUNT = TILES[0] * TILES[1];
 
 const SEA_WORLD_CLOUDS = { mapped: true, baseKm: 1.5, topKm: 6.5, extinctionPerKm: 3, coverShift: 0 };
 const EARTHLIKE_AIR = { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] };
-const SEA_WORLD = { roughness: 0.045, craters: 0, sea: true, lowKm: -2, rangeKm: 10, clouds: SEA_WORLD_CLOUDS, air: EARTHLIKE_AIR };
+const SEA_WORLD = { roughness: 0.045, craters: 0, sea: true, rocks: { cover: [0.015, 0.012, 0.004, 0.0015], sharpness: 6, flatness: 0.75, tint: [1, 1, 1], greyness: 0.4 }, lowKm: -2, rangeKm: 10, clouds: SEA_WORLD_CLOUDS, air: EARTHLIKE_AIR };
 const MAPPED_SEA_WORLD = { ...SEA_WORLD, lowKm: -4, rangeKm: 16 };
-const ICE_WORLD = { roughness: 0.05, craters: 0.4, lowKm: -8, rangeKm: 16 };
-const BARE_WORLD = { roughness: 0.06, craters: 1, lowKm: -8, rangeKm: 16 };
+const ICE_WORLD = { roughness: 0.05, craters: 0.4, rocks: { cover: [0.015, 0.01, 0.004, 0.0015], sharpness: 12, flatness: 0.75, tint: [1.12, 1.12, 1.14] }, lowKm: -8, rangeKm: 16 };
+const BARE_WORLD = { roughness: 0.06, craters: 1, rocks: { cover: [0.025, 0.018, 0.008, 0.003], sharpness: 10, flatness: 0.8, tint: [1, 1, 1] }, lowKm: -8, rangeKm: 16 };
 const LAVA_WORLD = { roughness: 0.04, craters: 0, lowKm: -8, rangeKm: 16 };
 
 const kelvinOf = (body) => body.invented.kelvin ?? body.measured.kelvin;
@@ -112,6 +112,7 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
       invented: true,
       heights: { width, height, values: channel(pixels, 0) },
       land: kind.sea ? { width, height, values: land } : null,
+      vegetation: body.invented.terrain ? { width, height, values: channel(pixels, 3) } : null,
     };
   }
 
@@ -131,7 +132,7 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     gl.activeTexture(gl.TEXTURE0);
     const { version, shapeVersion } = baking.body.invented;
     const shape = baked && baked.shapeVersion === shapeVersion ? baked.ground : readShape(baking.body, sunLocal);
-    baked = { name: body.name, version, shapeVersion, ground: { ...shape, version } };
+    baked = { name: body.name, version, shapeVersion, ground: { ...shape, version, vegetationShare: body.invented.terrain?.greenery ?? 0 } };
     baking = null;
     return baked.ground;
   }
