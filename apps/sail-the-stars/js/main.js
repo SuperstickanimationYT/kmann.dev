@@ -54,6 +54,9 @@ const GROUND_VIEW_HIGHEST_KM = 400;
 const GROUND_VIEW_FULL_SHARE_OF_HIGHEST = 0.8;
 const COLLISION_FOOTPRINT_METRES = 0.05;
 const KM_PER_LY = KM_PER_PC / LY_PER_PC;
+const EARTH_VIEW_RADII = 4;
+const EARTH_VIEW_SUN_ANGLE = 60 * DEGREES;
+const EARTH_VIEW_SPEED_KM_S = 1000;
 const START_LATITUDE = [15, 70];
 const START_CLEARANCE = 15000;
 
@@ -133,6 +136,18 @@ function startingPoint(random) {
   const azimuth = random.between(0, 2 * Math.PI);
   const away = [Math.cos(latitude) * Math.sin(azimuth), Math.cos(latitude) * Math.cos(azimuth), Math.sin(latitude)];
   return add(SUN_POSITION, scale(away, distance));
+}
+
+function startNearEarth() {
+  const earth = placeBodies(simNow()).find((body) => body.name === 'Earth');
+  const acrossSun = cross(earth.north, earth.sunward);
+  const outward = add(scale(earth.sunward, Math.cos(EARTH_VIEW_SUN_ANGLE)), scale(acrossSun, Math.sin(EARTH_VIEW_SUN_ANGLE) / Math.hypot(...acrossSun)));
+  const fromSunKm = add(earth.fromSunKm, scale(outward, EARTH_VIEW_RADII * earth.radiusKm));
+  game.startedNearEarth = true;
+  game.camera = add(SUN_POSITION, scale(fromSunKm, 1 / KM_PER_PC));
+  game.speed = EARTH_VIEW_SPEED_KM_S / KM_PER_LY;
+  faceDirection(scale(outward, -1), earth.north);
+  setMode('explore');
 }
 
 function newGame(seed = randomSeed(), modeName = modeSelect.value) {
@@ -373,7 +388,8 @@ function setMode(name) {
   giveUpButton.textContent = mode.sunButton;
   restartButton.textContent = mode.restartButton;
   const url = new URL(window.location.href);
-  url.searchParams.set('seed', game.seed);
+  if (game.startedNearEarth) url.searchParams.delete('seed');
+  else url.searchParams.set('seed', game.seed);
   if (mode === MODES[DEFAULT_MODE]) url.searchParams.delete('mode');
   else url.searchParams.set('mode', modeSelect.value);
   window.history.replaceState(null, '', url);
@@ -1451,7 +1467,9 @@ if (!renderer) {
 } else {
   const requested = Number(new URL(window.location.href).searchParams.get('seed'));
   const modeName = modeFromName(new URL(window.location.href).searchParams.get('mode'));
-  newGame(Number.isInteger(requested) && requested > 0 ? requested : randomSeed(), modeName);
+  const seeded = Number.isInteger(requested) && requested > 0;
+  newGame(seeded ? requested : randomSeed(), modeName);
+  if (!seeded && game.mode === MODES.explore) startNearEarth();
   resize();
   loadWarpOptics('data/warp-optics.bin').then((optics) => {
     warpOptics = optics;
