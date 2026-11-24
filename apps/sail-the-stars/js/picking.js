@@ -120,6 +120,12 @@ function exoplanetFacts(body, facts) {
   };
 }
 
+const DWARF_KINDS = { agreed: 'Dwarf planet', likely: 'Likely dwarf planet' };
+
+function dwarfKind({ dwarf, map }) {
+  return dwarf && `${DWARF_KINDS[dwarf]}${map ? '' : ', surface made up'}`;
+}
+
 function bodyFacts(pick) {
   const { body } = pick;
   const facts = [
@@ -136,7 +142,7 @@ function bodyFacts(pick) {
     facts.push(['Terraforming (made up)', stage], ['Temperature', temperature]);
     if (people > 0) facts.push(['People', `about ${Number(people.toPrecision(2)).toLocaleString('en')}`]);
   }
-  const kind = body.parent ? `Moon of ${body.parent}` : BODY_KINDS[body.kind];
+  const kind = body.parent ? `Moon of ${body.parent}` : dwarfKind(body) ?? BODY_KINDS[body.kind];
   return { title: body.name, kind, facts };
 }
 

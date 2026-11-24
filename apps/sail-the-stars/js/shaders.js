@@ -78,16 +78,18 @@ const BODY_OCCLUDERS = `
 uniform vec4 uBodyOccluder[${MAX_BODIES}];
 uniform vec3 uBodyNorth[${MAX_BODIES}];
 uniform float uBodyFlattening[${MAX_BODIES}];
+uniform vec4 uBodyNarrowing[${MAX_BODIES}];
 uniform int uBodyCount;
 
 bool behindOblate(int i, vec3 direction) {
   float stretch = 1.0 / (1.0 - uBodyFlattening[i]) - 1.0;
   vec3 north = uBodyNorth[i];
+  vec3 narrow = uBodyNarrowing[i].xyz;
   vec3 centre = uBodyOccluder[i].xyz;
-  vec3 ray = normalize(direction + north * dot(direction, north) * stretch);
-  vec3 roundedCentre = centre + north * dot(centre, north) * stretch;
+  vec3 ray = normalize(direction + north * dot(direction, north) * stretch + narrow * dot(direction, narrow));
+  vec3 roundedCentre = centre + north * dot(centre, north) * stretch + narrow * dot(centre, narrow);
   float along = dot(ray, roundedCentre);
-  return along > 0.0 && length(ray * along - roundedCentre) < sin(uBodyOccluder[i].w) * pow(1.0 - uBodyFlattening[i], -1.0 / 3.0);
+  return along > 0.0 && length(ray * along - roundedCentre) < sin(uBodyOccluder[i].w) * uBodyNarrowing[i].w;
 }
 
 bool behindBody(vec3 direction) {
@@ -591,6 +593,7 @@ uniform float uCoronaShown;
 uniform float uBodyReach[${MAX_BODIES}];
 uniform vec3 uBodyNorth[${MAX_BODIES}];
 uniform float uBodyFlattening[${MAX_BODIES}];
+uniform vec4 uBodyNarrowing[${MAX_BODIES}];
 uniform vec3 uBodyMeridian[${MAX_BODIES}];
 uniform vec4 uBodyLook[${MAX_BODIES}];
 uniform vec4 uBodyMap[${MAX_BODIES}];
@@ -1119,11 +1122,11 @@ uniform vec4 uHazeLayer[${MAX_HAZY}];
 uniform vec4 uHazeLayerShape[${MAX_HAZY}];
 
 vec3 rounded(int i, vec3 place) {
-  return place + uBodyNorth[i] * dot(place, uBodyNorth[i]) * (1.0 / (1.0 - uBodyFlattening[i]) - 1.0);
+  return place + uBodyNorth[i] * dot(place, uBodyNorth[i]) * (1.0 / (1.0 - uBodyFlattening[i]) - 1.0) + uBodyNarrowing[i].xyz * dot(place, uBodyNarrowing[i].xyz);
 }
 
-float equatorialRadius(int i) {
-  return sin(uBodyPlace[i].w) * pow(1.0 - uBodyFlattening[i], -1.0 / 3.0);
+float longestRadius(int i) {
+  return sin(uBodyPlace[i].w) * uBodyNarrowing[i].w;
 }
 
 vec3 surfaceNormal(int i, vec3 fromCentre) {
@@ -1287,6 +1290,12 @@ float craterFloorKm(float radiusKm, float reach) {
   return CRATER_DEEPEST_KM * (1.0 - exp(-radiusKm / CRATER_DEEP_FROM_KM)) * (bowl + rim);
 }
 
+vec3 inverseAxes = vec3(1.0);
+
+vec3 ontoSurface(vec3 place) {
+  return place / length(place * inverseAxes);
+}
+
 vec4 craters(vec3 local, float seed, float footprint, out float heightKm) {
   heightKm = 0.0;
   vec3 slope = vec3(0.0);
@@ -1302,7 +1311,7 @@ vec4 craters(vec3 local, float seed, float footprint, out float heightKm) {
       vec3 cell = base + vec3(n & 1, (n >> 1) & 1, (n >> 2) & 1);
       vec3 random = cellHash(cell);
       vec3 centre = cell + 0.3 + 0.4 * random;
-      vec3 surfaceCentre = normalize(centre - seed - float(k) * 11.3) * scale + seed + float(k) * 11.3;
+      vec3 surfaceCentre = ontoSurface(centre - seed - float(k) * 11.3) * scale + seed + float(k) * 11.3;
       if (length(surfaceCentre - centre) > 0.35) continue;
       float size = 0.07 + 0.26 * random.y * random.x * random.x;
       vec3 off = p - surfaceCentre;
@@ -1347,6 +1356,8 @@ float citiesNear(vec3 local, float scale, float seed) {
   return glow;
 }
 
+const float COLDEST_STAINED_KELVIN = 60.0;
+const float DARKER_COLD_ICE = 0.8;
 uniform vec4 uMappedTerrain;
 uniform float uGreenery;
 const float COAST_FRAY_KM = 0.5;
@@ -1416,7 +1427,7 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
   if (kelvin <= 175.0) {
     float stain = smoothstep(0.48, 0.62, plains);
     float crack = 1.0 - smoothstep(0.0, 0.03, abs(terrain(p * 2.8 + 5.0 * warp) - 0.5));
-    made.albedo = tint * mix(vec3(1.0), vec3(0.62, 0.45, 0.33), 0.7 * stain + 0.5 * crack) * (0.75 + 0.45 * fine) + 0.5 * cratered.w;
+    made.albedo = tint * mix(vec3(1.0), kelvin < COLDEST_STAINED_KELVIN ? DARKER_COLD_ICE * tint / max(tint.r, max(tint.g, tint.b)) : vec3(0.62, 0.45, 0.33), 0.7 * stain + 0.5 * crack) * (0.75 + 0.45 * fine) + 0.5 * cratered.w;
     return made;
   }
   float basalt = smoothstep(0.46, 0.56, plains);
@@ -1460,6 +1471,13 @@ Invented paintedSeaWorld(vec3 local, vec2 uv, float seed, float footprint) {
 
 vec3 thermalGlow(int i, float kelvin) {
   return pow(planckBands(kelvin) / 2.5718e14 / uBodyLamp[i].rgb, vec3(GLOW_GAMMA));
+}
+
+vec3 placeOnShape(int i, vec3 fromCentre, BodyFrame frame, vec3 ballLocal) {
+  if (uBodyFlattening[i] <= 0.0) return ballLocal;
+  vec3 narrow = uBodyNarrowing[i].xyz;
+  inverseAxes = vec3(1.0, 1.0 + dot(narrow, narrow), 1.0 / (1.0 - uBodyFlattening[i])) / uBodyNarrowing[i].w;
+  return bodyLocal(fromCentre, frame) / sin(uBodyPlace[i].w);
 }
 
 vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
@@ -1527,7 +1545,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   if (invented && sheet.x <= CLOUD_HIDES_SURFACE) {
     bool painted = i == uInventedBody && isSeaWorld(map.z);
     if (painted) made = paintedSeaWorld(local, uv, map.y, footprint);
-    else made = inventSurface(local, sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
+    else made = inventSurface(placeOnShape(i, direction * hit - place.xyz, frame, local), sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
     albedo = made.albedo;
     vec3 slope = made.slope.x * frame.meridian + made.slope.y * frame.east + made.slope.z * frame.north;
     shaded = normalize(normal - (slope - normal * dot(slope, normal)));
@@ -1667,7 +1685,7 @@ vec4 ringSeen(int i, vec3 direction, out float ringHit) {
   vec3 roundedSun = normalize(rounded(i, sun));
   vec3 roundedPlace = rounded(i, fromCentre);
   float towardSun = dot(roundedPlace, roundedSun);
-  float offShadowAxis = length(roundedPlace - roundedSun * towardSun) / equatorialRadius(i);
+  float offShadowAxis = length(roundedPlace - roundedSun * towardSun) / longestRadius(i);
   float inSaturnShadow = towardSun < 0.0 ? 1.0 - smoothstep(1.0 - RING_SHADOW_SOFTNESS, 1.0 + RING_SHADOW_SOFTNESS, offShadowAxis) : 0.0;
   ringHit = hit;
   return vec4(seen.rgb * (1.0 - inSaturnShadow), seen.a);
@@ -1849,7 +1867,7 @@ vec4 bodiesColour(vec3 direction) {
     vec4 ring = i == uRingedBody ? ringSeen(i, direction, ringHit) : vec4(0.0);
     vec4 place = uBodyPlace[i];
     bool oblate = uBodyFlattening[i] > 0.0;
-    float radius = oblate ? equatorialRadius(i) : sin(place.w);
+    float radius = oblate ? longestRadius(i) : sin(place.w);
     vec3 roundedRay = oblate ? rounded(i, direction) : direction;
     float stretch = oblate ? length(roundedRay) : 1.0;
     vec3 ray = roundedRay / stretch;

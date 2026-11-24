@@ -22,7 +22,7 @@ import { speculationShown } from './speculation.js';
 import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
-import { apparentMagnitude, MAPPED_BODIES, sunShareVisible } from './solar-system.js';
+import { apparentMagnitude, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
 import { lattice, mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
@@ -336,6 +336,7 @@ function bodyArrays(shown, mapRelief, giants) {
     uBodyEclipser: new Float32Array(MAX_BODIES * ECLIPSERS_PER_BODY * 4),
     uBodyNorth: new Float32Array(MAX_BODIES * 3),
     uBodyFlattening: new Float32Array(MAX_BODIES),
+    uBodyNarrowing: new Float32Array(MAX_BODIES * 4),
     uBodyMeridian: new Float32Array(MAX_BODIES * 3),
     uBodyLook: new Float32Array(MAX_BODIES * 4),
     uBodyMap: new Float32Array(MAX_BODIES * 4),
@@ -360,6 +361,7 @@ function bodyArrays(shown, mapRelief, giants) {
       arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
     arrays.uBodyNorth.set(body.north, i * 3);
     arrays.uBodyFlattening[i] = body.flattening ?? 0;
+    arrays.uBodyNarrowing.set([...narrowAxis(body).map((value) => value * Math.sqrt(1 / (1 - (body.narrowing ?? 0)) - 1)), longestRadiusKm(body) / body.radiusKm], i * 4);
     arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), body.invented ? INVENTED_ROCKY_CODE : BODY_KIND_CODES[body.kind]], i * 4);
     arrays.uBodyGlow.set([...(body.shines ? MIRROR_GLOW : body.glow ?? NO_GLOW), 1 - (body.lightShare ?? 1)], i * 4);

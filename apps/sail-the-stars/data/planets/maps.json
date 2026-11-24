@@ -23,5 +23,20 @@
     "lowKm": -1.764,
     "highKm": 0.82,
     "datumKm": -0.272
+  },
+  "Ceres": {
+    "lowKm": 0.0,
+    "highKm": 0.0,
+    "datumKm": 0.0
+  },
+  "Pluto": {
+    "lowKm": -5.071,
+    "highKm": 5.965,
+    "datumKm": -0.17
+  },
+  "Charon": {
+    "lowKm": -12.7,
+    "highKm": 6.125,
+    "datumKm": -0.277
   }
 }
