@@ -137,6 +137,33 @@
   pointer-events: none;
 }
 
+.fh-crosshair {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.fh-crosshair::before,
+.fh-crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgb(255 255 255 / 0.8);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.45);
+}
+
+.fh-crosshair::before {
+  inset: -5px auto auto -0.5px;
+  width: 1px;
+  height: 10px;
+}
+
+.fh-crosshair::after {
+  inset: -0.5px auto auto -5px;
+  width: 10px;
+  height: 1px;
+}
+
 .fh-view:focus {
   outline: none;
 }
