@@ -1290,6 +1290,12 @@ float craterFloorKm(float radiusKm, float reach) {
   return CRATER_DEEPEST_KM * (1.0 - exp(-radiusKm / CRATER_DEEP_FROM_KM)) * (bowl + rim);
 }
 
+vec3 inverseAxes = vec3(1.0);
+
+vec3 ontoSurface(vec3 place) {
+  return place / length(place * inverseAxes);
+}
+
 vec4 craters(vec3 local, float seed, float footprint, out float heightKm) {
   heightKm = 0.0;
   vec3 slope = vec3(0.0);
@@ -1305,7 +1311,7 @@ vec4 craters(vec3 local, float seed, float footprint, out float heightKm) {
       vec3 cell = base + vec3(n & 1, (n >> 1) & 1, (n >> 2) & 1);
       vec3 random = cellHash(cell);
       vec3 centre = cell + 0.3 + 0.4 * random;
-      vec3 surfaceCentre = normalize(centre - seed - float(k) * 11.3) * scale + seed + float(k) * 11.3;
+      vec3 surfaceCentre = ontoSurface(centre - seed - float(k) * 11.3) * scale + seed + float(k) * 11.3;
       if (length(surfaceCentre - centre) > 0.35) continue;
       float size = 0.07 + 0.26 * random.y * random.x * random.x;
       vec3 off = p - surfaceCentre;
@@ -1467,6 +1473,13 @@ vec3 thermalGlow(int i, float kelvin) {
   return pow(planckBands(kelvin) / 2.5718e14 / uBodyLamp[i].rgb, vec3(GLOW_GAMMA));
 }
 
+vec3 placeOnShape(int i, vec3 fromCentre, BodyFrame frame, vec3 ballLocal) {
+  if (uBodyFlattening[i] <= 0.0) return ballLocal;
+  vec3 narrow = uBodyNarrowing[i].xyz;
+  inverseAxes = vec3(1.0, 1.0 + dot(narrow, narrow), 1.0 / (1.0 - uBodyFlattening[i])) / uBodyNarrowing[i].w;
+  return bodyLocal(fromCentre, frame) / sin(uBodyPlace[i].w);
+}
+
 vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec4 place = uBodyPlace[i];
   vec4 look = uBodyLook[i];
@@ -1532,7 +1545,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   if (invented && sheet.x <= CLOUD_HIDES_SURFACE) {
     bool painted = i == uInventedBody && isSeaWorld(map.z);
     if (painted) made = paintedSeaWorld(local, uv, map.y, footprint);
-    else made = inventSurface(local, sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
+    else made = inventSurface(placeOnShape(i, direction * hit - place.xyz, frame, local), sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
     albedo = made.albedo;
     vec3 slope = made.slope.x * frame.meridian + made.slope.y * frame.east + made.slope.z * frame.north;
     shaded = normalize(normal - (slope - normal * dot(slope, normal)));
