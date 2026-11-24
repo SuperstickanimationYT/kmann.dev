@@ -127,8 +127,6 @@ const DEEP_AIR = { gas: { depth: [0.03, 0.07, 0.16], scaleKm: 60 }, dust: { dept
 const LIQUID_WATER_KELVIN = [215, 300];
 const LEAST_MASS_FOR_MAGNETIC_FIELD = 0.6;
 const COOLEST_QUIET_STAR_KELVIN = 3000;
-const TEAL_LAMPS = { dim: [0.25, 0.85, 0.7], bright: [0.75, 1, 0.92] };
-const PINK_LAMPS = { dim: [0.95, 0.42, 0.75], bright: [1, 0.8, 0.95] };
 
 const couldBeInhabited = ({ kelvin, earthMasses, earthRadii }, star) =>
   earthRadii < LARGEST_ROCKY_EARTH_RADII && kelvin > LIQUID_WATER_KELVIN[0] && kelvin < LIQUID_WATER_KELVIN[1]
@@ -188,7 +186,7 @@ function buildSystem(data, index) {
       lamp,
       measured: planet,
       tideLocked: synchronous,
-      civilization: couldBeInhabited(planet, data) ? { lamps: data.name === 'TOI-700' ? PINK_LAMPS : TEAL_LAMPS } : undefined,
+      civilization: couldBeInhabited(planet, data) ? { lamps: { dim: light, bright: light } } : undefined,
       holdKm: Math.min(HOLD_RADII * bodyRadiusKm, HOLD_SHARE_OF_ORBIT * orbit.a),
       orbit,
       spinHours: random.between(...SPIN_HOURS),
