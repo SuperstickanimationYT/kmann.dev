@@ -518,7 +518,7 @@ export function sunShareVisible(seen, ignoredName) {
   let hidden = 0;
   for (const { body, offsetKm } of seen) {
     const distance = Math.hypot(...offsetKm);
-    if (body.kind === 'star' || body.name === ignoredName || distance >= sunDistance) continue;
+    if (body.kind === 'star' || (body.shades && ignoredName === body.parent) || body.name === ignoredName || distance >= sunDistance) continue;
     hidden += discOverlapShare(sunRadius, Math.asin(Math.min(1, body.radiusKm / distance)), angleBetween(offsetKm, sun.offsetKm));
   }
   return Math.max(0, 1 - hidden);
@@ -623,11 +623,13 @@ export function inStarlight(bodies, starPosition, starRadiusKm) {
   });
 }
 
+const plateLit = (plate, offsetKm, distanceKm) => Math.max(0, (-dot(plate.north, plate.sunward) * dot(plate.north, offsetKm)) / distanceKm);
+
 export function apparentMagnitude(body, offsetKm) {
   const distanceKm = Math.hypot(...offsetKm);
   const phase = Math.acos(Math.max(-1, Math.min(1, -dot(offsetKm, body.sunward) / distanceKm)));
-  const lambert = (1 - phase / Math.PI) * Math.cos(phase) + Math.sin(phase) / Math.PI;
-  return body.magnitude + 5 * Math.log10(body.sunDistanceAu * (distanceKm / KM_PER_AU)) - 2.5 * Math.log10(Math.max(lambert * Math.max(body.sunlitShare, DARKEST_SHARE), 1e-18) + (body.glowOverReflected ?? 0));
+  const lit = body.kind === 'mirror' ? plateLit(body, offsetKm, distanceKm) : (1 - phase / Math.PI) * Math.cos(phase) + Math.sin(phase) / Math.PI;
+  return body.magnitude + 5 * Math.log10(body.sunDistanceAu * (distanceKm / KM_PER_AU)) - 2.5 * Math.log10(Math.max(lit * Math.max(body.sunlitShare, DARKEST_SHARE), 1e-18) + (body.glowOverReflected ?? 0));
 }
 
 export function holdingBody(bodies, cameraFromSunKm) {

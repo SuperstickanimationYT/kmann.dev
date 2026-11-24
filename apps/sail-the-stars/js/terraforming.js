@@ -15,6 +15,7 @@ const LAST_CHANGE = 9500;
 const REPAINT_EVERY_YEARS = 25;
 const SHADE_DISTANCE_KM = 1.01e6;
 const SHADE_RADIUS_KM = 12550;
+const FULL_SHADE_SHEEN_MAGNITUDE = -2.2;
 const MIRROR_ORBIT_KM = 39450;
 const MIRROR_RADIUS_KM = 4370;
 const MIRROR_TILT = 20 * DEGREES;
@@ -23,7 +24,7 @@ const COLD_LOOK_SHIFT_KELVIN = 40;
 const WARMEST_SEA_LOOK_KELVIN = 299;
 const VENUS_SEED = 23;
 
-const LIGHT = [[STARTS, 1], [SHADE_FINISHED, 0.02], [2950, 0.02], [3050, 0.2], [MIRROR_STARTS - 20, 0.2], [MIRROR_STARTS, 0], [MIRROR_FINISHED, 1]];
+const LIGHT = [[STARTS, 1], [SHADE_FINISHED, 0], [2950, 0], [3050, 0.2], [MIRROR_STARTS - 20, 0.2], [MIRROR_STARTS, 0], [MIRROR_FINISHED, 1]];
 const KELVIN = [[STARTS, 735], [SHADE_FINISHED, 715], [2760, 304], [2900, 217], [CO2_FROZEN, 190], [MIRROR_STARTS, 190], [5750, 287], [LAST_CHANGE, 288]];
 const SEA_LEVEL_KM = [[CLOUDS_GONE, -2.4], [2760, -2], [2820, 0.2], [2900, 0.83], [MIRROR_STARTS, 0.69]];
 const CLOUDINESS = [[CLOUDS_GONE, 0.6], [2900, 0.3], [CO2_FROZEN, 0.08], [MIRROR_STARTS, 0.08], [5750, 0.95]];
@@ -98,6 +99,7 @@ export function terraformed(body, ms) {
     ...body,
     ...(year >= CLOUDS_GONE && paintedLook(year)),
     lightShare: along(LIGHT, year),
+    sunThroughShade: along(LIGHT, Math.min(year, MIRROR_STARTS)),
     terraforming: factsIn(year),
   };
 }
@@ -117,7 +119,7 @@ const swarm = (name, offsetKm, venus, radiusKm, shape) => ({
   radiusKm,
   holdKm: 0,
   tint: [0.75, 0.77, 0.8],
-  magnitude: -4.4,
+  magnitude: FULL_SHADE_SHEEN_MAGNITUDE - 5 * Math.log10(radiusKm / SHADE_RADIUS_KM),
   fromSunKm: add(venus.fromSunKm, offsetKm),
   mapLayer: -1,
   ...shape,
@@ -130,7 +132,7 @@ export function mirrorsAround(venus, ms) {
   const across = normalize(cross(sunward, venus.north));
   const shadeSize = SHADE_RADIUS_KM * Math.sqrt(progress(STARTS, SHADE_FINISHED, year));
   const mirrors = [];
-  if (shadeSize > 0) mirrors.push(swarm('Venus sunshade', scale(sunward, SHADE_DISTANCE_KM), venus, shadeSize, { north: sunward, meridian: across }));
+  if (shadeSize > 0) mirrors.push(swarm('Venus sunshade', scale(sunward, SHADE_DISTANCE_KM), venus, shadeSize, { north: sunward, meridian: across, shades: true }));
   const mirrorSize = MIRROR_RADIUS_KM * Math.sqrt(progress(MIRROR_STARTS, MIRROR_FINISHED, year));
   if (mirrorSize <= 0) return mirrors;
   const offset = mirrorOffsetKm(venus, sunward, ms);

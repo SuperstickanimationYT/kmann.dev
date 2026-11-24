@@ -297,7 +297,7 @@ const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
 const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
 
-const brightnessRank = ({ body, offsetKm }) => (body.kind === 'star' ? -Infinity : apparentMagnitude(body, offsetKm));
+const brightnessRank = ({ body, offsetKm }) => (body.kind === 'star' || body.kind === 'mirror' ? -Infinity : apparentMagnitude(body, offsetKm));
 
 function brightestInDistanceOrder(seen) {
   if (seen.length <= MAX_BODIES) return seen;
@@ -347,7 +347,7 @@ function bodyArrays(shown, mapRelief, giants) {
     const giantFaces = body.kind === 'giant' ? giants.facesOf(body.name) : null;
     const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
-    arrays.uBodyOccluder.set([...direction, star || edgeOn(body, direction) ? 0 : angularRadius], i * 4);
+    arrays.uBodyOccluder.set([...direction, star || body.shades || edgeOn(body, direction) ? 0 : angularRadius], i * 4);
     arrays.uBodySun.set([...body.sunward, body.sunAngularRadius], i * 4);
     body.eclipsers.forEach(({ offsetKm: eclipserKm, radiusKm, reddens }, k) =>
       arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
@@ -549,7 +549,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   const settlements = createSettlementPainter(gl, SETTLEMENTS_UNIT);
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
 
-  function setBodies(program, seen, ground, pixelAngle = 0) {
+  function setBodies(program, seen, ground, pixelAngle = 0, standingOn = ground?.body) {
     if (program.uniforms.uCloudNearby) gl.uniform1i(program.uniforms.uCloudNearby, CLOUD_NEARBY_UNIT);
     if (cloudNearby) setUniforms(gl, program, { uCloudNearbyUp: cloudNearby.up, uCloudNearbyEast: cloudNearby.east });
     if (program.uniforms.uLattice) gl.uniform1i(program.uniforms.uLattice, LATTICE_UNIT);
@@ -568,10 +568,11 @@ export function createRenderer(canvas, armMap, galaxies) {
     const haze = hazeUniforms(shown);
     setUniforms(gl, program, { uHazeBody: haze.bodies });
     for (const [name, values] of Object.entries({ ...arrays, ...haze.arrays })) setArray(gl, program, name, values, name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
-    const sunUneclipsed = sunShareVisible(seen ?? [], ground?.body.name);
-    const sunVisible = ground?.body.lightShare ?? sunUneclipsed;
+    const sunUneclipsed = sunShareVisible(seen ?? [], standingOn?.name);
+    const sunVisible = standingOn?.lightShare ?? sunUneclipsed;
+    const sunSeen = sunUneclipsed * (standingOn?.sunThroughShade ?? 1);
     const coronaShown = Math.max(0, 1 - sunUneclipsed / CORONA_FADE_SHARE) ** 2;
-    setUniforms(gl, program, { uStarlight: systemLight, uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uCoronaShown: coronaShown });
+    setUniforms(gl, program, { uStarlight: systemLight, uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uSunSeen: sunSeen, uCoronaShown: coronaShown });
     if (program.uniforms.uBodyReach) gl.uniform1fv(program.uniforms.uBodyReach, bodyReaches(shown, pixelAngle, coronaShown));
     if (program.uniforms.uBodyColour) {
       gl.activeTexture(gl.TEXTURE0 + BODY_COLOUR_UNIT);
@@ -1121,7 +1122,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
-    setBodies(eyeStarProgram, bodies);
+    setBodies(eyeStarProgram, bodies, null, 0, ground?.body);
     bindWarp(eyeStarProgram, warp, adaptation);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT }, HIDDEN_BEHIND_FOREGROUND);
     if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);

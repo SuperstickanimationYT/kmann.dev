@@ -568,6 +568,7 @@ uniform int uBodyCount;
 uniform vec4 uBodySun[${MAX_BODIES}];
 uniform vec4 uBodyEclipser[${MAX_BODIES * 2}];
 uniform float uSunVisible;
+uniform float uSunSeen;
 uniform float uCoronaShown;
 uniform float uBodyReach[${MAX_BODIES}];
 uniform vec3 uBodyNorth[${MAX_BODIES}];
@@ -1649,7 +1650,7 @@ vec3 mirrorLook(int i, vec2 place, float footprint, float facing) {
   float solid = (1.0 - gaps.x) * (1.0 - gaps.y);
   vec3 chance = cellHash(vec3(floor(tile), 5.0));
   float sunSide = dot(uBodySun[i].xyz, uBodyNorth[i]) * facing > 0.0 ? 1.0 : 0.0;
-  vec3 reflected = uBodyLook[i].rgb * mix(0.03, 0.55, sunSide) * (1.0 + seen * 0.5 * (chance.x - 0.5));
+  vec3 reflected = uBodyLook[i].rgb * mix(0.01, 0.12, sunSide) * (1.0 + seen * 0.5 * (chance.x - 0.5));
   if (uBodyGlow[i].r > 0.0 && facing > 0.0) reflected = uBodyGlow[i].rgb * (0.75 + seen * 0.6 * (chance.y - 0.3));
   return reflected * solid;
 }
@@ -2753,7 +2754,7 @@ vec3 sunGlare(vec3 direction) {
   vec2 onScreen = vec2(dot(direction - toSun, uRight), dot(direction - toSun, uUp)) / uPixelAngle;
   if (degreesOff < 90.0) spread += SUN_SPIKE_LIGHT * starburst(onScreen, SPIKE_LONGEST_REACH);
   vec3 tint = uBodyLook[sun].rgb * sunlightThroughAir(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera));
-  return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunVisible;
+  return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunSeen;
 }
 
 const float HAZE_LOWEST_SCALES = 1.5;
@@ -2830,7 +2831,7 @@ out float vSpikeReach;
 out vec2 vStreak;
 out float vSprite;
 uniform float uLongExposure;
-uniform float uSunVisible;
+uniform float uSunSeen;
 uniform vec3 uStarShift;
 
 vec2 streakPixels(vec3 offset, vec2 ndc) {
@@ -2918,7 +2919,7 @@ void main() {
   vec3 tint = bandFluxes(aLook.y) * extinction / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), tint.b);
   vColour = mix(vec3(0.9, 0.93, 1.0), tint, colourShare) * brightness;
-  if (seenMagnitude < BRIGHTER_THAN_ANY_OTHER_STAR) vColour *= uSunVisible;
+  if (seenMagnitude < BRIGHTER_THAN_ANY_OTHER_STAR) vColour *= uSunSeen;
   vSpread = 1.0 + max(0.0, 4.0 - seenMagnitude) * 0.5;
   vGlare = clamp(-1.0 - seenMagnitude, 0.0, 10.0);
   vSize = seenMagnitude < 6.8 ? min(128.0, ceil(vSpread * 4.0 + vGlare * 10.0)) : 0.0;
