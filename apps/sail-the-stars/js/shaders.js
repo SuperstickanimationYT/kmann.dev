@@ -1327,17 +1327,24 @@ uniform float uGroundRoughness;
 const float ANCHOR_METRES = ${ANCHOR_METRES}.0;
 const float WATER_FRESNEL_HEAD_ON = 0.02;
 const float GROUND_HIT = ${GROUND_HIT.toFixed(1)};
-const int CLOUD_STEPS = 24;
-const int CLOUD_FEWEST_STEPS = 12;
-const float CLOUD_STEP_KM = 0.3;
+const int CLOUD_STEPS = 72;
+const float CLOUD_FINEST_STEP_KM = 0.025;
+const float CLOUD_FINEST_STEP_SHARE = 0.009;
+const float CLOUD_RELIT_CLEARNESS = 0.35;
+const float CLOUD_INSIDE_STEP_KM = 0.09;
+const float CLOUD_INSIDE_STEP_SHARE = 0.01;
+const float CLOUD_CLEAR_STEP_KM = 0.5;
+const float CLOUD_CLEAR_STEP_SHARE = 0.15;
+const float CLOUD_FIELD_SLOPE_PER_KM = 0.8;
+const float CLOUD_STEP_GROWTH = 1.03;
 const float CLOUD_DEEP_ENOUGH = 5.0;
-const int CLOUD_SURFACE_HALVINGS = 5;
+const int CLOUD_SURFACE_HALVINGS = 3;
 const float CLOUD_EDGE_GAIN = 5.0;
 const float CLOUD_CREST_PROBE_KM = 0.1;
 const float CLOUD_CREST_SOFTNESS = 0.4;
 const float CLOUD_CREST_DEPTH = 2.0;
 const float CLOUD_FACE_SHADE = 0.8;
-const float CLOUD_MAPPED_STEP_BLUR_SHARE = 0.03;
+const float CLOUD_MAPPED_STEP_BLUR_SHARE = 0.25;
 const int CLOUD_BILLOW_COUNT = 5;
 const int CLOUD_BILLOW_COARSEST = 5;
 const float CLOUD_BILLOW_SWING = 0.3;
@@ -1593,23 +1600,23 @@ float cloudCells(vec3 offset, float blurMetres, int octaves) {
   return 0.5 + CLOUD_CELL_CONTRAST * cells;
 }
 
-float mappedCloudDensity(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
-  if (coverage < CLOUD_LEAST_COVERAGE) return 0.0;
+vec2 mappedCloudField(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
   bool sculptFinely = octaves > CLOUD_COARSE_CELL_OCTAVES;
   float needed = mix(CLOUD_THINNEST_COVER, CLOUD_TALLEST_COVER, pow(share, CLOUD_TOWER_STEEPNESS)) + 0.5 * (1.0 - smoothstep(0.0, CLOUD_FLAT_BASE_SHARE + shareBlur, share));
   float softness = mix(CLOUD_MAPPED_BLURRED_SOFTNESS, sculptFinely ? CLOUD_MAPPED_SOFTNESS : CLOUD_MAPPED_COARSE_SOFTNESS, octaveFade(ANCHOR_METRES / float(2 << 4), blurMetres)) + shareBlur;
   float low = needed - 0.5 * softness;
   float high = needed + 0.5 * softness;
-  if (coverage + CLOUD_MAPPED_CELL_SWING + CLOUD_BILLOW_SWING < low) return 0.0;
-  float thickness = mix(CLOUD_MAPPED_THIN_DENSITY, 1.0, coverage);
   float carving = smoothstep(0.0, 0.25, coverage);
+  float thickness = mix(CLOUD_MAPPED_THIN_DENSITY, 1.0, coverage);
+  float tallest = coverage + carving * (CLOUD_MAPPED_CELL_SWING + CLOUD_BILLOW_SWING);
+  if (coverage < CLOUD_LEAST_COVERAGE || tallest < low) return vec2(0.0, max(low - tallest, 0.0));
   float sculpted = coverage + CLOUD_MAPPED_CELL_SWING * carving * (cloudCells(offset, blurMetres, min(octaves, CLOUD_COARSE_CELL_OCTAVES)) - 0.5);
   if (sculptFinely) {
     float weight = CLOUD_BILLOW_SWING * carving;
     float left = weight / (1.0 - CLOUD_BILLOW_FALLOFF);
     for (int k = 0; k < CLOUD_BILLOW_COUNT; k++) {
-      if (sculpted + left * CLOUD_BILLOW_PEAK < low) return 0.0;
-      if (sculpted - left * CLOUD_BILLOW_MEAN > high) return thickness;
+      if (sculpted + left * CLOUD_BILLOW_PEAK < low) return vec2(0.0, low - sculpted - left * CLOUD_BILLOW_PEAK);
+      if (sculpted - left * CLOUD_BILLOW_MEAN > high) return vec2(thickness, 0.0);
       int octave = CLOUD_BILLOW_COARSEST + k;
       float cell = ANCHOR_METRES / float(2 << octave);
       float shown = octaveFade(cell, blurMetres);
@@ -1620,20 +1627,27 @@ float mappedCloudDensity(float coverage, vec3 offset, float share, float blurMet
       weight *= CLOUD_BILLOW_FALLOFF;
     }
   }
-  return thickness * smoothstep(low, high, sculpted);
+  return vec2(thickness * smoothstep(low, high, sculpted), max(low - sculpted, 0.0));
 }
 
 float cloudDensityFor(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
-  if (uGroundCloudsMapped > 0.5) return mappedCloudDensity(coverage, offset, share, blurMetres, shareBlur, octaves);
+  if (uGroundCloudsMapped > 0.5) return mappedCloudField(coverage, offset, share, blurMetres, shareBlur, octaves).x;
   float threshold = mix(CLOUD_SPARSEST_CELL, CLOUD_DENSEST_CELL, coverage);
   float coarsestCell = ANCHOR_METRES / float(2 << 3);
   float softness = mix(CLOUD_BLURRED_SOFTNESS, CLOUD_EDGE_SOFTNESS, octaveFade(coarsestCell, blurMetres));
   return smoothstep(threshold - 0.5 * softness, threshold + 0.5 * softness, cloudCells(offset, blurMetres, octaves) - cloudHeightErosion(share));
 }
 
+float cloudShare(vec3 fromCamera) {
+  return (length(uGroundCamera + fromCamera) - uGroundRadius - uGroundClouds.x) / (uGroundClouds.y - uGroundClouds.x);
+}
+
+float finestCloudStepKm(float t) {
+  return max(CLOUD_FINEST_STEP_KM, CLOUD_FINEST_STEP_SHARE * t);
+}
+
 float cloudDensity(float coverage, vec3 fromCamera, float blurMetres, float shareBlur, int octaves) {
-  float altitude = length(uGroundCamera + fromCamera) - uGroundRadius;
-  float share = (altitude - uGroundClouds.x) / (uGroundClouds.y - uGroundClouds.x);
+  float share = cloudShare(fromCamera);
   if (share < 0.0 || share > 1.0) return 0.0;
   return cloudDensityFor(coverage, uGroundFromAnchor + fromCamera * 1000.0, share, blurMetres, shareBlur, octaves);
 }
@@ -1666,24 +1680,38 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
   float hazePerKm = uGroundAir.w > 0.0 ? airDensityHere() / uGroundGlow.w : 0.0;
   float clear = 1.0;
   vec3 light = vec3(0.0);
-  int steps = uGroundCloudsMapped > 0.5 ? clamp(int((leave - enter) / CLOUD_STEP_KM), CLOUD_FEWEST_STEPS, CLOUD_STEPS) : THIN_CLOUD_STEPS;
+  bool mapped = uGroundCloudsMapped > 0.5;
+  int steps = mapped ? CLOUD_STEPS : THIN_CLOUD_STEPS;
   vec3 upBetween = normalize(uGroundCamera + ray * mix(enter, leave, 0.25));
   vec3 airSunlight = sunlightThroughAir(sun, upBetween) * uSunVisible;
-  float stepBlurShare = uGroundCloudsMapped > 0.5 ? CLOUD_MAPPED_STEP_BLUR_SHARE : CLOUD_STEP_BLUR_SHARE;
-  float edgeGain = uGroundCloudsMapped > 0.5 ? CLOUD_EDGE_GAIN : 1.0;
+  float edgeGain = mapped ? CLOUD_EDGE_GAIN : 1.0;
   float outsideKm = enter;
-  for (int i = 0; i < steps && clear >= CLOUD_OPAQUE_CLEARNESS; i++) {
+  vec3 scattered = vec3(0.0);
+  float nextKm = enter + jitter * finestCloudStepKm(enter);
+  float growth = 1.0;
+  for (int i = 0; i < steps && clear >= CLOUD_OPAQUE_CLEARNESS && (!mapped || nextKm < leave); i++) {
     float along = (float(i) + jitter) / float(steps);
-    float t = mix(enter, leave, along * along);
-    float stepKm = (leave - enter) * 2.0 * max(along, 0.5 / float(steps)) / float(steps);
-    float blurMetres = max(uPixelAngle * t, stepBlurShare * stepKm) * 1000.0;
-    float shareBlur = stepBlurShare / CLOUD_STEP_BLUR_SHARE * stepKm * abs(dot(ray, normalize(uGroundCamera + ray * t))) / (uGroundClouds.y - uGroundClouds.x);
-    float mapCoverage = uGroundCloudsMapped > 0.5 ? cloudCoverageAt(normalize(uGroundCamera + ray * t), blurMetres) : mix(coverageIn, coverageOut, along * along);
+    float t = mapped ? nextKm : mix(enter, leave, along * along);
+    growth *= CLOUD_STEP_GROWTH;
+    float finestKm = finestCloudStepKm(t);
+    float stepKm = mapped
+      ? growth * max(CLOUD_INSIDE_STEP_KM, CLOUD_INSIDE_STEP_SHARE * t)
+      : (leave - enter) * 2.0 * max(along, 0.5 / float(steps)) / float(steps);
+    float blurKm = mapped ? CLOUD_MAPPED_STEP_BLUR_SHARE * finestKm : CLOUD_STEP_BLUR_SHARE * stepKm;
+    float blurMetres = max(uPixelAngle * t, blurKm) * 1000.0;
+    float shareBlur = (mapped ? blurKm : stepKm) * abs(dot(ray, normalize(uGroundCamera + ray * t))) / (uGroundClouds.y - uGroundClouds.x);
+    float mapCoverage = mapped ? cloudCoverageAt(normalize(uGroundCamera + ray * t), blurMetres) : mix(coverageIn, coverageOut, along * along);
     float coverage = cloudRegionalCoverage(mapCoverage, uGroundFromAnchor + ray * t * 1000.0);
-    float density = cloudDensity(coverage, ray * t, blurMetres, shareBlur, CLOUD_ALL_CELL_OCTAVES);
-    if (density <= 0.0) outsideKm = t;
+    float density;
+    if (mapped) {
+      vec2 field = mappedCloudField(coverage, uGroundFromAnchor + ray * t * 1000.0, clamp(cloudShare(ray * t), 0.0, 1.0), blurMetres, shareBlur, CLOUD_ALL_CELL_OCTAVES);
+      density = field.x;
+      float clearKm = clamp(field.y / CLOUD_FIELD_SLOPE_PER_KM, finestKm, max(CLOUD_CLEAR_STEP_KM, CLOUD_CLEAR_STEP_SHARE * t));
+      nextKm = t + (density > 0.0 ? stepKm : growth * clearKm);
+      if (density <= 0.0) outsideKm = t;
+    } else density = cloudDensity(coverage, ray * t, blurMetres, shareBlur, CLOUD_ALL_CELL_OCTAVES);
     if (density > 0.0) {
-      if (uGroundCloudsMapped > 0.5 && outsideKm >= 0.0) {
+      if (mapped && outsideKm >= 0.0) {
         float insideKm = t;
         for (int k = 0; k < CLOUD_SURFACE_HALVINGS; k++) {
           float between = 0.5 * (outsideKm + insideKm);
@@ -1694,26 +1722,29 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
           } else outsideKm = between;
         }
         t = insideKm;
+        nextKm = t + stepKm;
       }
       outsideKm = -1.0;
-      vec3 up = normalize(uGroundCamera + ray * t);
-      float above = cloudDensity(coverage, ray * t + sun * sunProbeKm, blurMetres, shareBlur, CLOUD_COARSE_CELL_OCTAVES);
-      float beside = uGroundCloudsMapped > 0.5 ? cloudDensity(coverage, ray * t + sun * CLOUD_CREST_PROBE_KM, blurMetres, shareBlur + CLOUD_CREST_SOFTNESS, CLOUD_ALL_CELL_OCTAVES) : density;
-      float depthTowardSun = uGroundClouds.z * sunProbeKm * 0.5 * (mix(beside, density, CLOUD_FACE_SHADE) + above);
-      if (uGroundCloudsMapped > 0.5) depthTowardSun += CLOUD_CREST_DEPTH * beside;
-      if (depthTowardSun < CLOUD_DEEP_ENOUGH) {
-        float higher = cloudDensity(coverage, ray * t + sun * sunProbeKm * CLOUD_FAR_PROBE, blurMetres, shareBlur, CLOUD_FAR_CELL_OCTAVES);
-        depthTowardSun += uGroundClouds.z * sunProbeKm * 0.5 * (CLOUD_FAR_PROBE - 1.0) * (above + higher);
-      }
-      float sunThrough = phase * exp(-depthTowardSun) + CLOUD_SCATTERED_SHARE * exp(-CLOUD_SCATTERED_REACH * depthTowardSun);
-      float sunHeight = dot(sun, up);
-      float daylight = smoothstep(-0.05, 0.05, sunHeight);
-      vec3 sunlit = airSunlight * sunThrough * max(sunHeight, 0.0);
-      vec3 skylit = cloudSkylight(sunHeight);
       float opacity = 1.0 - exp(-uGroundClouds.z * edgeGain * density * stepKm);
-      float share = (length(uGroundCamera + ray * t) - uGroundRadius - uGroundClouds.x) / (uGroundClouds.y - uGroundClouds.x);
-      vec3 scattered = CLOUD_LIT_ALBEDO * (sunlit * daylight + skylit * mix(CLOUD_DARK_BASE_SHARE, 1.0, share));
-      scattered = softShoulder(scattered);
+      if (!mapped || clear > CLOUD_RELIT_CLEARNESS) {
+        vec3 up = normalize(uGroundCamera + ray * t);
+        float above = cloudDensity(coverage, ray * t + sun * sunProbeKm, blurMetres, shareBlur, CLOUD_COARSE_CELL_OCTAVES);
+        float beside = mapped ? cloudDensity(coverage, ray * t + sun * CLOUD_CREST_PROBE_KM, blurMetres, shareBlur + CLOUD_CREST_SOFTNESS, CLOUD_ALL_CELL_OCTAVES) : density;
+        float depthTowardSun = uGroundClouds.z * sunProbeKm * 0.5 * (mix(beside, density, CLOUD_FACE_SHADE) + above);
+        if (mapped) depthTowardSun += CLOUD_CREST_DEPTH * beside;
+        if (depthTowardSun < CLOUD_DEEP_ENOUGH) {
+          float higher = cloudDensity(coverage, ray * t + sun * sunProbeKm * CLOUD_FAR_PROBE, blurMetres, shareBlur, CLOUD_FAR_CELL_OCTAVES);
+          depthTowardSun += uGroundClouds.z * sunProbeKm * 0.5 * (CLOUD_FAR_PROBE - 1.0) * (above + higher);
+        }
+        float sunThrough = phase * exp(-depthTowardSun) + CLOUD_SCATTERED_SHARE * exp(-CLOUD_SCATTERED_REACH * depthTowardSun);
+        float sunHeight = dot(sun, up);
+        float daylight = smoothstep(-0.05, 0.05, sunHeight);
+        vec3 sunlit = airSunlight * sunThrough * max(sunHeight, 0.0);
+        vec3 skylit = cloudSkylight(sunHeight);
+        float share = cloudShare(ray * t);
+        scattered = CLOUD_LIT_ALBEDO * (sunlit * daylight + skylit * mix(CLOUD_DARK_BASE_SHARE, 1.0, share));
+        scattered = softShoulder(scattered);
+      }
       light += clear * opacity * mix(scattered, skyBehind, 1.0 - exp(-t * hazePerKm));
       depthWeight += clear * opacity;
       weightedDepth += clear * opacity * t;
