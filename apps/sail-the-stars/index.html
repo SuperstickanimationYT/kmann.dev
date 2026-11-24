@@ -73,6 +73,7 @@
         <button type="button" data-zoom-in title="Zoom in (+)" aria-label="Zoom in">+</button>
       </div>
       <button type="button" data-give-up>Give up</button>
+      <button type="button" data-menu-open title="Back to the main menu">Menu</button>
       <button type="button" data-more aria-expanded="true" title="Mode, settings, camera, help">More</button>
     </div>
   </nav>
@@ -96,6 +97,13 @@
     <p data-intro-text aria-live="polite"></p>
     <button type="button" class="fh-intro-skip" data-intro-skip>Skip <kbd>any key</kbd></button>
   </div>
+  <nav class="fh-menu" data-menu aria-label="Main menu" hidden>
+    <p class="fh-menu-title">Sail the Stars</p>
+    <button type="button" data-menu-resume hidden><strong>Continue</strong></button>
+    <button type="button" data-menu-mode="explore"><strong>Explore</strong><span>Fly anywhere, no goal</span></button>
+    <button type="button" data-menu-mode="mission"><strong>Mission</strong><span>Lost outside the galaxy: find the Sun, scored</span></button>
+    <button type="button" data-menu-mode="practice"><strong>Practice</strong><span>The same search, labels on, Sun marked</span></button>
+  </nav>
   <div class="fh-ending" data-ending hidden>
     <h2 data-ending-title></h2>
     <p data-ending-text></p>
@@ -109,7 +117,7 @@
     <div class="fh-panel">
       <p class="fh-brief" data-explore-brief>
         Fly anywhere, from the surface of a moon to the far side of the Milky Way. Click anything in view, or type a
-        name under Select, then press Warp. For a challenge, switch the mode to Find Home.
+        name under Select, then press Warp. For a challenge, switch the mode to Mission.
       </p>
       <p class="fh-brief" data-mission-brief hidden>
         A units bug in the navigation software sent humanity's first crewed warp ship 63,000 times too far, out past
@@ -121,8 +129,8 @@
         <span>Mode</span>
         <select data-mode>
           <option value="explore" selected>Explore: fly anywhere, no goal</option>
-          <option value="mission">Find Home: unlabelled, scored</option>
-          <option value="practice">Find Home practice: labels, Sun marked</option>
+          <option value="mission">Mission: unlabelled, scored</option>
+          <option value="practice">Practice: labels, Sun marked</option>
         </select>
       </label>
       <label class="fh-check" data-labels-field hidden>
