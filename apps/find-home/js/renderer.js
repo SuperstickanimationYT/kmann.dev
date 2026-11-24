@@ -7,7 +7,7 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, DEVELOP_FRAGMENT,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
@@ -152,6 +152,8 @@ const GROUND_DETAIL_UNIT = 9;
 const CLOUD_BILLOWS_UNIT = 10;
 const CLOUD_MAP_UNIT = 16;
 const CLOUD_MAP_LAYERS = 2;
+const CLOUD_NEARBY_UNIT = 17;
+const CLOUD_NEARBY_DRIFT_KM = 12;
 const CLOUD_VIEW_UNIT = 11;
 const CLOUD_HISTORY_UNIT = 12;
 const CLOUD_HISTORY_DEPTH_UNIT = 13;
@@ -327,6 +329,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   const eyeProgram = createProgram(gl, FULLSCREEN_VERTEX, EYE_FRAGMENT);
   const groundSkyProgram = createProgram(gl, FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT);
   const cloudProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_FRAGMENT);
+  const cloudNearbyProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_NEARBY_FRAGMENT);
   const patchProgram = createProgram(gl, PATCH_VERTEX, PATCH_FRAGMENT);
   const shadowProgram = createProgram(gl, SHADOW_VERTEX, SHADOW_FRAGMENT);
   let shadowMaps = null;
@@ -410,6 +413,11 @@ export function createRenderer(canvas, armMap, galaxies) {
 
   const cloudMap = gl.createTexture();
   let cloudMapOn = false;
+  let cloudNearby = null;
+  const cloudNearbyTarget = createTarget(gl, CLOUD_NEARBY_WIDTH, CLOUD_NEARBY_WIDTH);
+  gl.activeTexture(gl.TEXTURE0 + CLOUD_NEARBY_UNIT);
+  gl.bindTexture(gl.TEXTURE_2D, cloudNearbyTarget.textures[0]);
+  gl.activeTexture(gl.TEXTURE0);
   gl.activeTexture(gl.TEXTURE0 + CLOUD_MAP_UNIT);
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, cloudMap);
   gl.texStorage3D(gl.TEXTURE_2D_ARRAY, Math.floor(Math.log2(CLOUD_MAP_SIZE[0])) + 1, gl.R8, ...CLOUD_MAP_SIZE, CLOUD_MAP_LAYERS);
@@ -425,11 +433,14 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     gl.activeTexture(gl.TEXTURE0);
     cloudMapOn = true;
+    cloudNearby = null;
   }
 
   const giants = createGiantPainter(gl, emptyVao);
 
   function setBodies(program, seen, ground) {
+    if (program.uniforms.uCloudNearby) gl.uniform1i(program.uniforms.uCloudNearby, CLOUD_NEARBY_UNIT);
+    if (cloudNearby) setUniforms(gl, program, { uCloudNearbyUp: cloudNearby.up, uCloudNearbyEast: cloudNearby.east });
     if (program.uniforms.uCloudMap) gl.uniform1i(program.uniforms.uCloudMap, CLOUD_MAP_UNIT);
     setUniforms(gl, program, { uCloudMapOn: cloudMapOn ? 1 : 0, uGroundCloudsMapped: ground?.settings.clouds?.mapped ? 1 : 0 });
     const shown = brightestInDistanceOrder(seen ?? []);
@@ -752,6 +763,20 @@ export function createRenderer(canvas, armMap, galaxies) {
     return cloudBillows;
   }
 
+  function bakeNearbyClouds(bodies, ground) {
+    const { up } = ground.frame;
+    const { radiusKm } = ground.body;
+    if (cloudNearby && Math.hypot(...up.map((value, axis) => value - cloudNearby.up[axis])) * radiusKm < CLOUD_NEARBY_DRIFT_KM) return;
+    const acrossPole = Math.hypot(up[0], up[1]);
+    cloudNearby = { up: [...up], east: acrossPole > 0 ? [-up[1] / acrossPole, up[0] / acrossPole, 0] : [0, 1, 0] };
+    gl.bindFramebuffer(gl.FRAMEBUFFER, cloudNearbyTarget.framebuffer);
+    gl.viewport(0, 0, CLOUD_NEARBY_WIDTH, CLOUD_NEARBY_WIDTH);
+    gl.useProgram(cloudNearbyProgram.program);
+    setBodies(cloudNearbyProgram, bodies, ground);
+    gl.bindVertexArray(emptyVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
   function cloudTargetsFitting(width, height) {
     const wanted = [width, height].map((size) => Math.ceil(size * CLOUD_RESOLUTION_SHARE));
     if (cloudTargets[0]?.width === wanted[0] && cloudTargets[0].height === wanted[1]) return cloudTargets;
@@ -805,6 +830,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   function drawGround(view, bodies, ground) {
     const shadows = drawShadows(ground);
     const billows = ground.settings.clouds ? bakedCloudBillows() : null;
+    if (ground.settings.clouds?.mapped) bakeNearbyClouds(bodies, ground);
     const target = groundTargetFitting();
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.viewport(0, 0, target.width, target.height);
