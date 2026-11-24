@@ -12,7 +12,7 @@ const SEA_WORLD = { roughness: 0.045, craters: 0, sea: true, rocks: { cover: [0.
 const MAPPED_SEA_WORLD = { ...SEA_WORLD, lowKm: -4, rangeKm: 16 };
 const ICE_WORLD = { roughness: 0.05, craters: 0.4, rocks: { cover: [0.015, 0.01, 0.004, 0.0015], sharpness: 12, flatness: 0.75, tint: [1.12, 1.12, 1.14] }, lowKm: -8, rangeKm: 16 };
 const BARE_WORLD = { roughness: 0.06, craters: 1, rocks: { cover: [0.025, 0.018, 0.008, 0.003], sharpness: 10, flatness: 0.8, tint: [1, 1, 1] }, lowKm: -8, rangeKm: 16 };
-const LAVA_WORLD = { roughness: 0.04, craters: 0, lowKm: -8, rangeKm: 16 };
+const LAVA_WORLD = { roughness: 0.04, craters: 0, molten: true, lowKm: -8, rangeKm: 16 };
 
 const kelvinOf = (body) => body.invented.kelvin ?? body.measured.kelvin;
 const sameLook = (painted, body) => painted?.name === body.name && painted.version === body.invented.version;
@@ -112,7 +112,8 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
       invented: true,
       heights: { width, height, values: channel(pixels, 0) },
       land: kind.sea ? { width, height, values: land } : null,
-      vegetation: body.invented.terrain ? { width, height, values: channel(pixels, 3) } : null,
+      vegetation: body.invented.terrain ? { width, height, values: channel(pixels, 3).map((value) => Math.max(0, 2 * value - 255)) } : null,
+      runny: kind.sea || kind.molten ? { width, height, values: channel(pixels, 3).map((value) => Math.min(255, 2 * value)) } : null,
     };
   }
 
