@@ -1,3 +1,5 @@
+import { carvedHeight, riverAt, riversNear } from './rivers.js';
+
 export const ANCHOR_METRES = 32768;
 export const GROUND_OCTAVES = 15;
 export const CRATER_FIRST_OCTAVE = 2;
@@ -136,13 +138,27 @@ export function landShare(land, uv, anchor, offset, footprint, edgeWidth = SHARP
   return smooth(t);
 }
 
-export function groundHeightMetres(ground, up, anchor, offset, footprint) {
+const RIVERSIDE_TEXTURE = [[9, 1.4], [11, 0.5]];
+const RIVERSIDE_SEED = 940;
+const COARSEST_RIVERSIDE_TEXTURE_METRES = 16;
+
+function riversideTexture(anchor, offset, footprint) {
+  if (footprint > COARSEST_RIVERSIDE_TEXTURE_METRES) return 0;
+  return RIVERSIDE_TEXTURE.reduce((sum, [octave, metres], k) => sum + metres * (groundNoise(anchor, offset, octave, RIVERSIDE_SEED + k) - 0.5), 0);
+}
+
+export function groundHeightMetres(ground, up, anchor, offset, footprint, near = null) {
   const uv = mapCoordinates(up);
   const mapped = (ground.lowKm + sampleMap(ground.heights, uv) * ground.rangeKm) * 1000;
   const land = ground.land ? landShare(ground.land, uv, anchor, offset, footprint) : 1;
   const detail = groundDetailMetres(anchor, offset, footprint, ground.roughness, ground.craters);
   const coast = ground.land ? (land - 0.5) * COAST_DROP_METRES : 0;
-  return { height: mapped + detail * land + coast, seaLevel: ground.land ? 0 : -Infinity };
+  const natural = mapped + detail * land + coast;
+  const seaLevel = ground.land ? 0 : -Infinity;
+  const river = riverAt(near, up);
+  if (river.distance === Infinity) return { height: natural, seaLevel, waterLevel: seaLevel };
+  const height = natural + (carvedHeight(river, natural, riversideTexture(anchor, offset, footprint)) - natural) * land;
+  return { height, seaLevel, waterLevel: river.distance < river.halfWidth && height < river.level ? Math.max(seaLevel, river.level) : seaLevel };
 }
 
 export const detailReachKm = (ground) => (ground.roughness * ANCHOR_METRES) / 1000 + (ground.land ? COAST_DROP_METRES / 2000 : 0);
@@ -193,6 +209,7 @@ export function patchCorners({ level, ix, iy }) {
 
 function surfacePoints(ground, radiusKm, face, corner, step, side, footprint) {
   const radius = radiusKm * 1000;
+  const near = riversNear(ground.rivers, radius, faceDirection(face, corner.s + (step * (side - 1)) / 2, corner.t + (step * (side - 1)) / 2), footprint * side, footprint);
   const points = new Float64Array(side * side * 3);
   const wet = new Uint8Array(side * side);
   let lowest = Infinity;
@@ -203,7 +220,7 @@ function surfacePoints(ground, radiusKm, face, corner, step, side, footprint) {
       const surface = up.map((value) => value * radius);
       const anchor = surface.map((value) => Math.floor(value / ANCHOR_METRES));
       const offset = surface.map((value, axis) => value - anchor[axis] * ANCHOR_METRES);
-      const { height, seaLevel } = groundHeightMetres(ground, up, anchor, offset, footprint);
+      const { height, seaLevel } = groundHeightMetres(ground, up, anchor, offset, footprint, near);
       const top = Math.max(height, seaLevel);
       const index = j * side + i;
       wet[index] = height < seaLevel ? 1 : 0;

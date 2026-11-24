@@ -1280,6 +1280,7 @@ struct Invented {
   float heightKm;
   float settled;
   float growing;
+  float runny;
 };
 
 vec3 cellHash(vec3 cell) {
@@ -1377,8 +1378,10 @@ bool isSeaWorld(float kelvin) {
   return kelvin > 175.0 && kelvin < 300.0;
 }
 
+const float COOLEST_FLOWING_KELVIN = 950.0;
+
 Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin, float tideLocked, float footprint, bool bareGround) {
-  Invented made = Invented(tint, vec3(0.0), 0.0, kelvin, tint, 1.0, 0.0, 0.0, 0.0);
+  Invented made = Invented(tint, vec3(0.0), 0.0, kelvin, tint, 1.0, 0.0, 0.0, 0.0, 0.0);
   float sunHeight = dot(local, sun);
   vec3 p = local * 1.7 + seed;
   vec3 warp = broadWarp(p * 1.3);
@@ -1408,6 +1411,7 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
     vec3 frozen = INVENTED_ICE * (0.8 + 0.3 * fine) * (1.0 - 0.22 * crack * (1.0 - land));
     made.albedo = mix(mix(INVENTED_OCEAN, ground, land), frozen, ice);
     made.water = (1.0 - land) * (1.0 - ice);
+    made.runny = 1.0 - ice;
     made.dryAlbedo = mix(ground, frozen, ice);
     made.solid = max(smoothstep(-COAST_HALF_WIDTH, COAST_HALF_WIDTH, aboveSea), ice);
     if (bareGround) {
@@ -1439,6 +1443,7 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
   if (kelvin < 850.0) return made;
   float dayside = tideLocked > 0.5 ? pow(max(sunHeight, 0.0), 0.25) : 0.75;
   made.kelvin = max(kelvin * SUBSTELLAR_WARMTH * dayside, 0.55 * kelvin);
+  made.runny = smoothstep(COOLEST_FLOWING_KELVIN - 100.0, COOLEST_FLOWING_KELVIN + 100.0, made.kelvin);
   float crust = smoothstep(0.03, 0.12, abs(terrain(p * 4.5 + 4.0 * warp) - 0.5));
   float molten = smoothstep(MELTING_KELVIN, MELTING_KELVIN + 550.0, made.kelvin + 500.0 * (plains - 0.5));
   made.kelvin = mix(made.kelvin, made.kelvin * mix(1.08, 0.78, crust), molten);
@@ -1460,7 +1465,7 @@ vec4 inventedPaint(vec2 uv, float footprint) {
 
 Invented paintedSeaWorld(vec3 local, vec2 uv, float seed, float footprint) {
   vec4 paint = inventedPaint(uv, footprint);
-  Invented made = Invented(paint.rgb, vec3(0.0), 0.0, 0.0, paint.rgb, 1.0, 0.0, 0.0, 0.0);
+  Invented made = Invented(paint.rgb, vec3(0.0), 0.0, 0.0, paint.rgb, 1.0, 0.0, 0.0, 0.0, 0.0);
   float coastTexel = 6.2831853 / float(textureSize(uInventedLand, 0).x);
   float solid = textureLod(uInventedLand, uv, 0.0).r;
   float nearCoast = 4.0 * solid * (1.0 - solid);
@@ -1538,7 +1543,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   }
 
   vec3 sun = uBodySun[i].xyz;
-  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, albedo, 1.0, 0.0, 0.0, 0.0);
+  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, albedo, 1.0, 0.0, 0.0, 0.0, 0.0);
   vec3 sunLocal = bodyLocal(sun, frame);
   bool underClouds = look.w == BODY_OCEAN_WORLD || (invented && isSeaWorld(map.z));
   vec2 sheet = vec2(0.0);
@@ -2486,6 +2491,10 @@ float lavaKelvin(float kelvin, vec3 offset, float footprint) {
 }
 
 vec4 surfaceTint = vec4(1.0, 1.0, 1.0, 0.0);
+vec3 freshWater = vec3(-1.0);
+bool groundGlowHidden = false;
+float riverLevel = 0.0;
+const float RIVER_MEETS_SEA_METRES = 8.0;
 
 vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float footprint, vec3 ray, vec3 sun, vec3 upHere, float sunVisible) {
   bool invented = groundInvented();
@@ -2494,6 +2503,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   vec3 albedo = painted.rgb;
   if (invented) albedo *= 1.0 + inventedMottle(offset, footprint);
   vec3 seaAlbedo = invented ? INVENTED_OCEAN : OCEAN_ALBEDO;
+  if (freshWater.x >= 0.0) seaAlbedo = mix(seaAlbedo, freshWater, smoothstep(0.0, RIVER_MEETS_SEA_METRES, riverLevel));
   float fineCell = ANCHOR_METRES / float(2 << 12);
   float coarseCell = ANCHOR_METRES / float(2 << 7);
   float grain = octaveFade(fineCell, footprint) * (groundDetail(12, offset, fineCell, 900).w - 0.5)
@@ -2523,7 +2533,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   }
   lit *= uStarlight;
   float groundKelvin = painted.a * HOTTEST_GROUND_KELVIN;
-  if (!invented || uBodyMap[uGround].z <= HOT_PLANET_KELVIN || groundKelvin <= COOLEST_GLOW_KELVIN) return lit;
+  if (groundGlowHidden || !invented || uBodyMap[uGround].z <= HOT_PLANET_KELVIN || groundKelvin <= COOLEST_GLOW_KELVIN) return lit;
   vec3 glow = thermalGlow(uGround, lavaKelvin(groundKelvin, offset, footprint));
   return (lit + glow) / max(1.0, glow.r);
 }
@@ -2815,7 +2825,7 @@ void main() {
   vec3 local = vec3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude));
   Invented made = inventSurface(local, uInventedSun, uInventedTint, uInventedPlanet.x, uInventedPlanet.y, uInventedPlanet.z, uInventedFootprint, true);
   if (uInventedShape.x > 0.5) {
-    outColour = vec4((made.heightKm - uInventedShape.y) / uInventedShape.z, made.solid, pow(clamp(made.settled, 0.0, 1.0), CITY_LIGHT_LIFT), made.growing);
+    outColour = vec4((made.heightKm - uInventedShape.y) / uInventedShape.z, made.solid, pow(clamp(made.settled, 0.0, 1.0), CITY_LIGHT_LIFT), 0.5 * made.runny + 0.5 * made.growing);
     return;
   }
   bool hot = uInventedPlanet.y > HOT_PLANET_KELVIN;
@@ -2836,16 +2846,10 @@ void main() {
   outColour = vec4(cloudSheet(normalize(up), footprint), 0.0, 1.0);
 }`;
 
-export const PATCH_FRAGMENT = `#version 300 es
-${EYE_SHARED}
+const SUN_ON_GROUND = `
 in vec3 vFromCamera;
 in vec3 vNormal;
 in vec3 vUpward;
-in float vWet;
-in vec4 vDetail;
-in vec4 vTint;
-uniform vec4 uRockShadow;
-uniform float uPatchSpacing;
 uniform highp sampler2DArrayShadow uShadowMaps;
 uniform vec3 uShadowRight;
 uniform vec3 uShadowUp;
@@ -2857,6 +2861,32 @@ const float SHADOW_MAP_SIZE = ${SHADOW_MAP_SIZE}.0;
 const float SHADOW_NORMAL_OFFSET_TEXELS = 1.5;
 const float SHADOW_DEPTH_BIAS_TEXELS = 1.0;
 const float SHADOW_MAP_EDGE = 0.98;
+
+float sunVisibleAt(vec3 fromCamera, vec3 normal) {
+  if (uShadowsOn < 0.5) return 1.0;
+  for (int i = 0; i < ${SHADOW_CASCADES}; i++) {
+    vec4 cascade = uShadowCascades[i];
+    float texel = 2.0 * cascade.z / SHADOW_MAP_SIZE;
+    vec3 p = fromCamera + normal * texel * SHADOW_NORMAL_OFFSET_TEXELS;
+    vec2 across = (vec2(dot(p, uShadowRight), dot(p, uShadowUp)) - cascade.xy) / cascade.z;
+    if (max(abs(across.x), abs(across.y)) > SHADOW_MAP_EDGE) continue;
+    float depth = 0.5 - 0.5 * dot(p, uShadowSun) / cascade.w - texel * SHADOW_DEPTH_BIAS_TEXELS / (2.0 * cascade.w);
+    vec2 uv = across * 0.5 + 0.5;
+    float lit = 0.0;
+    for (int tap = 0; tap < 4; tap++) lit += texture(uShadowMaps, vec4(uv + (vec2(tap & 1, tap >> 1) - 0.5) / SHADOW_MAP_SIZE, float(i), depth));
+    return lit * 0.25;
+  }
+  return 1.0;
+}`;
+
+export const PATCH_FRAGMENT = `#version 300 es
+${EYE_SHARED}
+${SUN_ON_GROUND}
+in float vWet;
+in vec4 vDetail;
+in vec4 vTint;
+uniform vec4 uRockShadow;
+uniform float uPatchSpacing;
 
 const float ROCK_SHADOW_FADES_FROM = 0.8;
 const float ROCK_SHADOW_NORMAL_OFFSET_TEXELS = 0.75;
@@ -2881,23 +2911,6 @@ vec3 rockSlope(vec3 place) {
   return (coarse + fine) * ${GROUND_DETAIL_SLOPE_RANGE.toFixed(1)};
 }
 
-float sunVisibleAt(vec3 fromCamera, vec3 normal) {
-  if (uShadowsOn < 0.5) return 1.0;
-  for (int i = 0; i < ${SHADOW_CASCADES}; i++) {
-    vec4 cascade = uShadowCascades[i];
-    float texel = 2.0 * cascade.z / SHADOW_MAP_SIZE;
-    vec3 p = fromCamera + normal * texel * SHADOW_NORMAL_OFFSET_TEXELS;
-    vec2 across = (vec2(dot(p, uShadowRight), dot(p, uShadowUp)) - cascade.xy) / cascade.z;
-    if (max(abs(across.x), abs(across.y)) > SHADOW_MAP_EDGE) continue;
-    float depth = 0.5 - 0.5 * dot(p, uShadowSun) / cascade.w - texel * SHADOW_DEPTH_BIAS_TEXELS / (2.0 * cascade.w);
-    vec2 uv = across * 0.5 + 0.5;
-    float lit = 0.0;
-    for (int tap = 0; tap < 4; tap++) lit += texture(uShadowMaps, vec4(uv + (vec2(tap & 1, tap >> 1) - 0.5) / SHADOW_MAP_SIZE, float(i), depth));
-    return lit * 0.25;
-  }
-  return 1.0;
-}
-
 void main() {
   float distance = length(vFromCamera);
   vec3 ray = vFromCamera / distance;
@@ -2912,6 +2925,116 @@ void main() {
   float sunVisible = sunVisibleAt(vFromCamera, normalize(vNormal)) * sunPastRocks(vFromCamera, normalize(vNormal));
   vec3 lit = shadeGround(up, uGroundFromAnchor + vFromCamera, normal, water, distance / 1000.0, footprint, ray, sun, normalize(uGroundCamera), sunVisible);
   outColour = vec4(lit, GROUND_HIT + distance / 1000.0);
+}`;
+
+export const RIVER_VERTEX = `#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec3 aDownstream;
+layout(location = 2) in float aSide;
+layout(location = 3) in vec3 aAlongHalfWidthLevel;
+uniform vec3 uPatchFromCamera;
+uniform vec3 uPatchCentreKm;
+uniform vec3 uLocalRight;
+uniform vec3 uLocalUp;
+uniform vec3 uLocalForward;
+uniform vec2 uTanHalf;
+uniform float uPixelAngle;
+const float EDGE_PIXELS = 1.0;
+out vec2 vUv;
+out vec3 vFromCamera;
+out vec3 vNormal;
+out vec3 vUpward;
+out vec4 vFlow;
+out float vPixel;
+void main() {
+  vUv = vec2(0.0);
+  vPixel = uPixelAngle * length(uPatchFromCamera + aPosition);
+  float halfWidth = aAlongHalfWidthLevel.y;
+  float across = aSide * (halfWidth + EDGE_PIXELS * vPixel);
+  vec3 position = aPosition + normalize(cross(uPatchCentreKm * 1000.0 + aPosition, aDownstream)) * across;
+  vFromCamera = uPatchFromCamera + position;
+  vNormal = aDownstream;
+  vUpward = uPatchCentreKm + position / 1000.0;
+  vFlow = vec4(aAlongHalfWidthLevel.x, across, halfWidth, aAlongHalfWidthLevel.z);
+  gl_Position = vec4(dot(vFromCamera, uLocalRight) / uTanHalf.x, dot(vFromCamera, uLocalUp) / uTanHalf.y, 0.0, dot(vFromCamera, uLocalForward));
+}`;
+
+export const RIVER_FRAGMENT = `#version 300 es
+${EYE_SHARED}
+${SUN_ON_GROUND}
+in vec4 vFlow;
+in float vPixel;
+uniform float uMolten;
+uniform float uRiverSeconds;
+
+const vec3 RIVER_ALBEDO = vec3(0.035, 0.05, 0.04);
+const float RIPPLE_CELLS[3] = float[3](12.8, 3.2, 0.8);
+const float RIPPLE_SPEEDS[3] = float[3](1.6, 1.6, 0.8);
+const float DRAWN_NEARER = 0.997;
+const float RIPPLE_STEEPNESS = 0.035;
+const float RIPPLE_CHANGE_PER_SECOND = 0.25;
+const float ACROSS_TILT = 0.37;
+const float FOAM_CELL = 25.6;
+const float NARROWEST_SHARP_EDGED_PIXELS = 6.0;
+const float FOAM_STRETCH = 8.0;
+const float FLOWING_CRUST_KELVIN_SHARE = 0.62;
+const float LEAST_FLOWING_LAVA_KELVIN = 1450.0;
+const float LAVA_MEAN_HEAT = 0.7;
+const float LAVA_SPEED = 0.8;
+
+vec4 flowing(float cell, float speed, float stretch, float change) {
+  vec3 place = vec3((vFlow.x - speed * uRiverSeconds) / cell, vFlow.y * stretch / cell, change * uRiverSeconds + vFlow.y * ACROSS_TILT / cell);
+  return textureLod(uGroundDetail, place / ${GROUND_DETAIL_PERIOD_CELLS}.0, 0.0);
+}
+
+void main() {
+  float distance = length(vFromCamera);
+  vec3 ray = vFromCamera / distance;
+  vec3 sun = groundLocal(uBodySun[uGround].xyz);
+  vec3 up = normalize(vUpward);
+  vec3 upHere = normalize(uGroundCamera);
+  vec3 offset = uGroundFromAnchor + vFromCamera;
+  float km = distance / 1000.0;
+  float footprint = max(distance * uPixelAngle, ${NEAREST_SEEN_METRES});
+  float pixelsFromEdge = (vFlow.z - abs(vFlow.y)) / vPixel;
+  bool sharpEdged = vFlow.z > NARROWEST_SHARP_EDGED_PIXELS * vPixel;
+  if (sharpEdged && pixelsFromEdge < 0.0) discard;
+  float sunVisible = sunVisibleAt(vFromCamera, up);
+  vec3 colour;
+  if (uMolten > 0.5) {
+    float plates = flowing(25.6, LAVA_SPEED, 2.0, 0.0).w;
+    float fine = flowing(6.4, LAVA_SPEED, 2.0, 0.0).w;
+    float inwards = clamp(1.0 - abs(vFlow.y) / vFlow.z, 0.0, 1.0);
+    float crust = smoothstep(0.46, 0.56, 0.6 * plates + 0.4 * fine + 0.15 - 0.22 * smoothstep(0.0, 0.5, inwards));
+    float heat = mix(0.35 + 0.9 * fine, 0.3 * fine - 0.1, crust);
+    heat = mix(LAVA_MEAN_HEAT * (0.4 + 0.6 * smoothstep(0.0, 0.4, inwards)), heat, octaveFade(6.4, footprint));
+    surfaceTint = vec4(vec3(0.35), 0.8);
+    groundGlowHidden = true;
+    vec3 lit = shadeGround(up, offset, up, false, km, footprint, ray, sun, upHere, sunVisible);
+    float groundKelvin = inventedPaint(groundUv(up), footprint / (1000.0 * uGroundRadius)).a * HOTTEST_GROUND_KELVIN;
+    float hottest = max(LEAST_FLOWING_LAVA_KELVIN, groundKelvin * LAVA_VEIN_KELVIN_SHARE);
+    vec3 glow = thermalGlow(uGround, hottest * mix(FLOWING_CRUST_KELVIN_SHARE, 1.0, clamp(heat, 0.0, 1.0)));
+    colour = (lit + glow) / max(1.0, glow.r);
+  } else {
+    vec3 downstream = normalize(vNormal - up * dot(vNormal, up));
+    vec4 gusts = flowing(FOAM_CELL, 1.6, 1.0, 0.125);
+    vec2 slope = vec2(0.0);
+    for (int k = 0; k < 3; k++) slope += octaveFade(RIPPLE_CELLS[k], footprint) * 2.0 * gusts[k + 1] * (flowing(RIPPLE_CELLS[k], RIPPLE_SPEEDS[k], 1.0, RIPPLE_CHANGE_PER_SECOND).xy * 2.0 - 1.0) * ${GROUND_DETAIL_SLOPE_RANGE.toFixed(1)};
+    vec3 normal = normalize(up - RIPPLE_STEEPNESS * (downstream * slope.x + cross(up, downstream) * slope.y));
+    float streaks = flowing(FOAM_CELL, 1.6, FOAM_STRETCH, 0.0).w * flowing(6.4, 1.6, FOAM_STRETCH, 0.0).w;
+    freshWater = RIVER_ALBEDO * (1.0 + 1.5 * octaveFade(FOAM_CELL / FOAM_STRETCH, footprint) * (streaks - 0.25));
+    riverLevel = vFlow.w;
+    colour = shadeGround(up, offset, normal, true, km, footprint, ray, sun, upHere, sunVisible);
+  }
+  if (!sharpEdged) {
+    float covered = min(1.0, vFlow.z / vPixel) * smoothstep(-1.0, 0.5, pixelsFromEdge);
+    surfaceTint = vec4(1.0, 1.0, 1.0, 0.0);
+    groundGlowHidden = false;
+    colour = mix(shadeGround(up, offset, up, false, km, footprint, ray, sun, upHere, sunVisible), colour, covered);
+  }
+  outColour = vec4(colour, GROUND_HIT + km);
+  gl_FragDepth = log2(max(DRAWN_NEARER / gl_FragCoord.w, ${NEAREST_SEEN_METRES} * 0.5) / ${NEAREST_SEEN_METRES}) / log2(${FARTHEST_SEEN_METRES.toFixed(1)} / ${NEAREST_SEEN_METRES});
 }`;
 
 export const CLOUD_FRAGMENT = `#version 300 es

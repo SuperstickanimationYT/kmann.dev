@@ -1,3 +1,4 @@
+import { unpackRivers } from './rivers.js';
 import { cloudTurn } from './clouds.js';
 import { DWARF_ORBITS, DWARF_PLANETS, DWARF_SATELLITE_ORBITS } from './dwarf-planets.js';
 import { DEGREES, equatorialToFrame, SUN_POSITION } from './milky-way.js';
@@ -287,7 +288,7 @@ export const BODIES = [
   { name: 'Sun', kind: 'star', radiusKm: SUN_RADIUS_KM, pole: [286.13, 63.87], spin: [84.176, 14.1844], tint: [1, 0.96, 0.88] },
   { name: 'Mercury', kind: 'rocky', radiusKm: 2439.7, pole: [281.0103, 61.4155], spin: [329.5988, 6.1385108], tint: [0.55, 0.52, 0.5], magnitude: -0.6 },
   { name: 'Venus', kind: 'clouded', radiusKm: 6051.8, pole: [272.76, 67.16], spin: [160.2, -1.4813688], cloudSpin: [0, -90], tint: [0.93, 0.86, 0.68], magnitude: -4.47, map: 'venus', mapKmPerPixel: 37.1, roughness: 0, haze: { gas: { depth: [0, 0, 0], scaleKm: 5 }, dust: { depth: [0.3, 0.3, 0.33], light: [0.2, 0.19, 0.15], scaleKm: 5, forwardness: 0.3, sunDimming: 0.4 } }, ground: { roughness: 0.04, craters: 0.15, viewFromKm: 60, rocks: { cover: [0.035, 0.045, 0.02, 0.006], sharpness: 12, flatness: 0.3, tint: [0.8, 0.8, 0.82] }, air: { tint: [0.8, 0.55, 0.26], scaleKm: 15.9, glow: [0.95, 0.7, 0.35], hazeKm: 20, sunset: [0.7, 0.4, 0.15], overcast: 1 } } },
-  { name: 'Earth', reddensEclipses: true, kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3, haze: { gas: { depth: [0.046, 0.108, 0.265], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } }, ground: { roughness: 0.03, craters: 0, sea: true, greenLand: true, rocks: { cover: [0.008, 0.006, 0.002, 0.0008], sharpness: 6, flatness: 0.75, tint: [1.1, 1.08, 1.05], greyness: 0.6 }, clouds: { mapped: true, baseKm: 1.5, topKm: 6.5, extinctionPerKm: 3, coverShift: 0 }, air: { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] } } },
+  { name: 'Earth', reddensEclipses: true, kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3, haze: { gas: { depth: [0.046, 0.108, 0.265], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } }, ground: { roughness: 0.03, craters: 0, sea: true, greenLand: true, rivers: 'earth-rivers.bin', rocks: { cover: [0.008, 0.006, 0.002, 0.0008], sharpness: 6, flatness: 0.75, tint: [1.1, 1.08, 1.05], greyness: 0.6 }, clouds: { mapped: true, baseKm: 1.5, topKm: 6.5, extinctionPerKm: 3, coverShift: 0 }, air: { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] } } },
   { name: 'Moon', kind: 'rocky', parent: 'Earth', radiusKm: 1737.4, pole: [269.9949, 66.5392], spin: [38.3213, 13.17635815, -1.4e-12], tint: [0.6, 0.58, 0.55], magnitude: 0.21, map: 'moon', mapKmPerPixel: 10.7, roughness: 0.5, ground: { roughness: 0.06, craters: 1, rocks: { cover: [0.02, 0.014, 0.006, 0.002], sharpness: 10, flatness: 0.8, tint: [1, 1, 1] } } },
   { name: 'Mars', kind: 'rocky', radiusKm: 3389.5, pole: [317.269202, 54.432516], spin: [176.049863, 350.891982443297], tint: [0.7, 0.42, 0.25], magnitude: -1.52, map: 'mars', mapKmPerPixel: 20.8, roughness: 0.35, haze: { gas: { depth: [0, 0, 0], scaleKm: 11 }, dust: { depth: [0.2, 0.22, 0.25], light: [0.34, 0.26, 0.19], scaleKm: 11, forwardness: 0.4, sunDimming: 0.6 } }, ground: { roughness: 0.05, craters: 0.4, rocks: { cover: [0.04, 0.04, 0.012, 0.003], sharpness: 9, flatness: 0.7, tint: [0.84, 0.86, 0.92] }, clouds: { baseKm: 14, topKm: 20, extinctionPerKm: 0.08, coverShift: -0.06 }, air: { tint: [0.78, 0.56, 0.38], scaleKm: 11, glow: [0.45, 0.6, 0.85], hazeKm: 30, sunset: [0.45, 0.6, 0.85] } } },
   { name: 'Jupiter', kind: 'giant', radiusKm: 69911, flattening: 0.06487, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
@@ -727,9 +728,10 @@ function cityLightsOn(ms) {
 export async function loadBodyMaps(folder, onLoaded) {
   const ranges = await fetch(new URL('maps.json', folder)).then((response) => response.json());
   await Promise.all(MAPPED_BODIES.map(async (body, layer) => {
-    const [colour, height] = await Promise.all([
+    const [colour, height, rivers] = await Promise.all([
       mapImage(new URL(`${body.map}-colour.webp`, folder), { premultiplyAlpha: 'none' }),
       mapImage(new URL(`${body.map}-height.webp`, folder), { colorSpaceConversion: 'none' }),
+      body.ground?.rivers ? fetch(new URL(body.ground.rivers, folder)).then((response) => response.arrayBuffer()).then(unpackRivers) : null,
     ]);
     const { lowKm, highKm, datumKm = 0 } = ranges[body.name];
     const heights = pixelsOf(height, 0);
@@ -742,6 +744,7 @@ export async function loadBodyMaps(folder, onLoaded) {
         lowKm: lowKm - datumKm,
         rangeKm: highKm - lowKm,
         heights,
+        rivers,
         land: body.ground.sea ? pixelsOf(colour, 3) : null,
         vegetation: body.ground.greenLand ? greenLandOf(colour) : null,
         vegetationShare: 1,

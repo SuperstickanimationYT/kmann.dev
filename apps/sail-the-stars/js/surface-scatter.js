@@ -1,4 +1,5 @@
 import { createRandom } from './random.js';
+import { riversNear } from './rivers.js';
 import { ANCHOR_METRES, faceDirection, groundHeightMetres, groundNoise, lattice, mapCoordinates, patchCorners, patchEdgeMetres, sampleMap } from './terrain.js';
 
 export const SCATTER_FLOATS = 5;
@@ -44,7 +45,7 @@ function placeAt(radiusMetres, face, s, t) {
   return { up, anchor, offset: surface.map((value, axis) => value - anchor[axis] * ANCHOR_METRES) };
 }
 
-const heightAt = (ground, { up, anchor, offset }) => groundHeightMetres(ground, up, anchor, offset, GROUND_SEEN_UP_CLOSE_METRES);
+const heightAt = ({ near, ...ground }, { up, anchor, offset }) => groundHeightMetres(ground, up, anchor, offset, GROUND_SEEN_UP_CLOSE_METRES, near);
 const vegetationAt = (ground, { up }) => (ground.vegetation ? ground.vegetationShare * sampleMap(ground.vegetation, mapCoordinates(up)) : 0);
 
 function sizeBetween([smallest, largest], random) {
@@ -65,8 +66,8 @@ function scatterRocks(ground, radiusMetres, tile, layer, random, add) {
     const seed = random.next();
     const overgrown = smoothstep(0.1, 0.5, vegetationAt(ground, place));
     if (keep > clumping(place, ROCK_CLUMPS) * (1 - overgrown * (1 - ROCKS_LEFT_IN_GRASS))) continue;
-    const { height, seaLevel } = heightAt(ground, place);
-    if (height > seaLevel + HIGHEST_SPLASH_METRES) add(place.up, height, size, seed);
+    const { height, waterLevel } = heightAt(ground, place);
+    if (height > waterLevel + HIGHEST_SPLASH_METRES) add(place.up, height, size, seed);
   }
 }
 
@@ -74,12 +75,12 @@ function grassGrid(ground, radiusMetres, tile) {
   const { s, t, span } = patchCorners(tile);
   const side = GRASS_GRID_CELLS + 1;
   const heights = new Float64Array(side * side);
-  let seaLevel = -Infinity;
+  let waterLevel = -Infinity;
   for (let j = 0; j < side; j++) {
     for (let i = 0; i < side; i++) {
       const sampled = heightAt(ground, placeAt(radiusMetres, tile.face, s + (i / GRASS_GRID_CELLS) * span, t + (j / GRASS_GRID_CELLS) * span));
       heights[j * side + i] = sampled.height;
-      seaLevel = sampled.seaLevel;
+      waterLevel = Math.max(waterLevel, sampled.waterLevel);
     }
   }
   const sample = (x, y) => {
@@ -90,7 +91,7 @@ function grassGrid(ground, radiusMetres, tile) {
     const [a, b, c, d] = [heights[corner], heights[corner + 1], heights[corner + side], heights[corner + side + 1]];
     return { height: (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy, rise: Math.hypot(b - a, c - a) * GRASS_GRID_CELLS };
   };
-  return { sample, seaLevel };
+  return { sample, waterLevel };
 }
 
 function scatterGrass(ground, radiusMetres, tile, layer, random, add) {
@@ -98,7 +99,7 @@ function scatterGrass(ground, radiusMetres, tile, layer, random, add) {
   const edge = patchEdgeMetres(radiusMetres / 1000, tile.level);
   const vegetation = vegetationAt(ground, placeAt(radiusMetres, tile.face, s + span / 2, t + span / 2));
   if (vegetation < SPARSEST_VEGETATION) return;
-  const { sample, seaLevel } = grassGrid(ground, radiusMetres, tile);
+  const { sample, waterLevel } = grassGrid(ground, radiusMetres, tile);
   const [shortest, tallest] = layer.sizes;
   const wanted = TUFTS_PER_SQUARE_METRE * edge * edge;
   for (let k = 0; k < wanted; k++) {
@@ -107,7 +108,7 @@ function scatterGrass(ground, radiusMetres, tile, layer, random, add) {
     const lush = vegetation * (0.35 + 0.65 * clumping(place, GRASS_CLUMPS));
     if (keep > 1.6 * lush) continue;
     const { height, rise } = sample(x, y);
-    if (rise / edge > STEEPEST_GRASS_SLOPE || height < seaLevel + HIGHEST_SPLASH_METRES) continue;
+    if (rise / edge > STEEPEST_GRASS_SLOPE || height < waterLevel + HIGHEST_SPLASH_METRES) continue;
     add(place.up, height, shortest + (tallest - shortest) * (0.3 + 0.7 * vigour) * Math.min(1, 0.25 + lush), seed);
   }
 }
@@ -123,12 +124,13 @@ export function rocksSeen({ instances, count }, nearestMetres, pixelAngle) {
   return seen;
 }
 
-export function buildScatter(ground, radiusKm, tile) {
+export function buildScatter(bareGround, radiusKm, tile) {
   const layer = SCATTER_LAYERS[tile.layer];
   const radiusMetres = radiusKm * 1000;
   const { s, t, span } = patchCorners(tile);
   const random = createRandom(lattice(tile.ix, tile.iy, tile.face * SCATTER_LAYERS.length + tile.layer, tile.level) * 4294967295);
   const middle = placeAt(radiusMetres, tile.face, s + span / 2, t + span / 2);
+  const ground = { ...bareGround, near: riversNear(bareGround.rivers, radiusMetres, middle.up, patchEdgeMetres(radiusKm, tile.level), GROUND_SEEN_UP_CLOSE_METRES) };
   const centre = middle.up.map((value) => value * (radiusMetres + heightAt(ground, middle).height));
   const placed = [];
   let farthest = 0;

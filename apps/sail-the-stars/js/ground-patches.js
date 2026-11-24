@@ -1,4 +1,5 @@
 import { CUBE_FACES, detailReachKm, PATCH_CELLS, patchEdgeMetres } from './terrain.js';
+import { createRiverRibbons } from './river-ribbons.js';
 import { createSurfaceDetails } from './surface-details.js';
 
 const BUILDERS = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
@@ -24,8 +25,9 @@ const SUN_DIRECTION_STEP = 1e-4;
 const keyOf = (body, face, level, ix, iy) => `${body} ${face} ${level} ${ix} ${iy}`;
 const distanceBetween = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-export function createGroundPatches(release, releaseDetails) {
+export function createGroundPatches(release, releaseDetails, releaseRibbon) {
   const details = createSurfaceDetails(releaseDetails);
+  const ribbons = createRiverRibbons(releaseRibbon);
   const builders = Array.from({ length: BUILDERS }, () => new Worker(new URL('./terrain-worker.js', import.meta.url), { type: 'module' }));
   const patches = new Map();
   const building = new Set();
@@ -174,7 +176,7 @@ export function createGroundPatches(release, releaseDetails) {
       nextBuilder = (nextBuilder + 1) % BUILDERS;
     }
     evictUnseen();
-    return { drawn, casters, light, details: details.visible(ground, { withinView, light }) };
+    return { drawn, casters, light, details: details.visible(ground, { withinView, light }), rivers: ribbons.visible(ground, { withinView, pixelAngle }) };
   }
 
   return { visible };

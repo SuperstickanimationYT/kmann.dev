@@ -26,6 +26,8 @@ import { drawOrbits } from './orbits.js';
 import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
+import { drainageOf } from './river-ribbons.js';
+import { riversNear } from './rivers.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { gatherStars, KIND, loadNearbyStars, placeNebulae, starsOfBoth, SUN_ABSOLUTE } from './stars.js';
 import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
@@ -920,11 +922,28 @@ function groundFor(body) {
   return body.ground && body.mapLayer >= 0 ? groundMaps[body.mapLayer] ?? null : null;
 }
 
+let drained = null;
+
+function withRivers(body, { runny, ...settings }) {
+  if (!runny) return settings;
+  const key = `${body.name} ${body.invented.shapeVersion}`;
+  if (drained?.key !== key) {
+    const asked = { key, rivers: null };
+    drained = asked;
+    const { heights, land, lowKm, rangeKm, molten } = settings;
+    drainageOf({ heights, land, runny, lowKm, rangeKm, molten }).then((rivers) => {
+      asked.rivers = rivers;
+    });
+  }
+  return drained.rivers && { ...settings, rivers: drained.rivers };
+}
+
 function inventGroundBelow() {
   const body = solarFrame && bodyNamed(solarFrame.holder);
   if (!body?.invented || body.flattening || (inventedGround?.name === body.name && inventedGround.version === body.invented.version)) return;
   if (!body.invented.terrain && Math.hypot(...solarFrame.offsetKm) > INVENT_GROUND_WITHIN_RADII * body.radiusKm) return;
-  const settings = renderer.inventGround(body, toBodyLocal(body, body.sunward));
+  const painted = renderer.inventGround(body, toBodyLocal(body, body.sunward));
+  const settings = painted && withRivers(body, painted);
   if (settings || inventedGround?.name !== body.name) inventedGround = settings && { name: body.name, version: settings.version, settings };
 }
 
@@ -950,13 +969,24 @@ function moveInSolarFrame(shiftKm) {
   else solarFrame.offsetKm = add(solarFrame.offsetKm, shiftKm);
 }
 
+const RIVERS_KEPT_WITHIN_METRES = 400;
+let riversBelow = null;
+
+function riversUnder(holder, ground, up) {
+  const radiusMetres = holder.radiusKm * 1000;
+  if (riversBelow?.ground !== ground || Math.hypot(...subtract(up, riversBelow.up)) * radiusMetres > RIVERS_KEPT_WITHIN_METRES) {
+    riversBelow = { ground, up, near: riversNear(ground.rivers, radiusMetres, up, RIVERS_KEPT_WITHIN_METRES, COLLISION_FOOTPRINT_METRES) };
+  }
+  return riversBelow.near;
+}
+
 function lowestDistanceKm(holder, offsetKm) {
   const ground = groundFor(holder);
   if (!ground) return radiusBelowKm(holder, offsetKm) + lowestAltitudeKm(holder);
   const frame = groundFrame(toBodyLocal(holder, offsetKm), holder.radiusKm);
   if (frame.altitudeKm > GROUND_CHECK_KM) return holder.radiusKm;
-  const { height, seaLevel } = groundHeightMetres(ground, frame.up, frame.anchor, frame.surfaceOffset, COLLISION_FOOTPRINT_METRES);
-  return holder.radiusKm + (Math.max(height, seaLevel) + EYE_HEIGHT_METRES) / 1000;
+  const { height, waterLevel } = groundHeightMetres(ground, frame.up, frame.anchor, frame.surfaceOffset, COLLISION_FOOTPRINT_METRES, riversUnder(holder, ground, frame.up));
+  return holder.radiusKm + (Math.max(height, waterLevel) + EYE_HEIGHT_METRES) / 1000;
 }
 
 function followSolarSystem() {
@@ -1738,7 +1768,7 @@ if (!renderer) {
     warpOptics = optics;
     renderer.loadWarpTable(optics);
   });
-  groundPatches = createGroundPatches(renderer.releasePatch, renderer.releaseDetails);
+  groundPatches = createGroundPatches(renderer.releasePatch, renderer.releaseDetails, renderer.releaseRibbon);
   loadBodyMaps(new URL('data/planets/', window.location.href), (layer, maps) => {
     renderer.loadBodyMap(layer, maps);
     groundMaps[layer] = maps.ground ?? null;

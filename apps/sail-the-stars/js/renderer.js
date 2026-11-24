@@ -12,7 +12,7 @@ import {
   CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT, EARTH_CLOUDS,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, LATTICE_PERIOD, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
-  PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, ROCK_SHADOW_LAYER, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
+  PATCH_FRAGMENT, PATCH_VERTEX, RIVER_FRAGMENT, RIVER_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, ROCK_SHADOW_LAYER, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
   SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
   SIMULATED_CLOUD_SIZE,
@@ -23,6 +23,7 @@ import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
 import { grassMesh, MESH_FLOATS, ROCK_SHAPES, rockMesh } from './detail-meshes.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
+import { RIBBON_FLOATS } from './rivers.js';
 import { rocksSeen, SCATTER_FLOATS, SCATTER_LAYERS } from './surface-scatter.js';
 import { apparentMagnitude, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
 import { lattice, mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
@@ -194,6 +195,7 @@ const TUFTS_THINNED_AT_REACH_SHARE = 0.7;
 const FEWEST_TUFTS_SHARE = 0.15;
 const GRASS_TINT = [1.05, 1.15, 0.85, 0];
 const NO_DETAIL = [0, 0, 0, 0];
+const RIVER_CYCLE_SECONDS = 1024;
 const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5, mirror: 7 };
 const MIRROR_OCCLUDES_FROM_COSINE = 0.5;
 const INVENTED_ROCKY_CODE = 6;
@@ -412,6 +414,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   const cloudProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_FRAGMENT);
   const cloudNearbyProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_NEARBY_FRAGMENT);
   const patchProgram = createProgram(gl, PATCH_VERTEX, PATCH_FRAGMENT);
+  const riverProgram = createProgram(gl, RIVER_VERTEX, RIVER_FRAGMENT);
   const shadowProgram = createProgram(gl, SHADOW_VERTEX, SHADOW_FRAGMENT);
   let shadowMaps = null;
   const groundDetailTexture = (() => {
@@ -439,6 +442,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   let cloudTargets = [];
   let cloudFrame = 0;
   let previousCloudView = null;
+  let riverSeconds = 0;
   const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
   const cameraStarProgram = createProgram(gl, CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT);
   const developProgram = createProgram(gl, FULLSCREEN_VERTEX, DEVELOP_FRAGMENT);
@@ -980,6 +984,50 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, program, { uDetailShape: NO_DETAIL });
   }
 
+  function uploadRibbon(ribbon) {
+    const [vertexBuffer, indexBuffer, vao] = [gl.createBuffer(), gl.createBuffer(), gl.createVertexArray()];
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, ribbon.vertices, gl.STATIC_DRAW);
+    [[0, 3, 0], [1, 3, 12], [2, 1, 24], [3, 3, 28]].forEach(([location, size, offset]) => {
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, size, gl.FLOAT, false, RIBBON_FLOATS * 4, offset);
+    });
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ribbon.indices, gl.STATIC_DRAW);
+    ribbon.gpu = { vertexBuffer, indexBuffer, vao, indexCount: ribbon.indices.length };
+    ribbon.vertices = null;
+    ribbon.indices = null;
+  }
+
+  function releaseRibbon(ribbon) {
+    if (!ribbon.gpu) return;
+    gl.deleteBuffer(ribbon.gpu.vertexBuffer);
+    gl.deleteBuffer(ribbon.gpu.indexBuffer);
+    gl.deleteVertexArray(ribbon.gpu.vao);
+    ribbon.gpu = null;
+  }
+
+  function useOnGround(program, view, bodies, ground, shadows) {
+    gl.useProgram(program.program);
+    setUniforms(gl, program, { ...viewUniforms(view), ...bodyLocalBasis(ground.body, view.basis), ...shadows });
+    if (shadows.cascades) setArray(gl, program, 'uShadowCascades', shadows.cascades, 4);
+    gl.uniform1i(program.uniforms.uShadowMaps, SHADOW_MAP_UNIT);
+    gl.uniform1i(program.uniforms.uGroundDetail, GROUND_DETAIL_UNIT);
+    gl.uniform1i(program.uniforms.uCloudBillows, CLOUD_BILLOWS_UNIT);
+    setBodies(program, bodies, ground);
+  }
+
+  function drawRivers(ribbons, ground, pixelAngle) {
+    setUniforms(gl, riverProgram, { uPixelAngle: pixelAngle, uRiverSeconds: riverSeconds, uMolten: ground.settings.rivers.molten ? 1 : 0 });
+    for (const ribbon of ribbons) {
+      if (!ribbon.gpu) uploadRibbon(ribbon);
+      setUniforms(gl, riverProgram, { uPatchFromCamera: ribbon.centreKm.map((value, axis) => (value - ground.cameraLocalKm[axis]) * 1000), uPatchCentreKm: ribbon.centreKm });
+      gl.bindVertexArray(ribbon.gpu.vao);
+      gl.drawElements(gl.TRIANGLES, ribbon.gpu.indexCount, gl.UNSIGNED_INT, 0);
+    }
+  }
+
   function releasePatch(patch) {
     if (!patch.gpu) return;
     gl.deleteBuffer(patch.gpu.buffer);
@@ -1183,19 +1231,17 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    gl.useProgram(patchProgram.program);
-    setUniforms(gl, patchProgram, { ...viewUniforms(view), ...bodyLocalBasis(ground.body, view.basis), ...shadows });
-    if (shadows.cascades) setArray(gl, patchProgram, 'uShadowCascades', shadows.cascades, 4);
-    gl.uniform1i(patchProgram.uniforms.uShadowMaps, SHADOW_MAP_UNIT);
-    gl.uniform1i(patchProgram.uniforms.uGroundDetail, GROUND_DETAIL_UNIT);
-    gl.uniform1i(patchProgram.uniforms.uCloudBillows, CLOUD_BILLOWS_UNIT);
-    setBodies(patchProgram, bodies, ground);
+    useOnGround(patchProgram, view, bodies, ground, shadows);
     gl.clearDepth(1);
     gl.clear(gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LESS);
     drawDetails(patchProgram, ground.details.drawn, ground, view.pixelAngle);
     drawPatches(patchProgram, ground.drawn, ground.cameraLocalKm);
+    if (ground.rivers.length) {
+      useOnGround(riverProgram, view, bodies, ground, shadows);
+      drawRivers(ground.rivers, ground, view.pixelAngle);
+    }
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
     const clouds = ground.settings.clouds ? drawClouds(view, bodies, ground, target) : null;
@@ -1232,6 +1278,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     }
 
     giants.advance(bodies ?? [], view.pixelAngle, cloudSeconds);
+    riverSeconds = (riverSeconds + cloudSeconds) % RIVER_CYCLE_SECONDS;
     const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
     gl.bindFramebuffer(gl.FRAMEBUFFER, motion?.needed ? motionBlur.pictureFitting(canvas.width, canvas.height).framebuffer : null);
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1339,5 +1386,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, loadSimulatedClouds, loadCityLights, widestTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), inventGround: inventedGround.groundOf, releasePatch, releaseDetails };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, loadSimulatedClouds, loadCityLights, widestTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), inventGround: inventedGround.groundOf, releasePatch, releaseDetails, releaseRibbon };
 }
