@@ -16,7 +16,7 @@ import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warp
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { CLOUD_MAP_SIZE } from './shaders.js';
-import { holdingBody, KM_PER_PC, loadBodyMaps, loadCloudMap, lowestAltitudeKm, placeBodies } from './solar-system.js';
+import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies } from './solar-system.js';
 import { withExoplanetHosts } from './exoplanets.js';
 import { SOLAR_SYSTEM, systemNamed, systemNear, withinSystem } from './planetary-systems.js';
 import { drawOrbits } from './orbits.js';
@@ -1631,6 +1631,9 @@ if (!renderer) {
   loadCloudMap(new URL('data/planets/', window.location.href), CLOUD_MAP_SIZE)
     .then(renderer.loadCloudMap)
     .catch(() => showStatus("Earth's cloud map failed to load; Earth shows no clouds."));
+  loadCityLights(new URL('data/planets/', window.location.href), renderer.widestTexture)
+    .then(renderer.loadCityLights)
+    .catch(() => showStatus("Earth's city lights failed to load; its night side stays dark."));
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     catalogue = stars;
     nearby = withExoplanetHosts(stars);

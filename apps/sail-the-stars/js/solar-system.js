@@ -475,6 +475,7 @@ export function placeBodies(ms) {
   for (const [name, offset] of satelliteOffsets) fromSun.set(name, add(fromSun.get(parentOf(name)), offset));
   const facing = BODIES.map((body) => ({
     ...body,
+    ...(body.name === 'Earth' && { cityLights: cityLightsOn(ms) }),
     ...(body.synchronous ? synchronousFacing.get(body.name) : orientation(body, days)),
     cloudMeridian: body.cloudSpin && orientation({ ...body, spin: body.cloudSpin }, days).meridian,
     fromSunKm: fromSun.get(body.name),
@@ -540,9 +541,24 @@ function pixelsOf(bitmap, channel) {
 
 const mapImage = (url, options) => fetch(url).then((response) => response.blob()).then((blob) => createImageBitmap(blob, options));
 
+const CITY_LIGHTS_SIZE = [8192, 3072];
+
 export function loadCloudMap(folder, [width, height]) {
   return Promise.all(['earth-clouds.webp', 'earth-cloud-tops.webp'].map((name) =>
     mapImage(new URL(name, folder), { colorSpaceConversion: 'none', resizeWidth: width, resizeHeight: height, resizeQuality: 'high' })));
+}
+
+export async function loadCityLights(folder, widestTexture) {
+  const [width, height] = CITY_LIGHTS_SIZE.map((size) => Math.round(size * Math.min(1, widestTexture / CITY_LIGHTS_SIZE[0])));
+  return mapImage(new URL('earth-lights.webp', folder), { colorSpaceConversion: 'none', resizeWidth: width, resizeHeight: height });
+}
+
+const FIRST_LIGHTS_MS = Date.UTC(1882, 8, 4);
+const MAPPED_LIGHTS_MS = Date.UTC(2016, 0, 1);
+
+function cityLightsOn(ms) {
+  const share = Math.min(1, Math.max(0, (ms - FIRST_LIGHTS_MS) / (MAPPED_LIGHTS_MS - FIRST_LIGHTS_MS)));
+  return share * share;
 }
 
 export async function loadBodyMaps(folder, onLoaded) {

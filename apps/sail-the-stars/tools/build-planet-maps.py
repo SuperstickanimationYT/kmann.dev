@@ -10,6 +10,7 @@ Raw downloads (all NASA, public domain):
   world.200407.3x5400x2700.jpg     NASA Earth Observatory, Blue Marble Next Generation, July 2004
   gebco_08_rev_elev_5400x2700.jpg  NASA Earth Observatory from GEBCO, land elevation 0-6400 m
   gebco_08_rev_bath_5400x2700.jpg  NASA Earth Observatory from GEBCO, 255 on land, lower over water
+  BlackMarble_2016_3km_gray.jpg    NASA Earth Observatory, Black Marble 2016 night lights
   Venus_Magellan_Topography_Global_4641m_v02.tif  USGS Astrogeology, Magellan, int16 metres, -32768 where unmapped
   Titan_ISS_P19658_Mosaic_Global_4km.tif           USGS Astrogeology, Cassini ISS 938 nm, columns run 0-360 E
   topo_4PPD_interp.cub                             Cornell eCommons (Corlies 2017, CC0), ISIS cube, float32 metres
@@ -23,6 +24,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+Image.MAX_IMAGE_PIXELS = None
 WIDTH = 1024
 HEIGHT = 512
 COLOUR_QUALITY = 82
@@ -36,6 +38,11 @@ VENUS_UNMAPPED = -32768
 VENUS_BASALT = (80, 74, 66)
 TITAN_TINT = np.array([1.0, 0.84, 0.62])
 GAP_FILL_STEPS = 400
+LIGHTS_SIZE = (8192, 3072)
+LIGHTS_NORTH = 75
+LIGHTS_SOUTH = -60
+LIGHTS_QUALITY = 28
+LIGHTS_FLOOR = 0.008
 OUT = Path(__file__).resolve().parent.parent / 'data' / 'planets'
 
 
@@ -153,6 +160,15 @@ def save_tinted_brightness(path, name, tint, starts_at_zero_east):
     Image.fromarray(rgb, 'RGB').save(OUT / f'{name}-colour.webp', quality=COLOUR_QUALITY, method=6)
 
 
+def save_night_lights(path, name):
+    brightness = grey(path).astype(np.float32) / 255
+    rows_per_degree = brightness.shape[0] / 180
+    lit_band = brightness[int((90 - LIGHTS_NORTH) * rows_per_degree):int((90 - LIGHTS_SOUTH) * rows_per_degree)]
+    shrunk = np.asarray(Image.fromarray(lit_band, 'F').resize(LIGHTS_SIZE, Image.BOX))
+    without_noise = np.clip((shrunk - LIGHTS_FLOOR) / (1 - LIGHTS_FLOOR), 0, 1)
+    Image.fromarray(np.round(np.sqrt(without_noise) * 255).astype(np.uint8), 'L').save(OUT / f'{name}-lights.webp', quality=LIGHTS_QUALITY, method=6)
+
+
 def edge_strength(grey):
     return np.abs(np.diff(grey, axis=1, append=grey[:, :1])) + np.abs(np.diff(grey, axis=0, append=grey[:1, :]))
 
@@ -186,6 +202,8 @@ def main(raw):
 
     save_colour(raw / 'world.200407.3x5400x2700.jpg', 'earth', land=land_mask(raw / 'gebco_08_rev_bath_5400x2700.jpg'))
     ranges['Earth'] = save_height(grey(raw / 'gebco_08_rev_elev_5400x2700.jpg') / 255 * EARTH_HIGHEST_M, 'earth')
+
+    save_night_lights(raw / 'BlackMarble_2016_3km_gray.jpg', 'earth')
 
     venus = gaps_filled(block_mean_ignoring_gaps(uncompressed_int16_tiff(raw / 'Venus_Magellan_Topography_Global_4641m_v02.tif'), VENUS_UNMAPPED))
     save_flat_colour(VENUS_BASALT, 'venus')

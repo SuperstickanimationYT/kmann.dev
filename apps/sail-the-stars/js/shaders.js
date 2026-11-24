@@ -650,6 +650,70 @@ vec3 bodyLocal(vec3 surface, BodyFrame frame) {
   return vec3(dot(surface, frame.meridian), dot(surface, frame.east), dot(surface, frame.north));
 }
 
+uniform sampler2D uCityLights;
+uniform int uLitBody;
+uniform float uCityLightsOn;
+uniform float uLitBodyKm;
+const float CITY_LIGHTS_NORTH = 75.0;
+const float CITY_LIGHTS_SPAN = 135.0;
+const float CITY_LIGHTS_DUSK = 0.02;
+const float CITY_LIGHTS_FULL_NIGHT = -0.12;
+const float CITY_LIGHTS_GAIN = 1.15;
+const vec3 CITY_LIGHTS_DIM = vec3(1.0, 0.58, 0.24);
+const vec3 CITY_LIGHTS_BRIGHT = vec3(1.0, 0.84, 0.6);
+const float DISTRICT_CONTRAST = 1.6;
+const float CLOUD_LAMPLIGHT = 0.17;
+const float LAMP_POOL_LIGHT = 0.06;
+const float LAMP_POOL_KM = 0.0003;
+const float LAMP_POINT_KM = 0.003;
+const float CLOUD_LAMPLIGHT_BLUR_KM = 12.0;
+const float LAMP_STRIPS = 1024.0;
+const float LAMPS_STEEPEST_GRAZE = 0.02;
+
+float districtShare(vec2 place, float cellKm, float footprintKm) {
+  float seen = 1.0 - smoothstep(0.2, 0.6, footprintKm / cellKm);
+  if (seen <= 0.0) return 1.0;
+  return max(1.0 + seen * DISTRICT_CONTRAST * (smoothNoise(vec3(place / cellKm, cellKm)) - 0.5), 0.0);
+}
+
+float lampShare(vec2 place, float cellKm, float gathering, float footprintKm) {
+  float seen = 1.0 - smoothstep(0.2, 0.6, footprintKm / cellKm);
+  if (seen <= 0.0) return 1.0;
+  vec2 p = place / cellKm;
+  vec2 cell = mod(floor(p), 1024.0);
+  vec3 chance = fract(sin(vec3(dot(cell, vec2(12.71, 31.17)), dot(cell, vec2(26.95, 18.33)), dot(cell, vec2(41.93, 28.91)))) * 4375.85);
+  vec2 off = fract(p) - 0.5 - 0.5 * (chance.xy - 0.5);
+  return mix(1.0, gathering / 3.1415927 * exp(-gathering * dot(off, off)) * 3.0 * chance.z * chance.z, seen);
+}
+
+float lampsWithin(vec2 uv, float footprintKm) {
+  float strip = (floor(uv.y * LAMP_STRIPS) + 0.5) / LAMP_STRIPS;
+  vec2 place = vec2((uv.x - 0.5) * 2.0 * sin(strip * 3.1415927), uv.y) * 3.1415927 * uLitBodyKm;
+  float shares = districtShare(place, 2.6, footprintKm) * districtShare(place, 0.7, footprintKm) * lampShare(place, 0.9, 9.0, footprintKm);
+  if (footprintKm < 0.12) shares *= lampShare(place, 0.18, 18.0, footprintKm) * lampShare(place, 0.045, 60.0, footprintKm);
+  return shares * mix(LAMP_POOL_LIGHT, 1.0, smoothstep(LAMP_POOL_KM, LAMP_POINT_KM, footprintKm));
+}
+
+vec3 cityGlow(int body, vec2 uv, float footprint, float sunHeight) {
+  if (body != uLitBody || sunHeight >= CITY_LIGHTS_DUSK) return vec3(0.0);
+  float row = (uv.y * 180.0 - (90.0 - CITY_LIGHTS_NORTH)) / CITY_LIGHTS_SPAN;
+  if (row <= 0.0 || row >= 1.0) return vec3(0.0);
+  float texel = 6.2831853 / float(textureSize(uCityLights, 0).x);
+  float level = textureLod(uCityLights, vec2(uv.x, row), max(log2(footprint / texel), 0.0)).r * uCityLightsOn;
+  float night = 1.0 - smoothstep(CITY_LIGHTS_FULL_NIGHT, CITY_LIGHTS_DUSK, sunHeight);
+  return CITY_LIGHTS_GAIN * night * mix(CITY_LIGHTS_DIM, CITY_LIGHTS_BRIGHT, level) * level;
+}
+
+vec3 cityLights(int body, vec2 uv, float footprint, float facing, float sunHeight) {
+  vec3 glow = cityGlow(body, uv, footprint, sunHeight);
+  if (glow.r <= 0.004) return glow;
+  return glow * lampsWithin(uv, footprint * uLitBodyKm / sqrt(max(facing, LAMPS_STEEPEST_GRAZE)));
+}
+
+vec3 cityGlowOnClouds(int body, vec2 uv, float footprint, float sunHeight) {
+  return CLOUD_LAMPLIGHT * cityGlow(body, uv, max(footprint, CLOUD_LAMPLIGHT_BLUR_KM / uLitBodyKm), sunHeight);
+}
+
 uniform highp sampler2DArray uCloudMap;
 uniform float uCloudMapOn;
 const vec2 CLOUD_MAP_SIZE = vec2(${CLOUD_MAP_SIZE.map((size) => size.toFixed(1)).join(', ')});
@@ -1288,13 +1352,16 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   float lighting = max(dot(shaded, sun), 0.0);
   if (look.w == BODY_CLOUDED || look.w == BODY_HAZY) lighting = mix(lighting, 2.0 * sunHeight / (sunHeight + mu + 1e-4), CLOUD_DECK_FLATNESS);
   vec3 lit = albedo * lighting * daylight;
+  float cloudsOver = 0.0;
   if (look.w == BODY_OCEAN_WORLD) {
     vec3 halfway = normalize(sun - direction);
     lit += (1.0 - land) * daylight * sunHeight * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
     vec3 sunLocal = bodyLocal(sun, frame);
     vec2 sheet = cloudSheet(local, footprint);
-    lit *= cloudSheetShadow(local, sunLocal, max(log2(footprint / CLOUD_TEXEL), 0.0));
-    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight * cloudSheetLight(local, sheet, sunLocal, footprint), CLOUD_OPACITY * sheet.x);
+    if (daylight > 0.0) lit *= cloudSheetShadow(local, sunLocal, max(log2(footprint / CLOUD_TEXEL), 0.0));
+    cloudsOver = CLOUD_OPACITY * sheet.x;
+    float sheetLight = daylight > 0.0 ? cloudSheetLight(local, sheet, sunLocal, footprint) : 0.0;
+    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight * sheetLight, cloudsOver);
   }
   if (invented) {
     vec3 halfway = normalize(sun - direction);
@@ -1303,8 +1370,9 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   }
   lit *= sunlightToSurface(i, dot(normal, sun)) * sunlightReaching(i, normal) * uStarlight;
   vec3 glow = invented && made.kelvin > 850.0 ? thermalGlow(i, made.kelvin) : uBodyGlow[i].rgb * (0.45 + 1.6 * albedo.g) * (0.45 + 0.55 * mu);
+  vec3 lamps = mix(cityLights(i, uv, footprint, mu, dot(normal, sun)), cityGlowOnClouds(i, uv, footprint, dot(normal, sun)), cloudsOver);
   float brightest = max(1.0, max(glow.r, uBodyGlow[i].r));
-  return (lit + glow) / brightest;
+  return (lit + lamps + glow) / brightest;
 }
 
 
@@ -1631,6 +1699,7 @@ const int CLOUD_COARSE_CELL_OCTAVES = 2;
 const int CLOUD_SHADOW_SAMPLES = 3;
 const int THIN_CLOUD_SHADOW_SAMPLES = 2;
 const float CLOUD_LEAST_COVERAGE = 0.01;
+const float CLOUDS_DARK_BELOW = -0.15;
 const float CLOUD_OPAQUE_CLEARNESS = 0.02;
 uniform sampler2D uCloudBillows;
 const float SKY_BRIGHTNESS = 0.9;
@@ -1970,6 +2039,7 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
   int steps = mapped ? CLOUD_STEPS : THIN_CLOUD_STEPS;
   vec3 upBetween = normalize(uGroundCamera + ray * mix(enter, leave, 0.25));
   vec3 airSunlight = sunlightThroughAir(sun, upBetween) * uSunVisible;
+  float sunHeight = dot(sun, upBetween);
   float edgeGain = mapped ? CLOUD_EDGE_GAIN : 1.0;
   float outsideKm = enter;
   vec3 scattered = vec3(0.0);
@@ -2012,8 +2082,7 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
       }
       outsideKm = -1.0;
       float opacity = 1.0 - exp(-uGroundClouds.z * edgeGain * density * stepKm);
-      if (!mapped || clear > CLOUD_RELIT_CLEARNESS) {
-        vec3 up = normalize(uGroundCamera + ray * t);
+      if (sunHeight > CLOUDS_DARK_BELOW && (!mapped || clear > CLOUD_RELIT_CLEARNESS)) {
         float above = cloudDensityForLight(coverage, ray * t + sun * sunProbeKm, blurMetres, shareBlur, CLOUD_COARSE_CELL_OCTAVES);
         float beside = mapped ? cloudDensityForLight(coverage, ray * t + sun * CLOUD_CREST_PROBE_KM, blurMetres, shareBlur + CLOUD_CREST_SOFTNESS, CLOUD_ALL_CELL_OCTAVES) : density;
         float depthTowardSun = uGroundClouds.z * sunProbeKm * 0.5 * (mix(beside, density, CLOUD_FACE_SHADE) + above);
@@ -2021,7 +2090,6 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
         float higher = cloudDensityForLight(coverage, ray * t + sun * sunProbeKm * CLOUD_FAR_PROBE, blurMetres, shareBlur, CLOUD_FAR_CELL_OCTAVES);
         depthTowardSun += uGroundClouds.z * sunProbeKm * 0.5 * (CLOUD_FAR_PROBE - 1.0) * (above + higher);
         float sunThrough = phase * exp(-depthTowardSun) + CLOUD_SCATTERED_SHARE * exp(-CLOUD_SCATTERED_REACH * depthTowardSun);
-        float sunHeight = dot(sun, up);
         float daylight = smoothstep(-0.05, 0.05, sunHeight);
         vec3 sunlit = airSunlight * sunThrough * max(sunHeight, 0.0);
         vec3 skylit = cloudSkylight(sunHeight);
@@ -2039,7 +2107,7 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
   return vec4(light, 1.0 - clear);
 }
 
-vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
+vec4 daylitCloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
   float sheetShare = cloudSheetShare();
   depthKm = -1.0;
   float inventedShare = inventedSheetShare();
@@ -2065,6 +2133,15 @@ vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm)
   vec4 layered = front + back * (1.0 - front.a);
   if (depthKm <= 0.0) depthKm = sheetShare > 0.5 ? sheetKm : highKm;
   return mix(layered, sheet, sheetShare);
+}
+
+vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
+  vec4 clouds = daylitCloudsSeenFrom(ray, sun, nearestSolidKm, depthKm);
+  if (uGround != uLitBody || clouds.a <= 0.0 || depthKm <= 0.0) return clouds;
+  vec3 up = normalize(uGroundCamera + ray * depthKm);
+  if (dot(up, sun) >= CITY_LIGHTS_DUSK) return clouds;
+  clouds.rgb += clouds.a * cityGlowOnClouds(uGround, groundUv(up), 0.0, dot(up, sun));
+  return clouds;
 }
 
 float sunThroughClouds(vec3 up, vec3 sun, vec3 offset, float footprint) {
@@ -2128,7 +2205,8 @@ float lavaKelvin(float kelvin, vec3 offset, float footprint) {
 
 vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float footprint, vec3 ray, vec3 sun, vec3 upHere, float sunVisible) {
   bool invented = groundInvented();
-  vec4 painted = invented ? inventedGround(up, footprint) : textureLod(uBodyColour, vec3(groundUv(up), groundLayer()), 0.0);
+  vec2 uv = groundUv(up);
+  vec4 painted = invented ? inventedPaint(uv, footprint / (1000.0 * uGroundRadius)) : textureLod(uBodyColour, vec3(uv, groundLayer()), 0.0);
   vec3 albedo = painted.rgb;
   if (invented) albedo *= 1.0 + inventedMottle(offset, footprint);
   vec3 seaAlbedo = invented ? INVENTED_OCEAN : OCEAN_ALBEDO;
@@ -2152,6 +2230,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   } else {
     lit = albedo * (max(dot(normal, sun), 0.0) * sunlight * shadow + ambient);
   }
+  if (!water) lit += cityLights(uGround, uv, footprint / (1000.0 * uGroundRadius), dot(-ray, up), sunHeight);
   if (uGroundAir.w > 0.0) {
     float haze = 1.0 - exp(-t * airDensityHere() / uGroundGlow.w);
     lit = mix(lit, groundSky(normalize(ray + upHere * 0.02), sun, upHere), haze);
