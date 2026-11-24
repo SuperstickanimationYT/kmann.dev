@@ -4,8 +4,10 @@ import { KM_PER_PC } from './solar-system.js';
 import { KIND } from './stars.js';
 
 const SUN_ABSOLUTE_MAGNITUDE = 4.83;
+const SUN_KELVIN = 5772;
 export const UNNAMED_STAR = 'Unnamed star';
 const KM_PER_AU = 149597870.7;
+const ESTIMATED_MASS = { measured: '', least: 'at least ', guessed: 'about ' };
 const SHOW_KM_BELOW_AU = 0.01;
 const SHOW_LIGHT_YEARS_FROM_AU = 6000;
 const MINUTES_PER_YEAR = 525960;
@@ -38,8 +40,10 @@ const temperatureFromColour = (colourIndex) => 4600 * (1 / (0.92 * colourIndex +
 const spectralClass = (kelvin) => SPECTRAL_CLASSES.find(([floor]) => kelvin >= floor)[1];
 const magnitude = (value) => value.toFixed(2);
 
-function formatLuminosity(absolute) {
-  const solar = 10 ** (0.4 * (SUN_ABSOLUTE_MAGNITUDE - absolute));
+const visualLuminosity = (absolute) => 10 ** (0.4 * (SUN_ABSOLUTE_MAGNITUDE - absolute));
+const totalLuminosity = ({ radius, kelvin }) => radius ** 2 * (kelvin / SUN_KELVIN) ** 4;
+
+function formatLuminosity(solar) {
   if (solar >= 100) return `${Math.round(solar).toLocaleString('en')} × Sun`;
   if (solar >= 0.01) return `${solar.toPrecision(2)} × Sun`;
   return `${solar.toExponential(1)} × Sun`;
@@ -62,20 +66,53 @@ function formatKm(km) {
   return au >= 10 ? `${Math.round(au).toLocaleString('en')} AU` : `${au.toFixed(2)} AU`;
 }
 
+const planetCount = (count) => (count === 1 ? '1 known planet here' : `${count} known planets here`);
+
+function starKind(pick) {
+  if (pick.hostData) return `Star with ${planetCount(pick.hostData.planets.length)}`;
+  return pick.kind === KIND.cluster ? `${STAR_KINDS[KIND.cluster]} in ${pick.name}` : STAR_KINDS[pick.kind];
+}
+
 function starFacts(pick) {
   const apparent = pick.absolute + 5 * Math.log10(pick.distance / 10);
-  const kelvin = temperatureFromColour(pick.colour);
+  const kelvin = pick.hostData?.kelvin ?? temperatureFromColour(pick.colour);
   const named = pick.kind === KIND.sun || pick.kind === KIND.catalogue;
   return {
     title: pick.kind === KIND.sun ? 'Sun' : (named && pick.name) || UNNAMED_STAR,
-    kind: pick.kind === KIND.cluster ? `${STAR_KINDS[KIND.cluster]} in ${pick.name}` : STAR_KINDS[pick.kind],
+    kind: starKind(pick),
     facts: [
       ['Distance', formatDistance(pick.distance)],
       ['Brightness from here', `magnitude ${magnitude(apparent)}`],
       ['Absolute magnitude', magnitude(pick.absolute)],
-      ['Luminosity', formatLuminosity(pick.absolute)],
+      ['Luminosity', formatLuminosity(pick.hostData ? totalLuminosity(pick.hostData) : visualLuminosity(pick.absolute))],
       ['Surface', `${Math.round(kelvin / 100) * 100} K, class ${spectralClass(kelvin)}`],
       ['Light left it', formatLightTravel(pick.distance)],
+    ],
+  };
+}
+
+function exoplanetKind({ kind, invented }) {
+  if (invented) return 'Rocky planet, surface made up';
+  return kind === 'hazy' ? 'Small gas planet, clouds made up' : 'Giant planet, clouds made up';
+}
+
+function formatPeriod(days) {
+  return days < 1000 ? `${days.toPrecision(3)} days` : `${(days / 365.25).toPrecision(3)} years`;
+}
+
+function exoplanetFacts(body, facts) {
+  const { earthRadii, earthMasses, radiusMeasured, massKnown, periodDays, kelvin } = body.measured;
+  return {
+    title: body.name,
+    kind: exoplanetKind(body),
+    facts: [
+      facts[0],
+      ['Radius', `${radiusMeasured ? '' : 'about '}${earthRadii.toPrecision(3)} × Earth`],
+      ['Mass', `${ESTIMATED_MASS[massKnown]}${Number(earthMasses.toPrecision(3)).toLocaleString('en')} × Earth`],
+      ['Orbits', body.host],
+      ['From its star', `${body.sunDistanceAu.toPrecision(3)} AU`],
+      ['Year', formatPeriod(periodDays)],
+      ['Temperature', `about ${Math.round(kelvin)} K`],
     ],
   };
 }
@@ -87,6 +124,7 @@ function bodyFacts(pick) {
     ['Radius', `${Math.round(body.radiusKm).toLocaleString('en')} km`],
   ];
   if (body.parent) facts.push(['Orbits', body.parent]);
+  if (body.measured) return exoplanetFacts(body, facts);
   if (body.kind !== 'star') facts.push(['From the Sun', `${body.sunDistanceAu.toFixed(2)} AU`]);
   const kind = body.parent ? `Moon of ${body.parent}` : BODY_KINDS[body.kind];
   return { title: body.name, kind, facts };

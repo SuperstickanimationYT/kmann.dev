@@ -2,7 +2,7 @@ import { DEGREES, equatorialToFrame, SUN_POSITION } from './milky-way.js';
 import { add, cross, dot, normalize, rotateAbout, scale, subtract } from './vectors.js';
 
 export const KM_PER_PC = 3.0857e13;
-const KM_PER_AU = 1.495978707e8;
+export const KM_PER_AU = 1.495978707e8;
 const HOLD_RADII = 200;
 const LOWEST_ALTITUDE_KM = 30;
 const LOWEST_ALTITUDE_RADII = 0.5;
@@ -13,8 +13,8 @@ const DAYS_PER_CENTURY = 36525;
 const OBLIQUITY = 23.43928 * DEGREES;
 const EARTH_SHARE_OF_MOON_OFFSET = 1 / 82.3;
 const DAYS_PER_YEAR = 365.25;
-const ORBIT_PATH_POINTS = 256;
-const SYNCHRONOUS_LOOKAHEAD_DAYS = 0.01;
+export const ORBIT_PATH_POINTS = 256;
+export const SYNCHRONOUS_LOOKAHEAD_DAYS = 0.01;
 
 const MOON_ARGUMENTS = [
   [297.8501921, 445267.1114034],
@@ -27,7 +27,7 @@ const MOON_ARGUMENTS = [
   [313.45, 481266.484],
 ];
 const SIDEREAL_MONTH_DAYS = 27.321661;
-const SUN_RADIUS_KM = 695700;
+export const SUN_RADIUS_KM = 695700;
 const ECLIPSERS_PER_BODY = 2;
 const TT_TABLE_START_YEAR = 1800;
 const TT_TABLE_STEP_YEARS = 5;
@@ -277,7 +277,7 @@ function solveKepler(meanAnomaly, e) {
   return E;
 }
 
-function orbitPoint({ a, e, inclination, node, periapsisArgument, meanAnomaly }) {
+export function orbitPoint({ a, e, inclination, node, periapsisArgument, meanAnomaly }) {
   const E = solveKepler(meanAnomaly, e);
   const along = a * (Math.cos(E) - e);
   const across = a * Math.sqrt(1 - e * e) * Math.sin(E);
@@ -371,7 +371,7 @@ function equatorialDirection(ra, dec) {
   return [Math.cos(dec * DEGREES) * Math.cos(ra * DEGREES), Math.cos(dec * DEGREES) * Math.sin(ra * DEGREES), Math.sin(dec * DEGREES)];
 }
 
-function facingParent(offsetKm, nextOffsetKm) {
+export function facingParent(offsetKm, nextOffsetKm) {
   const north = normalize(cross(offsetKm, nextOffsetKm));
   const towardParent = scale(offsetKm, -1);
   return { north, meridian: normalize(subtract(towardParent, scale(north, dot(towardParent, north)))) };
@@ -399,7 +399,7 @@ export function sunShareVisible(seen, ignoredName) {
   const sun = seen.find(({ body }) => body.kind === 'star');
   if (!sun) return 1;
   const sunDistance = Math.hypot(...sun.offsetKm);
-  const sunRadius = Math.asin(Math.min(1, SUN_RADIUS_KM / sunDistance));
+  const sunRadius = Math.asin(Math.min(1, sun.body.radiusKm / sunDistance));
   let hidden = 0;
   for (const { body, offsetKm } of seen) {
     const distance = Math.hypot(...offsetKm);
@@ -438,7 +438,7 @@ function sunlitShare(body, eclipsers) {
 function eclipsersOf(body, bodies) {
   if (body.kind === 'star') return [];
   const sunDistance = Math.hypot(...body.fromSunKm);
-  const sunRadius = SUN_RADIUS_KM / sunDistance;
+  const sunRadius = Math.sin(body.sunAngularRadius);
   return bodies
     .filter((other) => other !== body && other.kind !== 'star')
     .map((other) => {
@@ -473,20 +473,27 @@ export function placeBodies(ms) {
     fromSun.set(parent, subtract(fromSun.get(parent), scale(offset, orbit.parentShare)));
   }
   for (const [name, offset] of satelliteOffsets) fromSun.set(name, add(fromSun.get(parentOf(name)), offset));
-  const placed = BODIES.map((body) => {
-    const fromSunKm = fromSun.get(body.name);
-    const sunDistanceKm = Math.hypot(...fromSunKm);
+  const facing = BODIES.map((body) => ({
+    ...body,
+    ...(body.synchronous ? synchronousFacing.get(body.name) : orientation(body, days)),
+    cloudMeridian: body.cloudSpin && orientation({ ...body, spin: body.cloudSpin }, days).meridian,
+    fromSunKm: fromSun.get(body.name),
+    mapLayer: MAPPED_BODIES.indexOf(body),
+  }));
+  return inStarlight(facing, SUN_POSITION, SUN_RADIUS_KM);
+}
+
+export function inStarlight(bodies, starPosition, starRadiusKm) {
+  const placed = bodies.map((body) => {
+    const sunDistanceKm = Math.hypot(...body.fromSunKm);
     return {
+      mapLayer: -1,
       ...body,
-      ...(body.synchronous ? synchronousFacing.get(body.name) : orientation(body, days)),
-      cloudMeridian: body.cloudSpin && orientation({ ...body, spin: body.cloudSpin }, days).meridian,
-      fromSunKm,
-      centre: add(SUN_POSITION, scale(fromSunKm, 1 / KM_PER_PC)),
+      centre: add(starPosition, scale(body.fromSunKm, 1 / KM_PER_PC)),
       radius: body.radiusKm / KM_PER_PC,
-      sunward: sunDistanceKm > 0 ? scale(fromSunKm, -1 / sunDistanceKm) : [0, 0, 1],
+      sunward: sunDistanceKm > 0 ? scale(body.fromSunKm, -1 / sunDistanceKm) : [0, 0, 1],
       sunDistanceAu: sunDistanceKm / KM_PER_AU,
-      sunAngularRadius: sunDistanceKm > 0 ? Math.asin(Math.min(1, SUN_RADIUS_KM / sunDistanceKm)) : 0,
-      mapLayer: MAPPED_BODIES.indexOf(body),
+      sunAngularRadius: sunDistanceKm > 0 ? Math.asin(Math.min(1, starRadiusKm / sunDistanceKm)) : 0,
     };
   });
   return placed.map((body) => {
@@ -499,7 +506,7 @@ export function apparentMagnitude(body, offsetKm) {
   const distanceKm = Math.hypot(...offsetKm);
   const phase = Math.acos(Math.max(-1, Math.min(1, -dot(offsetKm, body.sunward) / distanceKm)));
   const lambert = (1 - phase / Math.PI) * Math.cos(phase) + Math.sin(phase) / Math.PI;
-  return body.magnitude + 5 * Math.log10(body.sunDistanceAu * (distanceKm / KM_PER_AU)) - 2.5 * Math.log10(Math.max(lambert, 1e-6)) - 2.5 * Math.log10(Math.max(body.sunlitShare, DARKEST_SHARE));
+  return body.magnitude + 5 * Math.log10(body.sunDistanceAu * (distanceKm / KM_PER_AU)) - 2.5 * Math.log10(Math.max(lambert * Math.max(body.sunlitShare, DARKEST_SHARE), 1e-18) + (body.glowOverReflected ?? 0));
 }
 
 export function holdingBody(bodies, cameraFromSunKm) {
@@ -507,7 +514,7 @@ export function holdingBody(bodies, cameraFromSunKm) {
   let nearest = Infinity;
   for (const body of bodies) {
     const distance = Math.hypot(...subtract(cameraFromSunKm, body.fromSunKm));
-    if (body.kind !== 'star' && distance < HOLD_RADII * body.radiusKm && distance < nearest) {
+    if (body.kind !== 'star' && distance < (body.holdKm ?? HOLD_RADII * body.radiusKm) && distance < nearest) {
       holder = body;
       nearest = distance;
     }

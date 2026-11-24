@@ -176,6 +176,10 @@ const SHADOW_SLOPE_BIAS = 3;
 const SHADOW_CONSTANT_BIAS = 4;
 const NO_SHADOWS = { uShadowsOn: 0 };
 const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5 };
+const INVENTED_ROCKY_CODE = 6;
+const NO_GLOW = [0, 0, 0];
+const UNLIT_LAMP = [1, 1, 1];
+const SUNLIGHT = [1, 1, 1];
 const SUN_DISK_GLOW = 2;
 const ECLIPSERS_PER_BODY = 2;
 const REDDENING_ECLIPSER_SIGN = -1;
@@ -317,6 +321,8 @@ function bodyArrays(shown, mapRelief, giants) {
     uBodyMeridian: new Float32Array(MAX_BODIES * 3),
     uBodyLook: new Float32Array(MAX_BODIES * 4),
     uBodyMap: new Float32Array(MAX_BODIES * 4),
+    uBodyGlow: new Float32Array(MAX_BODIES * 4),
+    uBodyLamp: new Float32Array(MAX_BODIES * 4),
   };
   const ringed = shown.findIndex(({ body }) => body.rings);
   const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringed >= 0 ? shown[ringed].body.radiusKm : 0 };
@@ -335,11 +341,13 @@ function bodyArrays(shown, mapRelief, giants) {
       arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
     arrays.uBodyNorth.set(body.north, i * 3);
     arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
-    arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), BODY_KIND_CODES[body.kind]], i * 4);
+    arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), body.invented ? INVENTED_ROCKY_CODE : BODY_KIND_CODES[body.kind]], i * 4);
+    arrays.uBodyGlow.set(body.glow ?? NO_GLOW, i * 4);
+    arrays.uBodyLamp.set([...(body.lamp ?? UNLIT_LAMP), body.tideLocked ? 1 : 0], i * 4);
     arrays.uBodyMap.set([
       mapped ? body.mapLayer : -1,
-      giantFaces ? giantFaces.now : relief,
-      giantFaces ? giantFaces.next : body.roughness ?? 0,
+      giantFaces ? giantFaces.now : body.invented?.seed ?? relief,
+      giantFaces ? giantFaces.next : body.measured?.kelvin ?? body.roughness ?? 0,
       star ? 0 : starPointBrightness(apparentMagnitude(body, offsetKm)),
     ], i * 4);
   });
@@ -482,6 +490,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
 
   let motionBlur = null;
+  let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
 
   function setBodies(program, seen, ground, pixelAngle = 0) {
@@ -500,7 +509,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     for (const [name, values] of Object.entries({ ...arrays, ...haze.arrays })) setArray(gl, program, name, values, name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
     const sunVisible = sunShareVisible(seen ?? [], ground?.body.name);
     const coronaShown = Math.max(0, 1 - sunVisible / CORONA_FADE_SHARE) ** 2;
-    setUniforms(gl, program, { uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uCoronaShown: coronaShown });
+    setUniforms(gl, program, { uStarlight: systemLight, uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uCoronaShown: coronaShown });
     if (program.uniforms.uBodyReach) gl.uniform1fv(program.uniforms.uBodyReach, bodyReaches(shown, pixelAngle, coronaShown));
     if (program.uniforms.uBodyColour) {
       gl.activeTexture(gl.TEXTURE0 + BODY_COLOUR_UNIT);
@@ -1009,7 +1018,8 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure, blurMotion }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
+    systemLight = starlight ?? SUNLIGHT;
     if (blurMotion) motionBlur ??= createMotionBlur(gl, emptyVao);
     const motion = motionBlur?.planFor(blurMotion ? motionSeen({ view, cockpit, bodies, ground }) : null);
     const planetValues = planetUniforms(planet, view.camera);

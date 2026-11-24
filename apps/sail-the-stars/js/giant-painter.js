@@ -1,5 +1,5 @@
 import { GIANT_FACE_SIZE, GIANT_FLOW_SIZE, GIANT_FRAGMENT } from './giant-shader.js';
-import { GIANT_NAMES, giantUniforms } from './giants.js';
+import { GIANT_NAMES, giantLookOf, giantUniforms } from './giants.js';
 import { setUniforms, startProgram } from './gl.js';
 import { FULLSCREEN_VERTEX } from './shaders.js';
 
@@ -45,6 +45,7 @@ function createFaces(gl, unit, format, size, levels, layers) {
 
 export function createGiantPainter(gl, emptyVao) {
   const paintedSlots = new Map();
+  let looks = new Map();
   let resources = null;
   let job = null;
   let evolving = null;
@@ -65,7 +66,7 @@ export function createGiantPainter(gl, emptyVao) {
 
   function usePaintProgram(name, key, values) {
     const { program } = resources;
-    const giant = giantUniforms(name);
+    const giant = giantUniforms(looks.get(name).look);
     gl.useProgram(program.program);
     setUniforms(gl, program, { ...giant.values, uGrowth: growthAt(key), ...values });
     for (const [uniform, [entries, width]] of Object.entries(giant.arrays)) {
@@ -128,7 +129,7 @@ export function createGiantPainter(gl, emptyVao) {
   }
 
   function freeSlot() {
-    return [GIANT_NAMES.indexOf(evolving.name), ...SPARE_SLOTS].find((slot) => slot !== evolving.now && slot !== evolving.next && slot !== evolving.coming);
+    return [looks.get(evolving.name).slot, ...SPARE_SLOTS].find((slot) => slot !== evolving.now && slot !== evolving.next && slot !== evolving.coming);
   }
 
   function age(seconds) {
@@ -146,7 +147,7 @@ export function createGiantPainter(gl, emptyVao) {
 
   function nextJob(seen, pixelAngle) {
     const unpainted = seen.find((entry) => entry.body.kind === 'giant' && !paintedSlots.has(entry.body.name) && pixelsAcross(entry, pixelAngle) > SMALLEST_PAINTED_PIXELS);
-    if (unpainted) return { name: unpainted.body.name, slot: GIANT_NAMES.indexOf(unpainted.body.name), key: 0, strip: 0, evolves: false };
+    if (unpainted) return { name: unpainted.body.name, slot: looks.get(unpainted.body.name).slot, key: 0, strip: 0, evolves: false };
     if (!evolving || evolving.coming !== null) return null;
     return { name: evolving.name, slot: freeSlot(), key: evolving.key + (evolving.next === null ? 1 : 2), strip: 0, evolves: true };
   }
@@ -158,10 +159,20 @@ export function createGiantPainter(gl, emptyVao) {
     job = null;
   }
 
+  function meetGiants(giants) {
+    if (giants.length === looks.size && giants.every(({ body }) => looks.has(body.name))) return;
+    stopEvolving();
+    paintedSlots.clear();
+    job = null;
+    const names = giants.map(({ body }) => body.name).sort();
+    looks = new Map(giants.map(({ body }) => [body.name, { slot: names.indexOf(body.name), look: giantLookOf(body) }]));
+  }
+
   function advance(seen, pixelAngle, seconds) {
     const giants = seen.filter(({ body }) => body.kind === 'giant');
     const largest = giants.reduce((best, entry) => (!best || pixelsAcross(entry, pixelAngle) > pixelsAcross(best, pixelAngle) ? entry : best), null);
     const pixels = largest ? pixelsAcross(largest, pixelAngle) : 0;
+    if (giants.length) meetGiants(giants);
     if (pixels < SMALLEST_PAINTED_PIXELS || !prepare()) return;
     if (pixels > SMALLEST_EVOLVING_PIXELS) {
       const { name } = largest.body;

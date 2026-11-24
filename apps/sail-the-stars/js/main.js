@@ -1,7 +1,7 @@
 import { drawAtlas } from './atlas.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
-import { bodyDestination, galaxyDestination, listDestinations, nebulaDestination, starDestination, SUN_DESTINATION } from './destinations.js';
+import { bodyDestination, galaxyDestination, listDestinations, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { describePick, UNNAMED_STAR } from './picking.js';
@@ -16,7 +16,9 @@ import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warp
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { CLOUD_MAP_SIZE } from './shaders.js';
-import { holdingBody, KM_PER_PC, loadBodyMaps, loadCloudMap, lowestAltitudeKm, orbitPaths, placeBodies } from './solar-system.js';
+import { holdingBody, KM_PER_PC, loadBodyMaps, loadCloudMap, lowestAltitudeKm, placeBodies } from './solar-system.js';
+import { withExoplanetHosts } from './exoplanets.js';
+import { SOLAR_SYSTEM, systemNamed, systemNear, withinSystem } from './planetary-systems.js';
 import { drawOrbits } from './orbits.js';
 import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
@@ -45,7 +47,6 @@ const STAR_STRIDE = 6;
 const STAR_DISTANCE_SLOT = 5;
 const LOOK_RATE = 0.9;
 const ROLL_RATE = 0.9;
-const SOLAR_REACH_PC = 0.05;
 const LANDING_REARM_KM = 1;
 const SPIN_SEEN_PIXELS = 1;
 const SPIN_FRAMES_TO_SHARPEN = 30;
@@ -118,6 +119,7 @@ try {
   rendererProblem = `Your graphics chip could not run the sky shader: ${String(error.message).split('\n')[0]}`;
 }
 const nebulae = placeNebulae(NEBULAE);
+let catalogue = [];
 let nearby = [];
 
 function turn(basis, axisName, angle) {
@@ -195,7 +197,7 @@ let menu = null;
 const menuView = () => menuScene(placeBodies(simNow()), view.width / view.height);
 
 function parkedGame() {
-  return { game, solarFrame, fieldHeight, following, rotatingWith, modeLabel: menuFrame.querySelector(`[data-menu-mode="${modeSelect.value}"] strong`).textContent };
+  return { game, system, solarFrame, fieldHeight, following, rotatingWith, modeLabel: menuFrame.querySelector(`[data-menu-mode="${modeSelect.value}"] strong`).textContent };
 }
 
 function openMenu() {
@@ -231,6 +233,7 @@ function openMenu() {
 
 function holdMenuView() {
   const { earth, offsetKm, ship, fieldHeight: field } = menuView();
+  if (system !== SOLAR_SYSTEM) enterSystem(SOLAR_SYSTEM);
   solarFrame = { holder: earth.name, offsetKm, coRotating: false, localKm: null, camera: game.camera, landed: false, landingArmed: true, body: earth };
   if (field !== fieldHeight) setField(field);
   if (turnedApart(ship, game.ship) < MENU_STEADY_PIXELS * (fieldHeight / view.height)) return;
@@ -251,6 +254,7 @@ function resumeFromMenu() {
   const { parked } = menu;
   closeMenu();
   ({ game, solarFrame, following, rotatingWith } = parked);
+  enterSystem(parked.system);
   eyeStars = null;
   setField(parked.fieldHeight);
   aimView();
@@ -414,7 +418,7 @@ function drawOrbitLines(context, width, height) {
   if (!seen) return;
   const offsets = new Map(seen.map(({ body, offsetKm }) => [body.name, offsetKm]));
   drawOrbits(context, {
-    paths: orbitPaths(simNow()),
+    paths: system.paths(simNow()),
     offsetOf: (name) => offsets.get(name),
     bodies: seen.map(({ body, offsetKm }) => ({ offsetKm, radiusKm: body.radiusKm })),
     basis: game.basis,
@@ -798,6 +802,7 @@ function flightStep(seconds) {
   else if (moved) viewChanged();
 }
 
+let system = SOLAR_SYSTEM;
 let solarBodies = null;
 let solarFrame = null;
 
@@ -815,9 +820,14 @@ const groundFor = (body) => (body.ground && body.mapLayer >= 0 ? groundMaps[body
 const spokenName = (body) => (body.name === 'Moon' ? 'the Moon' : body.name);
 const frameOffsetKm = (body, frame) => (frame.coRotating ? fromBodyLocal(body, frame.localKm) : frame.offsetKm);
 
+function enterSystem(entered) {
+  system = entered;
+  solarBodies = system.place(simNow());
+}
+
 function enterSolarFrame() {
-  if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) return null;
-  const fromSunKm = scale(subtract(game.camera, SUN_POSITION), KM_PER_PC);
+  if (!withinSystem(system, game.camera)) return null;
+  const fromSunKm = scale(subtract(game.camera, system.position), KM_PER_PC);
   const holder = holdingBody(solarBodies, fromSunKm);
   return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), coRotating: false, localKm: null, camera: null, landed: false, landingArmed: true, body: holder };
 }
@@ -843,8 +853,8 @@ function followSolarSystem() {
     solarFrame = null;
     return;
   }
-  solarBodies = placeBodies(simNow());
   if (solarFrame && game.camera !== solarFrame.camera) solarFrame = null;
+  enterSystem((!solarFrame && systemNear(game.camera)) || system);
   solarFrame ??= enterSolarFrame();
   if (!solarFrame) return;
   const previous = bodyNamed(solarFrame.holder);
@@ -863,11 +873,11 @@ function followSolarSystem() {
     showStatus(`Touched down on ${spokenName(holder)}.`);
     if (holder.kind !== 'star') setRotatingWith(holder.name);
   }
-  game.camera = add(SUN_POSITION, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
+  game.camera = add(system.position, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
   const coRotating = rotatingWith === holder.name;
   if (coRotating && solarFrame.coRotating && solarFrame.holder === holder.name) turnWithSpin(solarFrame.body, holder);
   solarFrame = { holder: holder.name, offsetKm, coRotating, localKm: coRotating ? toBodyLocal(holder, offsetKm) : null, camera: game.camera, landed, landingArmed: landingArmed && !touchedDown, body: holder };
-  if (Math.hypot(...subtract(game.camera, SUN_POSITION)) > SOLAR_REACH_PC) solarFrame = null;
+  if (!withinSystem(system, game.camera)) solarFrame = null;
 }
 
 let spinSinceSharpSky = 0;
@@ -998,6 +1008,7 @@ function frame(now) {
       cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
+      starlight: system.light,
       cloudSeconds: paused() || prefersStillness.matches ? 0 : seconds,
       ground,
       warp: warpView,
@@ -1204,11 +1215,10 @@ function discPixels(pick, offset) {
   return (pick.body.radiusKm / KM_PER_PC / Math.hypot(...offset)) * (stage.clientHeight / 2 / eyeTanHalf()[1]);
 }
 
-function bodyOffsetPc(name) {
-  const seen = bodiesInView()?.find(({ body }) => body.name === name);
+function bodyOffsetPc(wanted) {
+  const seen = bodiesInView()?.find(({ body }) => body.name === wanted.name);
   if (seen) return scale(seen.offsetKm, 1 / KM_PER_PC);
-  const placed = solarBodies && bodyNamed(name);
-  return placed ? subtract(add(SUN_POSITION, scale(placed.fromSunKm, 1 / KM_PER_PC)), game.camera) : null;
+  return game.mode.solarSystem ? subtract(placedNow(wanted).centre, game.camera) : null;
 }
 
 const nebulaOffsetPc = (nebula) => {
@@ -1222,9 +1232,9 @@ function bodyPick(body) {
   return {
     kind: 'body',
     get body() {
-      return (solarBodies && bodyNamed(body.name)) ?? body;
+      return (solarBodies && bodyNamed(body.name)) ?? placedNow(body);
     },
-    locate: () => bodyOffsetPc(body.name),
+    locate: () => bodyOffsetPc(body),
     destination: bodyDestination(body),
   };
 }
@@ -1240,11 +1250,19 @@ function pickFor(destination) {
   if (subject.kind === 'galaxy') return { ...galaxyPick(subject.galaxy), destination };
   const { star } = subject;
   if (star.sun) return sunPick();
-  return { kind: KIND.catalogue, name: star.name, absolute: star.absolute, colour: star.colour, locate: placedAt(star.position), destination };
+  return star.host ? hostPick(star.host) : { kind: KIND.catalogue, name: star.name, absolute: star.absolute, colour: star.colour, locate: placedAt(star.position), destination };
 }
+
+function hostPick(name) {
+  const { catalogueStar, data } = systemNamed(name);
+  return { kind: KIND.catalogue, ...catalogueStar, hostData: data, locate: placedAt(catalogueStar.position), destination: starDestination(catalogueStar) };
+}
+
+const starBodyPick = (body) => (body.host ? hostPick(body.host) : sunPick());
 
 function clickedStarPick(star) {
   if (star.kind === KIND.sun) return sunPick();
+  if (star.kind === KIND.catalogue && systemNamed(star.name)) return hostPick(star.name);
   const position = add(game.camera, star.offset);
   const pick = { ...star, locate: placedAt(position) };
   const { title } = describePick(pick);
@@ -1271,7 +1289,7 @@ function pickablesAt(x, y) {
     const pixelsPerKm = pixelsPerTan / distanceKm;
     const discPx = body.radiusKm * pixelsPerKm;
     const miss = Math.max(0, Math.hypot(spot.x - x, spot.y - y) - discPx);
-    if (miss <= PICK_RADIUS_PX) picks.push(Object.assign(body.kind === 'star' ? sunPick() : bodyPick(planetStandingInFor(body, pixelsPerKm)), { miss }));
+    if (miss <= PICK_RADIUS_PX) picks.push(Object.assign(body.kind === 'star' ? starBodyPick(body) : bodyPick(planetStandingInFor(body, pixelsPerKm)), { miss }));
   }
   const deepSky = [
     ...nebulae.map(nebulaPick),
@@ -1495,7 +1513,7 @@ document.querySelector('[data-touch]').addEventListener('contextmenu', (event) =
 let atlasDrawn = false;
 function toggleAtlas() {
   if (!atlasDrawn && nearby.length) {
-    drawAtlas($('[data-atlas]'), nebulae, nearby, galaxies);
+    drawAtlas($('[data-atlas]'), nebulae, catalogue, galaxies);
     atlasDrawn = true;
   }
   atlasFrame.hidden = !atlasFrame.hidden;
@@ -1598,7 +1616,8 @@ if (!renderer) {
     .then(renderer.loadCloudMap)
     .catch(() => showStatus("Earth's cloud map failed to load; Earth shows no clouds."));
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
-    nearby = stars;
+    catalogue = stars;
+    nearby = withExoplanetHosts(stars);
   });
   requestAnimationFrame(frame);
 }
