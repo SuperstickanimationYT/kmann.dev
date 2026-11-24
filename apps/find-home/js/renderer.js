@@ -417,6 +417,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   const cloudNearbyTarget = createTarget(gl, CLOUD_NEARBY_WIDTH, CLOUD_NEARBY_WIDTH);
   gl.activeTexture(gl.TEXTURE0 + CLOUD_NEARBY_UNIT);
   gl.bindTexture(gl.TEXTURE_2D, cloudNearbyTarget.textures[0]);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.activeTexture(gl.TEXTURE0);
   gl.activeTexture(gl.TEXTURE0 + CLOUD_MAP_UNIT);
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, cloudMap);
@@ -775,6 +776,9 @@ export function createRenderer(canvas, armMap, galaxies) {
     setBodies(cloudNearbyProgram, bodies, ground);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.activeTexture(gl.TEXTURE0 + CLOUD_NEARBY_UNIT);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   function cloudTargetsFitting(width, height) {

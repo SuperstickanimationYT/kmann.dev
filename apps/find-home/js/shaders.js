@@ -687,6 +687,10 @@ const float CLOUD_NEARBY_FINE_KM = 40.0;
 const float CLOUD_NEARBY_REACH_KM = 800.0;
 const float CLOUD_NEARBY_WARP = asinh(CLOUD_NEARBY_REACH_KM / CLOUD_NEARBY_FINE_KM);
 
+float cloudNearbyTexelKm(float distanceKm) {
+  return length(vec2(distanceKm, CLOUD_NEARBY_FINE_KM)) * CLOUD_NEARBY_WARP * 2.0 / ${CLOUD_NEARBY_WIDTH}.0;
+}
+
 vec3 alongSurfaceTowardSun(vec3 local, vec3 sun) {
   float sunHeight = dot(sun, local);
   return (sun - local * sunHeight) / max(sunHeight, CLOUD_LOWEST_SHADOW_SUN);
@@ -1268,7 +1272,7 @@ uniform float uGroundRoughness;
 const float ANCHOR_METRES = ${ANCHOR_METRES}.0;
 const float WATER_FRESNEL_HEAD_ON = 0.02;
 const float GROUND_HIT = 2.0;
-const int CLOUD_STEPS = 16;
+const int CLOUD_STEPS = 24;
 const float CLOUD_STEP_BLUR_SHARE = 0.5;
 const ivec4 CLOUD_JITTER_ORDER = ivec4(0, 2, 3, 1);
 const float CLOUD_GOLDEN_STEP = 0.618034;
@@ -1446,11 +1450,12 @@ uniform sampler2D uCloudNearby;
 uniform vec3 uCloudNearbyUp;
 uniform vec3 uCloudNearbyEast;
 
-vec2 cloudNearby(vec3 up) {
+vec2 cloudNearby(vec3 up, float blurMetres) {
   vec2 across = vec2(dot(up, uCloudNearbyEast), dot(up, cross(uCloudNearbyUp, uCloudNearbyEast))) * uGroundRadius;
   float distanceKm = length(across);
   vec2 place = across / max(distanceKm, 1e-6) * asinh(distanceKm / CLOUD_NEARBY_FINE_KM) / CLOUD_NEARBY_WARP;
-  return textureLod(uCloudNearby, place * 0.5 + 0.5, 0.0).rg;
+  float lod = max(log2(max(blurMetres, 1.0) / (1000.0 * cloudNearbyTexelKm(distanceKm))), 0.0);
+  return textureLod(uCloudNearby, place * 0.5 + 0.5, lod).rg;
 }
 
 float highCloudShare(float top) {
@@ -1483,9 +1488,9 @@ vec4 cloudSheetFrom(vec3 ray, vec3 sun, float shellKm, float nearestSolidKm, boo
   return vec4(light * opacity, opacity);
 }
 
-float cloudCoverageAt(vec3 up) {
+float cloudCoverageAt(vec3 up, float blurMetres) {
   if (uGroundCloudsMapped > 0.5) {
-    vec2 mapped = cloudNearby(up);
+    vec2 mapped = cloudNearby(up, blurMetres);
     return mapped.x * (1.0 - CLOUD_HIGH_LIFTED * highCloudShare(mapped.y));
   }
   return smoothstep(CLOUD_CLEAR_BILLOWS, CLOUD_OVERCAST_BILLOWS, textureLod(uCloudBillows, groundUv(up), 0.0).r + uGroundClouds.w);
@@ -1511,28 +1516,28 @@ float cloudCells(vec3 offset, float blurMetres, int octaves) {
   return 0.5 + CLOUD_CELL_CONTRAST * cells;
 }
 
-float mappedCloudDensity(float coverage, vec3 offset, float share, float blurMetres, int octaves) {
+float mappedCloudDensity(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
   if (coverage < CLOUD_LEAST_COVERAGE) return 0.0;
-  float needed = mix(CLOUD_THINNEST_COVER, CLOUD_TALLEST_COVER, pow(share, CLOUD_TOWER_STEEPNESS)) + 0.5 * (1.0 - smoothstep(0.0, CLOUD_FLAT_BASE_SHARE, share));
-  float softness = mix(CLOUD_MAPPED_BLURRED_SOFTNESS, CLOUD_MAPPED_SOFTNESS, octaveFade(ANCHOR_METRES / float(2 << 4), blurMetres));
-  if (coverage + CLOUD_MAPPED_CELL_SWING < needed) return 0.0;
+  float needed = mix(CLOUD_THINNEST_COVER, CLOUD_TALLEST_COVER, pow(share, CLOUD_TOWER_STEEPNESS)) + 0.5 * (1.0 - smoothstep(0.0, CLOUD_FLAT_BASE_SHARE + shareBlur, share));
+  float softness = mix(CLOUD_MAPPED_BLURRED_SOFTNESS, CLOUD_MAPPED_SOFTNESS, octaveFade(ANCHOR_METRES / float(2 << 4), blurMetres)) + shareBlur;
+  if (coverage + CLOUD_MAPPED_CELL_SWING + 0.5 * softness < needed) return 0.0;
   float sculpted = coverage + CLOUD_MAPPED_CELL_SWING * smoothstep(0.0, 0.25, coverage) * (cloudCells(offset, blurMetres, octaves) - 0.5);
   return mix(CLOUD_MAPPED_THIN_DENSITY, 1.0, coverage) * smoothstep(needed - 0.5 * softness, needed + 0.5 * softness, sculpted);
 }
 
-float cloudDensityFor(float coverage, vec3 offset, float share, float blurMetres, int octaves) {
-  if (uGroundCloudsMapped > 0.5) return mappedCloudDensity(coverage, offset, share, blurMetres, octaves);
+float cloudDensityFor(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
+  if (uGroundCloudsMapped > 0.5) return mappedCloudDensity(coverage, offset, share, blurMetres, shareBlur, octaves);
   float threshold = mix(CLOUD_SPARSEST_CELL, CLOUD_DENSEST_CELL, coverage);
   float coarsestCell = ANCHOR_METRES / float(2 << 3);
   float softness = mix(CLOUD_BLURRED_SOFTNESS, CLOUD_EDGE_SOFTNESS, octaveFade(coarsestCell, blurMetres));
   return smoothstep(threshold - 0.5 * softness, threshold + 0.5 * softness, cloudCells(offset, blurMetres, octaves) - cloudHeightErosion(share));
 }
 
-float cloudDensity(float coverage, vec3 fromCamera, float blurMetres, int octaves) {
+float cloudDensity(float coverage, vec3 fromCamera, float blurMetres, float shareBlur, int octaves) {
   float altitude = length(uGroundCamera + fromCamera) - uGroundRadius;
   float share = (altitude - uGroundClouds.x) / (uGroundClouds.y - uGroundClouds.x);
   if (share < 0.0 || share > 1.0) return 0.0;
-  return cloudDensityFor(coverage, uGroundFromAnchor + fromCamera * 1000.0, share, blurMetres, octaves);
+  return cloudDensityFor(coverage, uGroundFromAnchor + fromCamera * 1000.0, share, blurMetres, shareBlur, octaves);
 }
 
 uniform float uCloudFrame;
@@ -1547,8 +1552,8 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
   depthKm = 0.5 * (enter + leave);
   ivec2 pixel = ivec2(gl_FragCoord.xy) & 1;
   float jitter = fract((float(CLOUD_JITTER_ORDER[pixel.x + 2 * pixel.y]) + 0.5) / 4.0 + uCloudFrame * CLOUD_GOLDEN_STEP);
-  float coverageIn = cloudCoverageAt(normalize(uGroundCamera + ray * enter));
-  float coverageOut = cloudCoverageAt(normalize(uGroundCamera + ray * leave));
+  float coverageIn = cloudCoverageAt(normalize(uGroundCamera + ray * enter), 0.0);
+  float coverageOut = cloudCoverageAt(normalize(uGroundCamera + ray * leave), 0.0);
   if (uGroundCloudsMapped < 0.5 && max(coverageIn, coverageOut) < CLOUD_LEAST_COVERAGE) return vec4(0.0);
   float depthWeight = 0.0;
   float weightedDepth = 0.0;
@@ -1562,13 +1567,14 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
     float along = (float(i) + jitter) / float(CLOUD_STEPS);
     float t = mix(enter, leave, along * along);
     float stepKm = (leave - enter) * 2.0 * max(along, 0.5 / float(CLOUD_STEPS)) / float(CLOUD_STEPS);
-    float mapCoverage = uGroundCloudsMapped > 0.5 ? cloudCoverageAt(normalize(uGroundCamera + ray * t)) : mix(coverageIn, coverageOut, along * along);
-    float coverage = cloudRegionalCoverage(mapCoverage, uGroundFromAnchor + ray * t * 1000.0);
     float blurMetres = max(uPixelAngle * t, CLOUD_STEP_BLUR_SHARE * stepKm) * 1000.0;
-    float density = cloudDensity(coverage, ray * t, blurMetres, CLOUD_ALL_CELL_OCTAVES);
+    float shareBlur = stepKm * abs(dot(ray, normalize(uGroundCamera + ray * t))) / (uGroundClouds.y - uGroundClouds.x);
+    float mapCoverage = uGroundCloudsMapped > 0.5 ? cloudCoverageAt(normalize(uGroundCamera + ray * t), blurMetres) : mix(coverageIn, coverageOut, along * along);
+    float coverage = cloudRegionalCoverage(mapCoverage, uGroundFromAnchor + ray * t * 1000.0);
+    float density = cloudDensity(coverage, ray * t, blurMetres, shareBlur, CLOUD_ALL_CELL_OCTAVES);
     if (density > 0.0) {
       vec3 up = normalize(uGroundCamera + ray * t);
-      float above = cloudDensity(coverage, ray * t + sun * sunProbeKm, blurMetres, CLOUD_COARSE_CELL_OCTAVES);
+      float above = cloudDensity(coverage, ray * t + sun * sunProbeKm, blurMetres, shareBlur, CLOUD_COARSE_CELL_OCTAVES);
       float depthTowardSun = uGroundClouds.z * above * sunProbeKm;
       float sunThrough = max(exp(-depthTowardSun), CLOUD_SCATTERED_SHARE * exp(-CLOUD_SCATTERED_REACH * depthTowardSun));
       float sunHeight = dot(sun, up);
@@ -1614,14 +1620,14 @@ float sunThroughClouds(vec3 up, vec3 sun, vec3 offset, float footprint) {
   if (sheetShare >= 1.0) return cloudSheetShadow(up, sun, 0.0);
   float sunHeight = max(dot(sun, up), 0.05);
   float towardSunKm = 0.5 * (uGroundClouds.x + uGroundClouds.y) / sunHeight;
-  float coverage = cloudRegionalCoverage(cloudCoverageAt(normalize(up * uGroundRadius + sun * towardSunKm)), offset + sun * towardSunKm * 1000.0);
+  float coverage = cloudRegionalCoverage(cloudCoverageAt(normalize(up * uGroundRadius + sun * towardSunKm), max(footprint, CLOUD_SHADOW_BLUR_METRES)), offset + sun * towardSunKm * 1000.0);
   if (coverage < CLOUD_LEAST_COVERAGE && sheetShare <= 0.0) return 1.0;
   float thicknessKm = uGroundClouds.y - uGroundClouds.x;
   float density = 0.0;
   for (int i = 0; i < CLOUD_SHADOW_SAMPLES; i++) {
     float share = (float(i) + 0.5) / float(CLOUD_SHADOW_SAMPLES);
     float alongKm = (uGroundClouds.x + share * thicknessKm) / sunHeight;
-    density += cloudDensityFor(coverage, offset + sun * alongKm * 1000.0, share, max(footprint, CLOUD_SHADOW_BLUR_METRES), CLOUD_COARSE_CELL_OCTAVES);
+    density += cloudDensityFor(coverage, offset + sun * alongKm * 1000.0, share, max(footprint, CLOUD_SHADOW_BLUR_METRES), 0.0, CLOUD_COARSE_CELL_OCTAVES);
   }
   float through = exp(-uGroundClouds.z * density / float(CLOUD_SHADOW_SAMPLES) * thicknessKm / sunHeight);
   return sheetShare > 0.0 ? mix(through, cloudSheetShadow(up, sun, 0.0), sheetShare) : through;
@@ -1864,8 +1870,7 @@ void main() {
   float distanceKm = CLOUD_NEARBY_FINE_KM * sinh(outward * CLOUD_NEARBY_WARP);
   vec2 across = place / max(outward, 1e-6) * distanceKm / uGroundRadius;
   vec3 up = uCloudNearbyUp * sqrt(max(1.0 - dot(across, across), 0.0)) + uCloudNearbyEast * across.x + cross(uCloudNearbyUp, uCloudNearbyEast) * across.y;
-  float texelKm = length(vec2(distanceKm, CLOUD_NEARBY_FINE_KM)) * CLOUD_NEARBY_WARP * 2.0 / ${CLOUD_NEARBY_WIDTH}.0;
-  outColour = vec4(cloudSheet(normalize(up), texelKm / uGroundRadius), 0.0, 1.0);
+  outColour = vec4(cloudSheet(normalize(up), cloudNearbyTexelKm(distanceKm) / uGroundRadius), 0.0, 1.0);
 }`;
 
 export const PATCH_FRAGMENT = `#version 300 es
@@ -1947,6 +1952,7 @@ layout(location = 1) out vec4 outCloudDepth;
 
 const float CLOUD_HISTORY_WEIGHT = 0.85;
 const float CLOUD_HISTORY_DEPTH_TOLERANCE = 0.15;
+const float CLOUD_HISTORY_PARALLAX_PIXELS = 6.0;
 
 vec2 previousUv(vec3 fromPrevious) {
   float ahead = dot(fromPrevious, uPreviousLocalForward);
@@ -1965,7 +1971,10 @@ void main() {
   vec2 uv = previousUv(fromPrevious);
   if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return;
   float expected = length(fromPrevious);
-  if (abs(texture(uCloudHistoryDepth, uv).r - expected) > CLOUD_HISTORY_DEPTH_TOLERANCE * expected) return;
+  float seenBefore = texture(uCloudHistoryDepth, uv).r;
+  float movedKm = length(uGroundCamera - uPreviousGroundCamera);
+  bool parallaxShows = seenBefore <= 0.0 || movedKm > CLOUD_HISTORY_PARALLAX_PIXELS * uPixelAngle * min(seenBefore, expected);
+  if (parallaxShows && abs(seenBefore - expected) > CLOUD_HISTORY_DEPTH_TOLERANCE * expected) return;
   outColour = mix(current, texture(uCloudHistory, uv), CLOUD_HISTORY_WEIGHT);
 }`;
 
