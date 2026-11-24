@@ -1,3 +1,4 @@
+import { cloudTurn, SIMULATED_CLOUD_MAPS } from './clouds.js';
 import { EXOPLANET_SYSTEMS } from './exoplanet-data.js';
 import { DEGREES, directionFromEquatorial, equatorialToFrame, fromHeliocentric, SUN_PECULIAR, SUN_POSITION, velocityFromHeliocentric } from './milky-way.js';
 import { createRandom } from './random.js';
@@ -142,8 +143,11 @@ function rockyTint({ kelvin }, random) {
   return mixed([0.5, 0.43, 0.37], [0.55, 0.36, 0.25], random.next());
 }
 
+let seaWorlds = 0;
+const nextCloudMap = () => seaWorlds++ % SIMULATED_CLOUD_MAPS;
+
 function lookOf(planet, synchronous, selfLit, random) {
-  if (planet.earthRadii < LARGEST_ROCKY_EARTH_RADII) return { kind: 'rocky', invented: { seed: random.between(1, 60) }, tint: rockyTint(planet, random), haze: isWet(planet) ? THIN_AIR : undefined };
+  if (planet.earthRadii < LARGEST_ROCKY_EARTH_RADII) return { kind: 'rocky', invented: { seed: random.between(1, 60), ...(isWet(planet) && { cloudMap: nextCloudMap() }) }, tint: rockyTint(planet, random), haze: isWet(planet) ? THIN_AIR : undefined };
   if (planet.earthRadii < SMALLEST_GIANT_EARTH_RADII) return { kind: 'hazy', tint: underTemperature(HAZY_TINTS, planet.kelvin), haze: DEEP_AIR };
   const palette = selfLit ? SELF_LIT_PALETTE : underTemperature(GIANT_PALETTES, planet.kelvin);
   return { kind: 'giant', tint: mixed(...palette, 0.4), giantLook: giantLook(palette, synchronous, random) };
@@ -220,7 +224,7 @@ function buildSystem(data, index) {
     place(ms) {
       const bodies = planets.map((planet) => {
         const fromSunKm = offsetAt(planet, ms);
-        return { ...planet, ...facing(planet, fromSunKm, ms), fromSunKm };
+        return { ...planet, ...facing(planet, fromSunKm, ms), fromSunKm, cloudTurn: planet.tideLocked ? 0 : cloudTurn(ms) };
       });
       return inStarlight([star, ...bodies], position, radiusKm);
     },

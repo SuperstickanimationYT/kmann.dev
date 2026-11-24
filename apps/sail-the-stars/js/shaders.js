@@ -11,6 +11,8 @@ export const LONGEST_BLUR_PIXELS = 40;
 export const MAX_HAZY = 4;
 export const CLOUD_NEARBY_WIDTH = 1024;
 export const CLOUD_MAP_SIZE = [3072, 1536];
+export const SIMULATED_CLOUD_SIZE = [2048, 1024];
+export const EARTH_CLOUDS = -1;
 export const UNRESOLVED_STEPS = 48;
 export const NOISE_SIZE = 64;
 export const LATTICE_PERIOD = 64;
@@ -847,13 +849,59 @@ vec2 cloudMapPlace(vec3 local) {
   return vec2(atan(local.y, local.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(local.z, -1.0, 1.0)) / 3.1415927);
 }
 
+uniform highp sampler2DArray uSimulatedClouds;
+uniform float uSimulatedCloudsOn;
+uniform vec4 uBodyClouds[${MAX_BODIES}];
+const vec2 SIMULATED_CLOUD_SIZE = vec2(${SIMULATED_CLOUD_SIZE.map((size) => size.toFixed(1)).join(', ')});
+const float SUBSTELLAR_THICKENING = 2.2;
+vec4 cloudsNow = vec4(${EARTH_CLOUDS.toFixed(1)}, 0.0, 1.0, 0.0);
+vec3 cloudsSunNow = vec3(0.0);
+
+vec3 inCloudFrame(vec3 local) {
+  float c = cos(cloudsNow.y);
+  float s = sin(cloudsNow.y);
+  return vec3(c * local.x + s * local.y, c * local.y - s * local.x, local.z);
+}
+
+void useClouds(int body, vec3 sunLocal) {
+  cloudsNow = uBodyClouds[body];
+  cloudsSunNow = inCloudFrame(sunLocal);
+}
+
+bool cloudsSimulated() {
+  return cloudsNow.x >= 0.0;
+}
+
+vec2 cloudTexels() {
+  return cloudsSimulated() ? SIMULATED_CLOUD_SIZE : CLOUD_MAP_SIZE;
+}
+
+float cloudTexel() {
+  return 6.2831853 / cloudTexels().x;
+}
+
+float simulatedCover(vec3 local, float cover) {
+  float clearing = 1.0 - cloudsNow.z;
+  float kept = max(cover - clearing, 0.0) / max(cloudsNow.z, 1e-3);
+  return 1.0 - pow(1.0 - min(kept, 1.0), 1.0 + cloudsNow.w * SUBSTELLAR_THICKENING * smoothstep(0.1, 0.9, dot(local, cloudsSunNow)));
+}
+
+float cloudCoverTexel(vec2 place) {
+  return cloudsSimulated() ? textureLod(uSimulatedClouds, vec3(place, cloudsNow.x), 0.0).r : textureLod(uCloudMap, vec3(place, CLOUD_COVER_LAYER), 0.0).r;
+}
+
 vec2 cloudMapped(vec3 local, float lod) {
+  if (cloudsSimulated()) {
+    vec2 simulated = textureLod(uSimulatedClouds, vec3(cloudMapPlace(local), cloudsNow.x), lod).rg * uSimulatedCloudsOn;
+    return vec2(simulatedCover(local, simulated.x), simulated.y);
+  }
   vec2 place = cloudMapPlace(local);
   return vec2(textureLod(uCloudMap, vec3(place, CLOUD_COVER_LAYER), lod).r, textureLod(uCloudMap, vec3(place, CLOUD_TOPS_LAYER), lod).r) * uCloudMapOn;
 }
 
 float smoothCloudCover(vec3 local) {
-  vec2 p = cloudMapPlace(local) * CLOUD_MAP_SIZE - 0.5;
+  vec2 size = cloudTexels();
+  vec2 p = cloudMapPlace(local) * size - 0.5;
   vec2 f = fract(p);
   vec2 corner = floor(p) + 0.5;
   vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
@@ -864,9 +912,9 @@ float smoothCloudCover(vec3 local) {
   vec2 high = corner + 1.0 + w3 / (w2 + w3);
   vec2 lowShare = w0 + w1;
   vec2 highShare = w2 + w3;
-  float cover = lowShare.y * (lowShare.x * textureLod(uCloudMap, vec3(low / CLOUD_MAP_SIZE, CLOUD_COVER_LAYER), 0.0).r + highShare.x * textureLod(uCloudMap, vec3(vec2(high.x, low.y) / CLOUD_MAP_SIZE, CLOUD_COVER_LAYER), 0.0).r)
-    + highShare.y * (lowShare.x * textureLod(uCloudMap, vec3(vec2(low.x, high.y) / CLOUD_MAP_SIZE, CLOUD_COVER_LAYER), 0.0).r + highShare.x * textureLod(uCloudMap, vec3(high / CLOUD_MAP_SIZE, CLOUD_COVER_LAYER), 0.0).r);
-  return cover * uCloudMapOn;
+  float cover = lowShare.y * (lowShare.x * cloudCoverTexel(low / size) + highShare.x * cloudCoverTexel(vec2(high.x, low.y) / size))
+    + highShare.y * (lowShare.x * cloudCoverTexel(vec2(low.x, high.y) / size) + highShare.x * cloudCoverTexel(high / size));
+  return cloudsSimulated() ? simulatedCover(local, cover * uSimulatedCloudsOn) : cover * uCloudMapOn;
 }
 
 float billowNoise(vec3 p, float octaves) {
@@ -883,14 +931,14 @@ float billowNoise(vec3 p, float octaves) {
 }
 
 vec2 cloudSheet(vec3 local, float footprint) {
-  float lod = max(log2(footprint / CLOUD_TEXEL), 0.0);
-  float octaves = clamp(log2(CLOUD_TEXEL / max(footprint, 1e-9)), 0.0, CLOUD_SHEET_OCTAVES);
+  float lod = max(log2(footprint / cloudTexel()), 0.0);
+  float octaves = clamp(log2(cloudTexel() / max(footprint, 1e-9)), 0.0, CLOUD_SHEET_OCTAVES);
   vec2 mapped = cloudMapped(local, lod);
   if (octaves <= 0.0) return mapped;
-  vec3 p = local / CLOUD_TEXEL;
+  vec3 p = local / cloudTexel();
   vec3 wander = vec3(detailNoise(p * 0.8, min(octaves, 2.0)), detailNoise(p * 0.8 + 37.1, min(octaves, 2.0)), 0.0);
   wander.z = -0.5 * (wander.x + wander.y);
-  vec3 warped = normalize(local + CLOUD_WARP_TEXELS * CLOUD_TEXEL * 2.0 * wander);
+  vec3 warped = normalize(local + CLOUD_WARP_TEXELS * cloudTexel() * 2.0 * wander);
   float cover = mix(mapped.x, smoothCloudCover(warped), min(octaves, 1.0));
   float high = smoothstep(0.25, 0.6, mapped.y);
   vec3 drifted = p + 2.0 * wander;
@@ -917,11 +965,11 @@ vec3 alongSurfaceTowardSun(vec3 local, vec3 sun) {
 }
 
 float cloudSheetLight(vec3 local, vec2 sheet, vec3 sun, float footprint) {
-  float lod = max(log2(footprint / CLOUD_TEXEL), 0.0);
+  float lod = max(log2(footprint / cloudTexel()), 0.0);
   vec3 toSun = alongSurfaceTowardSun(local, sun);
   vec2 beside = cloudMapped(normalize(local + CLOUD_TOWER_REACH * toSun), lod);
   float shaded = clamp(beside.x * beside.y - sheet.x * sheet.y, 0.0, 1.0);
-  vec2 near = cloudMapped(normalize(local + CLOUD_EMBOSS_TEXELS * max(CLOUD_TEXEL, footprint) * normalize(toSun + 1e-5)), lod);
+  vec2 near = cloudMapped(normalize(local + CLOUD_EMBOSS_TEXELS * max(cloudTexel(), footprint) * normalize(toSun + 1e-5)), lod);
   float emboss = clamp(sheet.x - near.x, -0.5, 0.5) * (1.0 - max(dot(sun, local), 0.0) * 0.6);
   return (1.0 - CLOUD_SELF_SHADOW * shaded) * (1.0 + CLOUD_EMBOSS * emboss) * mix(0.86, 1.0, sheet.x);
 }
@@ -1215,7 +1263,6 @@ const float MELTING_KELVIN = 1250.0;
 const float SUBSTELLAR_WARMTH = 1.41;
 const vec3 INVENTED_OCEAN = vec3(0.025, 0.06, 0.11);
 const vec3 INVENTED_ICE = vec3(0.82, 0.87, 0.92);
-const float CLOUD_FINE_SCALE = 45.0;
 const float CLOUD_HIDES_SURFACE = 0.97;
 const float GLOW_GAMMA = 0.65;
 
@@ -1223,7 +1270,6 @@ struct Invented {
   vec3 albedo;
   vec3 slope;
   float water;
-  float cloud;
   float kelvin;
   vec3 dryAlbedo;
   float solid;
@@ -1301,16 +1347,8 @@ float citiesNear(vec3 local, float scale, float seed) {
   return glow;
 }
 
-float inventedCloud(vec3 local, vec3 warp, float seed, float sunHeight, float tideLocked, float footprint) {
-  vec3 streaky = vec3(local.xy, local.z * 2.0) * 2.4 + seed + 1.8 * warp;
-  float octaves = clamp(log2(1.0 / (CLOUD_FINE_SCALE * footprint)), 0.0, MAX_DETAIL_OCTAVES);
-  float billow = terrain(streaky + 0.9 * broadWarp(streaky * 2.0)) + 0.26 * detailNoise((local + 0.06 * warp) * CLOUD_FINE_SCALE + seed, octaves);
-  float gathered = tideLocked > 0.5 ? 0.13 * smoothstep(0.1, 0.9, sunHeight) : 0.02;
-  return smoothstep(0.5, 0.78, billow + gathered);
-}
-
 uniform vec4 uMappedTerrain;
-uniform vec2 uTerrainLook;
+uniform float uGreenery;
 const float COAST_FRAY_KM = 0.5;
 const float MAPPED_MOUNTAIN_SHARE = 0.25;
 const vec3 GREENERY = vec3(0.13, 0.22, 0.08);
@@ -1327,15 +1365,13 @@ bool isSeaWorld(float kelvin) {
 }
 
 Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin, float tideLocked, float footprint, bool bareGround) {
-  Invented made = Invented(tint, vec3(0.0), 0.0, 0.0, kelvin, tint, 1.0, 0.0, 0.0);
+  Invented made = Invented(tint, vec3(0.0), 0.0, kelvin, tint, 1.0, 0.0, 0.0);
   float sunHeight = dot(local, sun);
   vec3 p = local * 1.7 + seed;
   vec3 warp = broadWarp(p * 1.3);
   bool wet = isSeaWorld(kelvin);
   if (wet) {
     if (!bareGround && sunHeight < -0.1) return made;
-    made.cloud = inventedCloud(local, warp, seed, sunHeight, tideLocked, footprint);
-    if (!bareGround && made.cloud > CLOUD_HIDES_SURFACE) return made;
   }
   float plains = terrain(p + 1.1 * warp);
   float fine = terrain(p * 6.0 + 3.0 * warp);
@@ -1351,9 +1387,8 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
     float crack = ice > 0.0 && land < 1.0 ? 1.0 - smoothstep(0.0, 0.035, abs(terrain(p * 3.4 + 5.0 * warp) - 0.5)) : 0.0;
     vec3 ground = tint * (0.55 + 0.9 * fine);
     if (terrainMapped) {
-      made.cloud *= uTerrainLook.y;
       float damp = smoothstep(0.3, 0.7, terrain(p * 2.3 + 7.0) + 0.25 * (0.5 - abs(abs(local.z) - 0.45)));
-      ground = mix(ground, mix(DRY_GREENERY, GREENERY, damp) * (0.6 + 0.8 * fine), uTerrainLook.x * smoothstep(0.45, 0.15, aboveSea));
+      ground = mix(ground, mix(DRY_GREENERY, GREENERY, damp) * (0.6 + 0.8 * fine), uGreenery * smoothstep(0.45, 0.15, aboveSea));
     }
     vec3 frozen = INVENTED_ICE * (0.8 + 0.3 * fine) * (1.0 - 0.22 * crack * (1.0 - land));
     made.albedo = mix(mix(INVENTED_OCEAN, ground, land), frozen, ice);
@@ -1401,14 +1436,6 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
 uniform sampler2D uInventedColour;
 uniform int uInventedBody;
 const float INVENTED_TEXEL = 6.2831853 / ${INVENTED_COLOUR_WIDTH}.0;
-const float INVENTED_COVER_OCTAVES = 3.0;
-const float INVENTED_TATTER_SCALE = 7.0;
-const float INVENTED_TATTER_OCTAVES = 4.0;
-const float INVENTED_COVER_TATTERING = 0.9;
-const float INVENTED_COVER_FRAYING = 1.5;
-const float INVENTED_COVER_EDGE = 0.4;
-const float INVENTED_COVER_EDGE_WIDTH = 0.18;
-const float INVENTED_COVER_THINNEST = 0.45;
 const float PAINTED_RELIEF_OCTAVES = 4.0;
 
 vec4 inventedPaint(vec2 uv, float footprint) {
@@ -1416,22 +1443,9 @@ vec4 inventedPaint(vec2 uv, float footprint) {
   return vec4(texel.rgb * texel.rgb, texel.a);
 }
 
-float inventedCover(float cover, vec3 local, float footprint) {
-  float fray = 4.0 * cover * (1.0 - cover);
-  float finest = log2(INVENTED_TEXEL / footprint) + 1.0;
-  float octaves = clamp(finest, 0.0, INVENTED_COVER_OCTAVES);
-  float tatterOctaves = clamp(finest - log2(INVENTED_TATTER_SCALE), 0.0, INVENTED_TATTER_OCTAVES);
-  if (fray <= 0.01 || octaves <= 0.0) return cover;
-  float frayed = cover + INVENTED_COVER_FRAYING * fray * detailNoise(0.37 * local / INVENTED_TEXEL, octaves);
-  if (tatterOctaves > 0.0) frayed += INVENTED_COVER_TATTERING * fray * detailNoise(0.37 * INVENTED_TATTER_SCALE / INVENTED_TEXEL * local, tatterOctaves);
-  float crisp = smoothstep(0.0, INVENTED_COVER_EDGE_WIDTH, frayed - INVENTED_COVER_EDGE) * mix(INVENTED_COVER_THINNEST, 1.0, clamp(frayed, 0.0, 1.0));
-  return clamp(mix(frayed, crisp, smoothstep(0.5, 3.0, octaves)), 0.0, 1.0);
-}
-
 Invented paintedSeaWorld(vec3 local, vec2 uv, float seed, float footprint) {
   vec4 paint = inventedPaint(uv, footprint);
-  Invented made = Invented(paint.rgb, vec3(0.0), 0.0, inventedCover(paint.a, local, footprint), 0.0, paint.rgb, 1.0, 0.0, 0.0);
-  if (made.cloud > CLOUD_HIDES_SURFACE) return made;
+  Invented made = Invented(paint.rgb, vec3(0.0), 0.0, 0.0, paint.rgb, 1.0, 0.0, 0.0);
   float coastTexel = 6.2831853 / float(textureSize(uInventedLand, 0).x);
   float solid = textureLod(uInventedLand, uv, 0.0).r;
   float nearCoast = 4.0 * solid * (1.0 - solid);
@@ -1502,11 +1516,18 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   }
 
   vec3 sun = uBodySun[i].xyz;
-  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, 0.0, albedo, 1.0, 0.0, 0.0);
-  if (invented) {
+  Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, albedo, 1.0, 0.0, 0.0);
+  vec3 sunLocal = bodyLocal(sun, frame);
+  bool underClouds = look.w == BODY_OCEAN_WORLD || (invented && isSeaWorld(map.z));
+  vec2 sheet = vec2(0.0);
+  if (underClouds) {
+    useClouds(i, sunLocal);
+    sheet = cloudSheet(inCloudFrame(local), footprint);
+  }
+  if (invented && sheet.x <= CLOUD_HIDES_SURFACE) {
     bool painted = i == uInventedBody && isSeaWorld(map.z);
     if (painted) made = paintedSeaWorld(local, uv, map.y, footprint);
-    else made = inventSurface(local, bodyLocal(sun, frame), look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
+    else made = inventSurface(local, sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
     albedo = made.albedo;
     vec3 slope = made.slope.x * frame.meridian + made.slope.y * frame.east + made.slope.z * frame.north;
     shaded = normalize(normal - (slope - normal * dot(slope, normal)));
@@ -1520,18 +1541,17 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   if (look.w == BODY_OCEAN_WORLD) {
     vec3 halfway = normalize(sun - direction);
     lit += (1.0 - land) * daylight * sunHeight * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
-    vec3 sunLocal = bodyLocal(sun, frame);
-    vec2 sheet = cloudSheet(local, footprint);
-    if (daylight > 0.0) lit *= cloudSheetShadow(local, sunLocal, max(log2(footprint / CLOUD_TEXEL), 0.0));
-    cloudsOver = CLOUD_OPACITY * sheet.x;
-    float sheetLight = daylight > 0.0 ? cloudSheetLight(local, sheet, sunLocal, footprint) : 0.0;
-    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight * sheetLight, cloudsOver);
   }
   if (invented) {
     vec3 halfway = normalize(sun - direction);
     lit += made.water * daylight * sunHeight * OCEAN_GLINT * pow(max(dot(normal, halfway), 0.0), OCEAN_SHININESS);
-    cloudsOver = 0.95 * sqrt(made.cloud);
-    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight * (0.62 + 0.38 * made.cloud), cloudsOver);
+  }
+  if (underClouds) {
+    vec3 cloudLocal = inCloudFrame(local);
+    if (daylight > 0.0) lit *= cloudSheetShadow(cloudLocal, cloudsSunNow, max(log2(footprint / cloudTexel()), 0.0));
+    cloudsOver = CLOUD_OPACITY * sheet.x;
+    float sheetLight = daylight > 0.0 ? cloudSheetLight(cloudLocal, sheet, cloudsSunNow, footprint) : 0.0;
+    lit = mix(lit, CLOUD_ALBEDO * sunHeight * daylight * sheetLight, cloudsOver);
   }
   lit *= sunlightToSurface(i, dot(normal, sun)) * sunlightReaching(i, normal) * uStarlight;
   vec3 glow = invented && made.kelvin > 850.0 ? thermalGlow(i, made.kelvin) : uBodyGlow[i].rgb * (0.45 + 1.6 * albedo.g) * (0.45 + 0.55 * mu);
@@ -2125,7 +2145,8 @@ uniform vec3 uCloudNearbyUp;
 uniform vec3 uCloudNearbyEast;
 
 vec2 cloudNearby(vec3 up, float blurMetres) {
-  vec2 across = vec2(dot(up, uCloudNearbyEast), dot(up, cross(uCloudNearbyUp, uCloudNearbyEast))) * uGroundRadius;
+  vec3 drifted = inCloudFrame(up);
+  vec2 across = vec2(dot(drifted, uCloudNearbyEast), dot(drifted, cross(uCloudNearbyUp, uCloudNearbyEast))) * uGroundRadius;
   float distanceKm = length(across);
   vec2 place = across / max(distanceKm, 1e-6) * asinh(distanceKm / CLOUD_NEARBY_FINE_KM) / CLOUD_NEARBY_WARP;
   float lod = max(log2(max(blurMetres, 1.0) / (1000.0 * cloudNearbyTexelKm(distanceKm))), 0.0);
@@ -2137,7 +2158,6 @@ float highCloudShare(float top) {
 }
 
 float cloudSheetShare() {
-  if (groundInvented()) return 0.0;
   return uGroundCloudsMapped * smoothstep(CLOUD_SHEET_FROM_KM, CLOUD_SHEET_ONLY_KM, cameraAltitudeKm());
 }
 
@@ -2150,37 +2170,18 @@ vec4 cloudSheetFrom(vec3 ray, vec3 sun, float shellKm, float nearestSolidKm, boo
   hitKm = cameraAltitudeKm() > shellKm ? hits.x : hits.y;
   if (hitKm <= 0.0 || hitKm > nearestSolidKm) return vec4(0.0);
   vec3 up = normalize(uGroundCamera + ray * hitKm);
+  vec3 drifted = inCloudFrame(up);
   float footprint = uPixelAngle * hitKm / uGroundRadius;
-  if (onlyHigh && highCloudShare(cloudMapped(up, 0.0).y) <= 0.0) return vec4(0.0);
-  vec2 sheet = cloudSheet(up, onlyHigh ? max(footprint, CLOUD_HIGH_FOOTPRINT) : footprint);
+  if (onlyHigh && highCloudShare(cloudMapped(drifted, 0.0).y) <= 0.0) return vec4(0.0);
+  vec2 sheet = cloudSheet(drifted, onlyHigh ? max(footprint, CLOUD_HIGH_FOOTPRINT) : footprint);
   float opacity = onlyHigh ? CLOUD_HIGH_OPACITY * sheet.x * highCloudShare(sheet.y) : CLOUD_OPACITY * sheet.x;
   float sunHeight = dot(sun, up);
   vec3 light = onlyHigh
     ? CLOUD_ALBEDO * (0.35 + 0.65 * max(sunHeight, 0.0)) * smoothstep(-0.08, 0.08, sunHeight) * (1.0 + 0.6 * pow(max(dot(ray, sun), 0.0), 8.0))
-    : CLOUD_ALBEDO * max(sunHeight, 0.0) * smoothstep(-0.02, 0.05, sunHeight) * cloudSheetLight(up, sheet, sun, footprint);
+    : CLOUD_ALBEDO * max(sunHeight, 0.0) * smoothstep(-0.02, 0.05, sunHeight) * cloudSheetLight(drifted, sheet, cloudsSunNow, footprint);
   light *= sunlightToSurface(uGround, sunHeight) * uSunVisible;
   light += CLOUD_SHEET_SKYLIGHT * CLOUD_LIT_ALBEDO * cloudSkylight(sunHeight) * (1.0 - smoothstep(CLOUD_SHEET_ONLY_KM, CLOUD_SHEET_UNLIT_BY_SKY_KM, cameraAltitudeKm()));
   return vec4(light * opacity, opacity);
-}
-
-const float INVENTED_SHEET_FROM_KM = 20.0;
-const float INVENTED_SHEET_ONLY_KM = 60.0;
-const float CLOUDY_DAYLIGHT = 0.3;
-
-float inventedSheetShare() {
-  return groundInvented() ? smoothstep(INVENTED_SHEET_FROM_KM, INVENTED_SHEET_ONLY_KM, cameraAltitudeKm()) : 0.0;
-}
-
-vec4 inventedCloudSheet(vec3 ray, vec3 sun, float nearestSolidKm, out float hitKm) {
-  hitKm = shellCrossings(0.5 * (uGroundClouds.x + uGroundClouds.y), ray).x;
-  if (hitKm <= 0.0 || hitKm > nearestSolidKm) return vec4(0.0);
-  vec3 up = normalize(uGroundCamera + ray * hitKm);
-  float footprint = uPixelAngle * hitKm / uGroundRadius;
-  float cover = inventedCover(inventedPaint(groundUv(up), footprint).a, up, footprint);
-  float sunHeight = dot(sun, up);
-  vec3 light = CLOUD_ALBEDO * max(sunHeight, 0.0) * smoothstep(-0.02, 0.05, sunHeight) * (0.62 + 0.38 * cover) * sunlightToSurface(uGround, sunHeight) * uSunVisible;
-  float opacity = 0.95 * sqrt(cover);
-  return vec4(light * uStarlight * opacity, opacity);
 }
 
 float cloudCoverageAt(vec3 up, float blurMetres) {
@@ -2374,32 +2375,29 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
 vec4 daylitCloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
   float sheetShare = cloudSheetShare();
   depthKm = -1.0;
-  float inventedShare = inventedSheetShare();
-  vec4 volume = max(sheetShare, inventedShare) < 1.0 ? cloudVolumeFrom(ray, sun, nearestSolidKm, depthKm) : vec4(0.0);
+  vec4 volume = sheetShare < 1.0 ? cloudVolumeFrom(ray, sun, nearestSolidKm, depthKm) : vec4(0.0);
   volume.rgb *= uStarlight;
-  if (groundInvented()) {
-    float sheetKm;
-    vec4 sheet = inventedShare > 0.0 ? inventedCloudSheet(ray, sun, nearestSolidKm, sheetKm) : vec4(0.0);
-    if (inventedShare > 0.5) depthKm = sheetKm;
-    return mix(volume, sheet, inventedShare);
-  }
   if (uGroundCloudsMapped < 0.5) return volume;
   float sheetKm;
   vec4 sheet = sheetShare > 0.0 ? cloudSheetFrom(ray, sun, mix(uGroundClouds.x, uGroundClouds.y, CLOUD_SHEET_HEIGHT_SHARE), nearestSolidKm, false, sheetKm) : vec4(0.0);
   vec4 high = vec4(0.0);
   float highKm = -1.0;
-  if (sheetShare < 1.0) high = cloudSheetFrom(ray, sun, CLOUD_HIGH_KM, nearestSolidKm, true, highKm);
+  if (sheetShare < 1.0) {
+    high = cloudSheetFrom(ray, sun, CLOUD_HIGH_KM, nearestSolidKm, true, highKm);
+    high.rgb *= uStarlight;
+  }
   bool highInFront = cameraAltitudeKm() > CLOUD_HIGH_KM;
   float haze = 1.0 - exp(-max(highKm, 0.0) * airDensityHere() / uGroundGlow.w * 0.5);
-  high.rgb = mix(high.rgb, groundSky(ray, sun, normalize(uGroundCamera)) * high.a, highInFront ? 0.0 : haze);
+  high.rgb = mix(high.rgb, groundSky(ray, sun, normalize(uGroundCamera)) * uStarlight * high.a, highInFront ? 0.0 : haze);
   vec4 front = highInFront ? high : volume;
   vec4 back = highInFront ? volume : high;
   vec4 layered = front + back * (1.0 - front.a);
   if (depthKm <= 0.0) depthKm = sheetShare > 0.5 ? sheetKm : highKm;
-  return mix(layered, sheet, sheetShare);
+  return mix(layered, vec4(sheet.rgb * uStarlight, sheet.a), sheetShare);
 }
 
 vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
+  useClouds(uGround, sun);
   vec4 clouds = daylitCloudsSeenFrom(ray, sun, nearestSolidKm, depthKm);
   if (uGround != uLitBody || clouds.a <= 0.0 || depthKm <= 0.0) return clouds;
   vec3 up = normalize(uGroundCamera + ray * depthKm);
@@ -2411,9 +2409,8 @@ vec4 cloudsSeenFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm)
 float sunThroughClouds(vec3 up, vec3 sun, vec3 offset, float footprint) {
   if (!cloudsHere()) return 1.0;
   float sheetShare = cloudSheetShare();
-  if (sheetShare >= 1.0) return cloudSheetShadow(up, sun, 0.0);
-  float inventedShare = inventedSheetShare();
-  if (inventedShare >= 1.0) return 1.0;
+  useClouds(uGround, sun);
+  if (sheetShare >= 1.0) return cloudSheetShadow(inCloudFrame(up), cloudsSunNow, 0.0);
   float sunHeight = max(dot(sun, up), 0.05);
   float cloudyShare = uGroundCloudsMapped > 0.5 ? CLOUD_MAPPED_LIT_FROM_SHARE : 1.0;
   float towardSunKm = mix(uGroundClouds.x, uGroundClouds.y, 0.5 * cloudyShare) / sunHeight;
@@ -2428,8 +2425,7 @@ float sunThroughClouds(vec3 up, vec3 sun, vec3 offset, float footprint) {
     density += cloudDensityFor(coverage, offset + sun * alongKm * 1000.0, share * cloudyShare, max(footprint, CLOUD_SHADOW_BLUR_METRES), 0.0, CLOUD_COARSE_CELL_OCTAVES);
   }
   float through = exp(-uGroundClouds.z * density / float(samples) * thicknessKm / sunHeight);
-  if (groundInvented()) return mix(CLOUDY_DAYLIGHT + (1.0 - CLOUDY_DAYLIGHT) * through, 1.0, inventedShare);
-  return sheetShare > 0.0 ? mix(through, cloudSheetShadow(up, sun, 0.0), sheetShare) : through;
+  return sheetShare > 0.0 ? mix(through, cloudSheetShadow(inCloudFrame(up), cloudsSunNow, 0.0), sheetShare) : through;
 }
 
 const float HOT_PLANET_KELVIN = 850.0;
@@ -2725,7 +2721,7 @@ void main() {
   }
   bool hot = uInventedPlanet.y > HOT_PLANET_KELVIN;
   bool wet = isSeaWorld(uInventedPlanet.y);
-  outColour = vec4(sqrt(max(wet ? made.dryAlbedo : made.albedo, 0.0)), hot ? made.kelvin / HOTTEST_GROUND_KELVIN : made.cloud);
+  outColour = vec4(sqrt(max(wet ? made.dryAlbedo : made.albedo, 0.0)), hot ? made.kelvin / HOTTEST_GROUND_KELVIN : 1.0);
 }`;
 
 export const CLOUD_NEARBY_FRAGMENT = `#version 300 es
@@ -2737,11 +2733,7 @@ void main() {
   vec2 across = place / max(outward, 1e-6) * distanceKm / uGroundRadius;
   vec3 up = uCloudNearbyUp * sqrt(max(1.0 - dot(across, across), 0.0)) + uCloudNearbyEast * across.x + cross(uCloudNearbyUp, uCloudNearbyEast) * across.y;
   float footprint = cloudNearbyTexelKm(distanceKm) / uGroundRadius;
-  if (groundInvented()) {
-    vec3 local = normalize(up);
-    outColour = vec4(sqrt(inventedCover(inventedPaint(groundUv(local), footprint).a, local, footprint)), 0.0, 0.0, 1.0);
-    return;
-  }
+  useClouds(uGround, groundLocal(uBodySun[uGround].xyz));
   outColour = vec4(cloudSheet(normalize(up), footprint), 0.0, 1.0);
 }`;
 
