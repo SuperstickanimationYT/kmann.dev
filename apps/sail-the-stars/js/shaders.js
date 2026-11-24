@@ -1174,7 +1174,13 @@ uniform sampler2D uInventedLand;
 uniform int uInventedBody;
 const float INVENTED_TEXEL = 6.2831853 / ${INVENTED_COLOUR_WIDTH}.0;
 const float INVENTED_COVER_OCTAVES = 3.0;
-const float INVENTED_COVER_FRAYING = 1.3;
+const float INVENTED_TATTER_SCALE = 7.0;
+const float INVENTED_TATTER_OCTAVES = 4.0;
+const float INVENTED_COVER_TATTERING = 0.9;
+const float INVENTED_COVER_FRAYING = 1.5;
+const float INVENTED_COVER_EDGE = 0.4;
+const float INVENTED_COVER_EDGE_WIDTH = 0.18;
+const float INVENTED_COVER_THINNEST = 0.45;
 const float PAINTED_RELIEF_OCTAVES = 4.0;
 
 vec4 inventedPaint(vec2 uv, float footprint) {
@@ -1184,9 +1190,14 @@ vec4 inventedPaint(vec2 uv, float footprint) {
 
 float inventedCover(float cover, vec3 local, float footprint) {
   float fray = 4.0 * cover * (1.0 - cover);
-  float octaves = clamp(log2(INVENTED_TEXEL / footprint) + 1.0, 0.0, INVENTED_COVER_OCTAVES);
+  float finest = log2(INVENTED_TEXEL / footprint) + 1.0;
+  float octaves = clamp(finest, 0.0, INVENTED_COVER_OCTAVES);
+  float tatterOctaves = clamp(finest - log2(INVENTED_TATTER_SCALE), 0.0, INVENTED_TATTER_OCTAVES);
   if (fray <= 0.01 || octaves <= 0.0) return cover;
-  return clamp(cover + INVENTED_COVER_FRAYING * fray * detailNoise(0.37 * local / INVENTED_TEXEL, octaves), 0.0, 1.0);
+  float frayed = cover + INVENTED_COVER_FRAYING * fray * detailNoise(0.37 * local / INVENTED_TEXEL, octaves);
+  if (tatterOctaves > 0.0) frayed += INVENTED_COVER_TATTERING * fray * detailNoise(0.37 * INVENTED_TATTER_SCALE / INVENTED_TEXEL * local, tatterOctaves);
+  float crisp = smoothstep(0.0, INVENTED_COVER_EDGE_WIDTH, frayed - INVENTED_COVER_EDGE) * mix(INVENTED_COVER_THINNEST, 1.0, clamp(frayed, 0.0, 1.0));
+  return clamp(mix(frayed, crisp, smoothstep(0.5, 3.0, octaves)), 0.0, 1.0);
 }
 
 Invented paintedSeaWorld(vec3 local, vec2 uv, float seed, float footprint) {
@@ -1794,6 +1805,7 @@ float highCloudShare(float top) {
 }
 
 float cloudSheetShare() {
+  if (groundInvented()) return 0.0;
   return uGroundCloudsMapped * smoothstep(CLOUD_SHEET_FROM_KM, CLOUD_SHEET_ONLY_KM, cameraAltitudeKm());
 }
 
@@ -1844,7 +1856,6 @@ float cloudCoverageAt(vec3 up, float blurMetres) {
     vec2 mapped = cloudNearby(up, blurMetres);
     return mapped.x * (1.0 - CLOUD_HIGH_LIFTED * highCloudShare(mapped.y));
   }
-  if (groundInvented()) return inventedGround(up, blurMetres).a;
   return smoothstep(CLOUD_CLEAR_BILLOWS, CLOUD_OVERCAST_BILLOWS, textureLod(uCloudBillows, groundUv(up), 0.0).r + uGroundClouds.w);
 }
 
@@ -2381,7 +2392,13 @@ void main() {
   float distanceKm = CLOUD_NEARBY_FINE_KM * sinh(outward * CLOUD_NEARBY_WARP);
   vec2 across = place / max(outward, 1e-6) * distanceKm / uGroundRadius;
   vec3 up = uCloudNearbyUp * sqrt(max(1.0 - dot(across, across), 0.0)) + uCloudNearbyEast * across.x + cross(uCloudNearbyUp, uCloudNearbyEast) * across.y;
-  outColour = vec4(cloudSheet(normalize(up), cloudNearbyTexelKm(distanceKm) / uGroundRadius), 0.0, 1.0);
+  float footprint = cloudNearbyTexelKm(distanceKm) / uGroundRadius;
+  if (groundInvented()) {
+    vec3 local = normalize(up);
+    outColour = vec4(sqrt(inventedCover(inventedPaint(groundUv(local), footprint).a, local, footprint)), 0.0, 0.0, 1.0);
+    return;
+  }
+  outColour = vec4(cloudSheet(normalize(up), footprint), 0.0, 1.0);
 }`;
 
 export const PATCH_FRAGMENT = `#version 300 es

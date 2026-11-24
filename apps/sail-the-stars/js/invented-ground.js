@@ -6,7 +6,7 @@ const SHAPE_SIZE = [2048, 1024];
 const TILES = [8, 4];
 const TILE_COUNT = TILES[0] * TILES[1];
 
-const SEA_WORLD_CLOUDS = { baseKm: 2, topKm: 6, extinctionPerKm: 0.5, coverShift: 0 };
+const SEA_WORLD_CLOUDS = { mapped: true, baseKm: 1.5, topKm: 6.5, extinctionPerKm: 3, coverShift: 0 };
 const EARTHLIKE_AIR = { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] };
 const SEA_WORLD = { roughness: 0.045, craters: 0, sea: true, lowKm: -2, rangeKm: 10, clouds: SEA_WORLD_CLOUDS, air: EARTHLIKE_AIR };
 const ICE_WORLD = { roughness: 0.05, craters: 0.4, lowKm: -8, rangeKm: 16 };
