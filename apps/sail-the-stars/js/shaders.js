@@ -78,16 +78,18 @@ const BODY_OCCLUDERS = `
 uniform vec4 uBodyOccluder[${MAX_BODIES}];
 uniform vec3 uBodyNorth[${MAX_BODIES}];
 uniform float uBodyFlattening[${MAX_BODIES}];
+uniform vec4 uBodyNarrowing[${MAX_BODIES}];
 uniform int uBodyCount;
 
 bool behindOblate(int i, vec3 direction) {
   float stretch = 1.0 / (1.0 - uBodyFlattening[i]) - 1.0;
   vec3 north = uBodyNorth[i];
+  vec3 narrow = uBodyNarrowing[i].xyz;
   vec3 centre = uBodyOccluder[i].xyz;
-  vec3 ray = normalize(direction + north * dot(direction, north) * stretch);
-  vec3 roundedCentre = centre + north * dot(centre, north) * stretch;
+  vec3 ray = normalize(direction + north * dot(direction, north) * stretch + narrow * dot(direction, narrow));
+  vec3 roundedCentre = centre + north * dot(centre, north) * stretch + narrow * dot(centre, narrow);
   float along = dot(ray, roundedCentre);
-  return along > 0.0 && length(ray * along - roundedCentre) < sin(uBodyOccluder[i].w) * pow(1.0 - uBodyFlattening[i], -1.0 / 3.0);
+  return along > 0.0 && length(ray * along - roundedCentre) < sin(uBodyOccluder[i].w) * uBodyNarrowing[i].w;
 }
 
 bool behindBody(vec3 direction) {
@@ -591,6 +593,7 @@ uniform float uCoronaShown;
 uniform float uBodyReach[${MAX_BODIES}];
 uniform vec3 uBodyNorth[${MAX_BODIES}];
 uniform float uBodyFlattening[${MAX_BODIES}];
+uniform vec4 uBodyNarrowing[${MAX_BODIES}];
 uniform vec3 uBodyMeridian[${MAX_BODIES}];
 uniform vec4 uBodyLook[${MAX_BODIES}];
 uniform vec4 uBodyMap[${MAX_BODIES}];
@@ -1119,11 +1122,11 @@ uniform vec4 uHazeLayer[${MAX_HAZY}];
 uniform vec4 uHazeLayerShape[${MAX_HAZY}];
 
 vec3 rounded(int i, vec3 place) {
-  return place + uBodyNorth[i] * dot(place, uBodyNorth[i]) * (1.0 / (1.0 - uBodyFlattening[i]) - 1.0);
+  return place + uBodyNorth[i] * dot(place, uBodyNorth[i]) * (1.0 / (1.0 - uBodyFlattening[i]) - 1.0) + uBodyNarrowing[i].xyz * dot(place, uBodyNarrowing[i].xyz);
 }
 
-float equatorialRadius(int i) {
-  return sin(uBodyPlace[i].w) * pow(1.0 - uBodyFlattening[i], -1.0 / 3.0);
+float longestRadius(int i) {
+  return sin(uBodyPlace[i].w) * uBodyNarrowing[i].w;
 }
 
 vec3 surfaceNormal(int i, vec3 fromCentre) {
@@ -1669,7 +1672,7 @@ vec4 ringSeen(int i, vec3 direction, out float ringHit) {
   vec3 roundedSun = normalize(rounded(i, sun));
   vec3 roundedPlace = rounded(i, fromCentre);
   float towardSun = dot(roundedPlace, roundedSun);
-  float offShadowAxis = length(roundedPlace - roundedSun * towardSun) / equatorialRadius(i);
+  float offShadowAxis = length(roundedPlace - roundedSun * towardSun) / longestRadius(i);
   float inSaturnShadow = towardSun < 0.0 ? 1.0 - smoothstep(1.0 - RING_SHADOW_SOFTNESS, 1.0 + RING_SHADOW_SOFTNESS, offShadowAxis) : 0.0;
   ringHit = hit;
   return vec4(seen.rgb * (1.0 - inSaturnShadow), seen.a);
@@ -1851,7 +1854,7 @@ vec4 bodiesColour(vec3 direction) {
     vec4 ring = i == uRingedBody ? ringSeen(i, direction, ringHit) : vec4(0.0);
     vec4 place = uBodyPlace[i];
     bool oblate = uBodyFlattening[i] > 0.0;
-    float radius = oblate ? equatorialRadius(i) : sin(place.w);
+    float radius = oblate ? longestRadius(i) : sin(place.w);
     vec3 roundedRay = oblate ? rounded(i, direction) : direction;
     float stretch = oblate ? length(roundedRay) : 1.0;
     vec3 ray = roundedRay / stretch;

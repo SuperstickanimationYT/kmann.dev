@@ -45,7 +45,7 @@ export const DWARF_PLANETS = [
   { name: 'Nix', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 19, tint: [0.6, 0.57, 0.56], magnitude: 8.3 },
   { name: 'Kerberos', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 6, tint: [0.6, 0.6, 0.6], magnitude: 11 },
   { name: 'Hydra', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 18.3, tint: [0.8, 0.8, 0.82], magnitude: 8 },
-  { name: 'Haumea', kind: 'rocky', dwarf: 'agreed', radiusKm: 798, flattening: 0.49, pole: poleOfOrbit(126.356, 206.766), spin: turnsEvery(3.915341), tint: [0.75, 0.75, 0.76], magnitude: 0.14 },
+  { name: 'Haumea', kind: 'rocky', dwarf: 'agreed', radiusKm: 798, flattening: 0.558, narrowing: 0.266, pole: poleOfOrbit(126.356, 206.766), spin: turnsEvery(3.915341), tint: [0.75, 0.75, 0.76], magnitude: 0.14, invented: coldIce(61) },
   { name: "Hi'iaka", kind: 'rocky', parent: 'Haumea', synchronous: true, radiusKm: 160, tint: [0.75, 0.76, 0.78], magnitude: 3.4 },
   { name: 'Namaka', kind: 'rocky', parent: 'Haumea', synchronous: true, radiusKm: 85, tint: [0.75, 0.76, 0.78], magnitude: 4.8 },
   { name: 'Makemake', kind: 'rocky', dwarf: 'agreed', radiusKm: 715, pole: ECLIPTIC_POLE, spin: turnsEvery(22.8266), tint: [0.85, 0.76, 0.67], magnitude: -0.25, invented: coldIce(11) },

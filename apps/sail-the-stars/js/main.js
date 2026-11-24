@@ -922,7 +922,7 @@ function groundFor(body) {
 
 function inventGroundBelow() {
   const body = solarFrame && bodyNamed(solarFrame.holder);
-  if (!body?.invented || (inventedGround?.name === body.name && inventedGround.version === body.invented.version)) return;
+  if (!body?.invented || body.flattening || (inventedGround?.name === body.name && inventedGround.version === body.invented.version)) return;
   if (!body.invented.terrain && Math.hypot(...solarFrame.offsetKm) > INVENT_GROUND_WITHIN_RADII * body.radiusKm) return;
   const settings = renderer.inventGround(body, toBodyLocal(body, body.sunward));
   if (settings || inventedGround?.name !== body.name) inventedGround = settings && { name: body.name, version: settings.version, settings };

@@ -12,12 +12,19 @@ const LOWEST_ALTITUDE_KM = 30;
 const LOWEST_ALTITUDE_RADII = 0.5;
 export const lowestAltitudeKm = (body) => Math.min(LOWEST_ALTITUDE_KM, LOWEST_ALTITUDE_RADII * body.radiusKm);
 
-export const equatorKm = ({ radiusKm, flattening = 0 }) => radiusKm * (1 - flattening) ** (-1 / 3);
+export const longestRadiusKm = ({ radiusKm, flattening = 0, narrowing = 0 }) => radiusKm * ((1 - flattening) * (1 - narrowing)) ** (-1 / 3);
+export const narrowAxis = ({ north, meridian }) => cross(north, meridian);
 
-export function radiusBelowKm({ radiusKm, flattening, north }, offsetKm) {
-  if (!flattening) return radiusKm;
-  const sinLatitude = dot(offsetKm, north) / Math.hypot(...offsetKm);
-  return equatorKm({ radiusKm, flattening }) / Math.sqrt(1 - sinLatitude ** 2 + (sinLatitude / (1 - flattening)) ** 2);
+export function stretchedToBall({ flattening = 0, narrowing = 0, north, meridian }) {
+  if (!flattening) return (point) => point;
+  const lengthen = (point, axis, squash) => scale(axis, dot(point, axis) * (1 / (1 - squash) - 1));
+  const east = narrowAxis({ north, meridian });
+  return (point) => add(add(point, lengthen(point, north, flattening)), lengthen(point, east, narrowing));
+}
+
+export function radiusBelowKm(body, offsetKm) {
+  if (!body.flattening) return body.radiusKm;
+  return (longestRadiusKm(body) * Math.hypot(...offsetKm)) / Math.hypot(...stretchedToBall(body)(offsetKm));
 }
 const J2000_MS = Date.UTC(2000, 0, 1, 12);
 const MS_PER_DAY = 86400000;
@@ -321,17 +328,17 @@ function solveKepler(meanAnomaly, e) {
   return E;
 }
 
-export function orbitPoint({ a, e, inclination, node, periapsisArgument, meanAnomaly }) {
-  const E = solveKepler(meanAnomaly, e);
-  const along = a * (Math.cos(E) - e);
-  const across = a * Math.sqrt(1 - e * e) * Math.sin(E);
+function orbitAxes({ a, e, inclination, node, periapsisArgument }) {
   const [cw, sw, cn, sn, ci, si] = [Math.cos(periapsisArgument), Math.sin(periapsisArgument), Math.cos(node), Math.sin(node), Math.cos(inclination), Math.sin(inclination)];
-  return [
-    (cw * cn - sw * sn * ci) * along + (-sw * cn - cw * sn * ci) * across,
-    (cw * sn + sw * cn * ci) * along + (-sw * sn + cw * cn * ci) * across,
-    sw * si * along + cw * si * across,
-  ];
+  return {
+    along: scale([cw * cn - sw * sn * ci, cw * sn + sw * cn * ci, sw * si], a),
+    across: scale([-sw * cn - cw * sn * ci, -sw * sn + cw * cn * ci, cw * si], a * Math.sqrt(1 - e * e)),
+  };
 }
+
+const pointAtEccentricAnomaly = ({ along, across }, e, E) => add(scale(along, Math.cos(E) - e), scale(across, Math.sin(E)));
+
+export const orbitPoint = (elements) => pointAtEccentricAnomaly(orbitAxes(elements), elements.e, solveKepler(elements.meanAnomaly, elements.e));
 
 function eclipticToFrame([x, y, z]) {
   const c = Math.cos(OBLIQUITY);
@@ -475,11 +482,11 @@ const satelliteToFrame = ({ reference, across, pole }) => ([x, y, z]) => equator
 const parentOf = (name) => BODIES.find((body) => body.name === name).parent;
 
 function tracedBackFromNow(elements, toFrame) {
-  const eccentricAnomaly = solveKepler(elements.meanAnomaly, elements.e);
-  return Array.from({ length: ORBIT_PATH_POINTS }, (_, step) => {
-    const E = eccentricAnomaly - (2 * Math.PI * step) / ORBIT_PATH_POINTS;
-    return toFrame(orbitPoint({ ...elements, meanAnomaly: E - elements.e * Math.sin(E) }));
-  });
+  const { e, meanAnomaly } = elements;
+  const now = solveKepler(meanAnomaly, e);
+  const { along, across } = orbitAxes(elements);
+  const axes = { along: toFrame(along), across: toFrame(across) };
+  return Array.from({ length: ORBIT_PATH_POINTS }, (_, step) => pointAtEccentricAnomaly(axes, e, now - (2 * Math.PI * step) / ORBIT_PATH_POINTS));
 }
 
 export function orbitPaths(ms) {
