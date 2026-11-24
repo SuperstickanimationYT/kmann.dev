@@ -28,6 +28,7 @@ export function createGroundPatches(release) {
   const patches = new Map();
   const building = new Set();
   let body = null;
+  let settings = null;
   let seenFrame = 0;
   let nextBuilder = 0;
 
@@ -43,6 +44,7 @@ export function createGroundPatches(release) {
     patches.clear();
     building.clear();
     body = ground.body.name;
+    settings = ground.settings;
     builders.forEach((builder) => builder.postMessage({ body, ground: ground.settings }));
   }
 
@@ -70,7 +72,7 @@ export function createGroundPatches(release) {
   }
 
   function visible(ground, { basis, tanHalf, pixelAngle, sun }) {
-    if (ground.body.name !== body) switchTo(ground);
+    if (ground.body.name !== body || ground.settings !== settings) switchTo(ground);
     seenFrame++;
     const { radiusKm } = ground.body;
     const camera = ground.cameraLocalKm;

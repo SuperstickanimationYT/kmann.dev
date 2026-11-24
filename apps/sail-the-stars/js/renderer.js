@@ -178,9 +178,11 @@ const GROUND_DETAIL_SEED = 2;
 const SHADOW_SLOPE_BIAS = 3;
 const SHADOW_CONSTANT_BIAS = 4;
 const NO_SHADOWS = { uShadowsOn: 0 };
-const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5 };
+const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5, mirror: 7 };
+const MIRROR_OCCLUDES_FROM_COSINE = 0.5;
 const INVENTED_ROCKY_CODE = 6;
 const NO_GLOW = [0, 0, 0];
+const MIRROR_GLOW = [1, 0.97, 0.9];
 const UNLIT_LAMP = [1, 1, 1];
 const SUNLIGHT = [1, 1, 1];
 const SUN_DISK_GLOW = 2;
@@ -295,7 +297,7 @@ const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
 const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
 
-const brightnessRank = ({ body, offsetKm }) => (body.kind === 'star' ? -Infinity : apparentMagnitude(body, offsetKm));
+const brightnessRank = ({ body, offsetKm }) => (body.kind === 'star' || body.kind === 'mirror' ? -Infinity : apparentMagnitude(body, offsetKm));
 
 function brightestInDistanceOrder(seen) {
   if (seen.length <= MAX_BODIES) return seen;
@@ -318,6 +320,8 @@ function bodyReaches(shown, pixelAngle, coronaShown) {
   });
   return reaches;
 }
+
+const edgeOn = (body, direction) => body.kind === 'mirror' && Math.abs(body.north[0] * direction[0] + body.north[1] * direction[1] + body.north[2] * direction[2]) < MIRROR_OCCLUDES_FROM_COSINE;
 
 function bodyArrays(shown, mapRelief, giants) {
   const arrays = {
@@ -343,19 +347,19 @@ function bodyArrays(shown, mapRelief, giants) {
     const giantFaces = body.kind === 'giant' ? giants.facesOf(body.name) : null;
     const mapped = body.mapLayer >= 0 && mapRelief[body.mapLayer] !== undefined;
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
-    arrays.uBodyOccluder.set([...direction, star ? 0 : angularRadius], i * 4);
+    arrays.uBodyOccluder.set([...direction, star || body.shades || edgeOn(body, direction) ? 0 : angularRadius], i * 4);
     arrays.uBodySun.set([...body.sunward, body.sunAngularRadius], i * 4);
     body.eclipsers.forEach(({ offsetKm: eclipserKm, radiusKm, reddens }, k) =>
       arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
     arrays.uBodyNorth.set(body.north, i * 3);
     arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), body.invented ? INVENTED_ROCKY_CODE : BODY_KIND_CODES[body.kind]], i * 4);
-    arrays.uBodyGlow.set(body.glow ?? NO_GLOW, i * 4);
+    arrays.uBodyGlow.set([...(body.shines ? MIRROR_GLOW : body.glow ?? NO_GLOW), 1 - (body.lightShare ?? 1)], i * 4);
     arrays.uBodyLamp.set([...(body.lamp ?? UNLIT_LAMP), body.tideLocked ? 1 : 0], i * 4);
     arrays.uBodyMap.set([
       mapped ? body.mapLayer : -1,
       giantFaces ? giantFaces.now : body.invented?.seed ?? relief,
-      giantFaces ? giantFaces.next : body.measured?.kelvin ?? body.roughness ?? 0,
+      giantFaces ? giantFaces.next : body.invented?.kelvin ?? body.measured?.kelvin ?? body.roughness ?? 0,
       star ? 0 : starPointBrightness(apparentMagnitude(body, offsetKm)),
     ], i * 4);
   });
@@ -457,8 +461,9 @@ export function createRenderer(canvas, armMap, galaxies) {
   const bodyColourMaps = createBodyMaps(BODY_COLOUR_UNIT, gl.RGBA8);
   const bodyHeightMaps = createBodyMaps(BODY_HEIGHT_UNIT, gl.R8);
   const mapRelief = [];
+  const mapRanges = [];
 
-  function loadBodyMap(layer, { colour, heights, relief }) {
+  function loadBodyMap(layer, { colour, heights, relief, ground }) {
     const upload = (unit, texture, format, pixels) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
@@ -469,6 +474,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     upload(BODY_HEIGHT_UNIT, bodyHeightMaps, gl.RED, heights.values);
     gl.activeTexture(gl.TEXTURE0);
     mapRelief[layer] = relief;
+    mapRanges[layer] = ground;
   }
 
   const cloudMap = gl.createTexture();
@@ -541,9 +547,9 @@ export function createRenderer(canvas, armMap, galaxies) {
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
   const settlements = createSettlementPainter(gl, SETTLEMENTS_UNIT);
-  const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT });
+  const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
 
-  function setBodies(program, seen, ground, pixelAngle = 0) {
+  function setBodies(program, seen, ground, pixelAngle = 0, standingOn = ground?.body) {
     if (program.uniforms.uCloudNearby) gl.uniform1i(program.uniforms.uCloudNearby, CLOUD_NEARBY_UNIT);
     if (cloudNearby) setUniforms(gl, program, { uCloudNearbyUp: cloudNearby.up, uCloudNearbyEast: cloudNearby.east });
     if (program.uniforms.uLattice) gl.uniform1i(program.uniforms.uLattice, LATTICE_UNIT);
@@ -562,9 +568,11 @@ export function createRenderer(canvas, armMap, galaxies) {
     const haze = hazeUniforms(shown);
     setUniforms(gl, program, { uHazeBody: haze.bodies });
     for (const [name, values] of Object.entries({ ...arrays, ...haze.arrays })) setArray(gl, program, name, values, name === 'uBodyNorth' || name === 'uBodyMeridian' ? 3 : 4);
-    const sunVisible = sunShareVisible(seen ?? [], ground?.body.name);
-    const coronaShown = Math.max(0, 1 - sunVisible / CORONA_FADE_SHARE) ** 2;
-    setUniforms(gl, program, { uStarlight: systemLight, uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uCoronaShown: coronaShown });
+    const sunUneclipsed = sunShareVisible(seen ?? [], standingOn?.name);
+    const sunVisible = standingOn?.lightShare ?? sunUneclipsed;
+    const sunSeen = sunUneclipsed * (standingOn?.sunThroughShade ?? 1);
+    const coronaShown = Math.max(0, 1 - sunUneclipsed / CORONA_FADE_SHARE) ** 2;
+    setUniforms(gl, program, { uStarlight: systemLight, uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uSunSeen: sunSeen, uCoronaShown: coronaShown });
     if (program.uniforms.uBodyReach) gl.uniform1fv(program.uniforms.uBodyReach, bodyReaches(shown, pixelAngle, coronaShown));
     if (program.uniforms.uBodyColour) {
       gl.activeTexture(gl.TEXTURE0 + BODY_COLOUR_UNIT);
@@ -1114,7 +1122,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
-    setBodies(eyeStarProgram, bodies);
+    setBodies(eyeStarProgram, bodies, null, 0, ground?.body);
     bindWarp(eyeStarProgram, warp, adaptation);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT }, HIDDEN_BEHIND_FOREGROUND);
     if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);

@@ -393,7 +393,7 @@ const utcMinute = (ms) => new Date(ms).toISOString().slice(0, 16);
 const formatSimDate = (ms) => `${utcMinute(ms).replace('T', ' ')} UTC`;
 
 function showSimTime(now) {
-  if (hitTimeLimit()) showStatus(`Planet positions are only accurate from ${new Date(EARLIEST_MS).getUTCFullYear()} to ${new Date(LATEST_MS).getUTCFullYear()}, so time stopped there.`);
+  if (hitTimeLimit()) showStatus(`Time only runs from ${new Date(EARLIEST_MS).getUTCFullYear()} to ${new Date(LATEST_MS).getUTCFullYear()}, so it stopped there.`);
   if (now - simTimeShownAt < SIM_TIME_REFRESH_MS) return;
   simTimeShownAt = now;
   const shown = formatSimDate(simNow());
@@ -828,10 +828,10 @@ function groundFor(body) {
 
 function inventGroundBelow() {
   const body = solarFrame && bodyNamed(solarFrame.holder);
-  if (!body?.invented || inventedGround?.name === body.name) return;
-  if (Math.hypot(...solarFrame.offsetKm) > INVENT_GROUND_WITHIN_RADII * body.radiusKm) return;
+  if (!body?.invented || (inventedGround?.name === body.name && inventedGround.version === body.invented.version)) return;
+  if (!body.invented.terrain && Math.hypot(...solarFrame.offsetKm) > INVENT_GROUND_WITHIN_RADII * body.radiusKm) return;
   const settings = renderer.inventGround(body, toBodyLocal(body, body.sunward));
-  inventedGround = settings && { name: body.name, settings };
+  if (settings || inventedGround?.name !== body.name) inventedGround = settings && { name: body.name, version: settings.version, settings };
 }
 
 const spokenName = (body) => (body.name === 'Moon' ? 'the Moon' : body.name);

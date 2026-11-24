@@ -130,6 +130,12 @@ function bodyFacts(pick) {
   if (body.measured) return exoplanetFacts(body, facts);
   if (body.kind !== 'star') facts.push(['From the Sun', `${body.sunDistanceAu.toFixed(2)} AU`]);
   if (settlementShown(body)) facts.push(['People (made up)', `about ${Number(body.settlement.people.toPrecision(2)).toLocaleString('en')}`]);
+  if (body.kind === 'mirror') return { title: body.name, kind: 'Swarm of mirrors (made up)', facts };
+  if (body.terraforming) {
+    const { stage, temperature, people } = body.terraforming;
+    facts.push(['Terraforming (made up)', stage], ['Temperature', temperature]);
+    if (people > 0) facts.push(['People', `about ${Number(people.toPrecision(2)).toLocaleString('en')}`]);
+  }
   const kind = body.parent ? `Moon of ${body.parent}` : BODY_KINDS[body.kind];
   return { title: body.name, kind, facts };
 }
