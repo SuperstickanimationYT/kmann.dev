@@ -1,5 +1,5 @@
 {
-  "bytes": 2288340,
+  "bytes": 2306399,
   "files": [
     "./",
     "data/nearby-star-names.json",
@@ -32,6 +32,7 @@
     "js/main.js",
     "js/milky-way.js",
     "js/modes.js",
+    "js/motion-blur.js",
     "js/music/drums.js",
     "js/music/instruments.js",
     "js/music/koto-garden.js",

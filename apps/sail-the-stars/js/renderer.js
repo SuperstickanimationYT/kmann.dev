@@ -14,6 +14,7 @@ import {
   SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
+import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { apparentMagnitude, MAPPED_BODIES, sunShareVisible } from './solar-system.js';
@@ -290,6 +291,7 @@ function brightestInDistanceOrder(seen) {
   return seen.filter((entry) => kept.has(entry));
 }
 
+const NO_STAR_SHIFT = [0, 0, 0];
 const SEEN_RADII = 1.5;
 const RINGS_SEEN_RADII = 2.5;
 const GLOW_SEEN_PIXELS = 200;
@@ -479,6 +481,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     cloudNearby = null;
   }
 
+  let motionBlur = null;
   const giants = createGiantPainter(gl, emptyVao);
 
   function setBodies(program, seen, ground, pixelAngle = 0) {
@@ -951,7 +954,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     previousCloudView = { body: ground.body.name, local: bodyLocalBasis(ground.body, view.basis), camera: [...ground.cameraLocalKm], tanHalf: [...view.tanHalf] };
-    return target.textures[0];
+    return target;
   }
 
   function drawGround(view, bodies, ground) {
@@ -986,7 +989,18 @@ export function createRenderer(canvas, armMap, galaxies) {
     drawPatches(patchProgram, ground.drawn, ground.cameraLocalKm);
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
-    return { ground: target.textures[0], clouds: billows ? drawClouds(view, bodies, ground, target) : null };
+    const clouds = billows ? drawClouds(view, bodies, ground, target) : null;
+    return { ground: target.textures[0], clouds: clouds?.textures[0] ?? null, cloudDepth: clouds?.textures[1] ?? null };
+  }
+
+  function motionSeen({ view, cockpit, bodies, ground }) {
+    const { uLocalRight, uLocalUp, uLocalForward } = ground ? bodyLocalBasis(ground.body, view.basis) : {};
+    return {
+      view,
+      ship: { right: cockpit.uShipRight, up: cockpit.uShipUp, forward: cockpit.uShipForward },
+      bodies,
+      ground: ground && { name: ground.body.name, cameraLocalKm: [...ground.cameraLocalKm], aboveGroundKm: ground.aboveGroundKm, local: { right: uLocalRight, up: uLocalUp, forward: uLocalForward } },
+    };
   }
 
   function setCockpit(program, cockpit) {
@@ -995,7 +1009,9 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure, blurMotion }) {
+    if (blurMotion) motionBlur ??= createMotionBlur(gl, emptyVao);
+    const motion = motionBlur?.planFor(blurMotion ? motionSeen({ view, cockpit, bodies, ground }) : null);
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
     if (!warp) {
@@ -1007,7 +1023,7 @@ export function createRenderer(canvas, armMap, galaxies) {
 
     giants.advance(bodies ?? [], view.pixelAngle, cloudSeconds);
     const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, motion?.needed ? motionBlur.pictureFitting(canvas.width, canvas.height).framebuffer : null);
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.useProgram(eyeProgram.program);
     gl.activeTexture(gl.TEXTURE0);
@@ -1035,7 +1051,8 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
     setBodies(eyeStarProgram, bodies);
     bindWarp(eyeStarProgram, warp, adaptation);
-    drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift }, HIDDEN_BEHIND_FOREGROUND);
+    drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT }, HIDDEN_BEHIND_FOREGROUND);
+    if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);
     gl.colorMask(false, false, false, true);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);

@@ -65,6 +65,7 @@ const PICK_RADIUS_PX = 10;
 const TAP_DISTANCE = 6;
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
+const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
 const MUSIC_STORAGE_KEY = 'find-home-music';
 const MUSIC_FADE_SECONDS = 1.5;
 const MUSIC_TEMPO = { from: 72, to: 200 };
@@ -94,6 +95,7 @@ const musicToggle = $('[data-music]');
 const restartButton = $('[data-restart]');
 const selectField = $('[data-select-field]');
 const longExposureField = $('[data-long-exposure-field]');
+const motionBlurToggle = $('[data-motion-blur]');
 const longExposureToggle = $('[data-long-exposure]');
 const selectInput = $('[data-select]');
 const selectList = $('[data-select-list]');
@@ -269,6 +271,20 @@ function endIntro() {
   aimView();
   introFrame.hidden = true;
   view.focus();
+}
+
+function motionBlurWanted() {
+  try {
+    const saved = localStorage.getItem(MOTION_BLUR_STORAGE_KEY);
+    if (saved) return saved === 'on';
+  } catch {}
+  return !prefersStillness.matches;
+}
+
+function rememberMotionBlur() {
+  try {
+    localStorage.setItem(MOTION_BLUR_STORAGE_KEY, motionBlurToggle.checked ? 'on' : 'off');
+  } catch {}
 }
 
 function setMusic(wanted) {
@@ -909,6 +925,7 @@ function frame(now) {
       warp: warpView,
       adaptation,
       longExposure: longExposureShown(),
+      blurMotion: motionBlurToggle.checked && !warpView && !intro && !photo,
     });
     eyeStarsChanged = false;
   }
@@ -1457,6 +1474,8 @@ $('[data-warp-selection]').addEventListener('click', warpToSelection);
 $('[data-pick-warp]').addEventListener('click', warpToSelection);
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-pick-close]').addEventListener('click', clearSelection);
+motionBlurToggle.checked = motionBlurWanted();
+motionBlurToggle.addEventListener('change', rememberMotionBlur);
 longExposureToggle.addEventListener('change', () => setLongExposure(longExposureToggle.checked));
 restartButton.addEventListener('click', () => newGame());
 $('[data-new-game]').addEventListener('click', () => newGame());
