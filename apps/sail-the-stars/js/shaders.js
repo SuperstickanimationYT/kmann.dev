@@ -660,11 +660,13 @@ const float CITY_LIGHTS_DUSK = 0.02;
 const float CITY_LIGHTS_FULL_NIGHT = -0.12;
 const float CITY_LIGHTS_GAIN = 1.15;
 uniform float uCitiesInvented;
+uniform vec2 uCityChannel;
 uniform vec3 uLampDim;
 uniform vec3 uLampBright;
 uniform sampler2D uInventedLand;
 const float TOWN_OCTAVES = 4.0;
 const float TOWN_CONTRAST = 4.5;
+const float FAINT_TOWN_GAIN = 6.0;
 const float DISTRICT_CONTRAST = 1.6;
 const float CLOUD_LAMPLIGHT = 0.17;
 const float LAMP_POOL_LIGHT = 0.06;
@@ -707,9 +709,9 @@ float mappedCityLevel(vec2 uv, float footprint) {
 
 float inventedCityLevel(vec2 uv, float footprint) {
   float texel = 6.2831853 / float(textureSize(uInventedLand, 0).x);
-  float level = textureLod(uInventedLand, uv, max(log2(footprint / texel), 0.0)).g;
+  float level = dot(textureLod(uInventedLand, uv, max(log2(footprint / texel), 0.0)).rg, uCityChannel);
   float octaves = clamp(log2(texel / footprint), 0.0, TOWN_OCTAVES);
-  if (level <= 0.004 || octaves <= 0.0) return level;
+  if (level <= 0.004 || octaves <= 0.0) return min(level * mix(1.0, clamp(footprint / texel, 1.0, FAINT_TOWN_GAIN), uCityChannel.x), 1.0);
   float longitude = (uv.x - 0.5) * 6.2831853;
   float latitude = (0.5 - uv.y) * 3.1415927;
   vec3 local = vec3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude));

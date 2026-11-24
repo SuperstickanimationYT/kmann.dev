@@ -1,4 +1,5 @@
 import { DEGREES, equatorialToFrame, SUN_POSITION } from './milky-way.js';
+import { settlementOf } from './settlements.js';
 import { add, cross, dot, normalize, rotateAbout, scale, subtract } from './vectors.js';
 
 export const KM_PER_PC = 3.0857e13;
@@ -153,6 +154,16 @@ const MOON_LATITUDE_TERMS = [
   [4, 0, 0, -1, 0, 0, 0, 0, 0, 0.001021, 0.000002],
   [4, 0, 0, 1, 0, 0, 0, 0, 0, 0.000331, 0],
 ];
+const MOON_ARGUMENT_CURVES = [
+  [-0.0018819, 1 / 545868],
+  [-0.0001536, 1 / 24490000],
+  [0.0087414, 1 / 69699],
+  [-0.0036539, -1 / 3526000],
+  [-0.0015786, 1 / 538841],
+];
+const MOON_PRECESSION_FIT_ROWS = { longitude: 3, latitude: 9 };
+const FAR_MOON_LONGITUDE_TERMS = MOON_LONGITUDE_TERMS.slice(MOON_PRECESSION_FIT_ROWS.longitude);
+const FAR_MOON_LATITUDE_TERMS = MOON_LATITUDE_TERMS.slice(MOON_PRECESSION_FIT_ROWS.latitude);
 const MOON_DISTANCE_TERMS = [
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 385000.5],
   [0, 0, 0, 2, 0, 0, 0, 0, 0, 0, -3.1],
@@ -233,6 +244,25 @@ const PLANET_ORBITS = {
   Neptune: [[30.06992276, 0.00026291], [0.00859048, 0.00005105], [1.77004347, 0.00035372], [-55.12002969, 218.45945325], [44.96476227, -0.32241464], [131.78422574, -0.00508664]],
 };
 
+const FAR_PLANET_ORBITS = {
+  Mercury: [[0.38709843, 0], [0.20563661, 0.00002123], [7.00559432, -0.00590158], [252.25166724, 149472.67486623], [77.45771895, 0.15940013], [48.33961819, -0.12214182]],
+  Venus: [[0.72332102, -0.00000026], [0.00676399, -0.00005107], [3.39777545, 0.00043494], [181.9797085, 58517.8156026], [131.76755713, 0.05679648], [76.67261496, -0.27274174]],
+  Earth: [[1.00000018, -0.00000003], [0.01673163, -0.00003661], [-0.00054346, -0.01337178], [100.46691572, 35999.37306329], [102.93005885, 0.3179526], [-5.11260389, -0.24123856]],
+  Mars: [[1.52371243, 0.00000097], [0.09336511, 0.00009149], [1.85181869, -0.00724757], [-4.56813164, 19140.29934243], [-23.91744784, 0.45223625], [49.71320984, -0.26852431]],
+  Jupiter: [[5.20248019, -0.00002864], [0.0485359, 0.00018026], [1.29861416, -0.00322699], [34.33479152, 3034.90371757], [14.27495244, 0.18199196], [100.29282654, 0.13024619]],
+  Saturn: [[9.54149883, -0.00003065], [0.05550825, -0.00032044], [2.49424102, 0.00451969], [50.07571329, 1222.11494724], [92.86136063, 0.54179478], [113.63998702, -0.25015002]],
+  Uranus: [[19.18797948, -0.00020455], [0.0468574, -0.0000155], [0.77298127, -0.00180155], [314.20276625, 428.49512595], [172.43404441, 0.09266985], [73.96250215, 0.05739699]],
+  Neptune: [[30.06952752, 0.00006447], [0.00895439, 0.00000818], [1.7700552, 0.000224], [-55.77710713, 218.46515314], [46.68158724, 0.01009938], [131.78635853, -0.00606302]],
+};
+const FAR_MEAN_ANOMALY_TERMS = {
+  Jupiter: [-0.00012452, 0.0606406, -0.35635438, 38.35125],
+  Saturn: [0.00025899, -0.13434469, 0.87320147, 38.35125],
+  Uranus: [0.00058331, -0.97731848, 0.17689245, 7.67025],
+  Neptune: [-0.00041348, 0.68346318, -0.10162547, 7.67025],
+};
+const FAR_FUTURE_STARTS = 0.4;
+const FAR_FUTURE_FULL = 0.5;
+
 export const BODIES = [
   { name: 'Sun', kind: 'star', radiusKm: SUN_RADIUS_KM, pole: [286.13, 63.87], spin: [84.176, 14.1844], tint: [1, 0.96, 0.88] },
   { name: 'Mercury', kind: 'rocky', radiusKm: 2439.7, pole: [281.0103, 61.4155], spin: [329.5988, 6.1385108], tint: [0.55, 0.52, 0.5], magnitude: -0.6 },
@@ -295,9 +325,31 @@ function eclipticToFrame([x, y, z]) {
   return equatorialToFrame([x, y * c - z * s, y * s + z * c]);
 }
 
-function planetElements(name, centuries) {
-  const [a, e, i, L, perihelion, node] = PLANET_ORBITS[name].map(([value, rate]) => value + rate * centuries);
+const farFutureShare = (centuries) => Math.max(0, Math.min(1, (centuries - FAR_FUTURE_STARTS) / (FAR_FUTURE_FULL - FAR_FUTURE_STARTS)));
+const mixed = (near, far, share) => near * (1 - share) + far * share;
+
+function elementsFrom(orbits, name, centuries) {
+  const [a, e, i, L, perihelion, node] = orbits[name].map(([value, rate]) => value + rate * centuries);
   return { a, e, inclination: i * DEGREES, node: node * DEGREES, periapsisArgument: (perihelion - node) * DEGREES, meanAnomaly: (L - perihelion) * DEGREES };
+}
+
+function farMeanAnomalyShift(name, centuries) {
+  const [quadratic, cosine, sine, degreesPerCentury] = FAR_MEAN_ANOMALY_TERMS[name] ?? [0, 0, 0, 0];
+  const angle = degreesPerCentury * centuries * DEGREES;
+  return (quadratic * centuries ** 2 + cosine * Math.cos(angle) + sine * Math.sin(angle)) * DEGREES;
+}
+
+function farElements(name, centuries) {
+  const elements = elementsFrom(FAR_PLANET_ORBITS, name, centuries);
+  return { ...elements, meanAnomaly: elements.meanAnomaly + farMeanAnomalyShift(name, centuries) };
+}
+
+function planetElements(name, centuries) {
+  const share = farFutureShare(centuries);
+  const near = elementsFrom(PLANET_ORBITS, name, centuries);
+  if (share === 0) return near;
+  const far = farElements(name, centuries);
+  return Object.fromEntries(Object.entries(near).map(([key, value]) => [key, mixed(value, far[key], share)]));
 }
 
 const planetOffsetAu = (name, centuries) => orbitPoint(planetElements(name, centuries));
@@ -309,23 +361,63 @@ function ttMinusUtcSeconds(days) {
   return TT_MINUS_UTC_SECONDS[below] * (1 - share) + TT_MINUS_UTC_SECONDS[below + 1] * share;
 }
 
-function sumSeries(terms, arguments_, centuries) {
+function sumSeries(terms, arguments_, centuries, sunTermShare = 1) {
   let total = 0;
   for (const term of terms) {
     let angle = 0;
     for (let k = 0; k < arguments_.length; k++) angle += term[k] * arguments_[k];
-    total += centuries ** term[8] * (term[9] * Math.sin(angle) + term[10] * Math.cos(angle));
+    total += sunTermShare ** Math.abs(term[1]) * centuries ** term[8] * (term[9] * Math.sin(angle) + term[10] * Math.cos(angle));
   }
   return total;
 }
 
-function moonOffsetKm(days) {
-  const centuries = (days + ttMinusUtcSeconds(days) / 86400) / DAYS_PER_CENTURY;
+const polynomial = (coefficients, centuries) => coefficients.reduceRight((total, coefficient) => total * centuries + coefficient, 0);
+
+function precessionAngles(centuries) {
+  return {
+    zeta: polynomial([0, 0.6406161, 0.0000839, 0.000005], centuries) * DEGREES,
+    z: polynomial([0, 0.6406161, 0.0003041, 0.0000051], centuries) * DEGREES,
+    theta: polynomial([0, 0.556753, -0.0001185, -0.0000116], centuries) * DEGREES,
+  };
+}
+
+const turnAboutZ = ([x, y, z], angle) => [x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle), z];
+const turnAboutY = ([x, y, z], angle) => [x * Math.cos(angle) + z * Math.sin(angle), y, z * Math.cos(angle) - x * Math.sin(angle)];
+
+function equatorOfDateToJ2000(vector, centuries) {
+  const { zeta, z, theta } = precessionAngles(centuries);
+  return turnAboutZ(turnAboutY(turnAboutZ(vector, -z), theta), -zeta);
+}
+
+const pointAlong = (longitude, latitude, distance) =>
+  [distance * Math.cos(latitude) * Math.cos(longitude), distance * Math.cos(latitude) * Math.sin(longitude), distance * Math.sin(latitude)];
+
+function moonNowOffsetKm(centuries) {
   const arguments_ = MOON_ARGUMENTS.map(([start, rate]) => (start + rate * centuries) * DEGREES);
   const longitude = sumSeries(MOON_LONGITUDE_TERMS, arguments_, centuries) * DEGREES;
   const latitude = sumSeries(MOON_LATITUDE_TERMS, arguments_, centuries) * DEGREES;
-  const distance = sumSeries(MOON_DISTANCE_TERMS, arguments_, centuries);
-  return eclipticToFrame([distance * Math.cos(latitude) * Math.cos(longitude), distance * Math.cos(latitude) * Math.sin(longitude), distance * Math.sin(latitude)]);
+  return eclipticToFrame(pointAlong(longitude, latitude, sumSeries(MOON_DISTANCE_TERMS, arguments_, centuries)));
+}
+
+function moonFarOffsetKm(centuries) {
+  const arguments_ = MOON_ARGUMENTS.map((linear, k) => polynomial([...linear, ...(MOON_ARGUMENT_CURVES[k] ?? [])], centuries) * DEGREES);
+  const sunTermShare = polynomial([1, -0.002516, -0.0000074], centuries);
+  const series = (terms) => sumSeries(terms, arguments_, centuries, sunTermShare);
+  const longitude = arguments_[4] + series(FAR_MOON_LONGITUDE_TERMS) * DEGREES;
+  const latitude = series(FAR_MOON_LATITUDE_TERMS) * DEGREES;
+  const [x, y, z] = pointAlong(longitude, latitude, series(MOON_DISTANCE_TERMS));
+  const obliquity = OBLIQUITY + polynomial([0, -0.0130042, -0.00000016, 0.0000005], centuries) * DEGREES;
+  const c = Math.cos(obliquity);
+  const s = Math.sin(obliquity);
+  return equatorialToFrame(equatorOfDateToJ2000([x, y * c - z * s, y * s + z * c], centuries));
+}
+
+function moonOffsetKm(days) {
+  const centuries = (days + ttMinusUtcSeconds(days) / 86400) / DAYS_PER_CENTURY;
+  const share = farFutureShare(centuries);
+  if (share === 0) return moonNowOffsetKm(centuries);
+  if (share === 1) return moonFarOffsetKm(centuries);
+  return add(scale(moonNowOffsetKm(centuries), 1 - share), scale(moonFarOffsetKm(centuries), share));
 }
 
 function satellitePlane(orbit) {
@@ -377,7 +469,15 @@ export function facingParent(offsetKm, nextOffsetKm) {
   return { north, meridian: normalize(subtract(towardParent, scale(north, dot(towardParent, north)))) };
 }
 
+function earthOrientation(days) {
+  const centuries = days / DAYS_PER_CENTURY;
+  const greenwich = (280.46061837 + 360.98564736629 * days + 0.000387933 * centuries ** 2) * DEGREES;
+  const toFrame = (vector) => equatorialToFrame(equatorOfDateToJ2000(vector, centuries));
+  return { north: toFrame([0, 0, 1]), meridian: toFrame([Math.cos(greenwich), Math.sin(greenwich), 0]) };
+}
+
 function orientation(body, days) {
+  if (body.name === 'Earth') return earthOrientation(days);
   const northEquatorial = equatorialDirection(...body.pole);
   const node = normalize(cross([0, 0, 1], northEquatorial));
   const meridianEquatorial = rotateAbout(node, northEquatorial, (body.spin[0] + body.spin[1] * days) * DEGREES);
@@ -476,6 +576,7 @@ export function placeBodies(ms) {
   const facing = BODIES.map((body) => ({
     ...body,
     ...(body.name === 'Earth' && { cityLights: cityLightsOn(ms) }),
+    ...settlementOf(body.name, ms),
     ...(body.synchronous ? synchronousFacing.get(body.name) : orientation(body, days)),
     cloudMeridian: body.cloudSpin && orientation({ ...body, spin: body.cloudSpin }, days).meridian,
     fromSunKm: fromSun.get(body.name),
