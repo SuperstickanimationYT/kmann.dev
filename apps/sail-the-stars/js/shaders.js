@@ -1347,6 +1347,8 @@ float citiesNear(vec3 local, float scale, float seed) {
   return glow;
 }
 
+const float COLDEST_STAINED_KELVIN = 60.0;
+const float DARKER_COLD_ICE = 0.8;
 uniform vec4 uMappedTerrain;
 uniform float uGreenery;
 const float COAST_FRAY_KM = 0.5;
@@ -1416,7 +1418,7 @@ Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin
   if (kelvin <= 175.0) {
     float stain = smoothstep(0.48, 0.62, plains);
     float crack = 1.0 - smoothstep(0.0, 0.03, abs(terrain(p * 2.8 + 5.0 * warp) - 0.5));
-    made.albedo = tint * mix(vec3(1.0), vec3(0.62, 0.45, 0.33), 0.7 * stain + 0.5 * crack) * (0.75 + 0.45 * fine) + 0.5 * cratered.w;
+    made.albedo = tint * mix(vec3(1.0), kelvin < COLDEST_STAINED_KELVIN ? DARKER_COLD_ICE * tint / max(tint.r, max(tint.g, tint.b)) : vec3(0.62, 0.45, 0.33), 0.7 * stain + 0.5 * crack) * (0.75 + 0.45 * fine) + 0.5 * cratered.w;
     return made;
   }
   float basalt = smoothstep(0.46, 0.56, plains);

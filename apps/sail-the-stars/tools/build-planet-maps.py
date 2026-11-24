@@ -14,6 +14,15 @@ Raw downloads (all NASA, public domain):
   Venus_Magellan_Topography_Global_4641m_v02.tif  USGS Astrogeology, Magellan, int16 metres, -32768 where unmapped
   Titan_ISS_P19658_Mosaic_Global_4km.tif           USGS Astrogeology, Cassini ISS 938 nm, columns run 0-360 E
   topo_4PPD_interp.cub                             Cornell eCommons (Corlies 2017, CC0), ISIS cube, float32 metres
+  ceres_dawn_fc_dlr_global_feb2016_1024.jpg               USGS Astrogeology, Dawn FC mosaic, shaded by the Sun
+  pluto_newhorizons_global_mosaic_300m_jul2017_1024.jpg   USGS Astrogeology, New Horizons, 0-360 E, black where unseen
+  charon_newhorizons_global_mosaic_300m_jul2017_1024.jpg  as above
+  pluto_newhorizons_global_dem_300m_jul2017_1024.jpg      USGS Astrogeology, New Horizons heights as greys, black where unmapped
+  charon_newhorizons_global_dem_300m_jul2017_1024.jpg     as above
+
+The grey heights carry no scale: PLUTO_GREY_M and CHARON_GREY_M are set so that Sputnik Planitia
+lies about 3 km below its surroundings and Charon's relief spans about 19 km.
+To rebuild only the dwarf planets: python tools/build-planet-maps.py <folder> dwarfs
 """
 
 import json
@@ -38,6 +47,21 @@ VENUS_UNMAPPED = -32768
 VENUS_BASALT = (80, 74, 66)
 TITAN_TINT = np.array([1.0, 0.84, 0.62])
 GAP_FILL_STEPS = 400
+PLUTO_TINT = np.array([1.16, 1.02, 0.88])
+CHARON_TINT = np.array([0.95, 0.92, 0.88])
+CHARON_POLE_TINT = np.array([1.0, 0.78, 0.62])
+CHARON_POLE_LATITUDES = (55, 75)
+CERES_TINT = np.array([0.56, 0.55, 0.53])
+CERES_SHADING_SPREAD = 22
+PLUTO_GREY_M = (-5000, 43)
+CHARON_GREY_M = (-13000, 75)
+PLUTO_BORROWED_LATITUDES = (50, 85)
+CHARON_BORROWED_LATITUDES = (5, 45)
+UNSEEN_GREY = 4
+UNSEEN_MARGIN = 6
+UNSEEN_FEATHER = 14
+FRAME_ROWS = 4
+INVENTED_RELIEF_M = 350
 LIGHTS_SIZE = (8192, 3072)
 LIGHTS_NORTH = 75
 LIGHTS_SOUTH = -60
@@ -183,6 +207,106 @@ def best_half_turn(colour_path, heights):
     return turned > as_is, as_is, turned
 
 
+def box_blurred(image, reach):
+    padded = np.pad(np.pad(image, ((0, 0), (reach, reach)), 'wrap'), ((reach, reach), (0, 0)), 'edge')
+    width = 2 * reach + 1
+    for axis in (0, 1):
+        total = np.cumsum(np.insert(padded, 0, 0, axis=axis), axis=axis)
+        padded = (np.take(total, range(width, total.shape[axis]), axis=axis) - np.take(total, range(total.shape[axis] - width), axis=axis)) / width
+    return padded
+
+
+def shared_frame(path, starts_at_zero_east):
+    image = np.asarray(Image.open(path).convert('L').resize((WIDTH, HEIGHT), Image.LANCZOS), dtype=np.float64).copy()
+    image[:FRAME_ROWS] = image[FRAME_ROWS]
+    return centred_on_prime_meridian(image, starts_at_zero_east)
+
+
+def seen_share(image):
+    unseen = box_blurred((image < UNSEEN_GREY).astype(np.float64), 2) > 0.6
+    grown = box_blurred(unseen.astype(np.float64), UNSEEN_MARGIN) > 0
+    return 1 - np.clip(box_blurred(grown.astype(np.float64), UNSEEN_FEATHER) * 2, 0, 1), ~grown
+
+
+def northern_ground_moved_south(image, latitudes):
+    nearest_equator, farthest = latitudes
+    southern = np.clip((np.arange(HEIGHT) + 0.5) / HEIGHT * 180 - 90, 0, 90)
+    source = nearest_equator + (farthest - nearest_equator) * southern / 90
+    rows = np.clip((90 - source) / 180 * HEIGHT, 0, HEIGHT - 1).astype(int)
+    return np.roll(image[rows], WIDTH // 2, axis=1)
+
+
+def unseen_ground_invented(image, borrowed_latitudes):
+    share, _ = seen_share(np.where(np.arange(HEIGHT)[:, None] < HEIGHT // 2, 255, image))
+    return image * share + northern_ground_moved_south(image, borrowed_latitudes) * (1 - share)
+
+
+def relief_noise(seed):
+    random = np.random.default_rng(seed)
+    total = np.zeros((HEIGHT, WIDTH))
+    for octave in range(3, 8):
+        cells = (2 ** (octave - 1), 2 ** octave)
+        coarse = np.pad(random.standard_normal(cells), ((0, 0), (2, 2)), 'wrap')
+        scale = WIDTH // cells[1]
+        large = np.asarray(Image.fromarray(coarse.astype(np.float32), 'F').resize((coarse.shape[1] * scale, HEIGHT), Image.BICUBIC))
+        total += large[:, 2 * scale:2 * scale + WIDTH] / 2 ** (octave - 3)
+    return total / total.std()
+
+
+def heights_from_greys(path, metres_at_black, metres_per_grey, seed):
+    greys = shared_frame(path, starts_at_zero_east=True)
+    share, seen = seen_share(greys)
+    metres = np.where(seen, metres_at_black + metres_per_grey * greys, np.nan)
+    return gaps_filled(metres) + (1 - share) * INVENTED_RELIEF_M * relief_noise(seed)
+
+
+def save_tinted(brightness, tint, name):
+    rgb = np.clip(brightness[..., None] * tint, 0, 255).round().astype(np.uint8)
+    Image.fromarray(rgb, 'RGB').save(OUT / f'{name}-colour.webp', quality=COLOUR_QUALITY, method=6)
+
+
+def evenly_shaded(brightness, spread):
+    middle = np.median(brightness)
+    by_row = np.abs(brightness - middle).mean(axis=1, keepdims=True)
+    return middle + (brightness - middle) * np.minimum(1, spread / np.maximum(by_row, 1))
+
+
+def charon_tint():
+    latitude = 90 - (np.arange(HEIGHT) + 0.5) * 180 / HEIGHT
+    low, high = CHARON_POLE_LATITUDES
+    share = np.clip((latitude - low) / (high - low), 0, 1)[:, None, None]
+    return CHARON_TINT * (1 - share) + CHARON_POLE_TINT * share
+
+
+def save_flat_height(name):
+    Image.new('L', (WIDTH, HEIGHT), 0).save(OUT / f'{name}-height.webp', lossless=True, method=6)
+    return {'lowKm': 0.0, 'highKm': 0.0, 'datumKm': 0.0}
+
+
+def build_dwarfs(raw, ranges):
+    ceres = shared_frame(raw / 'ceres_dawn_fc_dlr_global_feb2016_1024.jpg', starts_at_zero_east=False)
+    save_tinted(evenly_shaded(ceres, CERES_SHADING_SPREAD), CERES_TINT, 'ceres')
+    ranges['Ceres'] = save_flat_height('ceres')
+
+    for name, tint, greys, borrowed, seed in (('pluto', PLUTO_TINT, PLUTO_GREY_M, PLUTO_BORROWED_LATITUDES, 1), ('charon', charon_tint(), CHARON_GREY_M, CHARON_BORROWED_LATITUDES, 2)):
+        mosaic = shared_frame(raw / f'{name}_newhorizons_global_mosaic_300m_jul2017_1024.jpg', starts_at_zero_east=True)
+        save_tinted(unseen_ground_invented(mosaic, borrowed), tint, name)
+        metres = heights_from_greys(raw / f'{name}_newhorizons_global_dem_300m_jul2017_1024.jpg', *greys, seed)
+        ranges[name.capitalize()] = save_height(metres, name, datum_metres=area_weighted_mean(metres))
+
+
+def write_ranges(ranges):
+    (OUT / 'maps.json').write_text(json.dumps(ranges, indent=2) + '\n')
+    for path in sorted(OUT.iterdir()):
+        print(f'{path.name}: {path.stat().st_size / 1024:.0f} KB')
+
+
+def rebuild_dwarfs(raw):
+    ranges = json.loads((OUT / 'maps.json').read_text())
+    build_dwarfs(raw, ranges)
+    write_ranges(ranges)
+
+
 def main(raw):
     OUT.mkdir(parents=True, exist_ok=True)
     ranges = {}
@@ -213,10 +337,10 @@ def main(raw):
     save_tinted_brightness(raw / 'Titan_ISS_P19658_Mosaic_Global_4km.tif', 'titan', TITAN_TINT, starts_at_zero_east=True)
     ranges['Titan'] = save_height(titan, 'titan', datum_metres=area_weighted_mean(titan))
 
-    (OUT / 'maps.json').write_text(json.dumps(ranges, indent=2) + '\n')
-    for path in sorted(OUT.iterdir()):
-        print(f'{path.name}: {path.stat().st_size / 1024:.0f} KB')
+    build_dwarfs(raw, ranges)
+    write_ranges(ranges)
 
 
 if __name__ == '__main__':
-    main(Path(sys.argv[1]))
+    build = rebuild_dwarfs if sys.argv[2:] == ['dwarfs'] else main
+    build(Path(sys.argv[1]))

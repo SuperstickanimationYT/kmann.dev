@@ -38,9 +38,12 @@ export const starDestination = (star) => (star.host ? hostDestination(star) : pl
 
 export const SUN_DESTINATION = starDestination({ name: 'Sun', position: SUN_POSITION, sun: true });
 
+const DWARF_GROUPS = { agreed: 'Dwarf planets', likely: 'Likely dwarf planets' };
+
 function groupOf(body) {
   if (body.kind === 'mirror') return `Made-up mirrors of ${body.parent}`;
   if (body.host) return `Planet of ${body.host}`;
+  if (body.dwarf) return DWARF_GROUPS[body.dwarf];
   return body.parent ? `Moon of ${body.parent}` : 'Planets';
 }
 

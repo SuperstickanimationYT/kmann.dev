@@ -1,4 +1,5 @@
 import { cloudTurn } from './clouds.js';
+import { DWARF_ORBITS, DWARF_PLANETS, DWARF_SATELLITE_ORBITS } from './dwarf-planets.js';
 import { DEGREES, equatorialToFrame, SUN_POSITION } from './milky-way.js';
 import { settlementOf } from './settlements.js';
 import { mirrorLight, mirrorsAround, terraformed } from './terraforming.js';
@@ -241,6 +242,7 @@ const SATELLITE_ORBITS = {
   Titania: { laplacePole: [77.311, 15.175], a: 436343, e: 0.0018, inclination: 0.04, node: 7.1265, nodeDegreesPerYear: -0.2189, periapsisLongitude: 222.4739, apsisDegreesPerYear: 0.6208, meanLongitude: 281.5639, degreesPerDay: 41.351414845, parentShare: 0.00003916 },
   Oberon: { laplacePole: [77.311, 15.175], a: 583419, e: 0.0009, inclination: 0.194, node: 73.5365, nodeDegreesPerYear: -1.8672, periapsisLongitude: 148.0477, apsisDegreesPerYear: 2.2698, meanLongitude: 352.5627, degreesPerDay: 26.739481987, parentShare: 0.00003543 },
   Triton: { laplacePole: [299.36, 43.46], a: 354758, e: 0, inclination: 156.823, node: 177.6213, nodeDegreesPerYear: 0.5332, meanLongitude: 235.9719, degreesPerDay: 61.260181416, degreesPerCenturySquared: -0.094, parentShare: 0.0002090 },
+  ...DWARF_SATELLITE_ORBITS,
 };
 
 const PLANET_ORBITS = {
@@ -252,6 +254,7 @@ const PLANET_ORBITS = {
   Saturn: [[9.53667594, -0.0012506], [0.05386179, -0.00050991], [2.48599187, 0.00193609], [49.95424423, 1222.49362201], [92.59887831, -0.41897216], [113.66242448, -0.28867794]],
   Uranus: [[19.18916464, -0.00196176], [0.04725744, -0.00004397], [0.77263783, -0.00242939], [313.23810451, 428.48202785], [170.9542763, 0.40805281], [74.01692503, 0.04240589]],
   Neptune: [[30.06992276, 0.00026291], [0.00859048, 0.00005105], [1.77004347, 0.00035372], [-55.12002969, 218.45945325], [44.96476227, -0.32241464], [131.78422574, -0.00508664]],
+  ...DWARF_ORBITS,
 };
 
 const FAR_PLANET_ORBITS = {
@@ -303,6 +306,7 @@ export const BODIES = [
   { name: 'Titania', kind: 'rocky', parent: 'Uranus', synchronous: true, radiusKm: 788.9, tint: [0.6, 0.57, 0.55], magnitude: 1.02 },
   { name: 'Oberon', kind: 'rocky', parent: 'Uranus', synchronous: true, radiusKm: 761.4, tint: [0.55, 0.52, 0.5], magnitude: 1.23 },
   { name: 'Triton', kind: 'rocky', parent: 'Neptune', synchronous: true, radiusKm: 1352.6, tint: [0.8, 0.75, 0.72], magnitude: -1.24 },
+  ...DWARF_PLANETS,
 ];
 
 export const MAPPED_BODIES = BODIES.filter((body) => body.map);
@@ -357,7 +361,7 @@ function farElements(name, centuries) {
 function planetElements(name, centuries) {
   const share = farFutureShare(centuries);
   const near = elementsFrom(PLANET_ORBITS, name, centuries);
-  if (share === 0) return near;
+  if (share === 0 || !FAR_PLANET_ORBITS[name]) return near;
   const far = farElements(name, centuries);
   return Object.fromEntries(Object.entries(near).map(([key, value]) => [key, mixed(value, far[key], share)]));
 }
@@ -470,8 +474,13 @@ function satelliteElements(orbit, days) {
 const satelliteToFrame = ({ reference, across, pole }) => ([x, y, z]) => equatorialToFrame(add(add(scale(reference, x), scale(across, y)), scale(pole, z)));
 const parentOf = (name) => BODIES.find((body) => body.name === name).parent;
 
-const tracedBackFromNow = (elements, toFrame) =>
-  Array.from({ length: ORBIT_PATH_POINTS }, (_, step) => toFrame(orbitPoint({ ...elements, meanAnomaly: elements.meanAnomaly - (2 * Math.PI * step) / ORBIT_PATH_POINTS })));
+function tracedBackFromNow(elements, toFrame) {
+  const eccentricAnomaly = solveKepler(elements.meanAnomaly, elements.e);
+  return Array.from({ length: ORBIT_PATH_POINTS }, (_, step) => {
+    const E = eccentricAnomaly - (2 * Math.PI * step) / ORBIT_PATH_POINTS;
+    return toFrame(orbitPoint({ ...elements, meanAnomaly: E - elements.e * Math.sin(E) }));
+  });
+}
 
 export function orbitPaths(ms) {
   const days = (ms - J2000_MS) / MS_PER_DAY;
@@ -586,6 +595,7 @@ export function placeBodies(ms) {
   const earth = subtract(fromSun.get('Earth'), scale(moonOffset, EARTH_SHARE_OF_MOON_OFFSET));
   fromSun.set('Earth', earth);
   fromSun.set('Moon', add(earth, moonOffset));
+  const sharedCentres = new Map(fromSun);
   const satelliteOffsets = new Map();
   const synchronousFacing = new Map();
   for (const [name, orbit] of Object.entries(SATELLITE_ORBITS)) {
@@ -596,7 +606,7 @@ export function placeBodies(ms) {
     const parent = parentOf(name);
     fromSun.set(parent, subtract(fromSun.get(parent), scale(offset, orbit.parentShare)));
   }
-  for (const [name, offset] of satelliteOffsets) fromSun.set(name, add(fromSun.get(parentOf(name)), offset));
+  for (const [name, offset] of satelliteOffsets) fromSun.set(name, add((SATELLITE_ORBITS[name].aroundSharedCentre ? sharedCentres : fromSun).get(parentOf(name)), offset));
   const facing = BODIES.map((listed) => terraformed(listed, ms)).map((body) => ({
     ...body,
     ...(body.name === 'Earth' && { cityLights: cityLightsOn(ms) }),
