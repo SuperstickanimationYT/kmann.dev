@@ -9,15 +9,15 @@ import { planckNanomaggies } from './warp.js';
 import {
   CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
-  GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
+  GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, LATTICE_PERIOD, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
-  SKY_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
+  SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
 } from './shaders.js';
 import { createGiantPainter } from './giant-painter.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { apparentMagnitude, MAPPED_BODIES, sunShareVisible } from './solar-system.js';
-import { mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
+import { lattice, mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
 const NEBULA_LIGHT_PER_IONIZING = 3700 / 1e49;
@@ -128,6 +128,15 @@ function viewUniforms({ camera, basis, tanHalf, pixelAngle }) {
 
 const NO_PLANET = { uPlanet: [0, 0, 1, 0] };
 const SKY_CUBE_SIZE = 256;
+const KEPT_SKY_UNIT = 19;
+const KEPT_SKY_SIZE = 512;
+const KEPT_SKY_TILE = 128;
+const KEPT_SKY_TILES_ACROSS = KEPT_SKY_SIZE / KEPT_SKY_TILE;
+const KEPT_SKY_TILE_COUNT = 6 * KEPT_SKY_TILES_ACROSS ** 2;
+const KEPT_SKY_DRIFT_PC = 0.01;
+const KEPT_SKY_REACH_CHANGE = 0.02;
+const KEPT_SKY_COARSEST = 1.5;
+const SKY_PIXELS_PER_FRAME = 32768;
 const SKY_CUBE_UNIT = 3;
 const WARP_TABLE_UNIT = 4;
 const SUN_KELVIN = 5772;
@@ -171,6 +180,17 @@ const ECLIPSERS_PER_BODY = 2;
 const AIRY_ECLIPSER_SIGN = -1;
 const CORONA_FADE_SHARE = 0.004;
 const HIDDEN_BEHIND_FOREGROUND = true;
+const LATTICE_UNIT = 18;
+const LATTICE_ORIGIN = 4096;
+
+const nearestToZero = (index) => (index < LATTICE_PERIOD / 2 ? index : index - LATTICE_PERIOD) + LATTICE_ORIGIN;
+
+function latticeByte(_, index) {
+  const x = nearestToZero(index % LATTICE_PERIOD);
+  const y = nearestToZero(Math.floor(index / LATTICE_PERIOD) % LATTICE_PERIOD);
+  const z = nearestToZero(Math.floor(index / LATTICE_PERIOD ** 2));
+  return Math.floor(255 * lattice(x, y, z, 0) + 0.5);
+}
 const NO_GROUND = { uGround: { int: -1 } };
 const NO_CLOUDS = [0, 0, 0, 0];
 const CLOUD_SETTING_ORDER = ['baseKm', 'topKm', 'extinctionPerKm', 'coverShift'];
@@ -326,6 +346,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   if (!gl) return null;
 
   const skyProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FRAGMENT);
+  const skyFromCubeProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FROM_CUBE_FRAGMENT);
   const eyeProgram = createProgram(gl, FULLSCREEN_VERTEX, EYE_FRAGMENT);
   const groundSkyProgram = createProgram(gl, FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT);
   const cloudProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_FRAGMENT);
@@ -373,14 +394,20 @@ export function createRenderer(canvas, armMap, galaxies) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  const noiseTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_3D, noiseTexture);
+  const createNoiseTexture = (unit, size, noise) => {
+    const texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_3D, texture);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, size, size, size, 0, gl.RED, gl.UNSIGNED_BYTE, noise);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    for (const wrap of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, wrap, gl.REPEAT);
+    gl.activeTexture(gl.TEXTURE0);
+    return texture;
+  };
   const random = createRandom(NOISE_SEED);
-  const noise = new Uint8Array(NOISE_SIZE ** 3).map(() => Math.floor(random.next() * 256));
-  gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, NOISE_SIZE, NOISE_SIZE, NOISE_SIZE, 0, gl.RED, gl.UNSIGNED_BYTE, noise);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  for (const wrap of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, wrap, gl.REPEAT);
+  const noiseTexture = createNoiseTexture(0, NOISE_SIZE, new Uint8Array(NOISE_SIZE ** 3).map(() => Math.floor(random.next() * 256)));
+  createNoiseTexture(LATTICE_UNIT, LATTICE_PERIOD, new Uint8Array(LATTICE_PERIOD ** 3).map(latticeByte));
 
   const createBodyMaps = (unit, format) => {
     const texture = gl.createTexture();
@@ -442,6 +469,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   function setBodies(program, seen, ground) {
     if (program.uniforms.uCloudNearby) gl.uniform1i(program.uniforms.uCloudNearby, CLOUD_NEARBY_UNIT);
     if (cloudNearby) setUniforms(gl, program, { uCloudNearbyUp: cloudNearby.up, uCloudNearbyEast: cloudNearby.east });
+    if (program.uniforms.uLattice) gl.uniform1i(program.uniforms.uLattice, LATTICE_UNIT);
     if (program.uniforms.uCloudMap) gl.uniform1i(program.uniforms.uCloudMap, CLOUD_MAP_UNIT);
     setUniforms(gl, program, { uCloudMapOn: cloudMapOn ? 1 : 0, uGroundCloudsMapped: ground?.settings.clouds?.mapped ? 1 : 0 });
     const shown = brightestInDistanceOrder(seen ?? []);
@@ -503,16 +531,20 @@ export function createRenderer(canvas, armMap, galaxies) {
   let cameraSignal = null;
   let cameraPicture = null;
 
-  const skyCube = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE0 + SKY_CUBE_UNIT);
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyCube);
-  for (let face = 0; face < 6; face++) {
-    gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA16F, SKY_CUBE_SIZE, SKY_CUBE_SIZE, 0, gl.RGBA, gl.HALF_FLOAT, null);
-  }
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const createSkyCube = (unit, size) => {
+    const texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+    gl.texStorage2D(gl.TEXTURE_CUBE_MAP, 1, gl.RGBA16F, size, size);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0);
+    return texture;
+  };
+  const skyCube = createSkyCube(SKY_CUBE_UNIT, SKY_CUBE_SIZE);
+  const keptSkyCube = createSkyCube(KEPT_SKY_UNIT, KEPT_SKY_SIZE);
   const skyCubeFramebuffer = gl.createFramebuffer();
 
   const warpTable = gl.createTexture();
@@ -544,14 +576,53 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, program, { ...warpShape, ...values, uBandToPhysical: BAND_TO_PHYSICAL, uAdaptation: adaptation });
   }
 
-  function captureSkyCube({ camera, nebulae, stars }) {
+  function drawSkyCubeFace(cube, size, face, { camera, nebulae, stars }) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, skyCubeFramebuffer);
-    gl.viewport(0, 0, SKY_CUBE_SIZE, SKY_CUBE_SIZE);
-    CUBE_FACES.forEach((basis, face) => {
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, skyCube, 0);
-      drawSky({ camera, basis, tanHalf: [1, 1], pixelAngle: Math.PI / 2 / SKY_CUBE_SIZE }, nebulae, stars.reaches, 1, 1);
-    });
+    gl.viewport(0, 0, size, size);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, cube, 0);
+    drawSky({ camera, basis: CUBE_FACES[face], tanHalf: [1, 1], pixelAngle: Math.PI / 2 / size }, nebulae, stars.reaches, 1, 1);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  function captureSkyCube(place) {
+    CUBE_FACES.forEach((_, face) => drawSkyCubeFace(skyCube, SKY_CUBE_SIZE, face, place));
+  }
+
+  let keptSky = null;
+
+  const skyStillMatches = (kept, { camera, stars }) =>
+    Math.hypot(...camera.map((value, axis) => value - kept.camera[axis])) < KEPT_SKY_DRIFT_PC
+    && stars.reaches.every((reach, bin) => Math.abs(reach - kept.reaches[bin]) <= KEPT_SKY_REACH_CHANGE * Math.max(reach, kept.reaches[bin]));
+
+  function scissored(x, y, width, height, draw) {
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(x, y, width, height);
+    draw();
+    gl.disable(gl.SCISSOR_TEST);
+  }
+
+  function growKeptSky(place) {
+    if (!keptSky || !skyStillMatches(keptSky, place)) {
+      keptSky = { camera: [...place.camera], reaches: [...place.stars.reaches], tiles: 0 };
+      return;
+    }
+    if (keptSky.tiles >= KEPT_SKY_TILE_COUNT) return;
+    const tile = keptSky.tiles++;
+    const withinFace = tile % KEPT_SKY_TILES_ACROSS ** 2;
+    const column = withinFace % KEPT_SKY_TILES_ACROSS;
+    const row = Math.floor(withinFace / KEPT_SKY_TILES_ACROSS);
+    scissored(column * KEPT_SKY_TILE, row * KEPT_SKY_TILE, KEPT_SKY_TILE, KEPT_SKY_TILE, () =>
+      drawSkyCubeFace(keptSkyCube, KEPT_SKY_SIZE, Math.floor(tile / KEPT_SKY_TILES_ACROSS ** 2), place));
+  }
+
+  const keptSkyFineEnough = (skyPixelAngle) => keptSky?.tiles >= KEPT_SKY_TILE_COUNT && Math.PI / 2 / KEPT_SKY_SIZE < KEPT_SKY_COARSEST * skyPixelAngle;
+
+  function drawKeptSky(view) {
+    gl.useProgram(skyFromCubeProgram.program);
+    setUniforms(gl, skyFromCubeProgram, viewUniforms(view));
+    gl.uniform1i(skyFromCubeProgram.uniforms.uSkyCube, KEPT_SKY_UNIT);
+    gl.bindVertexArray(emptyVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   function bindGalaxyTextures(program) {
@@ -615,6 +686,41 @@ export function createRenderer(canvas, armMap, galaxies) {
       skyTargets.set(resolution, target);
     }
     return target;
+  }
+
+  let sharpening = null;
+
+  function startSky(view, place, resolution, sharpenGradually, seed) {
+    const previous = shownSky;
+    shownSky = skyTargetFor(resolution);
+    const pixelAngle = view.pixelAngle / resolution;
+    sharpening = null;
+    if (sharpenGradually && previous) {
+      if (previous !== shownSky) copySky(previous, shownSky);
+      sharpening = { resolution, seed, rows: 0 };
+      return;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, shownSky.framebuffer);
+    gl.viewport(0, 0, shownSky.width, shownSky.height);
+    if (keptSkyFineEnough(pixelAngle)) drawKeptSky(view);
+    else drawSky({ ...view, pixelAngle }, place.nebulae, place.stars.reaches, 1, seed);
+  }
+
+  function copySky(from, to) {
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, from.framebuffer);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, to.framebuffer);
+    gl.blitFramebuffer(0, 0, from.width, from.height, 0, 0, to.width, to.height, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+  }
+
+  function sharpenSky(view, place) {
+    if (!sharpening) return;
+    const { resolution, seed, rows } = sharpening;
+    const rowsNow = Math.max(1, Math.ceil(SKY_PIXELS_PER_FRAME / shownSky.width));
+    gl.bindFramebuffer(gl.FRAMEBUFFER, shownSky.framebuffer);
+    gl.viewport(0, 0, shownSky.width, shownSky.height);
+    scissored(0, rows, shownSky.width, rowsNow, () => drawSky({ ...view, pixelAngle: view.pixelAngle / resolution }, place.nebulae, place.stars.reaches, 1, seed));
+    sharpening.rows += rowsNow;
+    if (sharpening.rows >= shownSky.height) sharpening = null;
   }
 
   function groundTargetFitting() {
@@ -754,6 +860,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.viewport(0, 0, target.width, target.height);
     gl.useProgram(program.program);
+    gl.uniform1i(program.uniforms.uLattice, LATTICE_UNIT);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.deleteProgram(program.program);
@@ -872,14 +979,14 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure }) {
     const planetValues = planetUniforms(planet, view.camera);
     if (starsChanged) uploadStars(eyeStars, stars);
-    if (skyResolution && !warp) {
-      shownSky = skyTargetFor(skyResolution);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, shownSky.framebuffer);
-      gl.viewport(0, 0, shownSky.width, shownSky.height);
-      drawSky({ ...view, pixelAngle: view.pixelAngle / skyResolution }, nebulae, stars.reaches, 1, seed);
+    if (!warp) {
+      const place = { camera: view.camera, nebulae, stars };
+      growKeptSky(place);
+      if (skyResolution) startSky(view, place, skyResolution, skySharpening, seed);
+      sharpenSky(view, place);
     }
 
     giants.advance(bodies ?? [], view.pixelAngle, cloudSeconds);

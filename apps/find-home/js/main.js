@@ -49,7 +49,7 @@ const CO_ROTATION_RADII = 3;
 const GROUND_CHECK_KM = 60;
 const GROUND_VIEW_SHARE_OF_RADIUS = 0.12;
 const GROUND_VIEW_HIGHEST_KM = 400;
-const GROUND_VIEW_FULL_SHARE_OF_HIGHEST = 0.5;
+const GROUND_VIEW_FULL_SHARE_OF_HIGHEST = 0.8;
 const COLLISION_FOOTPRINT_METRES = 0.05;
 const KM_PER_LY = KM_PER_PC / LY_PER_PC;
 const START_LATITUDE = [15, 70];
@@ -751,16 +751,16 @@ function setLongExposure(shown) {
   skySharp = false;
 }
 
-function nextSkyResolution() {
+function nextSkyRedraw() {
   if (skyStale) {
     skyStale = false;
-    return SKY_RESOLUTION_MOVING;
+    return { skyResolution: SKY_RESOLUTION_MOVING, skySharpening: false };
   }
   if (!skySharp) {
     skySharp = true;
-    return longExposureShown() ? SKY_RESOLUTION_PHOTO : SKY_RESOLUTION_STILL;
+    return { skyResolution: longExposureShown() ? SKY_RESOLUTION_PHOTO : SKY_RESOLUTION_STILL, skySharpening: true };
   }
-  return 0;
+  return { skyResolution: 0, skySharpening: false };
 }
 
 function nearestStarPc(stars) {
@@ -814,7 +814,7 @@ function frame(now) {
       stars: eyeStars,
       starsChanged: eyeStarsChanged,
       seed: frameSeed,
-      skyResolution: nextSkyResolution(),
+      ...nextSkyRedraw(),
       cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
