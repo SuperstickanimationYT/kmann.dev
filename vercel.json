@@ -3,6 +3,16 @@
   "trailingSlash": true,
   "redirects": [
     {
+      "source": "/apps/find-home",
+      "destination": "/apps/sail-the-stars/",
+      "permanent": true
+    },
+    {
+      "source": "/apps/find-home/:path*",
+      "destination": "/apps/sail-the-stars/:path*",
+      "permanent": true
+    },
+    {
       "source": "/apps/fractal-explorer",
       "destination": "/apps/fractal-explorer/portal/",
       "permanent": false

@@ -79,15 +79,6 @@ const PROJECTS = [
     status: 'live',
   },
   {
-    title: 'Find Home',
-    href: 'apps/find-home/',
-    category: 'games',
-    tags: ['Game', 'Simulation', 'Vibecoded'],
-    poster: 'assets/img/posters/find-home.webp',
-    blurb: 'Lost outside the Milky Way with your eyes and a wide-field camera. Find the Sun, using real nebulae and stars, while light delay shifts everything. Or switch to Explore and fly anywhere.',
-    status: 'live',
-  },
-  {
     title: 'FractalExplorer',
     href: 'apps/fractal-explorer/',
     category: 'generators',
@@ -210,6 +201,15 @@ const PROJECTS = [
     tags: ['Simulation', 'Vibecoded'],
     blurb: 'Stack capsules, fuel tanks, engines and separators into a rocket, set when each stage drops, and fly it through a 1/20 scale Solar System. Advanced mode builds from beams and programs the flight computer.',
     status: 'wip',
+  },
+  {
+    title: 'Sail the Stars',
+    href: 'apps/sail-the-stars/',
+    category: 'games',
+    tags: ['Game', 'Simulation', 'Vibecoded'],
+    poster: 'assets/img/posters/sail-the-stars.webp',
+    blurb: 'Fly anywhere in the universe, from standing on Mars or Titan to seeing the whole Milky Way from outside. Or play Find Home: lost beyond the galaxy, find the Sun by eye and camera.',
+    status: 'live',
   },
   {
     title: 'SFS Δv Calculator',

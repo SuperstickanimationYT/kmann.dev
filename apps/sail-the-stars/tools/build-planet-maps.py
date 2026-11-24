@@ -1,4 +1,4 @@
-"""Shrink real global maps into the small colour and height textures Find Home ships.
+"""Shrink real global maps into the small colour and height textures Sail the Stars ships.
 
 Usage: python tools/build-planet-maps.py <folder with the raw downloads>
 

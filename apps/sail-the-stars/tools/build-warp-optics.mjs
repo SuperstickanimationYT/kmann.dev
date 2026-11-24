@@ -1,5 +1,5 @@
 // Traces null geodesics through an Alcubierre bubble to see what the crew at its centre sees.
-// Run: node apps/find-home/tools/build-warp-optics.mjs
+// Run: node apps/sail-the-stars/tools/build-warp-optics.mjs
 // Writes data/warp-optics.bin: int32 speedCount, int32 angleCount, float32 speeds[], float32 angles[],
 // then for each speed and each viewing angle from the direction of travel: float32 skyAngle, float32 log10 shift.
 // skyAngle is where in the outside sky that pixel looks; shift is observed / emitted frequency. -1 marks no light.

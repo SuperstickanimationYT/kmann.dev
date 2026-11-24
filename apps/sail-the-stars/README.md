@@ -1,4 +1,6 @@
-# Find Home
+# Sail the Stars
+
+Explore is the default mode. Find Home, the game this started as, is its scored mode.
 
 ## Goal of Explore mode
 

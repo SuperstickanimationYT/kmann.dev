@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Find Home &mdash; kmann314</title>
-<meta name="description" content="Lost outside the Milky Way with only your eyes and a wide-field camera. Find the Sun.">
+<title>Sail the Stars &mdash; kmann314</title>
+<meta name="description" content="Explore the universe from the ground of a moon to the far side of the Milky Way, or play Find Home: lost outside the galaxy, find the Sun.">
 <link rel="icon" href="../../assets/img/mark.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="../../assets/css/site.css">
@@ -17,7 +17,7 @@
   <a class="mark" href="../../" aria-label="All projects">
     <img src="../../assets/img/mark.svg" alt="">
   </a>
-  <h1 class="studio-title">Find Home</h1>
+  <h1 class="studio-title">Sail the Stars</h1>
 </header>
 
 <main class="studio-stage fh-stage" data-stage>
@@ -107,7 +107,11 @@
   <button type="button" class="studio-handle" data-studio-handle aria-expanded="true"><span class="studio-grabber"></span>Instruments</button>
   <div class="studio-panel-body">
     <div class="fh-panel">
-      <p class="fh-brief">
+      <p class="fh-brief" data-explore-brief>
+        Fly anywhere, from the surface of a moon to the far side of the Milky Way. Click anything in view, or type a
+        name under Select, then press Warp. For a challenge, switch the mode to Find Home.
+      </p>
+      <p class="fh-brief" data-mission-brief hidden>
         A units bug in the navigation software sent humanity's first crewed warp ship 63,000 times too far, out past
         the Milky Way. Find the Sun and click it. Warp jumps are blind and burn fuel you cannot refill. The mission
         clock never stops; jumps and exposures add their length and every wrong claim costs an hour.
@@ -116,9 +120,9 @@
       <label class="fh-field">
         <span>Mode</span>
         <select data-mode>
-          <option value="mission" selected>Mission: unlabelled, scored</option>
-          <option value="practice">Practice: labels, star names, Sun marked</option>
-          <option value="explore">Explore: fly anywhere, no goal</option>
+          <option value="explore" selected>Explore: fly anywhere, no goal</option>
+          <option value="mission">Find Home: unlabelled, scored</option>
+          <option value="practice">Find Home practice: labels, Sun marked</option>
         </select>
       </label>
       <label class="fh-check" data-labels-field hidden>
