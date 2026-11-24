@@ -1185,6 +1185,8 @@ vec3 detachedHaze(int k, float miss, float farSideSeen, float sunHeight) {
   return uHazeLayer[k].rgb * column * (0.5 + 0.5 * farSideSeen) * smoothstep(-0.55, 0.1, sunHeight);
 }
 
+const float GAS_LIGHT_RESCATTERED = 0.65;
+
 Haze hazeAround(int i, vec3 direction) {
   int k = hazeOf(i);
   if (k < 0) return NO_HAZE;
@@ -1212,6 +1214,7 @@ Haze hazeAround(int i, vec3 direction) {
   vec3 dustShine = 0.25 * dustPhase(towardSun, uHazeDustLight[k].w) * uHazeDustLight[k].rgb;
   vec3 light = vec3(0.0);
   vec3 depth = vec3(0.0);
+  vec3 depthRefilled = vec3(0.0);
   for (int n = 0; n < 2 * HAZE_STEPS_PER_SIDE; n++) {
     float t = (float(n) + 0.5) / float(HAZE_STEPS_PER_SIDE) - 1.0;
     float reach = t < 0.0 ? start - closest : end - closest;
@@ -1225,8 +1228,11 @@ Haze hazeAround(int i, vec3 direction) {
     vec3 dustLight = dustShine * density.y * stepLength / scales.y;
     vec3 sunlit = sunlightIntoHaze(k, r, dot(p, sun) / r, scales, density);
     vec3 stepDepth = gas + dust;
-    light += (gas * gasPhase + dustLight) * sunlit * exp(-depth) * (1.0 - exp(-stepDepth)) / max(stepDepth, 1e-6);
+    vec3 refilled = GAS_LIGHT_RESCATTERED * smoothstep(0.05, 0.6, dot(p, sun) / r) * gas;
+    vec3 stepDimmed = stepDepth - refilled;
+    light += ((gas * gasPhase + dustLight) * sunlit + refilled * 0.25 * (1.0 - sunlit)) * exp(depthRefilled - depth) * (1.0 - exp(-stepDimmed)) / max(stepDimmed, 1e-6);
     depth += stepDepth;
+    depthRefilled += refilled;
   }
   vec3 outward = normalize(nearest - direction * sqrt(max(1.0 - miss * miss, 0.0)));
   vec3 detached = detachedHaze(k, miss, (1.0 - cover) * exp(-depth.g), dot(outward, sun));
@@ -2068,6 +2074,13 @@ float cameraAltitudeKm() {
   return uGroundExcess / (sqrt(uGroundRadius * uGroundRadius + uGroundExcess) + uGroundRadius);
 }
 
+const float HAZE_LOWEST_SCALES = 0.8;
+const float HAZE_FULL_SCALES = 2.8;
+
+float hazeSeenFromAbove() {
+  return max(smoothstep(HAZE_LOWEST_SCALES, HAZE_FULL_SCALES, cameraAltitudeKm() / uGroundAir.w), 1.0 - uGroundBlend);
+}
+
 float airDensityHere() {
   return exp(-max(cameraAltitudeKm(), 0.0) / uGroundAir.w);
 }
@@ -2323,7 +2336,7 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
   float phase = 1.0 + CLOUD_FORWARD_GLOW * pow(max(dot(ray, sun), 0.0), 6.0);
   float densityToClouds = uGroundAir.w > 0.0 ? airDensityAlong(ray, enter) : 0.0;
   vec3 skyBehind = skyThrough(densityToClouds, ray, sun, normalize(uGroundCamera));
-  float hazePerKm = densityToClouds / uGroundGlow.w;
+  float hazePerKm = densityToClouds / uGroundGlow.w * (1.0 - hazeSeenFromAbove());
   float clear = 1.0;
   vec3 light = vec3(0.0);
   bool mapped = uGroundCloudsMapped > 0.5;
@@ -2528,7 +2541,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   if (!water) lit += cityLights(uGround, uv, footprint / (1000.0 * uGroundRadius), dot(-ray, up), sunHeight);
   if (uGroundAir.w > 0.0) {
     float density = airDensityAlong(ray, t);
-    float haze = 1.0 - exp(-t * density / uGroundGlow.w);
+    float haze = (1.0 - exp(-t * density / uGroundGlow.w)) * (1.0 - hazeSeenFromAbove());
     lit = mix(lit, skyThrough(density, normalize(ray + upHere * 0.02), sun, upHere), haze);
   }
   lit *= uStarlight;
@@ -3099,6 +3112,7 @@ uniform sampler2D uCloudView;
 uniform float uCloudsOn;
 
 float starVeil = 0.0;
+float cloudSeen = 0.0;
 
 vec4 groundSeen() {
   vec4 ground = texture(uGroundView, vUv);
@@ -3107,6 +3121,7 @@ vec4 groundSeen() {
     vec2 texel = 1.0 / vec2(textureSize(uCloudView, 0));
     for (int i = 0; i < 4; i++) cloud += 0.25 * texture(uCloudView, vUv + (vec2(i & 1, i >> 1) - 0.5) * texel);
   }
+  cloudSeen = min(cloud.a, 1.0) * uGroundBlend;
   float solid = ground.a >= GROUND_HIT ? 1.0 : 0.0;
   starVeil = max(max(solid, cloud.a), min(1.0, uGroundOvercast * OVERCAST_VEIL_GAIN)) * uGroundBlend;
   return vec4(ground.rgb * (1.0 - cloud.a) + cloud.rgb, max(min(ground.a, 1.0), cloud.a)) * uGroundBlend;
@@ -3153,15 +3168,28 @@ vec3 sunGlare(vec3 direction) {
   return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunSeen;
 }
 
-const float HAZE_LOWEST_SCALES = 0.8;
-const float HAZE_FULL_SCALES = 2.8;
-
 Haze hazeAboveGround(vec3 direction) {
   if (uGroundAir.w <= 0.0) return NO_HAZE;
-  float share = max(smoothstep(HAZE_LOWEST_SCALES, HAZE_FULL_SCALES, cameraAltitudeKm() / uGroundAir.w), 1.0 - uGroundBlend);
+  float share = hazeSeenFromAbove();
   if (share <= 0.0) return NO_HAZE;
   Haze haze = hazeAround(uGround, direction);
   return Haze(haze.light * share, mix(vec3(1.0), haze.clear, share));
+}
+
+float airAboveClouds() {
+  return exp(-mix(uGroundClouds.x, uGroundClouds.y, CLOUD_SHEET_HEIGHT_SHARE) / uGroundAir.w);
+}
+
+vec4 groundThroughHaze(vec4 ground, vec3 direction) {
+  Haze haze = hazeAboveGround(direction);
+  if (cloudSeen > 0.0) {
+    float clear = dot(haze.clear, vec3(1.0 / 3.0));
+    vec3 share = vec3(mix(1.0, airAboveClouds(), cloudSeen * clear));
+    vec3 litFromBelow = mix(haze.clear, vec3(clear), cloudSeen * clear);
+    haze = Haze(1.0 - pow(max(1.0 - haze.light, 0.0), share), pow(litFromBelow, share));
+  }
+  vec4 hazy = throughHaze(ground, haze);
+  return vec4(hazy.rgb - haze.light * haze.clear * ground.rgb * uGroundBlend, hazy.a);
 }
 
 vec4 sceneSeen(vec3 direction) {
@@ -3205,7 +3233,7 @@ void main() {
     return;
   }
   vec4 scene = sceneSeen(direction);
-  if (uGround >= 0 && uWarpAxis.w < 0.5) scene = throughHaze(scene, hazeAboveGround(direction));
+  if (uGround >= 0 && uWarpAxis.w < 0.5) scene = groundThroughHaze(scene, direction);
   outColour = vec4(scene.rgb + sunGlare(direction), scene.a);
 }`;
 
