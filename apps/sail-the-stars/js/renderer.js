@@ -178,7 +178,7 @@ const NO_SHADOWS = { uShadowsOn: 0 };
 const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5 };
 const SUN_DISK_GLOW = 2;
 const ECLIPSERS_PER_BODY = 2;
-const AIRY_ECLIPSER_SIGN = -1;
+const REDDENING_ECLIPSER_SIGN = -1;
 const CORONA_FADE_SHARE = 0.004;
 const HIDDEN_BEHIND_FOREGROUND = true;
 const LATTICE_UNIT = 18;
@@ -331,8 +331,8 @@ function bodyArrays(shown, mapRelief, giants) {
     arrays.uBodyPlace.set([...direction, angularRadius], i * 4);
     arrays.uBodyOccluder.set([...direction, star ? 0 : angularRadius], i * 4);
     arrays.uBodySun.set([...body.sunward, body.sunAngularRadius], i * 4);
-    body.eclipsers.forEach(({ offsetKm: eclipserKm, radiusKm, hasAir }, k) =>
-      arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((hasAir ? AIRY_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
+    body.eclipsers.forEach(({ offsetKm: eclipserKm, radiusKm, reddens }, k) =>
+      arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
     arrays.uBodyNorth.set(body.north, i * 3);
     arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), BODY_KIND_CODES[body.kind]], i * 4);

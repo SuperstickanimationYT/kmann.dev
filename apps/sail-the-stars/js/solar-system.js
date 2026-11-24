@@ -237,7 +237,7 @@ export const BODIES = [
   { name: 'Sun', kind: 'star', radiusKm: SUN_RADIUS_KM, pole: [286.13, 63.87], spin: [84.176, 14.1844], tint: [1, 0.96, 0.88] },
   { name: 'Mercury', kind: 'rocky', radiusKm: 2439.7, pole: [281.0103, 61.4155], spin: [329.5988, 6.1385108], tint: [0.55, 0.52, 0.5], magnitude: -0.6 },
   { name: 'Venus', kind: 'clouded', radiusKm: 6051.8, pole: [272.76, 67.16], spin: [160.2, -1.4813688], cloudSpin: [0, -90], tint: [0.93, 0.86, 0.68], magnitude: -4.47, map: 'venus', mapKmPerPixel: 37.1, roughness: 0, haze: { gas: { depth: [0, 0, 0], scaleKm: 5 }, dust: { depth: [0.3, 0.3, 0.33], light: [0.2, 0.19, 0.15], scaleKm: 5, forwardness: 0.3, sunDimming: 0.4 } }, ground: { roughness: 0.04, craters: 0.15, viewFromKm: 60, air: { tint: [0.8, 0.55, 0.26], scaleKm: 15.9, glow: [0.95, 0.7, 0.35], hazeKm: 20, sunset: [0.7, 0.4, 0.15], overcast: 1 } } },
-  { name: 'Earth', kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3, haze: { gas: { depth: [0.046, 0.108, 0.265], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } }, ground: { roughness: 0.03, craters: 0, sea: true, clouds: { mapped: true, baseKm: 1.5, topKm: 5, extinctionPerKm: 3, coverShift: 0 }, air: { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] } } },
+  { name: 'Earth', reddensEclipses: true, kind: 'ocean', radiusKm: 6371, pole: [0, 90], spin: [190.147, 360.9856235], tint: [0.3, 0.42, 0.6], magnitude: -3.86, map: 'earth', mapKmPerPixel: 39.1, roughness: 0.3, haze: { gas: { depth: [0.046, 0.108, 0.265], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } }, ground: { roughness: 0.03, craters: 0, sea: true, clouds: { mapped: true, baseKm: 1.5, topKm: 5, extinctionPerKm: 3, coverShift: 0 }, air: { tint: [0.28, 0.5, 1], scaleKm: 8, glow: [1, 0.95, 0.85], hazeKm: 80, sunset: [1, 0.45, 0.15] } } },
   { name: 'Moon', kind: 'rocky', parent: 'Earth', radiusKm: 1737.4, pole: [269.9949, 66.5392], spin: [38.3213, 13.17635815], tint: [0.6, 0.58, 0.55], magnitude: 0.21, map: 'moon', mapKmPerPixel: 10.7, roughness: 0.5, ground: { roughness: 0.06, craters: 1 } },
   { name: 'Mars', kind: 'rocky', radiusKm: 3389.5, pole: [317.269202, 54.432516], spin: [176.049863, 350.891982443297], tint: [0.7, 0.42, 0.25], magnitude: -1.52, map: 'mars', mapKmPerPixel: 20.8, roughness: 0.35, haze: { gas: { depth: [0, 0, 0], scaleKm: 11 }, dust: { depth: [0.2, 0.22, 0.25], light: [0.34, 0.26, 0.19], scaleKm: 11, forwardness: 0.4, sunDimming: 0.6 } }, ground: { roughness: 0.05, craters: 0.4, clouds: { baseKm: 14, topKm: 20, extinctionPerKm: 0.08, coverShift: -0.06 }, air: { tint: [0.78, 0.56, 0.38], scaleKm: 11, glow: [0.45, 0.6, 0.85], hazeKm: 30, sunset: [0.45, 0.6, 0.85] } } },
   { name: 'Jupiter', kind: 'giant', radiusKm: 69911, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
@@ -409,6 +409,32 @@ export function sunShareVisible(seen, ignoredName) {
   return Math.max(0, 1 - hidden);
 }
 
+const DAYLIT_SPOTS = [[0, 1], [0.5, 6], [0.87, 6]].flatMap(([out, count]) =>
+  Array.from({ length: count }, (_, k) => [out * Math.cos((2 * Math.PI * k) / count), out * Math.sin((2 * Math.PI * k) / count)]));
+const BENT_THROUGH_AIR_SHARE = 0.09;
+const DARKEST_SHARE = 1e-12;
+
+function sunlightOnSpot(spotKm, body, eclipsers) {
+  const hidden = eclipsers.map(({ offsetKm, radiusKm, reddens }) => {
+    const towardKm = subtract(offsetKm, spotKm);
+    const coverRadius = Math.asin(Math.min(1, radiusKm / Math.hypot(...towardKm)));
+    return { share: discOverlapShare(body.sunAngularRadius, coverRadius, angleBetween(towardKm, body.sunward)), reddens };
+  });
+  const bent = hidden.reduce((sum, { share, reddens }) => sum + (reddens ? BENT_THROUGH_AIR_SHARE * share : 0), 0);
+  return Math.max(0, 1 - hidden.reduce((sum, { share }) => sum + share, 0)) + bent;
+}
+
+function sunlitShare(body, eclipsers) {
+  if (!eclipsers.length) return 1;
+  const right = normalize(cross(body.sunward, Math.abs(body.sunward[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
+  const up = cross(body.sunward, right);
+  const spots = DAYLIT_SPOTS.map(([x, y]) => {
+    const across = add(scale(right, x), scale(up, y));
+    return scale(add(across, scale(body.sunward, Math.sqrt(1 - x * x - y * y))), body.radiusKm);
+  });
+  return spots.reduce((sum, spot) => sum + sunlightOnSpot(spot, body, eclipsers), 0) / spots.length;
+}
+
 function eclipsersOf(body, bodies) {
   if (body.kind === 'star') return [];
   const sunDistance = Math.hypot(...body.fromSunKm);
@@ -419,12 +445,12 @@ function eclipsersOf(body, bodies) {
       const offsetKm = subtract(other.fromSunKm, body.fromSunKm);
       const along = dot(offsetKm, body.sunward);
       const across = Math.hypot(...subtract(offsetKm, scale(body.sunward, along)));
-      return { offsetKm, radiusKm: other.radiusKm, hasAir: Boolean(other.ground?.air), along, across };
+      return { offsetKm, radiusKm: other.radiusKm, reddens: Boolean(other.reddensEclipses), along, across };
     })
     .filter(({ along, across, radiusKm }) => along > 0 && along < sunDistance && across < body.radiusKm + radiusKm + along * sunRadius)
     .sort((a, b) => b.radiusKm / b.along - a.radiusKm / a.along)
     .slice(0, ECLIPSERS_PER_BODY)
-    .map(({ offsetKm, radiusKm, hasAir }) => ({ offsetKm, radiusKm, hasAir }));
+    .map(({ offsetKm, radiusKm, reddens }) => ({ offsetKm, radiusKm, reddens }));
 }
 
 export function placeBodies(ms) {
@@ -463,14 +489,17 @@ export function placeBodies(ms) {
       mapLayer: MAPPED_BODIES.indexOf(body),
     };
   });
-  return placed.map((body) => ({ ...body, eclipsers: eclipsersOf(body, placed) }));
+  return placed.map((body) => {
+    const eclipsers = eclipsersOf(body, placed);
+    return { ...body, eclipsers, sunlitShare: sunlitShare(body, eclipsers) };
+  });
 }
 
 export function apparentMagnitude(body, offsetKm) {
   const distanceKm = Math.hypot(...offsetKm);
   const phase = Math.acos(Math.max(-1, Math.min(1, -dot(offsetKm, body.sunward) / distanceKm)));
   const lambert = (1 - phase / Math.PI) * Math.cos(phase) + Math.sin(phase) / Math.PI;
-  return body.magnitude + 5 * Math.log10(body.sunDistanceAu * (distanceKm / KM_PER_AU)) - 2.5 * Math.log10(Math.max(lambert, 1e-6));
+  return body.magnitude + 5 * Math.log10(body.sunDistanceAu * (distanceKm / KM_PER_AU)) - 2.5 * Math.log10(Math.max(lambert, 1e-6)) - 2.5 * Math.log10(Math.max(body.sunlitShare, DARKEST_SHARE));
 }
 
 export function holdingBody(bodies, cameraFromSunKm) {
