@@ -14,7 +14,8 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
-import { holdingBody, KM_PER_PC, loadBodyMaps, lowestAltitudeKm, orbitPaths, placeBodies } from './solar-system.js';
+import { CLOUD_MAP_SIZE } from './shaders.js';
+import { holdingBody, KM_PER_PC, loadBodyMaps, loadCloudMap, lowestAltitudeKm, orbitPaths, placeBodies } from './solar-system.js';
 import { drawOrbits } from './orbits.js';
 import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
@@ -1388,6 +1389,9 @@ if (!renderer) {
     renderer.loadBodyMap(layer, maps);
     groundMaps[layer] = maps.ground ?? null;
   }).catch(() => showStatus('Planet maps failed to load; planets show placeholder surfaces.'));
+  loadCloudMap(new URL('data/planets/', window.location.href), CLOUD_MAP_SIZE)
+    .then(renderer.loadCloudMap)
+    .catch(() => showStatus("Earth's cloud map failed to load; Earth shows no clouds."));
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     nearby = stars;
   });

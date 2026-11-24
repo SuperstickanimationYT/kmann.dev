@@ -7,7 +7,7 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, DEVELOP_FRAGMENT,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, DEVELOP_FRAGMENT,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
@@ -150,6 +150,8 @@ const SHADOW_MAP_UNIT = 8;
 const NO_MORPH = [0, 0, 1];
 const GROUND_DETAIL_UNIT = 9;
 const CLOUD_BILLOWS_UNIT = 10;
+const CLOUD_MAP_UNIT = 16;
+const CLOUD_MAP_LAYERS = 2;
 const CLOUD_VIEW_UNIT = 11;
 const CLOUD_HISTORY_UNIT = 12;
 const CLOUD_HISTORY_DEPTH_UNIT = 13;
@@ -406,9 +408,30 @@ export function createRenderer(canvas, armMap, galaxies) {
     mapRelief[layer] = relief;
   }
 
+  const cloudMap = gl.createTexture();
+  let cloudMapOn = false;
+  gl.activeTexture(gl.TEXTURE0 + CLOUD_MAP_UNIT);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, cloudMap);
+  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, Math.floor(Math.log2(CLOUD_MAP_SIZE[0])) + 1, gl.R8, ...CLOUD_MAP_SIZE, CLOUD_MAP_LAYERS);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE0);
+
+  function loadCloudMap(images) {
+    gl.activeTexture(gl.TEXTURE0 + CLOUD_MAP_UNIT);
+    images.forEach((image, layer) => gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, ...CLOUD_MAP_SIZE, 1, gl.RED, gl.UNSIGNED_BYTE, image));
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+    gl.activeTexture(gl.TEXTURE0);
+    cloudMapOn = true;
+  }
+
   const giants = createGiantPainter(gl, emptyVao);
 
   function setBodies(program, seen, ground) {
+    if (program.uniforms.uCloudMap) gl.uniform1i(program.uniforms.uCloudMap, CLOUD_MAP_UNIT);
+    setUniforms(gl, program, { uCloudMapOn: cloudMapOn ? 1 : 0, uGroundCloudsMapped: ground?.settings.clouds?.mapped ? 1 : 0 });
     const shown = brightestInDistanceOrder(seen ?? []);
     const { arrays, count, rings } = bodyArrays(shown, mapRelief, giants);
     const groundValues = groundUniforms(ground, shown);
@@ -936,5 +959,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, releasePatch };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, releasePatch };
 }
