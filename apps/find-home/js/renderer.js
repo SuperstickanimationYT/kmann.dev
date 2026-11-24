@@ -290,6 +290,21 @@ function brightestInDistanceOrder(seen) {
   return seen.filter((entry) => kept.has(entry));
 }
 
+const SEEN_RADII = 1.5;
+const RINGS_SEEN_RADII = 2.5;
+const GLOW_SEEN_PIXELS = 200;
+const SMALLEST_GLOW_ANGLE = 0.01;
+
+function bodyReaches(shown, pixelAngle, coronaShown) {
+  const reaches = new Float32Array(MAX_BODIES).fill(1);
+  shown.forEach(({ body, offsetKm }, i) => {
+    const share = (body.radiusKm * (body.rings ? RINGS_SEEN_RADII : SEEN_RADII)) / Math.hypot(...offsetKm);
+    const everywhere = share >= 1 || (body.kind === 'star' && coronaShown > 0);
+    reaches[i] = everywhere ? -1 : Math.cos(Math.min(Math.PI, Math.asin(share) + Math.max(SMALLEST_GLOW_ANGLE, GLOW_SEEN_PIXELS * pixelAngle)));
+  });
+  return reaches;
+}
+
 function bodyArrays(shown, mapRelief, giants) {
   const arrays = {
     uBodyPlace: new Float32Array(MAX_BODIES * 4),
@@ -466,7 +481,7 @@ export function createRenderer(canvas, armMap, galaxies) {
 
   const giants = createGiantPainter(gl, emptyVao);
 
-  function setBodies(program, seen, ground) {
+  function setBodies(program, seen, ground, pixelAngle = 0) {
     if (program.uniforms.uCloudNearby) gl.uniform1i(program.uniforms.uCloudNearby, CLOUD_NEARBY_UNIT);
     if (cloudNearby) setUniforms(gl, program, { uCloudNearbyUp: cloudNearby.up, uCloudNearbyEast: cloudNearby.east });
     if (program.uniforms.uLattice) gl.uniform1i(program.uniforms.uLattice, LATTICE_UNIT);
@@ -483,6 +498,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     const sunVisible = sunShareVisible(seen ?? [], ground?.body.name);
     const coronaShown = Math.max(0, 1 - sunVisible / CORONA_FADE_SHARE) ** 2;
     setUniforms(gl, program, { uBodyCount: { int: count }, ...rings, uSunVisible: sunVisible, uCoronaShown: coronaShown });
+    if (program.uniforms.uBodyReach) gl.uniform1fv(program.uniforms.uBodyReach, bodyReaches(shown, pixelAngle, coronaShown));
     if (program.uniforms.uBodyColour) {
       gl.activeTexture(gl.TEXTURE0 + BODY_COLOUR_UNIT);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, bodyColourMaps);
@@ -1010,7 +1026,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0 });
     setCockpit(eyeProgram, cockpit);
     setUniforms(gl, eyeProgram, planetValues);
-    setBodies(eyeProgram, bodies, ground);
+    setBodies(eyeProgram, bodies, ground, view.pixelAngle);
     bindWarp(eyeProgram, warp, adaptation);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

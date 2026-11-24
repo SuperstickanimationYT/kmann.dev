@@ -565,6 +565,7 @@ uniform vec4 uBodySun[${MAX_BODIES}];
 uniform vec4 uBodyEclipser[${MAX_BODIES * 2}];
 uniform float uSunVisible;
 uniform float uCoronaShown;
+uniform float uBodyReach[${MAX_BODIES}];
 uniform vec3 uBodyNorth[${MAX_BODIES}];
 uniform vec3 uBodyMeridian[${MAX_BODIES}];
 uniform vec4 uBodyLook[${MAX_BODIES}];
@@ -1265,6 +1266,7 @@ vec4 bodiesColour(vec3 direction) {
   for (int i = 0; i < ${MAX_BODIES}; i++) {
     if (i >= uBodyCount) break;
     if (i == uGround && uGroundBlend >= 1.0) continue;
+    if (dot(direction, uBodyPlace[i].xyz) < uBodyReach[i]) continue;
     if (i != uGround || uWarpAxis.w > 0.5) {
       Haze ahead = hazeAround(i, direction);
       haze = Haze(haze.light + haze.clear * ahead.light, haze.clear * ahead.clear);
@@ -1323,6 +1325,9 @@ const float ANCHOR_METRES = ${ANCHOR_METRES}.0;
 const float WATER_FRESNEL_HEAD_ON = 0.02;
 const float GROUND_HIT = 2.0;
 const int CLOUD_STEPS = 24;
+const int CLOUD_FEWEST_STEPS = 12;
+const float CLOUD_STEP_KM = 0.3;
+const float CLOUD_DEEP_ENOUGH = 5.0;
 const int THIN_CLOUD_STEPS = 8;
 const float CLOUD_STEP_BLUR_SHARE = 0.5;
 const ivec4 CLOUD_JITTER_ORDER = ivec4(0, 2, 3, 1);
@@ -1347,9 +1352,12 @@ const float CLOUD_REGION_SWING = 1.6;
 const float CLOUD_FLAT_BASE_SHARE = 0.12;
 const float CLOUD_DOME_START_SHARE = 0.35;
 const float CLOUD_SUN_PROBE_SHARE = 0.35;
-const float CLOUD_SCATTERED_SHARE = 0.2;
-const float CLOUD_SCATTERED_REACH = 0.25;
+const float CLOUD_SCATTERED_SHARE = 0.9;
+const float CLOUD_SCATTERED_REACH = 0.24;
 const float CLOUD_FORWARD_GLOW = 1.6;
+const float CLOUD_FAR_PROBE = 2.4;
+const int CLOUD_FAR_CELL_OCTAVES = 1;
+const float CLOUD_SHOULDER = 0.75;
 const float CLOUD_SKY_LIGHT = 0.5;
 const int CLOUD_ALL_CELL_OCTAVES = 4;
 const int CLOUD_COARSE_CELL_OCTAVES = 2;
@@ -1594,6 +1602,11 @@ float cloudDensity(float coverage, vec3 fromCamera, float blurMetres, float shar
 
 uniform float uCloudFrame;
 
+vec3 softShoulder(vec3 light) {
+  vec3 over = max(light - CLOUD_SHOULDER, 0.0) / (1.0 - CLOUD_SHOULDER);
+  return min(light, CLOUD_SHOULDER) + (1.0 - CLOUD_SHOULDER) * (1.0 - exp(-over));
+}
+
 vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm) {
   depthKm = -1.0;
   if (!cloudsHere()) return vec4(0.0);
@@ -1615,7 +1628,9 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
   float hazePerKm = uGroundAir.w > 0.0 ? airDensityHere() / uGroundGlow.w : 0.0;
   float clear = 1.0;
   vec3 light = vec3(0.0);
-  int steps = uGroundCloudsMapped > 0.5 ? CLOUD_STEPS : THIN_CLOUD_STEPS;
+  int steps = uGroundCloudsMapped > 0.5 ? clamp(int((leave - enter) / CLOUD_STEP_KM), CLOUD_FEWEST_STEPS, CLOUD_STEPS) : THIN_CLOUD_STEPS;
+  vec3 upBetween = normalize(uGroundCamera + ray * mix(enter, leave, 0.25));
+  vec3 airSunlight = sunlightThroughAir(sun, upBetween) * uSunVisible;
   for (int i = 0; i < steps && clear >= CLOUD_OPAQUE_CLEARNESS; i++) {
     float along = (float(i) + jitter) / float(steps);
     float t = mix(enter, leave, along * along);
@@ -1628,15 +1643,20 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
     if (density > 0.0) {
       vec3 up = normalize(uGroundCamera + ray * t);
       float above = cloudDensity(coverage, ray * t + sun * sunProbeKm, blurMetres, shareBlur, CLOUD_COARSE_CELL_OCTAVES);
-      float depthTowardSun = uGroundClouds.z * above * sunProbeKm;
-      float sunThrough = max(exp(-depthTowardSun), CLOUD_SCATTERED_SHARE * exp(-CLOUD_SCATTERED_REACH * depthTowardSun));
+      float depthTowardSun = uGroundClouds.z * sunProbeKm * 0.5 * (density + above);
+      if (depthTowardSun < CLOUD_DEEP_ENOUGH) {
+        float higher = cloudDensity(coverage, ray * t + sun * sunProbeKm * CLOUD_FAR_PROBE, blurMetres, shareBlur, CLOUD_FAR_CELL_OCTAVES);
+        depthTowardSun += uGroundClouds.z * sunProbeKm * 0.5 * (CLOUD_FAR_PROBE - 1.0) * (above + higher);
+      }
+      float sunThrough = phase * exp(-depthTowardSun) + CLOUD_SCATTERED_SHARE * exp(-CLOUD_SCATTERED_REACH * depthTowardSun);
       float sunHeight = dot(sun, up);
       float daylight = smoothstep(-0.05, 0.05, sunHeight);
-      vec3 sunlit = sunlightThroughAir(sun, up) * uSunVisible * sunThrough * phase * max(sunHeight, 0.0);
+      vec3 sunlit = airSunlight * sunThrough * max(sunHeight, 0.0);
       vec3 skylit = cloudSkylight(sunHeight);
       float opacity = 1.0 - exp(-uGroundClouds.z * density * stepKm);
       float share = (length(uGroundCamera + ray * t) - uGroundRadius - uGroundClouds.x) / (uGroundClouds.y - uGroundClouds.x);
       vec3 scattered = CLOUD_LIT_ALBEDO * (sunlit * daylight + skylit * mix(CLOUD_DARK_BASE_SHARE, 1.0, share));
+      scattered = softShoulder(scattered);
       light += clear * opacity * mix(scattered, skyBehind, 1.0 - exp(-t * hazePerKm));
       depthWeight += clear * opacity;
       weightedDepth += clear * opacity * t;
