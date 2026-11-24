@@ -89,6 +89,7 @@ const stretchInput = $('[data-stretch]');
 const exposeButton = $('[data-expose]');
 const jumpInput = $('[data-jump-distance]');
 const guides = $('[data-guides]');
+const crosshair = $('[data-crosshair]');
 const modeSelect = $('[data-mode]');
 const clockLabel = $('[data-clock-label]');
 const giveUpButton = $('[data-give-up]');
@@ -1041,12 +1042,20 @@ function frame(now) {
     eyeStarsChanged = false;
   }
   if (labelsShown() || selection || orbitsShown()) refreshGuides(now);
+  placeCrosshair();
   $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
   $('[data-speed]').textContent = formatSpeed(game.speed);
   if (game.mode.solarSystem) showSimTime(now);
   showCompanionButtons();
   $('[data-energy]').textContent = !game.mode.scored ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
   requestAnimationFrame(frame);
+}
+
+function placeCrosshair() {
+  const cannotFly = menu || intro || photo || warp || game.over || !atlasFrame.hidden;
+  const spot = cannotFly ? null : spotOnStage(game.ship.forward);
+  crosshair.hidden = !spot;
+  if (spot) crosshair.style.transform = `translate(${spot.x}px, ${spot.y}px)`;
 }
 
 function clearGuides() {
