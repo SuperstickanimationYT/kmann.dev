@@ -11,6 +11,7 @@ import { KOTO_GARDEN } from './music/koto-garden.js';
 import { createMusicPlayer } from './music/player.js';
 import { NEBULAE } from './nebulae.js';
 import { describeStar, drawEdgeArrow, drawGuides, formatDistance } from './practice.js';
+import { eased, planGlide } from './glide-path.js';
 import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { createRenderer } from './renderer.js';
@@ -20,13 +21,13 @@ import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
 import { withExoplanetHosts } from './exoplanets.js';
-import { SOLAR_SYSTEM, systemNamed, systemNear, withinSystem } from './planetary-systems.js';
+import { SOLAR_SYSTEM, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
 import { drawOrbits } from './orbits.js';
 import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
-import { gatherStars, KIND, loadNearbyStars, placeNebulae, SUN_ABSOLUTE } from './stars.js';
+import { gatherStars, KIND, loadNearbyStars, placeNebulae, starsOfBoth, SUN_ABSOLUTE } from './stars.js';
 import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
@@ -43,7 +44,6 @@ const SKY_RESOLUTION_PHOTO = 1;
 const EYE_BUDGET = 60000;
 const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
-const GLIDE_REGATHER_INTERVAL = 500;
 const REGATHER_SHARE_OF_NEAREST_STAR = 0.5;
 const STAR_STRIDE = 6;
 const STAR_DISTANCE_SLOT = 5;
@@ -650,17 +650,44 @@ function advanceAim(now) {
   done();
 }
 
-const GLIDE_SECONDS = 2.5;
-const GLIDE_SWING_FROM = 0.3;
+const GLIDE_SWING_FROM = 0.37;
+const GLIDE_CLEARANCE = 0.3;
+const GLIDE_DEPARTURE_RADII = 1000;
+const LONGEST_GLIDE_STEP_SECONDS = 1 / 30;
 const STEEPEST_ROLL_SHARE = 1e-3;
 let glide = null;
+
+function departureRoomPc() {
+  return solarFrame ? Math.hypot(...solarFrame.offsetKm) / KM_PER_PC : eyeNearestStarPc * REGATHER_SHARE_OF_NEAREST_STAR;
+}
 
 function glideTo(destination, announcement = `Arrived at ${destination.name}.`) {
   if (!warpReady()) return;
   aimThen(subtract(destination.target, game.camera), () => {
     const from = [...game.camera];
-    glide = { destination, announcement, from, up: game.ship.up, roll: 0, startedAt: performance.now() };
+    const { target } = destination;
+    const standoff = subtract(destination.arrival(from), target);
+    const path = planGlide({
+      distance: Math.hypot(...subtract(from, target)),
+      finalDistance: Math.hypot(...standoff),
+      departureRoom: departureRoomPc(),
+    });
+    const departed = solarFrame && { holder: solarFrame.holder, offsetKm: frameOffsetKm(bodyNamed(solarFrame.holder), solarFrame) };
+    const stars = starsAlongGlide(from, add(target, standoff));
+    if (stars) showStars(stars.departing);
+    glide = { destination, announcement, from, standoff, path, departed, stars, pastHalfway: false, up: game.ship.up, roll: 0, seconds: 0, steppedAt: performance.now() };
   });
+}
+
+function starsAlongGlide(from, end) {
+  if (Math.hypot(...subtract(from, end)) < regatherDistancePc()) return null;
+  return starsOfBoth({ stars: eyeStars, anchor: eyeAnchor }, { stars: gatherEyeStars(end), anchor: end });
+}
+
+function showStars({ stars, anchor }) {
+  eyeStars = stars;
+  eyeAnchor = anchor;
+  eyeStarsChanged = true;
 }
 
 function rollTo(up, level) {
@@ -679,28 +706,61 @@ function faceWhileRolling(direction, share) {
   faceDirection(direction, add(scale(level.up, Math.cos(roll)), scale(level.right, Math.sin(roll))));
 }
 
-const eased = (progress) => progress * progress * (3 - 2 * progress);
-
-function swungAround(target, from, end, progress) {
-  const away = subtract(from, target);
-  const standoff = subtract(end, target);
-  const [distance, finalDistance] = [Math.hypot(...away), Math.hypot(...standoff)];
-  const [start, finish] = [scale(away, 1 / distance), scale(standoff, 1 / finalDistance)];
+function offsetFromTarget(progress) {
+  const away = subtract(glide.from, glide.destination.target);
+  const [start, finish] = [normalize(away), normalize(glide.standoff)];
   const angle = Math.acos(Math.max(-1, Math.min(1, dot(start, finish))));
   const axis = angle < ALREADY_AIMED_RADIANS || Math.PI - angle < ALREADY_AIMED_RADIANS ? glide.up : normalize(cross(start, finish));
   const swing = eased(Math.max(0, (progress - GLIDE_SWING_FROM) / (1 - GLIDE_SWING_FROM)));
-  return add(target, scale(rotateAbout(start, axis, angle * swing), distance * (finalDistance / distance) ** eased(progress)));
+  return scale(rotateAbout(start, axis, angle * swing), glide.path.distanceAt(progress));
+}
+
+function clearOfDeparted(holder, offsetKm, travelledKm) {
+  const distance = Math.hypot(...offsetKm);
+  const clearance = holder.radiusKm * (1 + GLIDE_CLEARANCE * Math.min(1, travelledKm / holder.radiusKm));
+  return distance < clearance ? scale(offsetKm, clearance / distance) : offsetKm;
+}
+
+function frameAround(holder, offsetKm) {
+  game.camera = add(system.position, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
+  solarFrame = { holder: holder.name, offsetKm, coRotating: false, localKm: null, camera: game.camera, landed: false, landingArmed: true, body: holder };
+}
+
+function moveCameraAlongGlide(offset) {
+  const { destination, departed, from, path } = glide;
+  game.camera = add(destination.target, offset);
+  if (!solarBodies || !withinSystem(system, game.camera)) return;
+  const travelledKm = (path.distanceAt(0) - Math.hypot(...offset)) * KM_PER_PC;
+  const holder = departed && bodyNamed(departed.holder);
+  if (holder && travelledKm < GLIDE_DEPARTURE_RADII * holder.radiusKm && !glide.pastHalfway) {
+    const heading = normalize(subtract(destination.target, from));
+    frameAround(holder, clearOfDeparted(holder, add(departed.offsetKm, scale(heading, travelledKm)), travelledKm));
+    return;
+  }
+  const body = destination.subject?.body;
+  const targetBody = body && systemOf(body) === system && bodyNamed(body.name);
+  if (targetBody) frameAround(targetBody, scale(offset, KM_PER_PC));
 }
 
 function advanceGlide(now) {
-  const progress = Math.min(1, (now - glide.startedAt) / 1000 / GLIDE_SECONDS);
-  const { destination, from, announcement } = glide;
-  const { target } = destination;
-  game.camera = swungAround(target, from, destination.arrival(from), progress);
-  faceWhileRolling(subtract(target, game.camera), eased(progress));
+  glide.seconds += Math.min(LONGEST_GLIDE_STEP_SECONDS, Math.max(0, (now - glide.steppedAt) / 1000));
+  glide.steppedAt = now;
+  const progress = Math.min(1, glide.seconds / glide.path.seconds);
+  const { destination, announcement, stars } = glide;
+  if (progress >= GLIDE_SWING_FROM && !glide.pastHalfway) {
+    glide.pastHalfway = true;
+    if (stars) showStars(stars.arriving);
+  }
+  const offset = offsetFromTarget(progress);
+  moveCameraAlongGlide(offset);
+  faceWhileRolling(glide.pastHalfway ? scale(offset, -1) : subtract(destination.target, game.camera), eased(progress));
   if (progress < 1) return;
   glide = null;
   settleAt(destination);
+  if (stars) {
+    showStars(stars.landed);
+    eyeNearestStarPc = nearestStarPc(eyeStars);
+  }
   showStatus(announcement);
   viewChanged();
 }
@@ -797,13 +857,13 @@ function land(lightYears) {
 function arrive(destination) {
   game.camera = destination.arrival(game.camera);
   faceDirection(subtract(destination.target, game.camera), destination.up);
+  eyeStars = null;
   settleAt(destination);
 }
 
 function settleAt(destination) {
   if (destination.speed) game.speed = Math.max(game.mode.slowestSpeed, destination.speed);
   game.jumps += 1;
-  eyeStars = null;
   if (game.mode.solarSystem) setFollowing(true);
 }
 
@@ -1010,13 +1070,15 @@ function nearestStarPc(stars) {
   return nearest;
 }
 
+const gatherEyeStars = (camera) => gatherStars({ camera, limit: EYE_LIMIT, budget: EYE_BUDGET, armMap, nebulae, nearby });
+const regatherDistancePc = () => Math.min(REGATHER_DISTANCE, REGATHER_SHARE_OF_NEAREST_STAR * eyeNearestStarPc);
+
 function refreshEyeStars(now) {
-  if (!nearby.length) return;
+  if (!nearby.length || glide) return;
   const drift = eyeAnchor ? Math.hypot(...subtract(game.camera, eyeAnchor)) : Infinity;
-  const regatherAfter = eyeStars ? Math.min(REGATHER_DISTANCE, REGATHER_SHARE_OF_NEAREST_STAR * eyeNearestStarPc) : 0;
-  if (eyeStars && (drift < regatherAfter || now - eyeGatheredAt < (glide ? GLIDE_REGATHER_INTERVAL : REGATHER_INTERVAL))) return;
+  if (eyeStars && (drift < regatherDistancePc() || now - eyeGatheredAt < REGATHER_INTERVAL)) return;
   eyeAnchor = [...game.camera];
-  eyeStars = gatherStars({ camera: eyeAnchor, limit: EYE_LIMIT, budget: EYE_BUDGET, armMap, nebulae, nearby });
+  eyeStars = gatherEyeStars(eyeAnchor);
   eyeNearestStarPc = nearestStarPc(eyeStars);
   eyeGatheredAt = now;
   eyeStarsChanged = true;
