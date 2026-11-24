@@ -1738,7 +1738,7 @@ if (!renderer) {
     warpOptics = optics;
     renderer.loadWarpTable(optics);
   });
-  groundPatches = createGroundPatches(renderer.releasePatch);
+  groundPatches = createGroundPatches(renderer.releasePatch, renderer.releaseDetails);
   loadBodyMaps(new URL('data/planets/', window.location.href), (layer, maps) => {
     renderer.loadBodyMap(layer, maps);
     groundMaps[layer] = maps.ground ?? null;

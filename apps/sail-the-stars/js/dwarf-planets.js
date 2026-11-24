@@ -3,6 +3,7 @@ import { DEGREES } from './milky-way.js';
 const ECLIPTIC_POLE = [270, 66.56072];
 const OBLIQUITY = 23.43928 * DEGREES;
 const turnsEvery = (hours) => [0, (360 * 24) / hours];
+const ICE_BLOCKS = { cover: [0.015, 0.01, 0.004, 0.0015], sharpness: 12, flatness: 0.75, tint: [1.12, 1.12, 1.14] };
 const coldIce = (seed) => ({ seed, kelvin: 40 });
 
 function poleOfOrbit(inclinationDegrees, nodeDegrees) {
@@ -38,9 +39,9 @@ export const DWARF_SATELLITE_ORBITS = {
 };
 
 export const DWARF_PLANETS = [
-  { name: 'Ceres', kind: 'rocky', dwarf: 'agreed', radiusKm: 469.7, pole: [291.418, 66.764], spin: [170.65, 952.1532], tint: [0.22, 0.215, 0.21], magnitude: 3.34, map: 'ceres', mapKmPerPixel: 2.9, roughness: 0.5, ground: { roughness: 0.06, craters: 1 } },
-  { name: 'Pluto', kind: 'rocky', dwarf: 'agreed', radiusKm: 1188.3, pole: [132.993, -6.163], spin: [302.695, 56.3625225], tint: [0.8, 0.7, 0.58], magnitude: -0.55, map: 'pluto', mapKmPerPixel: 7.3, roughness: 0.25, haze: { gas: { depth: [0.004, 0.008, 0.016], scaleKm: 40 }, dust: { depth: [0.004, 0.005, 0.007], light: [0.006, 0.009, 0.015], scaleKm: 40, forwardness: 0.6, sunDimming: 0.1 } }, ground: { roughness: 0.04, craters: 0.25 } },
-  { name: 'Charon', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 606, tint: [0.55, 0.53, 0.51], magnitude: 1, map: 'charon', mapKmPerPixel: 3.7, roughness: 0.4, ground: { roughness: 0.05, craters: 0.6 } },
+  { name: 'Ceres', kind: 'rocky', dwarf: 'agreed', radiusKm: 469.7, pole: [291.418, 66.764], spin: [170.65, 952.1532], tint: [0.22, 0.215, 0.21], magnitude: 3.34, map: 'ceres', mapKmPerPixel: 2.9, roughness: 0.5, ground: { roughness: 0.06, craters: 1, rocks: { cover: [0.025, 0.018, 0.008, 0.003], sharpness: 10, flatness: 0.8, tint: [1, 1, 1] } } },
+  { name: 'Pluto', kind: 'rocky', dwarf: 'agreed', radiusKm: 1188.3, pole: [132.993, -6.163], spin: [302.695, 56.3625225], tint: [0.8, 0.7, 0.58], magnitude: -0.55, map: 'pluto', mapKmPerPixel: 7.3, roughness: 0.25, haze: { gas: { depth: [0.004, 0.008, 0.016], scaleKm: 40 }, dust: { depth: [0.004, 0.005, 0.007], light: [0.006, 0.009, 0.015], scaleKm: 40, forwardness: 0.6, sunDimming: 0.1 } }, ground: { roughness: 0.04, craters: 0.25, rocks: ICE_BLOCKS } },
+  { name: 'Charon', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 606, tint: [0.55, 0.53, 0.51], magnitude: 1, map: 'charon', mapKmPerPixel: 3.7, roughness: 0.4, ground: { roughness: 0.05, craters: 0.6, rocks: ICE_BLOCKS } },
   { name: 'Styx', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 5.2, tint: [0.65, 0.65, 0.65], magnitude: 11.5 },
   { name: 'Nix', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 19, tint: [0.6, 0.57, 0.56], magnitude: 8.3 },
   { name: 'Kerberos', kind: 'rocky', parent: 'Pluto', synchronous: true, radiusKm: 6, tint: [0.6, 0.6, 0.6], magnitude: 11 },

@@ -12,7 +12,7 @@ import {
   CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT, EARTH_CLOUDS,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, LATTICE_PERIOD, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
-  PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
+  PATCH_FRAGMENT, PATCH_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, ROCK_SHADOW_LAYER, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
   SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
   SIMULATED_CLOUD_SIZE,
@@ -21,7 +21,9 @@ import { createSettlementPainter, settlementShown } from './settlements.js';
 import { speculationShown } from './speculation.js';
 import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
+import { grassMesh, MESH_FLOATS, ROCK_SHAPES, rockMesh } from './detail-meshes.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
+import { rocksSeen, SCATTER_FLOATS, SCATTER_LAYERS } from './surface-scatter.js';
 import { apparentMagnitude, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
 import { lattice, mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
@@ -181,7 +183,17 @@ const GROUND_DETAIL_TEXELS_PER_CELL = 4;
 const GROUND_DETAIL_SEED = 2;
 const SHADOW_SLOPE_BIAS = 3;
 const SHADOW_CONSTANT_BIAS = 4;
-const NO_SHADOWS = { uShadowsOn: 0 };
+const ROCK_SHADOW_SLOPE_BIAS = 1.5;
+const NO_ROCK_SHADOW = [0, 0, 0, 1];
+const NO_SHADOWS = { uShadowsOn: 0, uRockShadow: NO_ROCK_SHADOW };
+const PLACED_LOCATION = 5;
+const SEED_LOCATION = 6;
+const ROCK_SUBDIVISIONS_WITHIN = [[0.08, 2], [0.35, 1], [Infinity, 0]];
+const SHADOWS_COARSENED_BY = 0.15;
+const TUFTS_THINNED_AT_REACH_SHARE = 0.7;
+const FEWEST_TUFTS_SHARE = 0.15;
+const GRASS_TINT = [1.05, 1.15, 0.85, 0];
+const NO_DETAIL = [0, 0, 0, 0];
 const BODY_KIND_CODES = { rocky: 0, clouded: 1, giant: 2, star: 3, ocean: 4, hazy: 5, mirror: 7 };
 const MIRROR_OCCLUDES_FROM_COSINE = 0.5;
 const INVENTED_ROCKY_CODE = 6;
@@ -887,6 +899,87 @@ export function createRenderer(canvas, armMap, galaxies) {
     patch.vertices = null;
   }
 
+  const detailMeshes = new Map();
+
+  function detailMesh(key, build) {
+    if (detailMeshes.has(key)) return detailMeshes.get(key);
+    const { vertices, indices } = build();
+    const mesh = { key, vertexBuffer: gl.createBuffer(), indexBuffer: gl.createBuffer(), indexCount: indices.length };
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+    detailMeshes.set(key, mesh);
+    return mesh;
+  }
+
+  function meshOf(tile, sharpness, reachShare) {
+    if (SCATTER_LAYERS[tile.layer].kind === 'grass') return detailMesh('grass', grassMesh);
+    const subdivisions = ROCK_SUBDIVISIONS_WITHIN.find(([share]) => reachShare < share)[1];
+    const shape = Math.floor(tile.instances[SCATTER_FLOATS - 1] * ROCK_SHAPES);
+    return detailMesh(`rock ${shape} ${subdivisions} ${sharpness}`, () => rockMesh(shape, subdivisions, sharpness));
+  }
+
+  function detailVao(tile, mesh) {
+    tile.gpu ??= { buffer: null, vaos: new Map() };
+    if (!tile.gpu.buffer) {
+      tile.gpu.buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, tile.gpu.buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, tile.instances, gl.STATIC_DRAW);
+    }
+    if (tile.gpu.vaos.has(mesh.key)) return tile.gpu.vaos.get(mesh.key);
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vertexBuffer);
+    [0, 1].forEach((location) => {
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, 3, gl.FLOAT, false, MESH_FLOATS * 4, location * 12);
+    });
+    gl.bindBuffer(gl.ARRAY_BUFFER, tile.gpu.buffer);
+    [[PLACED_LOCATION, 4, 0], [SEED_LOCATION, 1, 16]].forEach(([location, size, offset]) => {
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, size, gl.FLOAT, false, SCATTER_FLOATS * 4, offset);
+      gl.vertexAttribDivisor(location, 1);
+    });
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indexBuffer);
+    tile.gpu.vaos.set(mesh.key, vao);
+    return vao;
+  }
+
+  function releaseDetails(tile) {
+    if (!tile.gpu) return;
+    gl.deleteBuffer(tile.gpu.buffer);
+    tile.gpu.vaos.forEach((vao) => gl.deleteVertexArray(vao));
+    tile.gpu = null;
+  }
+
+  function drawDetails(program, tiles, ground, pixelAngle, coarsened = 0) {
+    const { rocks } = ground.settings;
+    for (const tile of tiles) {
+      const { kind, reachMetres, sizes } = SCATTER_LAYERS[tile.layer];
+      const grass = kind === 'grass';
+      const reachShare = (tile.nearestKm * 1000) / reachMetres;
+      const mesh = meshOf(tile, rocks?.sharpness, reachShare + coarsened);
+      const shown = grass ? Math.ceil(tile.count * Math.max(FEWEST_TUFTS_SHARE, 1 - reachShare / TUFTS_THINNED_AT_REACH_SHARE)) : rocksSeen(tile, tile.nearestKm * 1000, pixelAngle);
+      if (!shown) continue;
+      const vao = detailVao(tile, mesh);
+      setUniforms(gl, program, {
+        uPatchFromCamera: tile.centreKm.map((value, axis) => (value - ground.cameraLocalKm[axis]) * 1000),
+        uPatchCentreKm: tile.centreKm,
+        uPatchSpacing: sizes[0],
+        uMorph: NO_MORPH,
+        uPixelAngle: pixelAngle,
+        uDetailShape: [grass ? 2 : 1, reachMetres, grass ? 1 : rocks.flatness, 0],
+        uDetailUp: tile.up,
+        uDetailTint: grass ? GRASS_TINT : [...rocks.tint, rocks.greyness ?? 0],
+      });
+      gl.bindVertexArray(vao);
+      gl.drawElementsInstanced(gl.TRIANGLES, mesh.indexCount, gl.UNSIGNED_SHORT, 0, shown);
+    }
+    setUniforms(gl, program, { uDetailShape: NO_DETAIL });
+  }
+
   function releasePatch(patch) {
     if (!patch.gpu) return;
     gl.deleteBuffer(patch.gpu.buffer);
@@ -913,7 +1006,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     const texture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0 + SHADOW_MAP_UNIT);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT32F, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, SHADOW_CASCADES);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT32F, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, SHADOW_CASCADES + 1);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -921,7 +1014,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
     gl.activeTexture(gl.TEXTURE0);
-    const framebuffers = Array.from({ length: SHADOW_CASCADES }, (_, layer) => {
+    const framebuffers = Array.from({ length: SHADOW_CASCADES + 1 }, (_, layer) => {
       const framebuffer = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
       gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, texture, 0, layer);
@@ -933,32 +1026,35 @@ export function createRenderer(canvas, armMap, galaxies) {
     return shadowMaps;
   }
 
-  function drawShadows(ground) {
-    const { light, casters, cameraLocalKm } = ground;
+  function drawShadows(ground, pixelAngle) {
+    const { light, casters, cameraLocalKm, details } = ground;
     if (!light) return NO_SHADOWS;
     const { texture, framebuffers } = shadowMapsReady();
     const cameraMetres = cameraLocalKm.map((value) => value * 1000);
     const along = (axis) => cameraMetres[0] * axis[0] + cameraMetres[1] * axis[1] + cameraMetres[2] * axis[2];
-    const centres = light.halvesKm.map((halfKm) => [light.right, light.up].map((axis) => Math.round(along(axis) / ((2 * halfKm * 1000) / SHADOW_MAP_SIZE))));
-    const cascades = light.halvesKm.map((halfKm, layer) => {
+    const rocksCast = details.casters.length > 0;
+    const halvesKm = rocksCast ? [...light.halvesKm, details.shadowHalfKm] : light.halvesKm;
+    const centres = halvesKm.map((halfKm) => [light.right, light.up].map((axis) => Math.round(along(axis) / ((2 * halfKm * 1000) / SHADOW_MAP_SIZE))));
+    const cascades = halvesKm.map((halfKm, layer) => {
       const half = halfKm * 1000;
       const texel = (2 * half) / SHADOW_MAP_SIZE;
       const shift = [light.right, light.up].map((axis, i) => centres[layer][i] * texel - along(axis));
       return [...shift, half, light.depthKm * 1000];
     });
     const lightUniforms = { uShadowRight: light.right, uShadowUp: light.up, uShadowSun: light.sun };
-    const drawnFor = JSON.stringify([centres, light.halvesKm, light.sun, casters.map((patch) => patch.key)]);
+    const drawnFor = JSON.stringify([centres, halvesKm, light.sun, ...[casters, details.casters, details.largeCasters].map((drawn) => drawn.map(({ key }) => key))]);
     if (drawnFor !== shadowMaps.drawnFor) {
       shadowMaps.drawnFor = drawnFor;
-      renderShadowMaps(framebuffers, cascades, lightUniforms, casters, cameraLocalKm);
+      renderShadowMaps(framebuffers, cascades, lightUniforms, ground, pixelAngle);
     }
     gl.activeTexture(gl.TEXTURE0 + SHADOW_MAP_UNIT);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
     gl.activeTexture(gl.TEXTURE0);
-    return { ...lightUniforms, uShadowsOn: 1, cascades: new Float32Array(cascades.flat()) };
+    return { ...lightUniforms, uShadowsOn: 1, uRockShadow: rocksCast ? cascades[ROCK_SHADOW_LAYER] : NO_ROCK_SHADOW, cascades: new Float32Array(cascades.slice(0, SHADOW_CASCADES).flat()) };
   }
 
-  function renderShadowMaps(framebuffers, cascades, lightUniforms, casters, cameraLocalKm) {
+  function renderShadowMaps(framebuffers, cascades, lightUniforms, ground, pixelAngle) {
+    const { casters, details, cameraLocalKm } = ground;
     gl.useProgram(shadowProgram.program);
     setUniforms(gl, shadowProgram, lightUniforms);
     gl.viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
@@ -971,7 +1067,13 @@ export function createRenderer(canvas, armMap, galaxies) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[layer]);
       gl.clear(gl.DEPTH_BUFFER_BIT);
       setUniforms(gl, shadowProgram, { uShadowCascade: cascade });
+      if (layer === ROCK_SHADOW_LAYER) {
+        gl.polygonOffset(ROCK_SHADOW_SLOPE_BIAS, SHADOW_CONSTANT_BIAS);
+        drawDetails(shadowProgram, details.casters, ground, pixelAngle, SHADOWS_COARSENED_BY);
+        return;
+      }
       drawPatches(shadowProgram, casters, cameraLocalKm);
+      if (layer === 0) drawDetails(shadowProgram, details.largeCasters, ground, pixelAngle, SHADOWS_COARSENED_BY);
     });
     gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.disable(gl.DEPTH_TEST);
@@ -1064,7 +1166,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
 
   function drawGround(view, bodies, ground) {
-    const shadows = drawShadows(ground);
+    const shadows = drawShadows(ground, view.pixelAngle);
     const billows = ground.settings.clouds && !ground.settings.invented ? bakedCloudBillows() : null;
     if (ground.settings.clouds?.mapped) bakeNearbyClouds(bodies, ground);
     const target = groundTargetFitting();
@@ -1092,6 +1194,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.clear(gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LESS);
+    drawDetails(patchProgram, ground.details.drawn, ground, view.pixelAngle);
     drawPatches(patchProgram, ground.drawn, ground.cameraLocalKm);
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
@@ -1236,5 +1339,5 @@ export function createRenderer(canvas, armMap, galaxies) {
     return pixels;
   }
 
-  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, loadSimulatedClouds, loadCityLights, widestTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), inventGround: inventedGround.groundOf, releasePatch };
+  return { renderEye, exposeCamera, developCamera, captureSkyCube, loadWarpTable, loadBodyMap, loadCloudMap, loadSimulatedClouds, loadCityLights, widestTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), inventGround: inventedGround.groundOf, releasePatch, releaseDetails };
 }
