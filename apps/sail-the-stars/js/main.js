@@ -642,8 +642,7 @@ function aimThen(direction, done) {
 
 function advanceAim(now) {
   const progress = Math.min(1, (now - aim.startedAt) / 1000 / aim.seconds);
-  const eased = progress * progress * (3 - 2 * progress);
-  game.ship = rotateBasis(aim.from, aim.axis, aim.angle * eased);
+  game.ship = rotateBasis(aim.from, aim.axis, aim.angle * eased(progress));
   aimView();
   if (progress < 1) return;
   const { done } = aim;
@@ -652,31 +651,56 @@ function advanceAim(now) {
 }
 
 const GLIDE_SECONDS = 2.5;
-const GLIDE_LEFT_OF_STANDOFF = 0.01;
-const GLIDE_SMALLEST_SHARE = 1e-12;
+const GLIDE_SWING_FROM = 0.3;
+const STEEPEST_ROLL_SHARE = 1e-3;
 let glide = null;
 
 function glideTo(destination, announcement = `Arrived at ${destination.name}.`) {
   if (!warpReady()) return;
   aimThen(subtract(destination.target, game.camera), () => {
     const from = [...game.camera];
-    const end = destination.arrival(from);
-    const span = Math.hypot(...subtract(from, end));
-    const finalShare = span > 0 ? Math.max(GLIDE_SMALLEST_SHARE, Math.min(1, (GLIDE_LEFT_OF_STANDOFF * Math.hypot(...subtract(end, destination.target))) / span)) : 1;
-    glide = { destination, announcement, from, finalShare, startedAt: performance.now() };
+    glide = { destination, announcement, from, up: game.ship.up, roll: 0, startedAt: performance.now() };
   });
+}
+
+function rollTo(up, level) {
+  const sideways = dot(up, level.right);
+  const upright = dot(up, level.up);
+  if (Math.hypot(sideways, upright) < STEEPEST_ROLL_SHARE) return glide.roll;
+  const roll = Math.atan2(sideways, upright);
+  return roll + 2 * Math.PI * Math.round((glide.roll - roll) / (2 * Math.PI));
+}
+
+function faceWhileRolling(direction, share) {
+  const level = orthonormal(direction, glide.up);
+  glide.up = level.up;
+  if (glide.destination.up) glide.roll = rollTo(glide.destination.up, level);
+  const roll = glide.roll * share;
+  faceDirection(direction, add(scale(level.up, Math.cos(roll)), scale(level.right, Math.sin(roll))));
+}
+
+const eased = (progress) => progress * progress * (3 - 2 * progress);
+
+function swungAround(target, from, end, progress) {
+  const away = subtract(from, target);
+  const standoff = subtract(end, target);
+  const [distance, finalDistance] = [Math.hypot(...away), Math.hypot(...standoff)];
+  const [start, finish] = [scale(away, 1 / distance), scale(standoff, 1 / finalDistance)];
+  const angle = Math.acos(Math.max(-1, Math.min(1, dot(start, finish))));
+  const axis = angle < ALREADY_AIMED_RADIANS || Math.PI - angle < ALREADY_AIMED_RADIANS ? glide.up : normalize(cross(start, finish));
+  const swing = eased(Math.max(0, (progress - GLIDE_SWING_FROM) / (1 - GLIDE_SWING_FROM)));
+  return add(target, scale(rotateAbout(start, axis, angle * swing), distance * (finalDistance / distance) ** eased(progress)));
 }
 
 function advanceGlide(now) {
   const progress = Math.min(1, (now - glide.startedAt) / 1000 / GLIDE_SECONDS);
-  const eased = progress * progress * (3 - 2 * progress);
-  const { destination, from, finalShare, announcement } = glide;
-  const end = destination.arrival(from);
-  game.camera = add(end, scale(subtract(from, end), finalShare ** eased));
-  faceDirection(subtract(destination.target, game.camera));
+  const { destination, from, announcement } = glide;
+  const { target } = destination;
+  game.camera = swungAround(target, from, destination.arrival(from), progress);
+  faceWhileRolling(subtract(target, game.camera), eased(progress));
   if (progress < 1) return;
   glide = null;
-  arrive(destination);
+  settleAt(destination);
   showStatus(announcement);
   viewChanged();
 }
@@ -773,6 +797,10 @@ function land(lightYears) {
 function arrive(destination) {
   game.camera = destination.arrival(game.camera);
   faceDirection(subtract(destination.target, game.camera), destination.up);
+  settleAt(destination);
+}
+
+function settleAt(destination) {
   if (destination.speed) game.speed = Math.max(game.mode.slowestSpeed, destination.speed);
   game.jumps += 1;
   eyeStars = null;
