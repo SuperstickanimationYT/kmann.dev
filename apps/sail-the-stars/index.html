@@ -45,7 +45,7 @@
   <div class="fh-crosshair" data-crosshair aria-hidden="true" hidden></div>
   <div class="fh-hud" aria-live="polite">
     <span><span data-clock-label>Mission clock</span> <strong data-clock>0:00:00</strong></span>
-    <span class="fh-hud-speed">Thrusters <strong data-speed></strong></span>
+    <span class="fh-hud-speed"><span data-speed-label>Thrusters</span> <strong data-speed></strong></span>
     <span data-sim-date-field hidden>Date <strong data-sim-date></strong></span>
     <span data-energy-field>Warp left <strong data-energy></strong></span>
   </div>
@@ -180,6 +180,10 @@
       <label class="fh-check" data-long-exposure-field hidden>
         <input type="checkbox" data-long-exposure>
         <span>Long-exposure view: colour and faint glow like a stacked photo <kbd>P</kbd></span>
+      </label>
+      <label class="fh-check" data-rocket-field hidden>
+        <input type="checkbox" data-rocket>
+        <span>Rocket: real gravity and about 1.5 g of thrust in any direction, fuel unlimited. Only the body whose sphere of influence you are in pulls on you. Time runs at most 5&times; while the engine fires.</span>
       </label>
       <label class="fh-check">
         <input type="checkbox" data-motion-blur>
