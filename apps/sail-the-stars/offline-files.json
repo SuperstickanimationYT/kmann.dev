@@ -1,5 +1,5 @@
 {
-  "bytes": 7234976,
+  "bytes": 7265609,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -50,6 +50,8 @@
     "data/warp-optics.bin",
     "index.html",
     "js/atlas.js",
+    "js/black-hole-view.js",
+    "js/black-holes.js",
     "js/bright-exoplanet-data.js",
     "js/camera.js",
     "js/clouds.js",
@@ -73,6 +75,7 @@
     "js/invented-ground.js",
     "js/kepler.js",
     "js/lander-models.js",
+    "js/light-bending.js",
     "js/main.js",
     "js/map-edges.js",
     "js/menu-scene.js",

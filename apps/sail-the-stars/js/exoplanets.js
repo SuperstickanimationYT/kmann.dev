@@ -1,3 +1,4 @@
+import { HORIZON_KM_PER_SUN } from './black-holes.js';
 import { cloudTurn, SIMULATED_CLOUD_MAPS } from './clouds.js';
 import { BRIGHT_SYSTEMS } from './bright-exoplanet-data.js';
 import { EXOPLANET_SYSTEMS } from './exoplanet-data.js';
@@ -6,7 +7,7 @@ import { createRandom } from './random.js';
 import { orbitPoint } from './kepler.js';
 import { facingParent, inStarlight, KM_PER_AU, ORBIT_PATH_POINTS, SUN_RADIUS_KM, SYNCHRONOUS_LOOKAHEAD_DAYS } from './solar-system.js';
 import { stellarProperties, temperatureFromColour } from './stellar-properties.js';
-import { generatePlanets } from './system-generator.js';
+import { generatePlanets, generatePlanetsOfBlackHole } from './system-generator.js';
 import { add, cross, dot, normalize, rotateAbout, scale, subtract } from './vectors.js';
 
 const EARTH_RADIUS_KM = 6371;
@@ -31,6 +32,8 @@ const SPIN_HOURS = [10, 26];
 const MOST_TILT_DEGREES = 28;
 const ALBEDO_FOR_BRIGHTNESS = { rocky: 0.25, hazy: 0.4, giant: 0.4 };
 const WET_KELVIN = [175, 300];
+const SKYLIGHT = [0.07, 0.07, 0.07];
+const SKYLIGHT_RADIANS = 0.6;
 
 const planck = (microns, kelvin) => 1 / (microns ** 3 * (Math.exp(Math.min(80, PLANCK_MICRON_KELVIN / (microns * kelvin))) - 1));
 const planckBands = (kelvin) => BAND_MICRONS.map((microns) => planck(microns, kelvin));
@@ -191,13 +194,22 @@ export function madeUpSystem(star, { seed, companionAu }) {
   return buildSystem(data, { random, toFrame: (vector) => vector, catalogueStar: { ...star, host: star.name } });
 }
 
+export function blackHoleSystem(star, seed) {
+  const random = createRandom(seed);
+  const planets = star.hole.star ? generatePlanetsOfBlackHole(star.hole, random) : [];
+  const data = { name: star.name, hole: star.hole, madeUp: true, planets };
+  return buildSystem(data, { random, toFrame: (vector) => vector, catalogueStar: { ...star, host: star.name } });
+}
+
+const starShape = ({ radius, kelvin }) => ({ radiusKm: radius * SUN_RADIUS_KM, light: whiteForSunlight(kelvin), starBands: planckBands(kelvin) });
+const holeShape = ({ suns }) => ({ radiusKm: suns * HORIZON_KM_PER_SUN, light: SKYLIGHT, starBands: planckBands(SUN_KELVIN) });
+
 function buildSystem(data, { random, toFrame, catalogueStar }) {
   const { position, absolute } = catalogueStar;
   const node = random.between(0, 2 * Math.PI);
   const madeUpInclination = random.between(...MADE_UP_INCLINATION);
-  const radiusKm = data.radius * SUN_RADIUS_KM;
-  const light = whiteForSunlight(data.kelvin);
-  const starBands = planckBands(data.kelvin);
+  const { radiusKm, light, starBands } = data.hole ? holeShape(data.hole) : starShape(data);
+  const skylit = data.hole && { litFrom: normalize(scale(position, -1)), sunAngularRadius: SKYLIGHT_RADIANS };
   const selfLit = data.selfLit || SELF_LIT_HOSTS.includes(data.name);
   const planets = data.planets.map((planet) => {
     const orbit = orbitOf(planet, node, madeUpInclination, random);
@@ -224,11 +236,12 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
       spinHours: random.between(...SPIN_HOURS),
       tilt: random.between(0, MOST_TILT_DEGREES) * DEGREES,
       ...look,
+      ...skylit,
     };
   });
-  const north = normalize(toFrame(poleOf(planets[0]?.orbit ?? { inclination: madeUpInclination * DEGREES, node })));
+  const north = data.hole?.pole ?? normalize(toFrame(poleOf(planets[0]?.orbit ?? { inclination: madeUpInclination * DEGREES, node })));
   const meridian = normalize(cross(north, [0.3, 0.5, 0.8]));
-  const star = { name: data.name, kind: 'star', radiusKm, tint: light, magnitude: absolute, host: data.name, north, meridian, fromSunKm: [0, 0, 0] };
+  const star = { name: data.name, kind: 'star', radiusKm, tint: light, magnitude: absolute, host: data.name, hole: data.hole, north, meridian, fromSunKm: [0, 0, 0] };
   const offsetAt = ({ orbit }, ms) => toFrame(orbitPoint({ ...orbit, meanAnomaly: orbit.meanAnomalyAt(ms) }));
 
   function facing(planet, offset, ms) {

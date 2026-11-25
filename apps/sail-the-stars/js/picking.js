@@ -1,3 +1,4 @@
+import { HORIZON_KM_PER_SUN } from './black-holes.js';
 import { LY_PER_PC } from './milky-way.js';
 import { formatDistance } from './practice.js';
 import { settlementShown } from './settlements.js';
@@ -10,6 +11,7 @@ import { temperatureFromColour } from './stellar-properties.js';
 
 const SUN_ABSOLUTE_MAGNITUDE = 4.83;
 const SUN_KELVIN = 5772;
+const SHOW_PARSECS_FROM = 0.02;
 const UNNAMED_STAR = 'Unnamed star';
 const KM_PER_AU = 149597870.7;
 const ESTIMATED_MASS = { measured: '', least: 'at least ', guessed: 'about ' };
@@ -72,6 +74,33 @@ function formatKm(km) {
 
 const planetCount = (count, source) => `${count} ${source} planet${count === 1 ? '' : 's'}`;
 
+function holeKind({ hole, planets }) {
+  const source = hole.measured ? 'Black hole' : 'Simulated black hole';
+  if (hole.glowing) return `${source} at the centre of the Milky Way`;
+  return planets.length ? `${source} with ${planetCount(planets.length, 'made-up')}` : source;
+}
+
+const KM_PER_SUN_RADIUS = 695700;
+const formatSuns = (suns) => `${Number(suns.toPrecision(3)).toLocaleString('en')} × Sun`;
+
+function holeFacts(pick) {
+  const { hole } = pick.hostData;
+  const former = hole.star && [
+    [hole.measured ? 'Was once, if it formed alone' : 'Was once', `a star of ${formatSuns(hole.star.suns)}`],
+    ['Largest radius as a star', `about ${formatKm(hole.star.largestRadiusSuns * KM_PER_SUN_RADIUS)}`],
+  ];
+  return {
+    title: pick.name,
+    kind: holeKind(pick.hostData),
+    facts: [
+      ['Distance', pick.distance < SHOW_PARSECS_FROM ? formatKm(pick.distance * KM_PER_PC) : formatDistance(pick.distance)],
+      ['Mass', formatSuns(hole.suns)],
+      ['Radius of event horizon', formatKm(hole.suns * HORIZON_KM_PER_SUN)],
+      ...(former ?? []),
+    ],
+  };
+}
+
 function starKind(pick) {
   const { planets, madeUp } = pick.hostData ?? { planets: [] };
   if (planets.length && !madeUp) return `Star with ${planetCount(planets.length, 'known')} here`;
@@ -120,7 +149,7 @@ function exoplanetFacts(body, facts) {
       ['Radius', `${radiusMeasured ? '' : 'about '}${earthRadii.toPrecision(3)} × Earth`],
       ['Mass', `${ESTIMATED_MASS[massKnown]}${Number(earthMasses.toPrecision(3)).toLocaleString('en')} × Earth`],
       ['Orbits', body.host],
-      ['From its star', `${body.sunDistanceAu.toPrecision(3)} AU`],
+      [body.litFrom ? 'From the black hole' : 'From its star', `${body.sunDistanceAu.toPrecision(3)} AU`],
       ['Year', formatPeriod(periodDays)],
       ['Temperature', `about ${Math.round(kelvin)} K`],
     ],
@@ -198,5 +227,5 @@ function deepSkyFacts(pick) {
 export function describePick(pick) {
   if (pick.kind === 'body') return bodyFacts(pick);
   if (pick.kind === 'galaxy' || pick.kind === 'nebula') return deepSkyFacts(pick);
-  return starFacts(pick);
+  return pick.hostData?.hole ? holeFacts(pick) : starFacts(pick);
 }

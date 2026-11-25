@@ -15,6 +15,9 @@ const MILKY_WAY_ABOVE = [0, 0, 45000];
 const BODY_CROSSING_SECONDS = 4;
 const SYSTEM_VIEW_ORBITS = 2.2;
 const SYSTEM_VIEW_RISE = 0.5;
+const HOLE_VIEW_RADII = 30;
+const HOLE_VIEW_RISE = 0.25;
+const HOLE_CROSSING_SECONDS = 3;
 
 export const placedNow = (body) => systemOf(body).place(simNow()).find(({ name }) => name === body.name) ?? body;
 export function craftNow(craft) {
@@ -28,18 +31,25 @@ const approach = (name, group, target, standoff, subject) => ({ name, group, tar
 export const plainStarDestination = (star) => approach(star.name, 'Stars', star.position, STAR_STANDOFF, { kind: 'star', star });
 
 function hostDestination(star) {
-  const { position, star: { north }, outermostKm } = systemNamed(star.host);
-  const standoff = (SYSTEM_VIEW_ORBITS * outermostKm) / KM_PER_PC;
+  const { position, star: { north, hole, radiusKm }, outermostKm } = systemNamed(star.host);
+  const standoff = (hole ? HOLE_VIEW_RADII * radiusKm : SYSTEM_VIEW_ORBITS * outermostKm) / KM_PER_PC;
+  const rise = hole ? HOLE_VIEW_RISE : SYSTEM_VIEW_RISE;
   return {
     ...plainStarDestination(star),
+    ...(hole && { group: 'Black holes', up: north, speed: (radiusKm / HOLE_CROSSING_SECONDS / KM_PER_PC) * LY_PER_PC }),
     arrival: (from) => {
       const toward = normalize(subtract(from, position));
       const side = Math.sign(dot(toward, north)) || 1;
       const across = subtract(toward, scale(north, dot(toward, north)));
-      return add(position, scale(normalize(add(normalize(across), scale(north, SYSTEM_VIEW_RISE * side))), standoff));
+      return add(position, scale(normalize(add(normalize(across), scale(north, rise * side))), standoff));
     },
   };
 }
+
+export const nearestBlackHoleDestinations = (nearest) => [
+  { name: 'Nearest black hole', group: 'Black holes', now: () => starDestination(nearest(() => true)) },
+  { name: 'Nearest black hole with planets', group: 'Black holes', now: () => starDestination(nearest((star) => systemAround(star).planets.length > 0)) },
+];
 
 export const starDestination = (star) => hostDestination(systemAround(star).catalogueStar);
 
@@ -137,7 +147,7 @@ const MILKY_WAY_DESTINATION = {
 
 export const mirrorsNow = () => SOLAR_SYSTEM.place(simNow()).filter(({ kind }) => kind === 'mirror');
 
-export function listDestinations({ nearby, nebulae, galaxies, mirrors }) {
+export function listDestinations({ nearby, nebulae, galaxies, mirrors, nearestHole }) {
   const starsByName = nearby.filter((star) => star.name && !star.host).map(starDestination);
   const hosts = otherSystems().map(({ catalogueStar }) => hostDestination(catalogueStar));
   const stars = new Map([...starsByName, ...hosts].map((place) => [place.name, place]));
@@ -147,6 +157,7 @@ export function listDestinations({ nearby, nebulae, galaxies, mirrors }) {
     ...mirrors.map(bodyDestination),
     ...[...SPACECRAFT, ...LANDED].map(craftDestination),
     MILKY_WAY_DESTINATION,
+    ...nearestBlackHoleDestinations(nearestHole),
     ...[...stars.values()].sort((a, b) => a.name.localeCompare(b.name)),
     ...otherSystems().flatMap(({ planets }) => planets.map(bodyDestination)),
     ...nebulae.filter((nebula) => !/^G\d/.test(nebula.name)).map(nebulaDestination),
