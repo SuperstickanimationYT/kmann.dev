@@ -1,9 +1,10 @@
 import { LY_PER_PC, SUN_POSITION } from './milky-way.js';
-import { otherSystems, SOLAR_SYSTEM, systemAround, systemNamed, systemOf } from './planetary-systems.js';
+import { civilizedPlanet, otherSystems, SOLAR_SYSTEM, systemAround, systemNamed, systemOf } from './planetary-systems.js';
 import { arrivalNear, BODIES, KM_PER_PC } from './solar-system.js';
 import { isOut, placeSpacecraft } from './spacecraft.js';
 import { LANDED, SPACECRAFT } from './spacecraft-catalogue.js';
 import { simNow } from './sim-clock.js';
+import { speculationShown } from './speculation.js';
 import { nebulaRadius } from './stars.js';
 import { halfSizeKm } from './spacecraft-models.js';
 import { add, cross, dot, normalize, scale, subtract } from './vectors.js';
@@ -52,6 +53,8 @@ export const nearestBlackHoleDestinations = (nearest) => [
   { name: 'Nearest black hole', group: 'Black holes', now: () => starDestination(nearest(() => true)) },
   { name: 'Nearest black hole with planets', group: 'Black holes', now: () => starDestination(nearest((star) => systemAround(star).planets.length > 0)) },
 ];
+
+const nearestCivilizationDestination = (nearest) => ({ name: 'Nearest civilization', group: 'Made-up civilizations', now: () => bodyDestination(civilizedPlanet(nearest())) });
 
 export const starDestination = (star) => hostDestination(systemAround(star).catalogueStar);
 
@@ -165,7 +168,7 @@ export function speculativeBodiesNow() {
 
 export const isSpeculative = ({ kind }) => kind === 'mirror' || kind === 'wormhole';
 
-export function listDestinations({ nearby, nebulae, galaxies, speculative, nearestHole }) {
+export function listDestinations({ nearby, nebulae, galaxies, speculative, nearestHole, nearestCivilization }) {
   const starsByName = nearby.filter((star) => star.name && !star.host).map(starDestination);
   const hosts = otherSystems().map(({ catalogueStar }) => hostDestination(catalogueStar));
   const stars = new Map([...starsByName, ...hosts].map((place) => [place.name, place]));
@@ -176,6 +179,7 @@ export function listDestinations({ nearby, nebulae, galaxies, speculative, neare
     ...[...SPACECRAFT, ...LANDED].map(craftDestination),
     MILKY_WAY_DESTINATION,
     ...nearestBlackHoleDestinations(nearestHole),
+    ...(speculationShown() ? [nearestCivilizationDestination(nearestCivilization)] : []),
     ...[...stars.values()].sort((a, b) => a.name.localeCompare(b.name)),
     ...otherSystems().flatMap(({ planets }) => planets.map(bodyDestination)),
     ...nebulae.filter((nebula) => !/^G\d/.test(nebula.name)).map(nebulaDestination),

@@ -143,6 +143,11 @@ function forEachCellInCone(apex, axis, tanHalf, reach, size, visit) {
   }
 }
 
+function brightEnoughForCatalogue(present, absolute) {
+  const fromSun = Math.hypot(present[0] - SUN_POSITION[0], present[1] - SUN_POSITION[1], present[2] - SUN_POSITION[2]);
+  return fromSun < NEARBY_REACH && absolute + 5 * Math.log10(Math.max(fromSun, 0.1) / 10) < NEARBY_LIMIT;
+}
+
 function createCollector({ camera, axis, tanHalf, limit, nearbyActive }) {
   const values = [];
   const kinds = [];
@@ -166,11 +171,7 @@ function createCollector({ camera, axis, tanHalf, limit, nearbyActive }) {
     keys.push(key);
   };
 
-  const shadowedByCatalogue = (present, absolute) => {
-    if (!nearbyActive) return false;
-    const fromSun = Math.hypot(present[0] - SUN_POSITION[0], present[1] - SUN_POSITION[1], present[2] - SUN_POSITION[2]);
-    return fromSun < NEARBY_REACH && absolute + 5 * Math.log10(Math.max(fromSun, 0.1) / 10) < NEARBY_LIMIT;
-  };
+  const shadowedByCatalogue = (present, absolute) => nearbyActive && brightEnoughForCatalogue(present, absolute);
 
   return { add, shadowedByCatalogue, count: () => kinds.length, values, kinds, names, keys };
 }
@@ -188,20 +189,38 @@ function addFieldStars(collector, bin, binIndex, cell, density, ix, iy, iz) {
   }
 }
 
+function forEachFieldStarNear(centre, reachPc, binIndex, armMap, collector) {
+  const bin = ALL_BINS[binIndex];
+  forEachCellInSphere(centre, reachPc, bin.cell, (ix, iy, iz) => {
+    const middle = [(ix + 0.5) * bin.cell, (iy + 0.5) * bin.cell, (iz + 0.5) * bin.cell];
+    const density = BIN_SHAPES[binIndex](middle, sampleArmMap(armMap, middle[0], middle[1]));
+    addFieldStars(collector, bin, binIndex, bin.cell, density, ix, iy, iz);
+  });
+}
+
+function fieldStarsWithin(centre, reachPc, armMap) {
+  const found = [];
+  const add = (position, velocity, absolute, colour, kind) => found.push({ position, velocity, absolute, colour, kind });
+  ALL_BINS.forEach((_, binIndex) => forEachFieldStarNear(centre, reachPc, binIndex, armMap, { add, shadowedByCatalogue: brightEnoughForCatalogue }));
+  return found;
+}
+
+export function starsWithin(centre, reachPc, { armMap, nearby }) {
+  return [...nearby, ...fieldStarsWithin(centre, reachPc, armMap)]
+    .map((star) => ({ star, distance: Math.hypot(...star.position.map((value, axis) => value - centre[axis])) }))
+    .filter(({ distance }) => distance <= reachPc)
+    .sort((a, b) => a.distance - b.distance)
+    .map(({ star }) => star);
+}
+
 const FARTHEST_LIGHT_DELAY_DRIFT_PC = 2;
 
 export function fieldStarSeenAt(seen, absolute, armMap) {
-  const binIndex = nearestBinIndex(absolute);
-  const bin = ALL_BINS[binIndex];
   const found = [];
   const add = (position, velocity, shone, colour) => {
     if (shone === absolute) found.push({ position, velocity, absolute, colour });
   };
-  forEachCellInSphere(seen, FARTHEST_LIGHT_DELAY_DRIFT_PC, bin.cell, (ix, iy, iz) => {
-    const centre = [(ix + 0.5) * bin.cell, (iy + 0.5) * bin.cell, (iz + 0.5) * bin.cell];
-    const density = BIN_SHAPES[binIndex](centre, sampleArmMap(armMap, centre[0], centre[1]));
-    addFieldStars({ add, shadowedByCatalogue: () => false }, bin, binIndex, bin.cell, density, ix, iy, iz);
-  });
+  forEachFieldStarNear(seen, FARTHEST_LIGHT_DELAY_DRIFT_PC, nearestBinIndex(absolute), armMap, { add, shadowedByCatalogue: () => false });
   return found[0] ?? null;
 }
 

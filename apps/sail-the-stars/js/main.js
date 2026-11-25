@@ -23,7 +23,7 @@ import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, low
 import { showSpeculation, speculationShown } from './speculation.js';
 import { blackHolesWithin, KNOWN_BLACK_HOLES, nearestBlackHole } from './black-holes.js';
 import { withExoplanetHosts } from './exoplanets.js';
-import { knowStarsNearSun, otherSystems, SOLAR_SYSTEM, SYSTEM_REACH_PC, systemAround, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
+import { knowStarsNearSun, nearestCivilization, otherSystems, SOLAR_SYSTEM, SYSTEM_REACH_PC, systemAround, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
 import { drawCraftMarks, drawCraftPath, drawOrbits } from './orbits.js';
 import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
 import { createPathTracer } from './craft-path-line.js';
@@ -35,7 +35,7 @@ import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen 
 import { drainageOf } from './river-ribbons.js';
 import { riversNear } from './rivers.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
-import { fieldStarSeenAt, gatherStars, KIND, loadNearbyStars, placeNebulae, starsOfBoth, SUN_ABSOLUTE } from './stars.js';
+import { fieldStarSeenAt, gatherStars, KIND, loadNearbyStars, placeNebulae, starsOfBoth, starsWithin, SUN_ABSOLUTE } from './stars.js';
 import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
 import { otherEnd, spokenHost, throughThroat, travel } from './wormholes.js';
 
@@ -944,7 +944,14 @@ function destinations() {
   const speculativeNames = speculative.map(({ name }) => name).join();
   if (nearby.length && (!destinationList || speculativeNames !== listedSpeculative || otherSystems().length !== listedSystems)) {
     listedSpeculative = speculativeNames;
-    destinationList = listDestinations({ nearby, nebulae, galaxies, speculative, nearestHole: (wanted) => nearestBlackHole(game.camera, armMap, (star) => !withinSystem(star, game.camera) && wanted(star)) });
+    destinationList = listDestinations({
+      nearby,
+      nebulae,
+      galaxies,
+      speculative,
+      nearestHole: (wanted) => nearestBlackHole(game.camera, armMap, (star) => !withinSystem(star, game.camera) && wanted(star)),
+      nearestCivilization: () => nearestCivilization(game.camera, (reachPc) => starsWithin(game.camera, reachPc, { armMap, nearby })),
+    });
     listedSystems = otherSystems().length;
     selectList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
   }
