@@ -1,5 +1,5 @@
 {
-  "bytes": 7265609,
+  "bytes": 7288020,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -119,6 +119,8 @@
     "js/touch-controls.js",
     "js/vectors.js",
     "js/warp.js",
+    "js/wormhole-bending.js",
+    "js/wormholes.js",
     "manifest.webmanifest",
     "style.css",
     "../../assets/img/mark.svg",

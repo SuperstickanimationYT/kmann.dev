@@ -28,7 +28,7 @@ import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { createMapEdges } from './map-edges.js';
 import { RIBBON_FLOATS } from './rivers.js';
 import { rocksSeen, SCATTER_FLOATS, SCATTER_LAYERS } from './surface-scatter.js';
-import { apparentMagnitude, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
+import { apparentMagnitude, KM_PER_PC, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
 import { lattice, mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
 import { nebulaRadius, STAR_FLOATS } from './stars.js';
 
@@ -141,7 +141,7 @@ function viewUniforms({ camera, basis, tanHalf, pixelAngle }) {
 
 const NO_PLANET = { uPlanet: [0, 0, 1, 0] };
 const SKY_CUBE_SIZE = 256;
-const KEPT_SKY_UNIT = 19;
+const KEPT_SKY_UNITS = [19, 31];
 const KEPT_SKY_SIZE = 512;
 const KEPT_SKY_TILE = 128;
 const KEPT_SKY_TILES_ACROSS = KEPT_SKY_SIZE / KEPT_SKY_TILE;
@@ -319,6 +319,17 @@ const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 
 const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
 
+const bendsLight = ({ hole, kind }) => hole || kind === 'wormhole';
+
+function pointsOf(planets) {
+  const values = planets.flatMap(({ body, offsetKm }) => {
+    const apparent = apparentMagnitude(body, offsetKm);
+    const offset = offsetKm.map((value) => value / KM_PER_PC);
+    return apparent > FAINTEST_FAR_PLANET ? [] : [...offset, apparent - 5 * Math.log10(Math.hypot(...offset) / 10), FAR_PLANET_COLOUR, 0];
+  });
+  return { values: Float32Array.from(values), count: values.length / STAR_FLOATS };
+}
+
 const brightnessRank = ({ body, offsetKm }) => (body.kind === 'star' || body.kind === 'mirror' ? -Infinity : apparentMagnitude(body, offsetKm));
 
 function brightestInDistanceOrder(seen) {
@@ -331,7 +342,8 @@ const VALUES_PER_BODY = { uBodyNorth: 3, uBodyMeridian: 3, uBodyFlattening: 1 };
 const NO_STAR_SHIFT = [0, 0, 0];
 const NO_HOLE = [0, 0, 0, 0];
 const ONE_STAR_IMAGE = [0];
-const STAR_IMAGES = [0, 1];
+const FAINTEST_FAR_PLANET = 6.8;
+const FAR_PLANET_COLOUR = 0.65;
 const SEEN_RADII = 1.5;
 const RINGS_SEEN_RADII = 2.5;
 const GLOW_SEEN_PIXELS = 200;
@@ -600,7 +612,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
   const craftView = createCraftView(gl, emptyVao);
-  const blackHoleView = createBlackHoleView(gl, emptyVao, { keptSkyUnit: KEPT_SKY_UNIT, latticeUnit: LATTICE_UNIT });
+  const blackHoleView = createBlackHoleView(gl, emptyVao, { latticeUnit: LATTICE_UNIT });
   const settlements = createSettlementPainter(gl, SETTLEMENTS_UNIT);
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
 
@@ -662,6 +674,9 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
   const eyeStars = makeStarBuffer();
   const cameraStars = makeStarBuffer();
+  const farStars = makeStarBuffer();
+  const farPlanets = makeStarBuffer();
+  let farStarsShown = null;
 
   function uploadStars(target, stars) {
     gl.bindBuffer(gl.ARRAY_BUFFER, target.buffer);
@@ -691,7 +706,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     return texture;
   };
   const skyCube = createSkyCube(SKY_CUBE_UNIT, SKY_CUBE_SIZE);
-  const keptSkyCube = createSkyCube(KEPT_SKY_UNIT, KEPT_SKY_SIZE);
+  let [keptSky, farSky] = KEPT_SKY_UNITS.map((unit) => ({ unit, cube: createSkyCube(unit, KEPT_SKY_SIZE), place: null, ready: false }));
   const skyCubeFramebuffer = gl.createFramebuffer();
 
   const warpTable = gl.createTexture();
@@ -735,10 +750,9 @@ export function createRenderer(canvas, armMap, galaxies) {
     CUBE_FACES.forEach((_, face) => drawSkyCubeFace(skyCube, SKY_CUBE_SIZE, face, place));
   }
 
-  let keptSky = null;
-
-  const skyStillMatches = (kept, { camera, stars }) =>
-    Math.hypot(...camera.map((value, axis) => value - kept.camera[axis])) < KEPT_SKY_DRIFT_PC
+  const skyStillMatches = ({ place: kept }, { camera, stars }) =>
+    kept
+    && Math.hypot(...camera.map((value, axis) => value - kept.camera[axis])) < KEPT_SKY_DRIFT_PC
     && stars.reaches.every((reach, bin) => Math.abs(reach - kept.reaches[bin]) <= KEPT_SKY_REACH_CHANGE * Math.max(reach, kept.reaches[bin]));
 
   function scissored(x, y, width, height, draw) {
@@ -748,26 +762,32 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.disable(gl.SCISSOR_TEST);
   }
 
-  function growKeptSky(place) {
-    if (!keptSky || !skyStillMatches(keptSky, place)) {
-      keptSky = { camera: [...place.camera], reaches: [...place.stars.reaches], tiles: 0 };
+  function growSky(sky, place) {
+    if (!skyStillMatches(sky, place)) {
+      Object.assign(sky, { place: { camera: [...place.camera], reaches: [...place.stars.reaches] }, tiles: 0, ready: false });
       return;
     }
-    if (keptSky.tiles >= KEPT_SKY_TILE_COUNT) return;
-    const tile = keptSky.tiles++;
+    if (sky.ready) return;
+    const tile = sky.tiles++;
     const withinFace = tile % KEPT_SKY_TILES_ACROSS ** 2;
     const column = withinFace % KEPT_SKY_TILES_ACROSS;
     const row = Math.floor(withinFace / KEPT_SKY_TILES_ACROSS);
     scissored(column * KEPT_SKY_TILE, row * KEPT_SKY_TILE, KEPT_SKY_TILE, KEPT_SKY_TILE, () =>
-      drawSkyCubeFace(keptSkyCube, KEPT_SKY_SIZE, Math.floor(tile / KEPT_SKY_TILES_ACROSS ** 2), place));
+      drawSkyCubeFace(sky.cube, KEPT_SKY_SIZE, Math.floor(tile / KEPT_SKY_TILES_ACROSS ** 2), place));
+    sky.ready = sky.tiles >= KEPT_SKY_TILE_COUNT;
   }
 
-  const keptSkyFineEnough = (skyPixelAngle) => keptSky?.tiles >= KEPT_SKY_TILE_COUNT && Math.PI / 2 / KEPT_SKY_SIZE < KEPT_SKY_COARSEST * skyPixelAngle;
+  function growKeptSky(place) {
+    if (!skyStillMatches(keptSky, place) && skyStillMatches(farSky, place)) [keptSky, farSky] = [farSky, keptSky];
+    growSky(keptSky, place);
+  }
+
+  const keptSkyFineEnough = (skyPixelAngle) => keptSky.ready && Math.PI / 2 / KEPT_SKY_SIZE < KEPT_SKY_COARSEST * skyPixelAngle;
 
   function drawKeptSky(view) {
     gl.useProgram(skyFromCubeProgram.program);
     setUniforms(gl, skyFromCubeProgram, viewUniforms(view));
-    gl.uniform1i(skyFromCubeProgram.uniforms.uSkyCube, KEPT_SKY_UNIT);
+    gl.uniform1i(skyFromCubeProgram.uniforms.uSkyCube, keptSky.unit);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
@@ -1274,10 +1294,22 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies: placedBodies, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
+  function drawFarStars(view, beyond, { farStarImages, farStarUniforms }) {
+    if (farStarsShown !== beyond.stars) uploadStars(farStars, beyond.stars);
+    farStarsShown = beyond.stars;
+    uploadStars(farPlanets, pointsOf(beyond.planets));
+    const farView = { ...view, camera: beyond.camera };
+    for (const [target, anchorShift] of [[farStars, beyond.anchorShift], [farPlanets, NO_STAR_SHIFT]]) {
+      for (const image of farStarImages) {
+        drawStars(eyeStarProgram, target, farView, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: anchorShift, uStarShift: NO_STAR_SHIFT, ...farStarUniforms, uHoleImage: { int: image } }, HIDDEN_BEHIND_FOREGROUND);
+      }
+    }
+  }
+
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies: placedBodies, beyond, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
     systemLight = starlight ?? SUNLIGHT;
-    const bodies = placedBodies?.filter(({ body }) => !body.hole) ?? null;
-    const hole = placedBodies?.find(({ body }) => body.hole);
+    const bodies = placedBodies?.filter(({ body }) => !bendsLight(body)) ?? null;
+    const hole = placedBodies?.find(({ body }) => body.hole || body === beyond?.mouth);
     if (blurMotion) motionBlur ??= createMotionBlur(gl, emptyVao);
     const motion = motionBlur?.planFor(blurMotion ? motionSeen({ view, cockpit, bodies, ground }) : null);
     const planetValues = planetUniforms(planet, view.camera);
@@ -1285,6 +1317,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     if (!warp) {
       const place = { camera: view.camera, nebulae, stars };
       growKeptSky(place);
+      if (beyond) growSky(farSky, { camera: beyond.camera, nebulae, stars: beyond.stars });
       if (skyResolution) startSky(view, place, skyResolution, skySharpening, seed);
       sharpenSky(view, place);
     }
@@ -1292,7 +1325,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     giants.advance(bodies ?? [], view.pixelAngle, cloudSeconds);
     riverSeconds = (riverSeconds + cloudSeconds) % RIVER_CYCLE_SECONDS;
     const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
-    const lens = warp ? null : blackHoleView.lensed({ seen: hole, view, sky: shownSky.textures[0], keptSkyReady: keptSky?.tiles >= KEPT_SKY_TILE_COUNT, width: canvas.width, height: canvas.height });
+    const lens = warp ? null : blackHoleView.lensed(hole && { ...hole, beyond }, { view, sky: shownSky.textures[0], keptSky, farSky, width: canvas.width, height: canvas.height });
     gl.bindFramebuffer(gl.FRAMEBUFFER, motion?.needed ? motionBlur.pictureFitting(canvas.width, canvas.height).framebuffer : null);
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.useProgram(eyeProgram.program);
@@ -1310,6 +1343,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       setUniforms(gl, eyeProgram, { uCloudsOn: groundView.clouds ? 1 : 0 });
     }
     setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0, uFlowOn: lens?.glowing ? 1 : 0, uDazzle: lens?.dazzle ?? 0 });
+    blackHoleView.bindDeflections(eyeProgram, lens, placedBodies?.[0] === hole);
     setCockpit(eyeProgram, cockpit);
     setUniforms(gl, eyeProgram, planetValues);
     setBodies(eyeProgram, bodies, ground, view.pixelAngle);
@@ -1322,9 +1356,10 @@ export function createRenderer(canvas, armMap, galaxies) {
     setBodies(eyeStarProgram, bodies, null, 0, ground?.body);
     bindWarp(eyeStarProgram, warp, adaptation);
     blackHoleView.bindStarImages(eyeStarProgram);
-    for (const image of lens ? STAR_IMAGES : ONE_STAR_IMAGE) {
+    for (const image of lens?.starImages ?? ONE_STAR_IMAGE) {
       drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT, uHole: NO_HOLE, ...lens?.starUniforms, uHoleImage: { int: image } }, HIDDEN_BEHIND_FOREGROUND);
     }
+    if (lens?.farStarImages) drawFarStars(view, beyond, lens);
     if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);
     if (craft.length && !warp) craftView.draw({ craft, bodies, ground, groundDepth: groundView?.depth ?? null, view, width: canvas.width, height: canvas.height, light: systemLight, drawInto: null });
     gl.colorMask(false, false, false, true);
