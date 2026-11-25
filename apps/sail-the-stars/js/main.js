@@ -1,4 +1,5 @@
 import { drawAtlas } from './atlas.js';
+import { nameButton, showTipsAbove } from './dock-buttons.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
 import { bodyDestination, craftDestination, craftNow, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
@@ -500,7 +501,7 @@ function showCompanionButtons() {
   if (!near) return;
   const name = spokenName(holder);
   const label = (button, text, on) => {
-    if (button.textContent !== text) button.textContent = text;
+    nameButton(button, text);
     if (button.getAttribute('aria-pressed') !== String(on)) button.setAttribute('aria-pressed', String(on));
   };
   label(followButton, `Follow ${name}`, following);
@@ -534,7 +535,8 @@ function setMode(name) {
   clockLabel.textContent = mode.clockLabel;
   alignButton.hidden = !mode.cockpit;
   energyField.hidden = touchScreen.matches && !mode.scored;
-  giveUpButton.textContent = mode.sunButton;
+  nameButton(giveUpButton, mode.sunButton, mode.sunIcon);
+  giveUpButton.setAttribute('aria-description', mode.sunHint);
   restartButton.textContent = mode.restartButton;
   const url = new URL(window.location.href);
   if (game.startedNearEarth) url.searchParams.delete('seed');
@@ -1398,7 +1400,7 @@ function toggleExposure() {
     timer: setInterval(exposeFrame, CAMERA.realSecondsPerFrame * 1000),
   };
   game.exposures += 1;
-  exposeButton.textContent = 'Stop photo';
+  nameButton(exposeButton, 'Stop photo', 'stop');
   atlasFrame.hidden = true;
   clearGuides();
   exposeFrame();
@@ -1416,7 +1418,7 @@ function exposeFrame() {
 function stopExposure() {
   clearInterval(photo.timer);
   photo.running = false;
-  exposeButton.textContent = 'Photo';
+  nameButton(exposeButton, 'Photo', 'photo');
   developPhoto();
 }
 
@@ -1424,7 +1426,7 @@ function closePhoto() {
   if (photo) clearInterval(photo.timer);
   photo = null;
   photoFrame.hidden = true;
-  exposeButton.textContent = 'Photo';
+  nameButton(exposeButton, 'Photo', 'photo');
 }
 
 function developPhoto() {
@@ -1958,11 +1960,13 @@ fullscreenButton.addEventListener('click', () => {
   else document.documentElement.requestFullscreen();
 });
 document.addEventListener('fullscreenchange', () => {
-  fullscreenButton.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
+  if (document.fullscreenElement) nameButton(fullscreenButton, 'Exit full screen', 'shrink');
+  else nameButton(fullscreenButton, 'Full screen', 'expand');
 });
 window.addEventListener('resize', showPanelState);
 new ResizeObserver(() => stage.style.setProperty('--dock-height', `${dock.offsetHeight}px`)).observe(dock);
 showPanelState();
+showTipsAbove(dock, $('[data-tip]'));
 document.querySelectorAll('[data-align]').forEach((button) => button.addEventListener('click', () => faceDirection(game.basis.forward)));
 modeSelect.addEventListener('change', () => (leavingExplore() ? newGame() : setMode(modeSelect.value)));
 $('[data-select-form]').addEventListener('submit', (event) => {

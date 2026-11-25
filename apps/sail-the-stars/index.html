@@ -20,6 +20,25 @@
   <h1 class="studio-title">Sail the Stars</h1>
 </header>
 
+<svg class="fh-icons" aria-hidden="true">
+  <symbol id="icon-warp" viewBox="0 0 24 24"><path d="M3 4l5.5 5M21 4l-5.5 5M3 20l5.5-5M21 20l-5.5-5M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="icon-jump" viewBox="0 0 24 24"><circle cx="4.5" cy="18" r="2" fill="currentColor" stroke="none"/><path d="M4.5 13C6 3.5 16.5 3 19.5 15M15 12.5l4.8 3.2 2-5.4"/></symbol>
+  <symbol id="icon-photo" viewBox="0 0 24 24"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7H7l1.6-2.5h6.8L17 7h2.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.6"/></symbol>
+  <symbol id="icon-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="icon-atlas" viewBox="0 0 24 24"><path d="M3 6l6-2.5 6 2.5 6-2.5v14.5l-6 2.5-6-2.5-6 2.5zM9 3.5v14.5M15 6v14.5"/></symbol>
+  <symbol id="icon-orbits" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="10" ry="4.6" transform="rotate(-28 12 12)"/><circle cx="20" cy="6.2" r="1.9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="icon-follow" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .4l3-3a4.2 4.2 0 0 0-6-6l-1.6 1.6M14 10a4 4 0 0 0-6-.4l-3 3a4.2 4.2 0 0 0 6 6l1.6-1.6"/></symbol>
+  <symbol id="icon-rotate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M20.5 9.5A9 9 0 0 0 4 8M3.5 14.5A9 9 0 0 0 20 16M4 3.5V8h4.5M20 20.5V16h-4.5"/></symbol>
+  <symbol id="icon-time" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6.5V12l3.7 2.3"/></symbol>
+  <symbol id="icon-align" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4.5M12 17.5V22M2 12h4.5M17.5 12H22"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.300l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.700l1.8-1.8M16.9 7.100l1.8-1.8"/></symbol>
+  <symbol id="icon-flag" viewBox="0 0 24 24"><path d="M5.5 21.5V3M5.5 4c4-2 7 2 13 0v9c-6 2-9-2-13 0"/></symbol>
+  <symbol id="icon-home" viewBox="0 0 24 24"><path d="M3 11.5L12 4l9 7.5M5.5 9.5V20h13V9.5M10 20v-5.5h4V20"/></symbol>
+  <symbol id="icon-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+  <symbol id="icon-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></symbol>
+  <symbol id="icon-more" viewBox="0 0 24 24"><path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.6"/><circle cx="9" cy="17" r="2.6"/></symbol>
+</svg>
+
 <main class="studio-stage fh-stage" data-stage>
   <canvas class="fh-view" data-view tabindex="0" aria-label="Naked-eye view. Drag to look, WASD to fly."></canvas>
   <canvas class="fh-guides" data-guides aria-hidden="true"></canvas>
@@ -57,29 +76,30 @@
     <form class="fh-dock-select" data-select-form data-select-field hidden>
       <label for="fh-select" class="fh-visually-hidden">Select a place</label>
       <input id="fh-select" type="search" list="fh-select-list" data-select placeholder="Select: Sun, Rigel, Orion Nebula…" autocomplete="off" autocapitalize="off" enterkeyhint="go">
-      <button type="button" class="fh-primary" data-warp-selection>Warp</button>
+      <button type="button" class="fh-primary" data-warp-selection aria-description="Fly to the selected place"><svg class="fh-icon" aria-hidden="true"><use href="#icon-warp"/></svg><span class="fh-name">Warp</span></button>
       <datalist id="fh-select-list" data-select-list></datalist>
     </form>
     <div class="fh-dock-buttons">
-      <button type="button" data-jump title="Jump the distance set under More (J)">Jump</button>
-      <button type="button" data-expose title="Start or stop a long exposure (T)">Photo</button>
-      <button type="button" data-atlas-open title="Atlas of the Milky Way (M)">Atlas</button>
-      <button type="button" data-orbits aria-pressed="false" title="Show planet and moon orbits (O)" hidden>Orbits</button>
-      <button type="button" data-follow aria-pressed="true" title="Move along with this body" hidden>Follow</button>
-      <button type="button" data-rotate-with aria-pressed="false" title="Turn along with this body's spin" hidden>Rotate with</button>
-      <button type="button" data-time-open aria-pressed="false" title="Change the date and how fast time runs" hidden>Time</button>
+      <button type="button" data-jump aria-description="Jump the distance set under More" aria-keyshortcuts="J"><svg class="fh-icon" aria-hidden="true"><use href="#icon-jump"/></svg><span class="fh-name">Jump</span></button>
+      <button type="button" data-expose aria-description="Start or stop a long exposure" aria-keyshortcuts="T"><svg class="fh-icon" aria-hidden="true"><use href="#icon-photo"/></svg><span class="fh-name">Photo</span></button>
+      <button type="button" data-atlas-open aria-description="Map of the Milky Way" aria-keyshortcuts="M"><svg class="fh-icon" aria-hidden="true"><use href="#icon-atlas"/></svg><span class="fh-name">Atlas</span></button>
+      <button type="button" data-orbits aria-pressed="false" aria-description="Show the paths of planets and moons, and where spacecraft are" aria-keyshortcuts="O" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-orbits"/></svg><span class="fh-name">Orbits</span></button>
+      <button type="button" data-follow aria-pressed="true" aria-description="Move along with it" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-follow"/></svg><span class="fh-name">Follow</span></button>
+      <button type="button" data-rotate-with aria-pressed="false" aria-description="Turn along with its spin" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-rotate"/></svg><span class="fh-name">Rotate with</span></button>
+      <button type="button" data-time-open aria-pressed="false" aria-description="Change the date and how fast time runs" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-time"/></svg><span class="fh-name">Time</span></button>
       <div class="fh-zoom" role="group" aria-label="Zoom">
-        <button type="button" data-zoom-out title="Zoom out (−)" aria-label="Zoom out">&minus;</button>
-        <button type="button" data-zoom-reset title="Field of view, top to bottom. Click for the normal view (0)">50&deg;</button>
-        <button type="button" data-zoom-in title="Zoom in (+)" aria-label="Zoom in">+</button>
+        <button type="button" data-zoom-out aria-label="Zoom out" aria-keyshortcuts="−">&minus;</button>
+        <button type="button" data-zoom-reset data-tip-name="Field of view" aria-description="How much you see, top to bottom. Click for the normal view" aria-keyshortcuts="0">50&deg;</button>
+        <button type="button" data-zoom-in aria-label="Zoom in" aria-keyshortcuts="+">+</button>
       </div>
-      <button type="button" class="fh-touch-only" data-align title="Point the ship where you look (C)" hidden>Point ship</button>
-      <button type="button" data-give-up>Give up</button>
-      <button type="button" data-menu-open title="Back to the main menu">Menu</button>
-      <button type="button" class="fh-touch-only" data-fullscreen hidden>Full screen</button>
-      <button type="button" data-more aria-expanded="true" title="Mode, settings, camera, help">More</button>
+      <button type="button" class="fh-touch-only" data-align aria-description="Point the ship where you look" aria-keyshortcuts="C" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-align"/></svg><span class="fh-name">Point ship</span></button>
+      <button type="button" data-give-up><svg class="fh-icon" aria-hidden="true"><use href="#icon-flag"/></svg><span class="fh-name">Give up</span></button>
+      <button type="button" data-menu-open aria-description="Back to the main menu"><svg class="fh-icon" aria-hidden="true"><use href="#icon-home"/></svg><span class="fh-name">Menu</span></button>
+      <button type="button" class="fh-touch-only" data-fullscreen hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-expand"/></svg><span class="fh-name">Full screen</span></button>
+      <button type="button" data-more aria-expanded="true" aria-description="Mode, settings, camera, help"><svg class="fh-icon" aria-hidden="true"><use href="#icon-more"/></svg><span class="fh-name">More</span></button>
     </div>
     <button type="button" class="fh-touch-only fh-tray-toggle" data-tray aria-expanded="false" aria-label="All controls">&#9776;</button>
+    <div class="fh-tip" role="tooltip" data-tip hidden></div>
   </nav>
   <div class="fh-touch" data-touch>
     <div class="fh-stick" data-stick role="group" aria-label="Fly forward, back and sideways">
