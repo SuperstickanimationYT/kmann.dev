@@ -3,7 +3,7 @@ import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from 
 import { createCutscene } from './cutscene.js';
 import { bodyDestination, craftDestination, craftNow, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
-import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
+import { AU_PER_LY, buildArmMap, DEGREES, equatorialToFrame, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { describePick, UNNAMED_STAR } from './picking.js';
 import { menuScene, turnedApart } from './menu-scene.js';
 import { DEFAULT_MODE, MENU_SCENE, MODES, modeFromName } from './modes.js';
@@ -23,9 +23,10 @@ import { showSpeculation, speculationShown } from './speculation.js';
 import { withExoplanetHosts } from './exoplanets.js';
 import { SOLAR_SYSTEM, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
 import { drawCraftMarks, drawCraftPath, drawOrbits } from './orbits.js';
-import { flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
+import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
 import { createPathTracer } from './craft-path-line.js';
-import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
+import { offsetInStretch } from './spacecraft-paths.js';
+import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen } from './touch-controls.js';
@@ -462,12 +463,19 @@ const PATH_HIDDEN_WITHIN_HALF_SIZES = 60;
 
 function drawSelectedPath(context, width, height) {
   const scene = guideScene(width, height);
-  const craft = scene && solarCraft.find(({ name }) => name === selection.destination.name);
-  if (!craft?.stretch) return;
-  if (Math.hypot(...seenFromCamera([craft])[0].offsetKm) < PATH_HIDDEN_WITHIN_HALF_SIZES * craft.radiusKm) return;
-  const centre = scene.offsetOf(craft.parent);
-  const line = tracePath(craft, simNow());
-  drawCraftPath(context, { ...scene, past: line.past.map((point) => add(centre, point)), future: line.future.map((point) => add(centre, point)) });
+  if (!scene || system !== SOLAR_SYSTEM) return;
+  const now = simNow();
+  const craft = craftAt(selection.destination);
+  if (craft?.landed) return;
+  if (craft && Math.hypot(...seenFromCamera([craft])[0].offsetKm) < PATH_HIDDEN_WITHIN_HALF_SIZES * craft.radiusKm) return;
+  const cruise = cruiseOf(selection.destination);
+  for (const stretch of new Set([cruise, craft?.stretch])) {
+    if (!stretch) continue;
+    const centre = scene.offsetOf(stretch.centre);
+    const pointAt = (when) => (stretch === cruise ? cruisePoint(selection.destination, when) : equatorialToFrame(offsetInStretch(stretch, when)));
+    const line = tracePath(stretch, now, pointAt, stretch === craft?.stretch);
+    drawCraftPath(context, { ...scene, past: line.past.map((point) => add(centre, point)), future: line.future.map((point) => add(centre, point)) });
+  }
 }
 const followButton = $('[data-follow]');
 const rotateButton = $('[data-rotate-with]');
@@ -893,7 +901,6 @@ function selectNamed(name) {
     showStatus(`Nowhere called "${name}" on the list.`);
     return false;
   }
-  if (absent(destination)) return false;
   selection = pickFor(destination);
   selectionShownAt = -Infinity;
   return true;
@@ -901,12 +908,14 @@ function selectNamed(name) {
 
 const shortDate = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
+const isAbsent = ({ craft }) => Boolean(craft) && !isOut(craft, simNow());
+
 function absent({ craft, name }) {
-  if (!craft || isOut(craft, simNow())) return false;
+  if (!isAbsent({ craft })) return false;
   const dates = flightDates(craft);
   if (!dates) showStatus('Spacecraft paths are still loading.');
   else if (simNow() < dates.from) showStatus(`${name} had not ${craft.stops ? 'landed' : 'left Earth'} yet: that was on ${shortDate(dates.from)}.`);
-  else showStatus(`${name} is gone: it flew from ${shortDate(dates.from)} to ${shortDate(dates.to)}.`);
+  else showStatus(`${craft.ended ? `${name} is gone: it flew` : `The game shows ${name} only`} from ${shortDate(dates.from)} to ${shortDate(dates.to)}.`);
   return true;
 }
 
@@ -1553,7 +1562,7 @@ function craftPick(listed) {
   return {
     kind: 'body',
     get body() {
-      return (solarBodies && bodyNamed(listed.name)) ?? craftNow(listed);
+      return (solarBodies && bodyNamed(listed.name)) ?? craftNow(listed) ?? { ...listed, kind: 'craft' };
     },
     locate: () => bodyOffsetPc({ ...listed, kind: 'craft' }),
     destination: craftDestination(listed),
@@ -1651,13 +1660,28 @@ function showSelectionFacts() {
   $('[data-pick-facts]').replaceChildren(
     ...facts.flatMap(([label, value]) => [Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value })]),
   );
+  showMissionStart(selection.destination);
   pickPanel.hidden = false;
+}
+
+const missionStartButton = $('[data-pick-mission-start]');
+
+function showMissionStart(destination) {
+  const { craft } = destination;
+  missionStartButton.hidden = !craft || !flightDates(craft);
+  missionStartButton.textContent = craft?.on ? 'Timewarp to landing' : 'Timewarp to start of mission';
+  $('[data-pick-warp]').disabled = isAbsent(destination);
+}
+
+function timewarpToMissionStart() {
+  changeTime(() => playFrom(flightDates(selection.destination.craft).from));
+  selectionShownAt = -Infinity;
 }
 
 const dismantled = ({ kind, destination }) => kind === 'body' && destination.subject.body.kind === 'mirror' && system === SOLAR_SYSTEM && !solarBodies?.some(({ name }) => name === destination.name);
 
 function followSelection(context, now) {
-  if (dismantled(selection) || absent(selection.destination)) {
+  if (dismantled(selection)) {
     clearSelection();
     return;
   }
@@ -1952,6 +1976,7 @@ selectInput.addEventListener('input', (event) => {
 });
 $('[data-warp-selection]').addEventListener('click', warpToSelection);
 $('[data-pick-warp]').addEventListener('click', warpToSelection);
+missionStartButton.addEventListener('click', timewarpToMissionStart);
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-pick-close]').addEventListener('click', clearSelection);
 motionBlurToggle.checked = motionBlurWanted();

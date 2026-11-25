@@ -2,6 +2,7 @@ import { LY_PER_PC } from './milky-way.js';
 import { formatDistance } from './practice.js';
 import { settlementShown } from './settlements.js';
 import { KM_PER_PC } from './solar-system.js';
+import { simNow } from './sim-clock.js';
 import { flightDates } from './spacecraft.js';
 import { KIND } from './stars.js';
 import { speculationShown } from './speculation.js';
@@ -138,7 +139,12 @@ function formatPlace({ lat, lon }) {
 }
 
 function flightFacts(body) {
-  const { from } = flightDates(body);
+  const dates = flightDates(body);
+  if (!dates) return [];
+  const { from, to } = dates;
+  if (simNow() < from) return [[body.on ? 'Lands' : 'Leaves Earth', dateOf(from)]];
+  if (simNow() > to) return [[body.ended ? 'Flew' : 'In the game', `${dateOf(from)} to ${dateOf(to)}`]];
+  if (!body.fromSunKm) return [];
   if (body.landed) return [['Landed', dateOf(from)], ['Stands at', formatPlace(body.stop)]];
   const around = body.parent === 'Sun' ? 'the Sun' : body.parent === 'Moon' ? 'the Moon' : body.parent;
   return [['Flying since', dateOf(from)], ['Speed', `${body.kmPerSecond.toFixed(body.kmPerSecond < 10 ? 2 : 1)} km/s, measured from ${around}`]];
@@ -147,8 +153,8 @@ function flightFacts(body) {
 function craftFacts({ body, distanceKm }) {
   return {
     title: body.name,
-    kind: body.landed ? `${body.rover ? 'Rover' : 'Lander'} on ${body.on === 'Moon' ? 'the Moon' : body.on}` : 'Spacecraft',
-    facts: [['Distance', formatMetres(distanceKm)], ['Sent by', body.agency], ...flightFacts(body), ['', body.did]],
+    kind: body.on ? `${body.rover ? 'Rover' : 'Lander'} on ${body.on === 'Moon' ? 'the Moon' : body.on}` : 'Spacecraft',
+    facts: [...(body.fromSunKm ? [['Distance', formatMetres(distanceKm)]] : []), ['Sent by', body.agency], ...flightFacts(body), ['', body.did]],
   };
 }
 

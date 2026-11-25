@@ -55,7 +55,7 @@ export function offsetInStretch({ centre, kind, rows }, ms) {
   return KINDS[kind].between(rows[index], rows[index + 1], mu, ms);
 }
 
-const within = ({ first, last }, ms) => ms >= first && ms <= last;
+export const within = ({ first, last }, ms) => ms >= first && ms <= last;
 const missMs = ({ first, last }, ms) => Math.max(first - ms, ms - last, 0);
 const eased = (share) => share * share * (3 - 2 * share);
 

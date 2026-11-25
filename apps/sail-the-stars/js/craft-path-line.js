@@ -1,12 +1,11 @@
-import { equatorialToFrame } from './milky-way.js';
-import { GRAVITY, offsetInStretch } from './spacecraft-paths.js';
+import { GRAVITY, within } from './spacecraft-paths.js';
 import { add, scale, subtract } from './vectors.js';
 
 const POINTS_PER_TURN = 180;
 const DEEPEST_SPLIT = 6;
-const STRAIGHT_ENOUGH = 0.004;
+const STRAIGHT_ENOUGH = 0.006;
 const ROWS_AROUND_PLANET = { past: 24, future: 10 };
-const ROWS_AROUND_SUN = { past: 400, future: 400 };
+const ROWS_AROUND_SUN = { past: 500, future: 500 };
 
 function bent(from, middle, to) {
   const chord = Math.hypot(...subtract(to, from));
@@ -34,17 +33,15 @@ function samplesAlong({ centre, kind, rows }, ms, pointAt) {
 }
 
 export function createPathTracer() {
-  let traced = null;
+  const traced = new WeakMap();
 
-  return function trace({ name, stretch }, ms) {
-    const pointAt = (when) => equatorialToFrame(offsetInStretch(stretch, when));
+  return function trace(stretch, ms, pointAt, isCurrent) {
     const row = stretch.kind === 'orbits' ? ms : stretch.rows.findLastIndex((candidate) => candidate.ms <= ms);
-    if (traced?.name !== name || traced.stretch !== stretch || traced.row !== row) {
-      traced = { name, stretch, row, samples: samplesAlong(stretch, ms, pointAt) };
-    }
-    const here = pointAt(ms);
-    const past = traced.samples.filter(({ when }) => when < ms).map(({ point }) => point);
-    const future = traced.samples.filter(({ when }) => when > ms).map(({ point }) => point);
-    return { past: [...past, here], future: [here, ...future] };
+    if (traced.get(stretch)?.row !== row) traced.set(stretch, { row, samples: samplesAlong(stretch, ms, pointAt) });
+    const { samples } = traced.get(stretch);
+    const here = isCurrent || within(stretch, ms) ? [pointAt(ms)] : [];
+    const past = samples.filter(({ when }) => when < ms).map(({ point }) => point);
+    const future = samples.filter(({ when }) => when > ms).map(({ point }) => point);
+    return { past: [...past, ...here], future: [...here, ...future] };
   };
 }

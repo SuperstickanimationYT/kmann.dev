@@ -1,8 +1,8 @@
-import { SUN_POSITION } from './milky-way.js';
+import { equatorialToFrame, SUN_POSITION } from './milky-way.js';
 import { LANDED, SPACECRAFT } from './spacecraft-catalogue.js';
-import { loadSpacecraftPaths, placeOnPath } from './spacecraft-paths.js';
+import { loadSpacecraftPaths, offsetInStretch, placeOnPath, within } from './spacecraft-paths.js';
 import { halfSizeKm } from './spacecraft-models.js';
-import { KM_PER_AU, KM_PER_PC, sunShareVisible } from './solar-system.js';
+import { KM_PER_AU, KM_PER_PC, planetFromSunKm, sunShareVisible } from './solar-system.js';
 import { groundFrame, groundHeightMetres } from './terrain.js';
 import { add, cross, dot, normalize, scale, subtract } from './vectors.js';
 
@@ -65,6 +65,20 @@ export function flightDates(craft) {
   if (craft.stops) return { from: craft.stops[0].ms, to: Infinity };
   const path = paths?.get(craft.name);
   return path ? { from: path.from, to: craft.drifts || craft.stays ? Infinity : craft.until ?? path.to } : null;
+}
+
+const LONGEST_FLYBY_MS = 120 * 86400000;
+const SMALLEST_SWING_SHOWN_KM = 7e6;
+
+export const cruiseOf = ({ name }) => paths?.get(name)?.stretches.find(({ centre }) => centre === 'Sun') ?? null;
+
+export function cruisePoint(craft, ms) {
+  const { stretches } = paths.get(craft.name);
+  const stay = stretches.find((stretch) => stretch.centre !== 'Sun' && stretch.last - stretch.first > LONGEST_FLYBY_MS && within(stretch, ms));
+  if (!stay) return equatorialToFrame(offsetInStretch(cruiseOf(craft), ms));
+  const planet = planetFromSunKm(stay.centre, ms);
+  const offset = equatorialToFrame(offsetInStretch(stay, ms));
+  return Math.hypot(...offset) > SMALLEST_SWING_SHOWN_KM ? add(planet, offset) : planet;
 }
 
 export function isOut(craft, ms) {

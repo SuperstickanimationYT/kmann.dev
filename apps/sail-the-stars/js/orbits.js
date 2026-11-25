@@ -150,13 +150,19 @@ const PATH_RGB = '255, 196, 110';
 const PATH_ALPHA = { past: 0.85, future: 0.3 };
 const MARK_FONT = '12px "Trebuchet MS", sans-serif';
 const MARK_TEXT_HEIGHT = 15;
+const SHORTEST_PIECE_PX = 3;
 
 export function drawCraftPath(context, { past, future, ...scene }) {
-  const { toCamera, shownPieces, tracePieces } = pencil(context, scene);
+  const { pixelsPerTan, toCamera, shownPieces, tracePieces } = pencil(context, scene);
+  const shortestTan = SHORTEST_PIECE_PX / pixelsPerTan;
+  const tooClose = (from, to) => from[2] > NEAREST_DEPTH_KM && to[2] > NEAREST_DEPTH_KM && Math.hypot(to[0] / to[2] - from[0] / from[2], to[1] / to[2] - from[1] / from[2]) < shortestTan;
   context.save();
   context.lineWidth = 1.5;
   for (const [points, alpha] of [[future, PATH_ALPHA.future], [past, PATH_ALPHA.past]]) {
-    const seen = points.map(toCamera);
+    const seen = [];
+    points.map(toCamera).forEach((point, k) => {
+      if (!seen.length || k === points.length - 1 || !tooClose(seen.at(-1), point)) seen.push(point);
+    });
     context.strokeStyle = `rgba(${PATH_RGB}, ${alpha})`;
     context.beginPath();
     for (let k = 0; k + 1 < seen.length; k++) tracePieces(shownPieces(seen[k], seen[k + 1]));
