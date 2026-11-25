@@ -65,7 +65,7 @@ const DWARF_GROUPS = { agreed: 'Dwarf planets', likely: 'Likely dwarf planets' }
 function groupOf(body) {
   if (body.kind === 'wormhole') return `Made-up wormhole at ${spokenHost(body.host)}`;
   if (body.kind === 'mirror') return `Made-up mirrors of ${body.parent}`;
-  if (body.host) return `${body.madeUp ? 'Made-up planet' : 'Planet'} of ${body.host}`;
+  if (body.host) return `${body.madeUp ? 'Procedurally generated planet' : 'Planet'} of ${body.host}`;
   if (body.dwarf) return DWARF_GROUPS[body.dwarf];
   return body.parent ? `Moon of ${body.parent}` : 'Planets';
 }
