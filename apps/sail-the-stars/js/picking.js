@@ -6,10 +6,11 @@ import { simNow } from './sim-clock.js';
 import { flightDates } from './spacecraft.js';
 import { KIND } from './stars.js';
 import { speculationShown } from './speculation.js';
+import { temperatureFromColour } from './stellar-properties.js';
 
 const SUN_ABSOLUTE_MAGNITUDE = 4.83;
 const SUN_KELVIN = 5772;
-export const UNNAMED_STAR = 'Unnamed star';
+const UNNAMED_STAR = 'Unnamed star';
 const KM_PER_AU = 149597870.7;
 const ESTIMATED_MASS = { measured: '', least: 'at least ', guessed: 'about ' };
 const SHOW_KM_BELOW_AU = 0.01;
@@ -40,7 +41,6 @@ const STAR_KINDS = {
   [KIND.field]: 'Simulated star',
 };
 
-const temperatureFromColour = (colourIndex) => 4600 * (1 / (0.92 * colourIndex + 1.7) + 1 / (0.92 * colourIndex + 0.62));
 const spectralClass = (kelvin) => SPECTRAL_CLASSES.find(([floor]) => kelvin >= floor)[1];
 const magnitude = (value) => value.toFixed(2);
 
@@ -70,17 +70,19 @@ function formatKm(km) {
   return au >= 10 ? `${Math.round(au).toLocaleString('en')} AU` : `${au.toFixed(2)} AU`;
 }
 
-const planetCount = (count) => (count === 1 ? '1 known planet here' : `${count} known planets here`);
+const planetCount = (count, source) => `${count} ${source} planet${count === 1 ? '' : 's'}`;
 
 function starKind(pick) {
-  if (pick.hostData) return `Star with ${planetCount(pick.hostData.planets.length)}`;
+  const { planets, madeUp } = pick.hostData ?? { planets: [] };
+  if (planets.length && !madeUp) return `Star with ${planetCount(planets.length, 'known')} here`;
+  if (planets.length) return `${STAR_KINDS[pick.kind]} with ${planetCount(planets.length, 'made-up')}`;
   return pick.kind === KIND.cluster ? `${STAR_KINDS[KIND.cluster]} in ${pick.name}` : STAR_KINDS[pick.kind];
 }
 
 function starFacts(pick) {
   const apparent = pick.absolute + 5 * Math.log10(pick.distance / 10);
   const kelvin = pick.hostData?.kelvin ?? temperatureFromColour(pick.colour);
-  const named = pick.kind === KIND.sun || pick.kind === KIND.catalogue;
+  const named = pick.hostData || pick.kind === KIND.sun || pick.kind === KIND.catalogue;
   return {
     title: pick.kind === KIND.sun ? 'Sun' : (named && pick.name) || UNNAMED_STAR,
     kind: starKind(pick),
@@ -95,7 +97,10 @@ function starFacts(pick) {
   };
 }
 
-function exoplanetKind({ kind, invented, civilization }) {
+const MADE_UP_KINDS = { rocky: 'Made-up rocky planet', hazy: 'Made-up small gas planet', giant: 'Made-up giant planet' };
+
+function exoplanetKind({ kind, invented, civilization, madeUp }) {
+  if (madeUp) return MADE_UP_KINDS[kind];
   if (civilization && speculationShown()) return 'Rocky planet, surface and civilization made up';
   if (invented) return 'Rocky planet, surface made up';
   return kind === 'hazy' ? 'Small gas planet, clouds made up' : 'Giant planet, clouds made up';

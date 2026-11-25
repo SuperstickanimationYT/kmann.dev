@@ -230,5 +230,5 @@ export function drawAtlas(canvas, nebulae, nearby, galaxies) {
   drawGalaxyPointers(context, galaxies);
 
   const local = nebulae.filter((nebula) => Math.hypot(nebula.present[0] - SUN_POSITION[0], nebula.present[1] - SUN_POSITION[1]) < INSET_REACH);
-  drawInset(context, local, nearby.filter((star) => star.name));
+  drawInset(context, local, nearby.filter((star) => star.name && star.wellKnown !== false));
 }

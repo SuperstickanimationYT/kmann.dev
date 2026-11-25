@@ -44,7 +44,7 @@ export async function loadNearbyStars(url, namesUrl) {
   return stars;
 }
 
-function hashCell(x, y, z, salt) {
+export function hashCell(x, y, z, salt) {
   let h = Math.imul(salt ^ 0x9e3779b9, 0x85ebca6b);
   h = Math.imul(h ^ (x | 0) ^ (h >>> 13), 0xc2b2ae35);
   h = Math.imul(h ^ (y | 0) ^ (h >>> 16), 0x27d4eb2f);
@@ -186,6 +186,23 @@ function addFieldStars(collector, bin, binIndex, cell, density, ix, iy, iz) {
     if (collector.shadowedByCatalogue(present, absolute)) continue;
     collector.add(present, velocity, absolute, colour, KIND.field, absolute);
   }
+}
+
+const FARTHEST_LIGHT_DELAY_DRIFT_PC = 2;
+
+export function fieldStarSeenAt(seen, absolute, armMap) {
+  const binIndex = nearestBinIndex(absolute);
+  const bin = ALL_BINS[binIndex];
+  const found = [];
+  const add = (position, velocity, shone, colour) => {
+    if (shone === absolute) found.push({ position, velocity, absolute, colour });
+  };
+  forEachCellInSphere(seen, FARTHEST_LIGHT_DELAY_DRIFT_PC, bin.cell, (ix, iy, iz) => {
+    const centre = [(ix + 0.5) * bin.cell, (iy + 0.5) * bin.cell, (iz + 0.5) * bin.cell];
+    const density = BIN_SHAPES[binIndex](centre, sampleArmMap(armMap, centre[0], centre[1]));
+    addFieldStars({ add, shadowedByCatalogue: () => false }, bin, binIndex, bin.cell, density, ix, iy, iz);
+  });
+  return found[0] ?? null;
 }
 
 function addClusterStars(collector, nebulae, binIndex, bin) {

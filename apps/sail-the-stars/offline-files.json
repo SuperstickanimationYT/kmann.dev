@@ -1,5 +1,5 @@
 {
-  "bytes": 7159306,
+  "bytes": 7226143,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -50,6 +50,7 @@
     "data/warp-optics.bin",
     "index.html",
     "js/atlas.js",
+    "js/bright-exoplanet-data.js",
     "js/camera.js",
     "js/clouds.js",
     "js/craft-path-line.js",
@@ -104,8 +105,10 @@
     "js/spacecraft.js",
     "js/speculation.js",
     "js/stars.js",
+    "js/stellar-properties.js",
     "js/surface-details.js",
     "js/surface-scatter.js",
+    "js/system-generator.js",
     "js/terraforming.js",
     "js/terrain-worker.js",
     "js/terrain.js",

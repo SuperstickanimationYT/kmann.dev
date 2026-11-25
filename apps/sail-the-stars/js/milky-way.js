@@ -55,6 +55,11 @@ export function directionFromEquatorial(ra, dec) {
 
 export const equatorialToFrame = (vector) => velocityFromHeliocentric(EQUATORIAL_TO_GALACTIC.map((row) => row[0] * vector[0] + row[1] * vector[1] + row[2] * vector[2]));
 
+export function frameToEquatorial([x, y, z]) {
+  const galactic = [-y, x, z];
+  return [0, 1, 2].map((axis) => EQUATORIAL_TO_GALACTIC.reduce((sum, row, k) => sum + row[axis] * galactic[k], 0));
+}
+
 export const fromHeliocentric = ([towardCentre, towardRotation, north]) => [towardRotation, SUN_RADIUS - towardCentre, SUN_HEIGHT + north];
 
 export const velocityFromHeliocentric = ([towardCentre, towardRotation, north]) => [towardRotation, -towardCentre, north];

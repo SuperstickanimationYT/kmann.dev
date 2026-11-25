@@ -1,9 +1,12 @@
 import { cloudTurn, SIMULATED_CLOUD_MAPS } from './clouds.js';
+import { BRIGHT_SYSTEMS } from './bright-exoplanet-data.js';
 import { EXOPLANET_SYSTEMS } from './exoplanet-data.js';
 import { DEGREES, directionFromEquatorial, equatorialToFrame, fromHeliocentric, SUN_PECULIAR, SUN_POSITION, velocityFromHeliocentric } from './milky-way.js';
 import { createRandom } from './random.js';
 import { orbitPoint } from './kepler.js';
 import { facingParent, inStarlight, KM_PER_AU, ORBIT_PATH_POINTS, SUN_RADIUS_KM, SYNCHRONOUS_LOOKAHEAD_DAYS } from './solar-system.js';
+import { stellarProperties, temperatureFromColour } from './stellar-properties.js';
+import { generatePlanets } from './system-generator.js';
 import { add, cross, dot, normalize, rotateAbout, scale, subtract } from './vectors.js';
 
 const EARTH_RADIUS_KM = 6371;
@@ -23,6 +26,7 @@ const HOLD_RADII = 200;
 const HOLD_SHARE_OF_ORBIT = 0.3;
 const MADE_UP_INCLINATION = [35, 75];
 const ABSOLUTE_MAGNITUDE_KM = 1329;
+const LONE_STAR_VIEW_RADII = 8;
 const SPIN_HOURS = [10, 26];
 const MOST_TILT_DEGREES = 28;
 const ALBEDO_FOR_BRIGHTNESS = { rocky: 0.25, hazy: 0.4, giant: 0.4 };
@@ -37,8 +41,6 @@ function whiteForSunlight(kelvin) {
   const brightest = Math.max(...relative);
   return relative.map((value) => (value / brightest) ** DISPLAY_GAMMA);
 }
-
-const temperatureFromColour = (colour) => 4600 * (1 / (0.92 * colour + 1.7) + 1 / (0.92 * colour + 0.62));
 
 function colourFromTemperature(kelvin) {
   let low = -0.3;
@@ -87,7 +89,7 @@ function orbitOf(planet, node, madeUpInclination, random) {
     a: planet.a * KM_PER_AU,
     e,
     inclination: (planet.inclination ?? madeUpInclination) * DEGREES,
-    node,
+    node: planet.node === undefined ? node : planet.node * DEGREES,
     periapsisArgument: periapsis + Math.PI,
     meanAnomalyAt: (ms) => startAnomaly + (2 * Math.PI * (ms / MS_PER_DAY + UNIX_EPOCH_JD - startJd)) / periodDays,
   };
@@ -100,9 +102,14 @@ const GIANT_PALETTES = [
   [1260, [[0.16, 0.29, 0.62], [0.08, 0.16, 0.42]]],
   [Infinity, [[0.38, 0.31, 0.32], [0.17, 0.13, 0.17]]],
 ];
+const ICE_PALETTE = [[0.66, 0.82, 0.86], [0.46, 0.64, 0.8]];
+const SMALLEST_BANDED_EARTH_RADII = 2.6;
+const WARMEST_BANDED_ICE_KELVIN = 200;
 const SELF_LIT_PALETTE = [[0.5, 0.36, 0.28], [0.2, 0.12, 0.1]];
-const HAZY_TINTS = [[300, [0.55, 0.72, 0.78]], [380, [0.6, 0.68, 0.78]], [600, [0.68, 0.64, 0.58]]];
+const HAZY_TINTS = [[300, [0.55, 0.72, 0.78]], [380, [0.6, 0.68, 0.78]], [600, [0.68, 0.64, 0.58]], [1000, [0.6, 0.53, 0.47]], [Infinity, [0.5, 0.4, 0.36]]];
 
+const COLOUR_VARIETY = 0.14;
+const varied = (colour, random) => colour.map((value) => Math.min(0.97, value * (1 + COLOUR_VARIETY * (2 * random.next() - 1))));
 const mixed = (from, to, share) => from.map((value, axis) => value + (to[axis] - value) * share);
 const underTemperature = (table, kelvin) => table.find(([ceiling]) => kelvin < ceiling)[1];
 
@@ -146,11 +153,19 @@ function rockyTint({ kelvin }, random) {
 
 let seaWorlds = 0;
 const nextCloudMap = () => seaWorlds++ % SIMULATED_CLOUD_MAPS;
+const cloudMapFor = (planet, random) => (planet.bare === undefined ? nextCloudMap() : random.integer(0, SIMULATED_CLOUD_MAPS - 1));
+const isRocky = ({ bare, earthRadii }) => bare ?? earthRadii < LARGEST_ROCKY_EARTH_RADII;
 
 function lookOf(planet, synchronous, selfLit, random) {
-  if (planet.earthRadii < LARGEST_ROCKY_EARTH_RADII) return { kind: 'rocky', invented: { seed: random.between(1, 60), ...(isWet(planet) && { cloudMap: nextCloudMap() }) }, tint: rockyTint(planet, random), haze: isWet(planet) ? THIN_AIR : undefined };
-  if (planet.earthRadii < SMALLEST_GIANT_EARTH_RADII) return { kind: 'hazy', tint: underTemperature(HAZY_TINTS, planet.kelvin), haze: DEEP_AIR };
-  const palette = selfLit ? SELF_LIT_PALETTE : underTemperature(GIANT_PALETTES, planet.kelvin);
+  const madeUp = planet.bare !== undefined;
+  if (isRocky(planet)) return { kind: 'rocky', invented: { seed: random.between(1, 60), ...(isWet(planet) && { cloudMap: cloudMapFor(planet, random) }) }, tint: rockyTint(planet, random), haze: isWet(planet) ? THIN_AIR : undefined };
+  const bandedIce = madeUp && planet.earthRadii >= SMALLEST_BANDED_EARTH_RADII && planet.kelvin < WARMEST_BANDED_ICE_KELVIN;
+  if (planet.earthRadii < SMALLEST_GIANT_EARTH_RADII && !bandedIce) {
+    const tint = underTemperature(HAZY_TINTS, planet.kelvin);
+    return { kind: 'hazy', tint: madeUp ? varied(tint, random) : tint, haze: DEEP_AIR };
+  }
+  const usual = bandedIce && planet.earthRadii < SMALLEST_GIANT_EARTH_RADII ? ICE_PALETTE : underTemperature(GIANT_PALETTES, planet.kelvin);
+  const palette = selfLit ? SELF_LIT_PALETTE : madeUp ? usual.map((colour) => varied(colour, random)) : usual;
   return { kind: 'giant', tint: mixed(...palette, 0.4), giantLook: giantLook(palette, synchronous, random) };
 }
 
@@ -162,17 +177,28 @@ function glowOf(lamp, kelvin) {
 
 const poleOf = ({ inclination, node }) => [Math.sin(inclination) * Math.sin(node), -Math.sin(inclination) * Math.cos(node), Math.cos(inclination)];
 
-function buildSystem(data, index) {
-  const random = createRandom(7001 + 97 * index);
+function measuredSystem(data, index) {
   const position = fromHeliocentric(scale(directionFromEquatorial(data.ra, data.dec), data.parsecs));
-  const toFrame = skyFrame(data);
+  const absolute = data.visual - 5 * Math.log10(data.parsecs / 10);
+  const catalogueStar = { name: data.name, host: data.name, position, velocity: velocityOf(data), absolute, colour: colourFromTemperature(data.kelvin), wellKnown: index < EXOPLANET_SYSTEMS.length };
+  return buildSystem(data, { random: createRandom(7001 + 97 * index), toFrame: skyFrame(data), catalogueStar });
+}
+
+export function madeUpSystem(star, { seed, companionAu }) {
+  const random = createRandom(seed);
+  const properties = stellarProperties(star);
+  const data = { name: star.name, kelvin: properties.kelvin, radius: properties.radius, madeUp: true, planets: generatePlanets(properties, random, companionAu) };
+  return buildSystem(data, { random, toFrame: (vector) => vector, catalogueStar: { ...star, host: star.name } });
+}
+
+function buildSystem(data, { random, toFrame, catalogueStar }) {
+  const { position, absolute } = catalogueStar;
   const node = random.between(0, 2 * Math.PI);
   const madeUpInclination = random.between(...MADE_UP_INCLINATION);
-  const absolute = data.visual - 5 * Math.log10(data.parsecs / 10);
   const radiusKm = data.radius * SUN_RADIUS_KM;
   const light = whiteForSunlight(data.kelvin);
   const starBands = planckBands(data.kelvin);
-  const selfLit = SELF_LIT_HOSTS.includes(data.name);
+  const selfLit = data.selfLit || SELF_LIT_HOSTS.includes(data.name);
   const planets = data.planets.map((planet) => {
     const orbit = orbitOf(planet, node, madeUpInclination, random);
     const synchronous = planet.periodDays < LONGEST_SYNCHRONOUS_DAYS;
@@ -191,7 +217,8 @@ function buildSystem(data, index) {
       lamp,
       measured: planet,
       tideLocked: synchronous,
-      civilization: couldBeInhabited(planet, data) ? { lamps: { dim: light, bright: light } } : undefined,
+      madeUp: data.madeUp,
+      civilization: !data.madeUp && couldBeInhabited(planet, data) ? { lamps: { dim: light, bright: light } } : undefined,
       holdKm: Math.min(HOLD_RADII * bodyRadiusKm, HOLD_SHARE_OF_ORBIT * orbit.a),
       orbit,
       spinHours: random.between(...SPIN_HOURS),
@@ -199,7 +226,7 @@ function buildSystem(data, index) {
       ...look,
     };
   });
-  const north = normalize(toFrame(poleOf(planets[0].orbit)));
+  const north = normalize(toFrame(poleOf(planets[0]?.orbit ?? { inclination: madeUpInclination * DEGREES, node })));
   const meridian = normalize(cross(north, [0.3, 0.5, 0.8]));
   const star = { name: data.name, kind: 'star', radiusKm, tint: light, magnitude: absolute, host: data.name, north, meridian, fromSunKm: [0, 0, 0] };
   const offsetAt = ({ orbit }, ms) => toFrame(orbitPoint({ ...orbit, meanAnomaly: orbit.meanAnomalyAt(ms) }));
@@ -220,8 +247,8 @@ function buildSystem(data, index) {
     star,
     planets,
     data,
-    outermostKm: Math.max(...planets.map(({ orbit }) => orbit.a * (1 + orbit.e))),
-    catalogueStar: { name: data.name, host: data.name, position, velocity: velocityOf(data), absolute, colour: colourFromTemperature(data.kelvin) },
+    outermostKm: Math.max(LONE_STAR_VIEW_RADII * radiusKm, ...planets.map(({ orbit }) => orbit.a * (1 + orbit.e))),
+    catalogueStar,
     place(ms) {
       const bodies = planets.map((planet) => {
         const fromSunKm = offsetAt(planet, ms);
@@ -238,7 +265,7 @@ function buildSystem(data, index) {
   };
 }
 
-export const EXOPLANET_HOSTS = EXOPLANET_SYSTEMS.map(buildSystem);
+export const EXOPLANET_HOSTS = [...EXOPLANET_SYSTEMS, ...BRIGHT_SYSTEMS].map(measuredSystem);
 
 const SAME_STAR_DEGREES = 0.1;
 const SAME_STAR_MAGNITUDES = 1;
@@ -252,9 +279,10 @@ export function withExoplanetHosts(stars) {
   };
   const seenHosts = hosts.map(seenFromSun);
   const nearestCosine = Math.cos(SAME_STAR_DEGREES * DEGREES);
-  const isHost = (star) => {
-    const { toward, apparent } = seenFromSun(star);
-    return seenHosts.some((host) => dot(host.toward, toward) > nearestCosine && Math.abs(host.apparent - apparent) < SAME_STAR_MAGNITUDES);
-  };
-  return [...stars.filter((star) => !isHost(star)), ...hosts];
+  const sightings = stars.map((star) => ({ star, ...seenFromSun(star) }));
+  const replaced = seenHosts.map((host) => {
+    const same = sightings.filter(({ toward, apparent }) => dot(host.toward, toward) > nearestCosine && Math.abs(host.apparent - apparent) < SAME_STAR_MAGNITUDES);
+    return same.sort((a, b) => dot(b.toward, host.toward) - dot(a.toward, host.toward))[0]?.star;
+  });
+  return [...stars.filter((star) => !replaced.includes(star)), ...hosts];
 }
