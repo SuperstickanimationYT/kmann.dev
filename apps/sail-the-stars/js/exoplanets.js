@@ -1,4 +1,5 @@
 import { HORIZON_KM_PER_SUN } from './black-holes.js';
+import { isQuiet, steadyLongEnough, suitsLife } from './civilizations.js';
 import { cloudTurn, SIMULATED_CLOUD_MAPS } from './clouds.js';
 import { BRIGHT_SYSTEMS } from './bright-exoplanet-data.js';
 import { EXOPLANET_SYSTEMS } from './exoplanet-data.js';
@@ -32,6 +33,7 @@ const SPIN_HOURS = [10, 26];
 const MOST_TILT_DEGREES = 28;
 const ALBEDO_FOR_BRIGHTNESS = { rocky: 0.25, hazy: 0.4, giant: 0.4 };
 const WET_KELVIN = [175, 300];
+const AGE_SALT = 0x3c6ef372;
 const SKYLIGHT = [0.07, 0.07, 0.07];
 const SKYLIGHT_RADIANS = 0.6;
 
@@ -136,14 +138,6 @@ function giantLook(palette, synchronous, random) {
 const THIN_AIR = { gas: { depth: [0.035, 0.08, 0.19], scaleKm: 8 }, dust: { depth: [0.05, 0.05, 0.05], light: [0.05, 0.05, 0.05], scaleKm: 2, forwardness: 0.76, sunDimming: 1 } };
 const DEEP_AIR = { gas: { depth: [0.03, 0.07, 0.16], scaleKm: 60 }, dust: { depth: [0.2, 0.2, 0.2], light: [0.16, 0.16, 0.16], scaleKm: 60, forwardness: 0.4, sunDimming: 0.5 } };
 
-const LIQUID_WATER_KELVIN = [215, 300];
-const LEAST_MASS_FOR_MAGNETIC_FIELD = 0.6;
-const COOLEST_QUIET_STAR_KELVIN = 3000;
-
-const couldBeInhabited = ({ kelvin, earthMasses, earthRadii }, star) =>
-  earthRadii < LARGEST_ROCKY_EARTH_RADII && kelvin > LIQUID_WATER_KELVIN[0] && kelvin < LIQUID_WATER_KELVIN[1]
-  && earthMasses >= LEAST_MASS_FOR_MAGNETIC_FIELD && star.kelvin >= COOLEST_QUIET_STAR_KELVIN;
-
 const isWet = ({ kelvin }) => kelvin > WET_KELVIN[0] && kelvin < WET_KELVIN[1];
 
 function rockyTint({ kelvin }, random) {
@@ -184,13 +178,22 @@ function measuredSystem(data, index) {
   const position = fromHeliocentric(scale(directionFromEquatorial(data.ra, data.dec), data.parsecs));
   const absolute = data.visual - 5 * Math.log10(data.parsecs / 10);
   const catalogueStar = { name: data.name, host: data.name, position, velocity: velocityOf(data), absolute, colour: colourFromTemperature(data.kelvin), wellKnown: index < EXOPLANET_SYSTEMS.length };
-  return buildSystem(data, { random: createRandom(7001 + 97 * index), toFrame: skyFrame(data), catalogueStar });
+  const planets = data.planets.map((planet) => ({ ...planet, inhabited: isRocky(planet) && suitsLife(planet) && isQuiet(data) }));
+  return buildSystem({ ...data, planets }, { random: createRandom(7001 + 97 * index), toFrame: skyFrame(data), catalogueStar });
 }
 
-export function madeUpSystem(star, { seed, companionAu }) {
-  const random = createRandom(seed);
+function madeUpPlanets(properties, random, { seed, companionAu }) {
+  const planets = generatePlanets(properties, random, companionAu);
+  const steady = steadyLongEnough(properties, createRandom(seed ^ AGE_SALT));
+  return planets.map((planet) => ({ ...planet, inhabited: isRocky(planet) && suitsLife(planet) && steady(planet) }));
+}
+
+export const hasMadeUpCivilization = (star, drawn) => madeUpPlanets(stellarProperties(star), createRandom(drawn.seed), drawn).some(({ inhabited }) => inhabited);
+
+export function madeUpSystem(star, drawn) {
+  const random = createRandom(drawn.seed);
   const properties = stellarProperties(star);
-  const data = { name: star.name, kelvin: properties.kelvin, radius: properties.radius, madeUp: true, planets: generatePlanets(properties, random, companionAu) };
+  const data = { name: star.name, kelvin: properties.kelvin, radius: properties.radius, madeUp: true, planets: madeUpPlanets(properties, random, drawn) };
   return buildSystem(data, { random, toFrame: (vector) => vector, catalogueStar: { ...star, host: star.name } });
 }
 
@@ -230,7 +233,7 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
       measured: planet,
       tideLocked: synchronous,
       madeUp: data.madeUp,
-      civilization: !data.madeUp && couldBeInhabited(planet, data) ? { lamps: { dim: light, bright: light } } : undefined,
+      civilization: planet.inhabited ? { lamps: { dim: light, bright: light } } : undefined,
       holdKm: Math.min(HOLD_RADII * bodyRadiusKm, HOLD_SHARE_OF_ORBIT * orbit.a),
       orbit,
       spinHours: random.between(...SPIN_HOURS),

@@ -130,8 +130,9 @@ function starFacts(pick) {
 const MADE_UP_KINDS = { rocky: 'Made-up rocky planet', hazy: 'Made-up small gas planet', giant: 'Made-up giant planet' };
 
 function exoplanetKind({ kind, invented, civilization, madeUp }) {
-  if (madeUp) return MADE_UP_KINDS[kind];
-  if (civilization && speculationShown()) return 'Rocky planet, surface and civilization made up';
+  const peopled = civilization && speculationShown();
+  if (madeUp) return `${MADE_UP_KINDS[kind]}${peopled ? ' with a civilization' : ''}`;
+  if (peopled) return 'Rocky planet, surface and civilization made up';
   if (invented) return 'Rocky planet, surface made up';
   return kind === 'hazy' ? 'Small gas planet, clouds made up' : 'Giant planet, clouds made up';
 }
