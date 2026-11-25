@@ -308,6 +308,14 @@
   color: var(--text-strong);
 }
 
+.fh-pick .fh-pick-note {
+  margin: 8px 0 0;
+}
+
+.fh-pick-note:empty {
+  display: none;
+}
+
 .fh-pick-warp {
   margin-top: 10px;
 }

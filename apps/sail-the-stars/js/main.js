@@ -1763,12 +1763,13 @@ function clearSelection() {
 }
 
 function showSelectionFacts() {
-  const { title, kind, facts } = describePick(selection);
+  const { title, kind, facts, note } = describePick(selection);
   $('[data-pick-title]').textContent = title;
   $('[data-pick-kind]').textContent = kind;
   $('[data-pick-facts]').replaceChildren(
     ...facts.flatMap(([label, value]) => [Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value })]),
   );
+  $('[data-pick-note]').textContent = note ?? '';
   showMissionStart(selection.destination);
   pickPanel.hidden = false;
 }

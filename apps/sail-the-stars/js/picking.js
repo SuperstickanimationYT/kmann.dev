@@ -73,12 +73,17 @@ function formatKm(km) {
   return au >= 10 ? `${Math.round(au).toLocaleString('en')} AU` : `${au.toFixed(2)} AU`;
 }
 
+const GENERATED = 'procedurally generated';
+const ONLY_PLAUSIBLE = 'not real, only plausible and consistent with physics.';
+const notRealPlanets = ({ planets, madeUp }) => (madeUp && planets.length ? `The planets are ${ONLY_PLAUSIBLE}` : '');
+const notRealPlanet = ({ madeUp, civilization }) => (madeUp ? `This planet is ${ONLY_PLAUSIBLE}${civilization && speculationShown() ? ' Its civilization is speculation.' : ''}` : '');
+
 const planetCount = (count, source) => `${count} ${source} planet${count === 1 ? '' : 's'}`;
 
 function holeKind({ hole, planets }) {
   const source = hole.measured ? 'Black hole' : 'Simulated black hole';
   if (hole.glowing) return `${source} at the centre of the Milky Way`;
-  return planets.length ? `${source} with ${planetCount(planets.length, 'made-up')}` : source;
+  return planets.length ? `${source} with ${planetCount(planets.length, GENERATED)}` : source;
 }
 
 const KM_PER_SUN_RADIUS = 695700;
@@ -99,13 +104,14 @@ function holeFacts(pick) {
       ['Radius of event horizon', formatKm(hole.suns * HORIZON_KM_PER_SUN)],
       ...(former ?? []),
     ],
+    note: notRealPlanets(pick.hostData),
   };
 }
 
 function starKind(pick) {
   const { planets, madeUp } = pick.hostData ?? { planets: [] };
   if (planets.length && !madeUp) return `Star with ${planetCount(planets.length, 'known')} here`;
-  if (planets.length) return `${STAR_KINDS[pick.kind]} with ${planetCount(planets.length, 'made-up')}`;
+  if (planets.length) return `${STAR_KINDS[pick.kind]} with ${planetCount(planets.length, GENERATED)}`;
   return pick.kind === KIND.cluster ? `${STAR_KINDS[KIND.cluster]} in ${pick.name}` : STAR_KINDS[pick.kind];
 }
 
@@ -124,14 +130,15 @@ function starFacts(pick) {
       ['Surface', `${Math.round(kelvin / 100) * 100} K, class ${spectralClass(kelvin)}`],
       ['Light left it', formatLightTravel(pick.distance)],
     ],
+    note: pick.hostData && notRealPlanets(pick.hostData),
   };
 }
 
-const MADE_UP_KINDS = { rocky: 'Made-up rocky planet', hazy: 'Made-up small gas planet', giant: 'Made-up giant planet' };
+const GENERATED_KINDS = { rocky: 'Procedurally generated rocky planet', hazy: 'Procedurally generated small gas planet', giant: 'Procedurally generated giant planet' };
 
 function exoplanetKind({ kind, invented, civilization, madeUp }) {
   const peopled = civilization && speculationShown();
-  if (madeUp) return `${MADE_UP_KINDS[kind]}${peopled ? ' with a civilization' : ''}`;
+  if (madeUp) return `${GENERATED_KINDS[kind]}${peopled ? ' with a civilization' : ''}`;
   if (peopled) return 'Rocky planet, surface and civilization made up';
   if (invented) return 'Rocky planet, surface made up';
   return kind === 'hazy' ? 'Small gas planet, clouds made up' : 'Giant planet, clouds made up';
@@ -155,6 +162,7 @@ function exoplanetFacts(body, facts) {
       ['Year', formatPeriod(periodDays)],
       ['Temperature', `about ${Math.round(kelvin)} K`],
     ],
+    note: notRealPlanet(body),
   };
 }
 
