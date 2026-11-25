@@ -2,9 +2,12 @@ import { LY_PER_PC, SUN_POSITION } from './milky-way.js';
 import { EXOPLANET_HOSTS } from './exoplanets.js';
 import { SOLAR_SYSTEM, systemNamed, systemOf } from './planetary-systems.js';
 import { arrivalNear, BODIES, KM_PER_PC } from './solar-system.js';
+import { isOut, placeSpacecraft } from './spacecraft.js';
+import { LANDED, SPACECRAFT } from './spacecraft-catalogue.js';
 import { simNow } from './sim-clock.js';
 import { nebulaRadius } from './stars.js';
-import { add, dot, normalize, scale, subtract } from './vectors.js';
+import { halfSizeKm } from './spacecraft-models.js';
+import { add, cross, dot, normalize, scale, subtract } from './vectors.js';
 
 const STAR_STANDOFF = 0.5 / LY_PER_PC;
 const NEBULA_STANDOFF_RADII = 6;
@@ -15,6 +18,11 @@ const SYSTEM_VIEW_ORBITS = 2.2;
 const SYSTEM_VIEW_RISE = 0.5;
 
 export const placedNow = (body) => systemOf(body).place(simNow()).find(({ name }) => name === body.name) ?? body;
+export function craftNow(craft) {
+  const now = simNow();
+  return isOut(craft, now) ? placeSpacecraft(now, SOLAR_SYSTEM.place(now), [craft])[0] ?? null : null;
+}
+
 const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
 const approach = (name, group, target, standoff, subject) => ({ name, group, target, subject, arrival: (from) => backOff(from, target, standoff) });
 
@@ -64,6 +72,55 @@ export function bodyDestination(body) {
   };
 }
 
+const CRAFT_STANDOFF = 3.2;
+const MIDDLE_HEIGHT = 0.5;
+const FROM_SUNWARD = { aside: 0.6, up: 0.45 };
+const BESIDE_CRAFT = { east: 0.85, meridian: 0.5, sunward: 0.55, sunwardOfShield: -0.3 };
+const CRAFT_CROSSING_SECONDS = 4;
+
+const outwardFrom = (craft, parent) => normalize(subtract(craft.fromSunKm, parent.fromSunKm));
+
+const EYE_LEVEL_KM = 0.0022;
+
+function besideLander({ sunward, meridian, radiusKm }, up) {
+  const across = subtract(sunward, scale(up, dot(sunward, up)));
+  const lit = normalize(Math.hypot(...across) > 1e-3 ? across : meridian);
+  const direction = normalize(add(add(lit, scale(cross(up, lit), FROM_SUNWARD.aside)), scale(up, FROM_SUNWARD.up)));
+  const offsetKm = scale(direction, CRAFT_STANDOFF * radiusKm);
+  return add(offsetKm, scale(up, Math.max(0, EYE_LEVEL_KM - dot(offsetKm, up))));
+}
+
+function craftGroup({ on, rover }) {
+  if (!on) return 'Spacecraft';
+  return `${rover ? 'Rover' : 'Lander'} on ${on === 'Moon' ? 'the Moon' : on}`;
+}
+
+function besideCraft({ faces, north, meridian, sunward }) {
+  const east = cross(north, meridian);
+  const shielded = faces === 'awayFromSun';
+  const side = !shielded && dot(east, sunward) < 0 ? -1 : 1;
+  return normalize(add(add(scale(east, BESIDE_CRAFT.east * side), scale(meridian, BESIDE_CRAFT.meridian)), scale(sunward, shielded ? BESIDE_CRAFT.sunwardOfShield : BESIDE_CRAFT.sunward)));
+}
+
+export function craftDestination(listed) {
+  return {
+    name: listed.name,
+    group: craftGroup(listed),
+    subject: { kind: 'body', body: { ...listed, kind: 'craft' } },
+    craft: listed,
+    get target() {
+      return craftNow(listed)?.centre ?? SOLAR_SYSTEM.position;
+    },
+    standoff({ craft, parent }) {
+      const offsetKm = craft.landed ? besideLander(craft, outwardFrom(craft, parent)) : scale(besideCraft(craft), CRAFT_STANDOFF * craft.radiusKm);
+      return scale(offsetKm, 1 / KM_PER_PC);
+    },
+    middle: (craft, parent) => (craft.landed ? scale(outwardFrom(craft, parent), (MIDDLE_HEIGHT * craft.radiusKm) / KM_PER_PC) : [0, 0, 0]),
+    upNear: (craft, parent) => (parent.kind === 'star' ? null : outwardFrom(craft, parent)),
+    speed: (halfSizeKm(listed.model) / CRAFT_CROSSING_SECONDS / KM_PER_PC) * LY_PER_PC,
+  };
+}
+
 export const nebulaDestination = (nebula) =>
   approach(nebula.name, 'Nebulae', nebula.present, NEBULA_STANDOFF_RADII * nebulaRadius(nebula), { kind: 'nebula', nebula });
 
@@ -86,6 +143,7 @@ export function listDestinations({ nearby, nebulae, galaxies, mirrors }) {
     SUN_DESTINATION,
     ...BODIES.filter((body) => body.kind !== 'star').map(bodyDestination),
     ...mirrors.map(bodyDestination),
+    ...[...SPACECRAFT, ...LANDED].map(craftDestination),
     MILKY_WAY_DESTINATION,
     ...nearby
       .filter((star) => star.name)

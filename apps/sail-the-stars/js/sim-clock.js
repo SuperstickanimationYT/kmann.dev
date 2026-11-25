@@ -69,9 +69,13 @@ export function jumpTo(simMs) {
   reanchor(simMs);
 }
 
-export function backToNow() {
-  reanchor(Date.now());
+export function playFrom(simMs) {
+  reanchor(simMs);
   step = REAL_TIME_STEP;
+}
+
+export function backToNow() {
+  playFrom(Date.now());
 }
 
 export function describeRate() {

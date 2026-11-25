@@ -19,6 +19,7 @@ import {
 } from './shaders.js';
 import { createSettlementPainter, settlementShown } from './settlements.js';
 import { speculationShown } from './speculation.js';
+import { createCraftView } from './craft-view.js';
 import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
 import { grassMesh, MESH_FLOATS, ROCK_SHAPES, rockMesh } from './detail-meshes.js';
@@ -208,6 +209,7 @@ const ECLIPSERS_PER_BODY = 2;
 const REDDENING_ECLIPSER_SIGN = -1;
 const CORONA_FADE_SHARE = 0.004;
 const HIDDEN_BEHIND_FOREGROUND = true;
+const STANDING_SHADOW_HALF_KM = 0.03;
 const LATTICE_UNIT = 18;
 const INVENTED_COLOUR_UNIT = 23;
 const INVENTED_LAND_UNIT = 24;
@@ -594,6 +596,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   let motionBlur = null;
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
+  const craftView = createCraftView(gl, emptyVao);
   const settlements = createSettlementPainter(gl, SETTLEMENTS_UNIT);
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
 
@@ -868,14 +871,16 @@ export function createRenderer(canvas, armMap, galaxies) {
     if (groundTarget?.width === width && groundTarget.height === height) return groundTarget;
     groundTarget?.destroy();
     const target = createTarget(gl, width, height);
-    const depth = gl.createRenderbuffer();
-    gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT32F, width, height);
+    const depth = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, depth);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT32F, width, height);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
-    groundTarget = { ...target, destroy: () => {
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth, 0);
+    groundTarget = { ...target, depth, destroy: () => {
       target.destroy();
-      gl.deleteRenderbuffer(depth);
+      gl.deleteTexture(depth);
     } };
     return groundTarget;
   }
@@ -1075,13 +1080,13 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
 
   function drawShadows(ground, pixelAngle) {
-    const { light, casters, cameraLocalKm, details } = ground;
+    const { light, casters, cameraLocalKm, details, standing } = ground;
     if (!light) return NO_SHADOWS;
     const { texture, framebuffers } = shadowMapsReady();
     const cameraMetres = cameraLocalKm.map((value) => value * 1000);
     const along = (axis) => cameraMetres[0] * axis[0] + cameraMetres[1] * axis[1] + cameraMetres[2] * axis[2];
-    const rocksCast = details.casters.length > 0;
-    const halvesKm = rocksCast ? [...light.halvesKm, details.shadowHalfKm] : light.halvesKm;
+    const rocksCast = details.casters.length > 0 || standing.length > 0;
+    const halvesKm = rocksCast ? [...light.halvesKm, details.shadowHalfKm || STANDING_SHADOW_HALF_KM] : light.halvesKm;
     const centres = halvesKm.map((halfKm) => [light.right, light.up].map((axis) => Math.round(along(axis) / ((2 * halfKm * 1000) / SHADOW_MAP_SIZE))));
     const cascades = halvesKm.map((halfKm, layer) => {
       const half = halfKm * 1000;
@@ -1090,7 +1095,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       return [...shift, half, light.depthKm * 1000];
     });
     const lightUniforms = { uShadowRight: light.right, uShadowUp: light.up, uShadowSun: light.sun };
-    const drawnFor = JSON.stringify([centres, halvesKm, light.sun, ...[casters, details.casters, details.largeCasters].map((drawn) => drawn.map(({ key }) => key))]);
+    const drawnFor = JSON.stringify([centres, halvesKm, light.sun, standing.map(({ localKm }) => localKm), ...[casters, details.casters, details.largeCasters].map((drawn) => drawn.map(({ key }) => key))]);
     if (drawnFor !== shadowMaps.drawnFor) {
       shadowMaps.drawnFor = drawnFor;
       renderShadowMaps(framebuffers, cascades, lightUniforms, ground, pixelAngle);
@@ -1102,7 +1107,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   }
 
   function renderShadowMaps(framebuffers, cascades, lightUniforms, ground, pixelAngle) {
-    const { casters, details, cameraLocalKm } = ground;
+    const { casters, details, cameraLocalKm, standing } = ground;
     gl.useProgram(shadowProgram.program);
     setUniforms(gl, shadowProgram, lightUniforms);
     gl.viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
@@ -1118,6 +1123,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       if (layer === ROCK_SHADOW_LAYER) {
         gl.polygonOffset(ROCK_SHADOW_SLOPE_BIAS, SHADOW_CONSTANT_BIAS);
         drawDetails(shadowProgram, details.casters, ground, pixelAngle, SHADOWS_COARSENED_BY);
+        if (standing.length) craftView.drawShadows(standing, ground, lightUniforms, cascade);
         return;
       }
       drawPatches(shadowProgram, casters, cameraLocalKm);
@@ -1245,7 +1251,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
     const clouds = ground.settings.clouds ? drawClouds(view, bodies, ground, target) : null;
-    return { ground: target.textures[0], clouds: clouds?.textures[0] ?? null, cloudDepth: clouds?.textures[1] ?? null };
+    return { ground: target.textures[0], depth: target.depth, clouds: clouds?.textures[0] ?? null, cloudDepth: clouds?.textures[1] ?? null };
   }
 
   function motionSeen({ view, cockpit, bodies, ground }) {
@@ -1264,7 +1270,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
     systemLight = starlight ?? SUNLIGHT;
     if (blurMotion) motionBlur ??= createMotionBlur(gl, emptyVao);
     const motion = motionBlur?.planFor(blurMotion ? motionSeen({ view, cockpit, bodies, ground }) : null);
@@ -1310,6 +1316,7 @@ export function createRenderer(canvas, armMap, galaxies) {
     bindWarp(eyeStarProgram, warp, adaptation);
     drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT }, HIDDEN_BEHIND_FOREGROUND);
     if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);
+    if (craft.length && !warp) craftView.draw({ craft, bodies, ground, groundDepth: groundView?.depth ?? null, view, width: canvas.width, height: canvas.height, light: systemLight, drawInto: null });
     gl.colorMask(false, false, false, true);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);

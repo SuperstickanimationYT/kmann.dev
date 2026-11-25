@@ -2,7 +2,8 @@ import { cloudTurn, SIMULATED_CLOUD_MAPS } from './clouds.js';
 import { EXOPLANET_SYSTEMS } from './exoplanet-data.js';
 import { DEGREES, directionFromEquatorial, equatorialToFrame, fromHeliocentric, SUN_PECULIAR, SUN_POSITION, velocityFromHeliocentric } from './milky-way.js';
 import { createRandom } from './random.js';
-import { facingParent, inStarlight, KM_PER_AU, ORBIT_PATH_POINTS, orbitPoint, SUN_RADIUS_KM, SYNCHRONOUS_LOOKAHEAD_DAYS } from './solar-system.js';
+import { orbitPoint } from './kepler.js';
+import { facingParent, inStarlight, KM_PER_AU, ORBIT_PATH_POINTS, SUN_RADIUS_KM, SYNCHRONOUS_LOOKAHEAD_DAYS } from './solar-system.js';
 import { add, cross, dot, normalize, rotateAbout, scale, subtract } from './vectors.js';
 
 const EARTH_RADIUS_KM = 6371;

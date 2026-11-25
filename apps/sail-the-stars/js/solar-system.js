@@ -1,5 +1,6 @@
 import { unpackRivers } from './rivers.js';
 import { cloudTurn } from './clouds.js';
+import { orbitAxes, orbitPoint, pointAtEccentricAnomaly, solveKepler } from './kepler.js';
 import { DWARF_ORBITS, DWARF_PLANETS, DWARF_SATELLITE_ORBITS } from './dwarf-planets.js';
 import { DEGREES, equatorialToFrame, SUN_POSITION } from './milky-way.js';
 import { settlementOf } from './settlements.js';
@@ -319,28 +320,6 @@ export const BODIES = [
 
 export const MAPPED_BODIES = BODIES.filter((body) => body.map);
 
-function solveKepler(meanAnomaly, e) {
-  let E = meanAnomaly + e * Math.sin(meanAnomaly);
-  for (let step = 0; step < 12; step++) {
-    const delta = (E - e * Math.sin(E) - meanAnomaly) / (1 - e * Math.cos(E));
-    E -= delta;
-    if (Math.abs(delta) < 1e-12) break;
-  }
-  return E;
-}
-
-function orbitAxes({ a, e, inclination, node, periapsisArgument }) {
-  const [cw, sw, cn, sn, ci, si] = [Math.cos(periapsisArgument), Math.sin(periapsisArgument), Math.cos(node), Math.sin(node), Math.cos(inclination), Math.sin(inclination)];
-  return {
-    along: scale([cw * cn - sw * sn * ci, cw * sn + sw * cn * ci, sw * si], a),
-    across: scale([-sw * cn - cw * sn * ci, -sw * sn + cw * cn * ci, cw * si], a * Math.sqrt(1 - e * e)),
-  };
-}
-
-const pointAtEccentricAnomaly = ({ along, across }, e, E) => add(scale(along, Math.cos(E) - e), scale(across, Math.sin(E)));
-
-export const orbitPoint = (elements) => pointAtEccentricAnomaly(orbitAxes(elements), elements.e, solveKepler(elements.meanAnomaly, elements.e));
-
 function eclipticToFrame([x, y, z]) {
   const c = Math.cos(OBLIQUITY);
   const s = Math.sin(OBLIQUITY);
@@ -594,11 +573,12 @@ function eclipsersOf(body, bodies) {
     .map(({ offsetKm, radiusKm, reddens }) => ({ offsetKm, radiusKm, reddens }));
 }
 
+export const planetFromSunKm = (name, ms) => scale(eclipticToFrame(planetOffsetAu(name, (ms - J2000_MS) / MS_PER_DAY / DAYS_PER_CENTURY)), KM_PER_AU);
+
 export function placeBodies(ms) {
   const days = (ms - J2000_MS) / MS_PER_DAY;
-  const centuries = days / DAYS_PER_CENTURY;
   const fromSun = new Map([['Sun', [0, 0, 0]]]);
-  for (const name of Object.keys(PLANET_ORBITS)) fromSun.set(name, scale(eclipticToFrame(planetOffsetAu(name, centuries)), KM_PER_AU));
+  for (const name of Object.keys(PLANET_ORBITS)) fromSun.set(name, planetFromSunKm(name, ms));
   const moonOffset = moonOffsetKm(days);
   const earth = subtract(fromSun.get('Earth'), scale(moonOffset, EARTH_SHARE_OF_MOON_OFFSET));
   fromSun.set('Earth', earth);

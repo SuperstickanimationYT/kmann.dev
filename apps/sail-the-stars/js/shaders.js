@@ -2684,8 +2684,8 @@ void main() {
   outColour = skyOverGround(viewDirection());
 }`;
 
-const NEAREST_SEEN_METRES = 0.05;
-const FARTHEST_SEEN_METRES = 1e8;
+export const NEAREST_SEEN_METRES = 0.05;
+export const FARTHEST_SEEN_METRES = 1e8;
 
 const DETAIL_PLACING = `
 layout(location = 5) in vec4 aPlaced;

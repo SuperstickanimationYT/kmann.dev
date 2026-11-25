@@ -1,9 +1,9 @@
 import { drawAtlas } from './atlas.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
-import { bodyDestination, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
+import { bodyDestination, craftDestination, craftNow, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
-import { AU_PER_LY, buildArmMap, DEGREES, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
+import { AU_PER_LY, buildArmMap, DEGREES, equatorialToFrame, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { describePick, UNNAMED_STAR } from './picking.js';
 import { menuScene, turnedApart } from './menu-scene.js';
 import { DEFAULT_MODE, MENU_SCENE, MODES, modeFromName } from './modes.js';
@@ -22,8 +22,11 @@ import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, low
 import { showSpeculation, speculationShown } from './speculation.js';
 import { withExoplanetHosts } from './exoplanets.js';
 import { SOLAR_SYSTEM, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
-import { drawOrbits } from './orbits.js';
-import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, simNow, slower, togglePause } from './sim-clock.js';
+import { drawCraftMarks, drawCraftPath, drawOrbits } from './orbits.js';
+import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
+import { createPathTracer } from './craft-path-line.js';
+import { offsetInStretch } from './spacecraft-paths.js';
+import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen } from './touch-controls.js';
@@ -422,19 +425,57 @@ function setOrbits(shown) {
   clearGuides();
 }
 
-function drawOrbitLines(context, width, height) {
+function guideScene(width, height) {
   const seen = bodiesInView();
-  if (!seen) return;
+  if (!seen) return null;
   const offsets = new Map(seen.map(({ body, offsetKm }) => [body.name, offsetKm]));
-  drawOrbits(context, {
-    paths: system.paths(simNow()),
-    offsetOf: (name) => offsets.get(name),
-    bodies: seen.map(({ body, offsetKm }) => ({ ...body, offsetKm })),
-    basis: game.basis,
-    tanHalf: eyeTanHalf(),
-    width,
-    height,
-  });
+  return { offsetOf: (name) => offsets.get(name), bodies: seen.map(({ body, offsetKm }) => ({ ...body, offsetKm })), basis: game.basis, tanHalf: eyeTanHalf(), width, height };
+}
+
+function drawOrbitLines(context, width, height) {
+  const scene = guideScene(width, height);
+  if (!scene) return;
+  drawOrbits(context, { ...scene, paths: system.paths(simNow()) });
+  drawCraftMarks(context, { ...scene, craft: craftInView().filter(({ body, offsetKm }) => craftMarked(body, offsetKm)).map(raisedAboveGround) });
+}
+
+const LANDER_MARK_RAISED_RADII = 0.01;
+
+function raisedAboveGround({ body, offsetKm }) {
+  if (!body.landed) return { body, offsetKm };
+  const parent = bodyNamed(body.parent);
+  return { body, offsetKm: add(offsetKm, scale(subtract(body.fromSunKm, parent.fromSunKm), LANDER_MARK_RAISED_RADII)) };
+}
+
+const LANDERS_MARKED_WITHIN_RADII = 4;
+const CRAFT_MARKED_WITHIN_ORBITS = 40;
+
+function craftMarked(craft, offsetKm) {
+  if (!orbitsShown()) return false;
+  const distanceKm = Math.hypot(...offsetKm);
+  const parent = bodyNamed(craft.parent);
+  if (craft.landed) return distanceKm < LANDERS_MARKED_WITHIN_RADII * parent.radiusKm;
+  return distanceKm < CRAFT_MARKED_WITHIN_ORBITS * Math.hypot(...subtract(craft.fromSunKm, parent.fromSunKm));
+}
+
+const tracePath = createPathTracer();
+const PATH_HIDDEN_WITHIN_HALF_SIZES = 60;
+
+function drawSelectedPath(context, width, height) {
+  const scene = guideScene(width, height);
+  if (!scene || system !== SOLAR_SYSTEM) return;
+  const now = simNow();
+  const craft = craftAt(selection.destination);
+  if (craft?.landed) return;
+  if (craft && Math.hypot(...seenFromCamera([craft])[0].offsetKm) < PATH_HIDDEN_WITHIN_HALF_SIZES * craft.radiusKm) return;
+  const cruise = cruiseOf(selection.destination);
+  for (const stretch of new Set([cruise, craft?.stretch])) {
+    if (!stretch) continue;
+    const centre = scene.offsetOf(stretch.centre);
+    const pointAt = (when) => (stretch === cruise ? cruisePoint(selection.destination, when) : equatorialToFrame(offsetInStretch(stretch, when)));
+    const line = tracePath(stretch, now, pointAt, stretch === craft?.stretch);
+    drawCraftPath(context, { ...scene, past: line.past.map((point) => add(centre, point)), future: line.future.map((point) => add(centre, point)) });
+  }
 }
 const followButton = $('[data-follow]');
 const rotateButton = $('[data-rotate-with]');
@@ -674,21 +715,56 @@ function departureRoomPc() {
   return solarFrame ? Math.hypot(...solarFrame.offsetKm) / KM_PER_PC : eyeNearestStarPc * REGATHER_SHARE_OF_NEAREST_STAR;
 }
 
+const craftAt = ({ craft }) => (craft && solarBodies && system === SOLAR_SYSTEM ? solarCraft.find(({ name }) => name === craft.name) ?? null : null);
+
+function cameraFromSunKm() {
+  const holder = bodyNamed(solarFrame.holder) ?? solarFrame.body;
+  return add(holder.fromSunKm, frameOffsetKm(holder, solarFrame));
+}
+
+function awayFrom(destination) {
+  const craft = solarFrame && craftAt(destination);
+  return craft ? scale(subtract(cameraFromSunKm(), craft.fromSunKm), 1 / KM_PER_PC) : subtract(game.camera, destination.target);
+}
+
+function towardMiddle(destination) {
+  const craft = craftAt(destination);
+  const away = scale(awayFrom(destination), -1);
+  return craft ? add(away, destination.middle(craft, bodyNamed(craft.parent))) : away;
+}
+
+function standoffAt(destination) {
+  if (!destination.craft) return subtract(destination.arrival(game.camera), destination.target);
+  const craft = craftAt(destination) ?? craftNow(destination.craft);
+  const parent = craft.parent === 'Sun' ? SUN_AS_PARENT : placedNow({ name: craft.parent });
+  return destination.standoff({ craft, parent });
+}
+
+function departureFor(destination) {
+  if (!solarFrame) return null;
+  const left = bodyNamed(solarFrame.holder);
+  const holder = left.kind === 'craft' ? bodyNamed(left.parent) : left;
+  if (holder.kind === 'star' || holder.name === craftAt(destination)?.parent) return null;
+  return { holder: holder.name, offsetKm: subtract(cameraFromSunKm(), holder.fromSunKm) };
+}
+
 function glideTo(destination, announcement = `Arrived at ${destination.name}.`) {
-  if (!warpReady()) return;
-  aimThen(subtract(destination.target, game.camera), () => {
+  if (!warpReady() || absent(destination)) return;
+  aimThen(towardMiddle(destination), () => {
+    if (absent(destination)) return;
     const from = [...game.camera];
     const { target } = destination;
-    const standoff = subtract(destination.arrival(from), target);
+    const away = awayFrom(destination);
+    const standoff = standoffAt(destination);
     const path = planGlide({
-      distance: Math.hypot(...subtract(from, target)),
+      distance: Math.hypot(...away),
       finalDistance: Math.hypot(...standoff),
       departureRoom: departureRoomPc(),
     });
-    const departed = solarFrame && { holder: solarFrame.holder, offsetKm: frameOffsetKm(bodyNamed(solarFrame.holder), solarFrame) };
+    const departed = departureFor(destination);
     const stars = starsAlongGlide(from, add(target, standoff));
     if (stars) showStars(stars.departing);
-    glide = { destination, announcement, from, standoff, path, departed, stars, pastHalfway: false, up: game.ship.up, roll: 0, seconds: 0, steppedAt: performance.now() };
+    glide = { destination, announcement, from, away, standoff, path, departed, stars, pastHalfway: false, up: game.ship.up, roll: 0, seconds: 0, steppedAt: performance.now() };
   });
 }
 
@@ -711,16 +787,22 @@ function rollTo(up, level) {
   return roll + 2 * Math.PI * Math.round((glide.roll - roll) / (2 * Math.PI));
 }
 
+function upAt(destination) {
+  const craft = craftAt(destination);
+  return craft ? destination.upNear(craft, bodyNamed(craft.parent)) : destination.up;
+}
+
 function faceWhileRolling(direction, share) {
   const level = orthonormal(direction, glide.up);
   glide.up = level.up;
-  if (glide.destination.up) glide.roll = rollTo(glide.destination.up, level);
+  const up = upAt(glide.destination);
+  if (up) glide.roll = rollTo(up, level);
   const roll = glide.roll * share;
   faceDirection(direction, add(scale(level.up, Math.cos(roll)), scale(level.right, Math.sin(roll))));
 }
 
 function offsetFromTarget(progress) {
-  const away = subtract(glide.from, glide.destination.target);
+  const away = glide.destination.craft ? glide.away : subtract(glide.from, glide.destination.target);
   const [start, finish] = [normalize(away), normalize(glide.standoff)];
   const angle = Math.acos(Math.max(-1, Math.min(1, dot(start, finish))));
   const axis = angle < ALREADY_AIMED_RADIANS || Math.PI - angle < ALREADY_AIMED_RADIANS ? glide.up : normalize(cross(start, finish));
@@ -739,6 +821,28 @@ function frameAround(holder, offsetKm) {
   solarFrame = { holder: holder.name, offsetKm, coRotating: false, localKm: null, camera: game.camera, landed: false, landingArmed: true, body: holder };
 }
 
+const CRAFT_CLEARANCE = 1.005;
+const CRAFT_CLIMB_SHARE = 0.2;
+
+function frameAroundCraft(craft, offsetKm) {
+  const parent = bodyNamed(craft.parent);
+  if (parent.kind === 'star') {
+    frameAround(craft, offsetKm);
+    return;
+  }
+  const fromParentKm = subtract(craft.fromSunKm, parent.fromSunKm);
+  const lowest = craft.landed ? Math.hypot(...fromParentKm) : CRAFT_CLEARANCE * parent.radiusKm;
+  const floor = lowest + CRAFT_CLIMB_SHARE * Math.min(Math.hypot(...offsetKm), parent.radiusKm);
+  const placeKm = add(fromParentKm, offsetKm);
+  const height = Math.hypot(...placeKm);
+  const clearKm = height < floor ? scale(placeKm, floor / height) : placeKm;
+  if (craft.landed) {
+    const aboveGroundKm = scale(clearKm, Math.max(1, lowestDistanceKm(parent, clearKm) / Math.hypot(...clearKm)));
+    frameAround(parent, aboveGroundKm);
+    solarFrame = { ...solarFrame, coRotating: true, localKm: toBodyLocal(parent, aboveGroundKm) };
+  } else frameAround(craft, subtract(clearKm, fromParentKm));
+}
+
 function moveCameraAlongGlide(offset) {
   const { destination, departed, from, path } = glide;
   game.camera = add(destination.target, offset);
@@ -748,6 +852,11 @@ function moveCameraAlongGlide(offset) {
   if (holder && travelledKm < GLIDE_DEPARTURE_RADII * holder.radiusKm && !glide.pastHalfway) {
     const heading = normalize(subtract(destination.target, from));
     frameAround(holder, clearOfDeparted(holder, add(departed.offsetKm, scale(heading, travelledKm)), travelledKm));
+    return;
+  }
+  const craft = craftAt(destination);
+  if (craft) {
+    frameAroundCraft(craft, scale(offset, KM_PER_PC));
     return;
   }
   const body = destination.subject?.body;
@@ -766,7 +875,7 @@ function advanceGlide(now) {
   }
   const offset = offsetFromTarget(progress);
   moveCameraAlongGlide(offset);
-  faceWhileRolling(glide.pastHalfway ? scale(offset, -1) : subtract(destination.target, game.camera), eased(progress));
+  faceWhileRolling(glide.pastHalfway && !destination.craft ? scale(offset, -1) : towardMiddle(destination), eased(progress));
   if (progress < 1) return;
   glide = null;
   settleAt(destination);
@@ -794,6 +903,19 @@ function selectNamed(name) {
   }
   selection = pickFor(destination);
   selectionShownAt = -Infinity;
+  return true;
+}
+
+const shortDate = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+const isAbsent = ({ craft }) => Boolean(craft) && !isOut(craft, simNow());
+
+function absent({ craft, name }) {
+  if (!isAbsent({ craft })) return false;
+  const dates = flightDates(craft);
+  if (!dates) showStatus('Spacecraft paths are still loading.');
+  else if (simNow() < dates.from) showStatus(`${name} had not ${craft.stops ? 'landed' : 'left Earth'} yet: that was on ${shortDate(dates.from)}.`);
+  else showStatus(`${craft.ended ? `${name} is gone: it flew` : `The game shows ${name} only`} from ${shortDate(dates.from)} to ${shortDate(dates.to)}.`);
   return true;
 }
 
@@ -868,8 +990,15 @@ function land(lightYears) {
 }
 
 function arrive(destination) {
-  game.camera = destination.arrival(game.camera);
-  faceDirection(subtract(destination.target, game.camera), destination.up);
+  const craft = craftAt(destination);
+  if (craft) {
+    const standoff = standoffAt(destination);
+    frameAroundCraft(craft, scale(standoff, KM_PER_PC));
+    faceDirection(towardMiddle(destination), upAt(destination) ?? undefined);
+  } else {
+    game.camera = destination.arrival(game.camera);
+    faceDirection(subtract(destination.target, game.camera), destination.up);
+  }
   eyeStars = null;
   settleAt(destination);
 }
@@ -878,6 +1007,8 @@ function settleAt(destination) {
   if (destination.speed) game.speed = Math.max(game.mode.slowestSpeed, destination.speed);
   game.jumps += 1;
   if (game.mode.solarSystem) setFollowing(true);
+  const craft = craftAt(destination);
+  if (craft?.landed) setRotatingWith(craft.parent);
 }
 
 let thrusting = false;
@@ -913,11 +1044,13 @@ function flightStep(seconds) {
 
 let system = SOLAR_SYSTEM;
 let solarBodies = null;
+let solarCraft = [];
 let solarFrame = null;
 
+const SUN_AS_PARENT = { name: 'Sun', kind: 'star', fromSunKm: [0, 0, 0] };
 const groundMaps = [];
 
-const bodyNamed = (name) => solarBodies.find((body) => body.name === name);
+const bodyNamed = (name) => solarBodies.find((body) => body.name === name) ?? solarCraft.find((craft) => craft.name === name);
 const bodyEast = (body) => [
   body.north[1] * body.meridian[2] - body.north[2] * body.meridian[1],
   body.north[2] * body.meridian[0] - body.north[0] * body.meridian[2],
@@ -964,13 +1097,16 @@ const frameOffsetKm = (body, frame) => (frame.coRotating ? fromBodyLocal(body, f
 function enterSystem(entered) {
   system = entered;
   solarBodies = system.place(simNow());
+  solarCraft = system === SOLAR_SYSTEM ? placeSpacecraft(simNow(), solarBodies) : [];
   loadCloudMapsOf(solarBodies, SIMULATED_CLOUD_SIZE, renderer.loadSimulatedClouds, () => showStatus('A cloud map failed to load; some planets show no clouds.'));
 }
+
+const holders = () => [...solarBodies, ...solarCraft.filter(({ landed }) => !landed)];
 
 function enterSolarFrame() {
   if (!withinSystem(system, game.camera)) return null;
   const fromSunKm = scale(subtract(game.camera, system.position), KM_PER_PC);
-  const holder = holdingBody(solarBodies, fromSunKm);
+  const holder = holdingBody(holders(), fromSunKm);
   return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), coRotating: false, localKm: null, camera: null, landed: false, landingArmed: true, body: holder };
 }
 
@@ -991,7 +1127,10 @@ function riversUnder(holder, ground, up) {
   return riversBelow.near;
 }
 
+const CRAFT_SOLID_SHARE = 0.05;
+
 function lowestDistanceKm(holder, offsetKm) {
+  if (holder.kind === 'craft') return CRAFT_SOLID_SHARE * holder.radiusKm;
   const ground = groundFor(holder);
   if (!ground) return radiusBelowKm(holder, offsetKm) + lowestAltitudeKm(holder);
   const frame = groundFrame(toBodyLocal(holder, offsetKm), holder.radiusKm);
@@ -1010,10 +1149,10 @@ function followSolarSystem() {
   enterSystem((!solarFrame && systemNear(game.camera)) || system);
   solarFrame ??= enterSolarFrame();
   if (!solarFrame) return;
-  const previous = bodyNamed(solarFrame.holder);
+  const previous = bodyNamed(solarFrame.holder) ?? solarFrame.body;
   const carriedFrom = following ? previous.fromSunKm : solarFrame.body.fromSunKm;
   const fromSunKm = add(carriedFrom, frameOffsetKm(previous, solarFrame));
-  const holder = holdingBody(solarBodies, fromSunKm);
+  const holder = holdingBody(holders(), fromSunKm);
   if (rotatingWith && rotatingWith !== holder.name) setRotatingWith(null);
   let offsetKm = subtract(fromSunKm, holder.fromSunKm);
   const lowest = lowestDistanceKm(holder, offsetKm);
@@ -1021,7 +1160,7 @@ function followSolarSystem() {
   const landed = distance <= lowest;
   if (landed) offsetKm = scale(offsetKm, lowest / distance);
   const landingArmed = solarFrame.landingArmed || distance - lowest > LANDING_REARM_KM;
-  const touchedDown = landed && landingArmed && thrusting;
+  const touchedDown = landed && landingArmed && thrusting && holder.kind !== 'craft';
   if (touchedDown) {
     showStatus(`Touched down on ${spokenName(holder)}.`);
     if (holder.kind !== 'star') setRotatingWith(holder.name);
@@ -1052,13 +1191,15 @@ function turnWithSpin(before, after) {
 }
 
 let groundPatches = null;
+const STANDING_SHADOWS_WITHIN_KM = 0.5;
 
 function groundInView() {
   if (!solarFrame) return null;
-  const body = bodyNamed(solarFrame.holder);
+  const holder = bodyNamed(solarFrame.holder);
+  const body = holder.kind === 'craft' ? bodyNamed(holder.parent) : holder;
   const settings = groundFor(body);
   if (!settings) return null;
-  const cameraLocalKm = solarFrame.coRotating ? solarFrame.localKm : toBodyLocal(body, solarFrame.offsetKm);
+  const cameraLocalKm = solarFrame.coRotating && body === holder ? solarFrame.localKm : toBodyLocal(body, subtract(cameraFromSunKm(), body.fromSunKm));
   const frame = groundFrame(cameraLocalKm, body.radiusKm);
   const highest = settings.viewFromKm ?? Math.min(GROUND_VIEW_SHARE_OF_RADIUS * body.radiusKm, GROUND_VIEW_HIGHEST_KM);
   if (frame.altitudeKm > highest) return null;
@@ -1067,16 +1208,21 @@ function groundInView() {
   const aboveGroundKm = Math.max(0, Math.hypot(...cameraLocalKm) - lowestDistanceKm(body, fromBodyLocal(body, cameraLocalKm)));
   const seen = { body, settings, cameraLocalKm, frame, aboveGroundKm, blend: blend * blend * (3 - 2 * blend) };
   const { tanHalf, pixelAngle } = eyeView();
-  return { ...seen, ...groundPatches.visible(seen, { basis: { right: toBodyLocal(body, game.basis.right), up: toBodyLocal(body, game.basis.up), forward: toBodyLocal(body, game.basis.forward) }, tanHalf, pixelAngle, sun: toBodyLocal(body, body.sunward) }) };
+  const standing = solarCraft.filter((craft) => craft.landed && craft.parent === body.name && Math.hypot(...subtract(craft.localKm, cameraLocalKm)) < STANDING_SHADOWS_WITHIN_KM);
+  return { ...seen, standing, ...groundPatches.visible(seen, { basis: { right: toBodyLocal(body, game.basis.right), up: toBodyLocal(body, game.basis.up), forward: toBodyLocal(body, game.basis.forward) }, tanHalf, pixelAngle, sun: toBodyLocal(body, body.sunward) }) };
 }
 
 function bodiesInView() {
   if (!solarFrame) return null;
-  const cameraFromSunKm = add(bodyNamed(solarFrame.holder).fromSunKm, solarFrame.offsetKm);
-  return solarBodies
-    .map((body) => ({ body, offsetKm: subtract(body.fromSunKm, cameraFromSunKm) }))
-    .sort((a, b) => Math.hypot(...a.offsetKm) - Math.hypot(...b.offsetKm));
+  return seenFromCamera(solarBodies).sort((a, b) => Math.hypot(...a.offsetKm) - Math.hypot(...b.offsetKm));
 }
+
+function seenFromCamera(bodies) {
+  const here = add(bodyNamed(solarFrame.holder).fromSunKm, solarFrame.offsetKm);
+  return bodies.map((body) => ({ body, offsetKm: subtract(body.fromSunKm, here) }));
+}
+
+const craftInView = () => (solarFrame ? seenFromCamera(solarCraft) : []);
 
 let skyStale = true;
 let skySharp = false;
@@ -1164,6 +1310,7 @@ function frame(now) {
       cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
+      craft: craftInView(),
       starlight: system.light,
       cloudSeconds: paused() || prefersStillness.matches ? 0 : seconds,
       ground,
@@ -1211,6 +1358,7 @@ function refreshGuides(now) {
   if (orbitsShown()) drawOrbitLines(context, width, height);
   if (labelsShown()) drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
   if (selection) followSelection(context, now);
+  if (selection?.destination?.craft) drawSelectedPath(context, width, height);
 }
 
 function photoSize() {
@@ -1381,9 +1529,11 @@ function discPixels(pick, offset) {
 }
 
 function bodyOffsetPc(wanted) {
-  const seen = bodiesInView()?.find(({ body }) => body.name === wanted.name);
+  const seen = [...(bodiesInView() ?? []), ...craftInView()].find(({ body }) => body.name === wanted.name);
   if (seen) return scale(seen.offsetKm, 1 / KM_PER_PC);
-  return game.mode.solarSystem ? subtract(placedNow(wanted).centre, game.camera) : null;
+  if (!game.mode.solarSystem) return null;
+  const { centre } = (wanted.kind === 'craft' ? craftNow(wanted) : placedNow(wanted)) ?? {};
+  return centre ? subtract(centre, game.camera) : null;
 }
 
 const nebulaOffsetPc = (nebula) => {
@@ -1408,8 +1558,20 @@ const nebulaPick = (nebula) => ({ kind: 'nebula', name: nebula.name, locate: () 
 const galaxyPick = (galaxy) => ({ kind: 'galaxy', name: galaxy.name, locate: placedAt(galaxy.centre), destination: galaxyDestination(galaxy) });
 const sunPick = () => ({ kind: KIND.sun, name: 'Sun', absolute: SUN_ABSOLUTE, colour: SUN_COLOUR_INDEX, locate: placedAt(SUN_POSITION), destination: SUN_DESTINATION });
 
+function craftPick(listed) {
+  return {
+    kind: 'body',
+    get body() {
+      return (solarBodies && bodyNamed(listed.name)) ?? craftNow(listed) ?? { ...listed, kind: 'craft' };
+    },
+    locate: () => bodyOffsetPc({ ...listed, kind: 'craft' }),
+    destination: craftDestination(listed),
+  };
+}
+
 function pickFor(destination) {
   const { subject } = destination;
+  if (destination.craft) return craftPick(destination.craft);
   if (subject.kind === 'body') return bodyPick(subject.body);
   if (subject.kind === 'nebula') return { ...nebulaPick(subject.nebula), destination };
   if (subject.kind === 'galaxy') return { ...galaxyPick(subject.galaxy), destination };
@@ -1441,6 +1603,9 @@ function planetStandingInFor(body, pixelsPerKm) {
   return orbitPx < MOON_PICKABLE_ORBIT_PX ? planet : body;
 }
 
+const SMALLEST_PICKABLE_CRAFT_PX = 2;
+const listedCraft = ({ name }) => destinations().find((place) => place.craft?.name === name).craft;
+
 function pickableAt([x, y], reachPx) {
   const star = nearestStarAt([x, y], reachPx);
   const picks = [];
@@ -1455,6 +1620,13 @@ function pickableAt([x, y], reachPx) {
     const discPx = body.radiusKm * pixelsPerKm;
     const miss = Math.max(0, Math.hypot(spot.x - x, spot.y - y) - discPx);
     if (miss <= reachPx) picks.push(Object.assign(body.kind === 'star' ? starBodyPick(body) : bodyPick(planetStandingInFor(body, pixelsPerKm)), { miss }));
+  }
+  for (const { body, offsetKm } of craftInView()) {
+    const spot = spotOnStage(scale(offsetKm, 1 / KM_PER_PC));
+    const discPx = (body.radiusKm * pixelsPerTan) / Math.hypot(...offsetKm);
+    if (!spot || (discPx < SMALLEST_PICKABLE_CRAFT_PX && !craftMarked(body, offsetKm))) continue;
+    const miss = Math.max(0, Math.hypot(spot.x - x, spot.y - y) - discPx);
+    if (miss <= reachPx) picks.push({ ...craftPick(listedCraft(body)), miss });
   }
   const deepSky = [
     ...nebulae.map(nebulaPick),
@@ -1488,7 +1660,22 @@ function showSelectionFacts() {
   $('[data-pick-facts]').replaceChildren(
     ...facts.flatMap(([label, value]) => [Object.assign(document.createElement('dt'), { textContent: label }), Object.assign(document.createElement('dd'), { textContent: value })]),
   );
+  showMissionStart(selection.destination);
   pickPanel.hidden = false;
+}
+
+const missionStartButton = $('[data-pick-mission-start]');
+
+function showMissionStart(destination) {
+  const { craft } = destination;
+  missionStartButton.hidden = !craft || !flightDates(craft);
+  missionStartButton.textContent = craft?.on ? 'Timewarp to landing' : 'Timewarp to start of mission';
+  $('[data-pick-warp]').disabled = isAbsent(destination);
+}
+
+function timewarpToMissionStart() {
+  changeTime(() => playFrom(flightDates(selection.destination.craft).from));
+  selectionShownAt = -Infinity;
 }
 
 const dismantled = ({ kind, destination }) => kind === 'body' && destination.subject.body.kind === 'mirror' && system === SOLAR_SYSTEM && !solarBodies?.some(({ name }) => name === destination.name);
@@ -1789,6 +1976,7 @@ selectInput.addEventListener('input', (event) => {
 });
 $('[data-warp-selection]').addEventListener('click', warpToSelection);
 $('[data-pick-warp]').addEventListener('click', warpToSelection);
+missionStartButton.addEventListener('click', timewarpToMissionStart);
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-pick-close]').addEventListener('click', clearSelection);
 motionBlurToggle.checked = motionBlurWanted();
@@ -1818,6 +2006,7 @@ if (!renderer) {
     warpOptics = optics;
     renderer.loadWarpTable(optics);
   });
+  loadSpacecraft(new URL('data/', window.location.href), groundFor).catch(() => showStatus('Spacecraft paths failed to load; only landers and rovers show.'));
   groundPatches = createGroundPatches(renderer.releasePatch, renderer.releaseDetails, renderer.releaseRibbon);
   loadBodyMaps(new URL('data/planets/', window.location.href), (layer, maps) => {
     renderer.loadBodyMap(layer, maps);
