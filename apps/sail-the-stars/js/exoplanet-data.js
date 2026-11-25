@@ -1,5 +1,5 @@
 const PLANET_COLUMNS = ['letter', 'earthRadii', 'earthMasses', 'periodDays', 'a', 'e', 'inclination', 'periapsis', 'kelvin', 'transitJd', 'periastronJd', 'radiusMeasured', 'massKnown'];
-const planets = (...rows) => rows.map((row) => Object.fromEntries(PLANET_COLUMNS.map((column, k) => [column, row[k]])));
+export const planets = (...rows) => rows.map((row) => Object.fromEntries(PLANET_COLUMNS.map((column, k) => [column, row[k]])));
 
 export const EXOPLANET_SYSTEMS = [
   {

@@ -2,10 +2,10 @@ import { drawAtlas } from './atlas.js';
 import { nameButton, showTipsAbove } from './dock-buttons.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
-import { bodyDestination, craftDestination, craftNow, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, starDestination, SUN_DESTINATION } from './destinations.js';
+import { bodyDestination, craftDestination, craftNow, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, plainStarDestination, starDestination, SUN_DESTINATION } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, equatorialToFrame, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
-import { describePick, UNNAMED_STAR } from './picking.js';
+import { describePick } from './picking.js';
 import { menuScene, turnedApart } from './menu-scene.js';
 import { DEFAULT_MODE, MENU_SCENE, MODES, modeFromName } from './modes.js';
 import { KOTO_GARDEN } from './music/koto-garden.js';
@@ -22,7 +22,7 @@ import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
 import { withExoplanetHosts } from './exoplanets.js';
-import { SOLAR_SYSTEM, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
+import { knowStarsNearSun, otherSystems, SOLAR_SYSTEM, SYSTEM_REACH_PC, systemAround, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
 import { drawCraftMarks, drawCraftPath, drawOrbits } from './orbits.js';
 import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
 import { createPathTracer } from './craft-path-line.js';
@@ -34,7 +34,7 @@ import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen 
 import { drainageOf } from './river-ribbons.js';
 import { riversNear } from './rivers.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
-import { gatherStars, KIND, loadNearbyStars, placeNebulae, starsOfBoth, SUN_ABSOLUTE } from './stars.js';
+import { fieldStarSeenAt, gatherStars, KIND, loadNearbyStars, placeNebulae, starsOfBoth, SUN_ABSOLUTE } from './stars.js';
 import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
@@ -931,12 +931,14 @@ function warpToSelection() {
 
 let destinationList = null;
 let listedMirrors = '';
+let listedSystems = 0;
 function destinations() {
   const mirrors = mirrorsNow();
   const mirrorNames = mirrors.map(({ name }) => name).join();
-  if (nearby.length && (!destinationList || mirrorNames !== listedMirrors)) {
+  if (nearby.length && (!destinationList || mirrorNames !== listedMirrors || otherSystems().length !== listedSystems)) {
     listedMirrors = mirrorNames;
     destinationList = listDestinations({ nearby, nebulae, galaxies, mirrors });
+    listedSystems = otherSystems().length;
     selectList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
   }
   return destinationList ?? [];
@@ -1262,6 +1264,23 @@ function nearestStarPc(stars) {
 const gatherEyeStars = (camera) => gatherStars({ camera, limit: EYE_LIMIT, budget: EYE_BUDGET, armMap, nebulae, nearby });
 const regatherDistancePc = () => Math.min(REGATHER_DISTANCE, REGATHER_SHARE_OF_NEAREST_STAR * eyeNearestStarPc);
 
+function starFrom({ kind, key, position, absolute }) {
+  if (kind === KIND.catalogue) return { ...key, kind };
+  const star = kind === KIND.field && fieldStarSeenAt(position, absolute, armMap);
+  return star ? { ...star, kind } : null;
+}
+
+function meetStarsWithin(reachPc) {
+  if (eyeNearestStarPc > reachPc) return;
+  const { count, precise, kinds, keys } = eyeStars;
+  for (let i = 0; i < count; i++) {
+    const at = i * STAR_STRIDE;
+    if (precise[at + STAR_DISTANCE_SLOT] > reachPc) continue;
+    const star = starFrom({ kind: kinds[i], key: keys[i], position: add(eyeAnchor, precise.slice(at, at + 3)), absolute: precise[at + 3] });
+    if (star) systemAround(star);
+  }
+}
+
 function refreshEyeStars(now) {
   if (!nearby.length || glide) return;
   const drift = eyeAnchor ? Math.hypot(...subtract(game.camera, eyeAnchor)) : Infinity;
@@ -1269,6 +1288,7 @@ function refreshEyeStars(now) {
   eyeAnchor = [...game.camera];
   eyeStars = gatherEyeStars(eyeAnchor);
   eyeNearestStarPc = nearestStarPc(eyeStars);
+  if (game.mode.solarSystem) meetStarsWithin(SYSTEM_REACH_PC + regatherDistancePc());
   eyeGatheredAt = now;
   eyeStarsChanged = true;
 }
@@ -1501,7 +1521,7 @@ function nearestStarAt([x, y], reachPx) {
     if (eyeStars.precise[i * 6 + 3] + 5 * Math.log10(distance / 10) > EYE_LIMIT) continue;
     const miss = Math.hypot(spot.x - x, spot.y - y);
     if (miss <= reachPx && (!nearest || miss < nearest.miss)) {
-      nearest = { kind: eyeStars.kinds[i], name: eyeStars.names[i], absolute: eyeStars.precise[i * 6 + 3], colour: eyeStars.precise[i * 6 + 4], distance, miss, offset };
+      nearest = { kind: eyeStars.kinds[i], key: eyeStars.keys[i], name: eyeStars.names[i], absolute: eyeStars.precise[i * 6 + 3], colour: eyeStars.precise[i * 6 + 4], distance, miss, offset };
     }
   }
   return nearest;
@@ -1577,25 +1597,22 @@ function pickFor(destination) {
   if (subject.kind === 'body') return bodyPick(subject.body);
   if (subject.kind === 'nebula') return { ...nebulaPick(subject.nebula), destination };
   if (subject.kind === 'galaxy') return { ...galaxyPick(subject.galaxy), destination };
-  const { star } = subject;
-  if (star.sun) return sunPick();
-  return star.host ? hostPick(star.host) : { kind: KIND.catalogue, name: star.name, absolute: star.absolute, colour: star.colour, locate: placedAt(star.position), destination };
+  return subject.star.sun ? sunPick() : hostPick(subject.star.host);
 }
 
 function hostPick(name) {
   const { catalogueStar, data } = systemNamed(name);
-  return { kind: KIND.catalogue, ...catalogueStar, hostData: data, locate: placedAt(catalogueStar.position), destination: starDestination(catalogueStar) };
+  return { ...catalogueStar, kind: catalogueStar.kind ?? KIND.catalogue, hostData: data, locate: placedAt(catalogueStar.position), destination: starDestination(catalogueStar) };
 }
 
 const starBodyPick = (body) => (body.host ? hostPick(body.host) : sunPick());
 
 function clickedStarPick(star) {
   if (star.kind === KIND.sun) return sunPick();
-  if (star.kind === KIND.catalogue && systemNamed(star.name)) return hostPick(star.name);
   const position = add(game.camera, star.offset);
-  const pick = { ...star, locate: placedAt(position) };
-  const { title } = describePick(pick);
-  return { ...pick, destination: starDestination({ name: title === UNNAMED_STAR ? 'an unnamed star' : title, position }) };
+  const found = starFrom({ ...star, position });
+  if (found) return hostPick(systemAround(found).name);
+  return { ...star, locate: placedAt(position), destination: plainStarDestination({ name: 'an unnamed star', position }) };
 }
 
 function planetStandingInFor(body, pixelsPerKm) {
@@ -2025,6 +2042,7 @@ if (!renderer) {
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     catalogue = stars;
     nearby = withExoplanetHosts(stars);
+    knowStarsNearSun(nearby);
   });
   requestAnimationFrame(frame);
 }

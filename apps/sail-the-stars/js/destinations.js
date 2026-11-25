@@ -1,6 +1,5 @@
 import { LY_PER_PC, SUN_POSITION } from './milky-way.js';
-import { EXOPLANET_HOSTS } from './exoplanets.js';
-import { SOLAR_SYSTEM, systemNamed, systemOf } from './planetary-systems.js';
+import { otherSystems, SOLAR_SYSTEM, systemAround, systemNamed, systemOf } from './planetary-systems.js';
 import { arrivalNear, BODIES, KM_PER_PC } from './solar-system.js';
 import { isOut, placeSpacecraft } from './spacecraft.js';
 import { LANDED, SPACECRAFT } from './spacecraft-catalogue.js';
@@ -26,7 +25,7 @@ export function craftNow(craft) {
 const backOff = (from, target, standoff) => add(target, scale(normalize(subtract(from, target)), standoff));
 const approach = (name, group, target, standoff, subject) => ({ name, group, target, subject, arrival: (from) => backOff(from, target, standoff) });
 
-const plainStarDestination = (star) => approach(star.name, 'Stars', star.position, STAR_STANDOFF, { kind: 'star', star });
+export const plainStarDestination = (star) => approach(star.name, 'Stars', star.position, STAR_STANDOFF, { kind: 'star', star });
 
 function hostDestination(star) {
   const { position, star: { north }, outermostKm } = systemNamed(star.host);
@@ -42,15 +41,15 @@ function hostDestination(star) {
   };
 }
 
-export const starDestination = (star) => (star.host ? hostDestination(star) : plainStarDestination(star));
+export const starDestination = (star) => hostDestination(systemAround(star).catalogueStar);
 
-export const SUN_DESTINATION = starDestination({ name: 'Sun', position: SUN_POSITION, sun: true });
+export const SUN_DESTINATION = plainStarDestination({ name: 'Sun', position: SUN_POSITION, sun: true });
 
 const DWARF_GROUPS = { agreed: 'Dwarf planets', likely: 'Likely dwarf planets' };
 
 function groupOf(body) {
   if (body.kind === 'mirror') return `Made-up mirrors of ${body.parent}`;
-  if (body.host) return `Planet of ${body.host}`;
+  if (body.host) return `${body.madeUp ? 'Made-up planet' : 'Planet'} of ${body.host}`;
   if (body.dwarf) return DWARF_GROUPS[body.dwarf];
   return body.parent ? `Moon of ${body.parent}` : 'Planets';
 }
@@ -139,17 +138,17 @@ const MILKY_WAY_DESTINATION = {
 export const mirrorsNow = () => SOLAR_SYSTEM.place(simNow()).filter(({ kind }) => kind === 'mirror');
 
 export function listDestinations({ nearby, nebulae, galaxies, mirrors }) {
+  const starsByName = nearby.filter((star) => star.name && !star.host).map(starDestination);
+  const hosts = otherSystems().map(({ catalogueStar }) => hostDestination(catalogueStar));
+  const stars = new Map([...starsByName, ...hosts].map((place) => [place.name, place]));
   return [
     SUN_DESTINATION,
     ...BODIES.filter((body) => body.kind !== 'star').map(bodyDestination),
     ...mirrors.map(bodyDestination),
     ...[...SPACECRAFT, ...LANDED].map(craftDestination),
     MILKY_WAY_DESTINATION,
-    ...nearby
-      .filter((star) => star.name)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(starDestination),
-    ...EXOPLANET_HOSTS.flatMap(({ planets }) => planets.map(bodyDestination)),
+    ...[...stars.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    ...otherSystems().flatMap(({ planets }) => planets.map(bodyDestination)),
     ...nebulae.filter((nebula) => !/^G\d/.test(nebula.name)).map(nebulaDestination),
     ...galaxies.map(galaxyDestination),
   ];
