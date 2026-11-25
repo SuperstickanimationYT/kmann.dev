@@ -1876,8 +1876,8 @@ vec3 coronaLight(int i, vec3 direction) {
 
 vec3 coronaBehind(vec3 direction) {
   if (uCoronaShown <= 0.0) return vec3(0.0);
-  for (int i = 0; i < ${MAX_BODIES}; i++) {
-    if (i < uBodyCount && uBodyLook[i].w == STAR_KIND && dot(direction, uBodyPlace[i].xyz) > 0.0) return coronaLight(i, direction);
+  for (int i = 0; i < uBodyCount; i++) {
+    if (uBodyLook[i].w == STAR_KIND && dot(direction, uBodyPlace[i].xyz) > 0.0) return coronaLight(i, direction);
   }
   return vec3(0.0);
 }
@@ -1930,11 +1930,34 @@ float spikeReachOf(float pointBrightness) {
   return max(SPIKE_FAINTEST_MAGNITUDE - magnitude, 0.0) * SPIKE_PIXELS_PER_MAGNITUDE;
 }
 
+struct Strike {
+  int body;
+  float hit;
+  float radius;
+  float cover;
+  vec4 ring;
+  float ringHit;
+};
+
+vec4 strikeColour(Strike strike, vec3 direction, vec3 points) {
+  starHit = uBodyLook[strike.body].w == STAR_KIND;
+  vec3 body = shadeBody(strike.body, direction, strike.hit, strike.radius);
+  if (strike.body == uRingedBody) body *= sunThroughRings(strike.body, direction, strike.hit);
+  float cover = strike.cover;
+  vec4 ring = strike.ring;
+  if (ring.a <= 0.0) {
+    vec3 behind = starHit || cover >= 1.0 ? vec3(0.0) : coronaBehind(direction) * (1.0 - cover);
+    return vec4(body * cover + behind + points, cover);
+  }
+  if (strike.ringHit < strike.hit) return vec4(ring.rgb + body * cover * (1.0 - ring.a) + points, 1.0 - (1.0 - ring.a) * (1.0 - cover));
+  return vec4(body * cover + ring.rgb * (1.0 - cover) + points, cover + ring.a * (1.0 - cover));
+}
+
 vec4 bodiesColour(vec3 direction) {
   vec3 points = vec3(0.0);
   Haze haze = NO_HAZE;
-  for (int i = 0; i < ${MAX_BODIES}; i++) {
-    if (i >= uBodyCount) break;
+  Strike strike = Strike(-1, 0.0, 0.0, 0.0, vec4(0.0), -1.0);
+  for (int i = 0; i < uBodyCount; i++) {
     if (i == uGround && uGroundBlend >= 1.0) continue;
     if (dot(direction, uBodyPlace[i].xyz) < uBodyReach[i]) continue;
     if (i != uGround || uWarpAxis.w > 0.5) {
@@ -1973,18 +1996,11 @@ vec4 bodiesColour(vec3 direction) {
       continue;
     }
     float inside = min(miss, radius * 0.9999);
-    float hit = (along - sqrt(radius * radius - inside * inside)) / stretch;
-    starHit = uBodyLook[i].w == STAR_KIND;
-    vec3 body = shadeBody(i, direction, hit, radius);
-    if (i == uRingedBody) body *= sunThroughRings(i, direction, hit);
-    if (ring.a <= 0.0) {
-      vec3 behind = starHit || cover >= 1.0 ? vec3(0.0) : coronaBehind(direction) * (1.0 - cover);
-      return throughHaze(vec4(body * cover + behind + points, cover), haze);
-    }
-    if (ringHit < hit) return throughHaze(vec4(ring.rgb + body * cover * (1.0 - ring.a) + points, 1.0 - (1.0 - ring.a) * (1.0 - cover)), haze);
-    return throughHaze(vec4(body * cover + ring.rgb * (1.0 - cover) + points, cover + ring.a * (1.0 - cover)), haze);
+    strike = Strike(i, (along - sqrt(radius * radius - inside * inside)) / stretch, radius, cover, ring, ringHit);
+    break;
   }
-  return throughHaze(vec4(points, 0.0), haze);
+  vec4 seen = strike.body < 0 ? vec4(points, 0.0) : strikeColour(strike, direction, points);
+  return throughHaze(seen, haze);
 }
 
 uniform vec3 uGroundCamera;
