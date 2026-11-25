@@ -622,7 +622,7 @@ export function inStarlight(bodies, starPosition, starRadiusKm) {
       radius: body.radiusKm / KM_PER_PC,
       sunward: body.litFrom ?? (sunDistanceKm > 0 ? scale(body.fromSunKm, -1 / sunDistanceKm) : [0, 0, 1]),
       sunDistanceAu: sunDistanceKm / KM_PER_AU,
-      sunAngularRadius: sunDistanceKm > 0 ? Math.asin(Math.min(1, starRadiusKm / sunDistanceKm)) : 0,
+      sunAngularRadius: body.sunAngularRadius ?? (sunDistanceKm > 0 ? Math.asin(Math.min(1, starRadiusKm / sunDistanceKm)) : 0),
     };
   });
   return placed.map((body) => {

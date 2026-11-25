@@ -269,6 +269,9 @@ function massOfGiants(star, inner, random) {
 const fitGiants = (settled, candidates, starMass) =>
   candidates.reduce((kept, giant) => (spacedBy([...kept, giant], starMass, GIANT.mutualHill) ? [...kept, giant] : kept), settled);
 
+const JUPITER_MASSES = 317.8;
+const JUPITER_INNER_KELVIN = 100;
+const innerKelvin = (earthMasses) => JUPITER_INNER_KELVIN * (earthMasses / JUPITER_MASSES) ** (earthMasses < JUPITER_MASSES ? 0.21 : 0.6);
 const equilibriumKelvin = (star, a) => (EARTH_KELVIN * star.luminosity ** 0.25) / Math.sqrt(a);
 
 const withGiantBody = (giant, star, random) =>
@@ -292,7 +295,7 @@ function described(planet, k, star, plane, random) {
     inclination: plane.inclination + planet.tilt * Math.cos(around),
     node: plane.node + (planet.tilt * Math.sin(around)) / Math.max(0.2, Math.sin(plane.inclination / DEGREES_PER_RADIAN)),
     periapsis: 360 * random.next(),
-    kelvin: equilibriumKelvin(star, planet.a),
+    kelvin: star.luminosity > 0 ? equilibriumKelvin(star, planet.a) : innerKelvin(planet.earthMasses),
     transitJd: null,
     periastronJd: null,
     radiusMeasured: true,
@@ -300,17 +303,28 @@ function described(planet, k, star, plane, random) {
   };
 }
 
+const drawnMetallicity = (random) => clamp(METALLICITY.mean + METALLICITY.spread * random.normal(), -0.7, 0.5);
+
 export function generatePlanets(properties, random, companionAu = Infinity) {
-  const star = {
-    ...properties,
-    companionAu,
-    metallicity: clamp(METALLICITY.mean + METALLICITY.spread * random.normal(), -0.7, 0.5),
-  };
+  const star = { ...properties, companionAu, metallicity: drawnMetallicity(random) };
   if (star.mass > MOST_MASSIVE_HOST) return [];
+  return formPlanets(star, random, (planet) => survives(planet, star), (planet) => planet);
+}
+
+const SOLAR_RADII_PER_AU = 215.03;
+
+export function generatePlanetsOfBlackHole({ suns, star: former }, random) {
+  const star = { mass: MOST_MASSIVE_HOST, luminosity: 0, radius: 0, gaiaColour: 0, evolved: true, metallicity: drawnMetallicity(random) };
+  const clearOfFormerStar = ({ a, e }) => a * (1 - e) > former.largestRadiusSuns / SOLAR_RADII_PER_AU;
+  const widened = (planet) => ({ ...planet, a: (planet.a * former.suns) / suns });
+  return formPlanets(star, random, clearOfFormerStar, widened).map((planet) => ({ ...planet, periodDays: daysOf(planet.a, suns) }));
+}
+
+function formPlanets(star, random, kept, moved) {
   const plane = { inclination: Math.acos(2 * random.next() - 1) * DEGREES_PER_RADIAN, node: 360 * random.next() };
   const { giants, regular } = massOfGiants(star, drawInner(star, random), random);
   const inner = clearOf(giants, calmed(withSpread(regular, random), star.mass, INNER.mutualHill), star.mass);
   const cold = clearOf(giants, drawCold(star, random), star.mass);
   const smalls = fitBetween(inner, cold, star.mass);
-  return byAxis([...giants, ...smalls].filter((planet) => survives(planet, star))).map((planet, k) => described(planet, k, star, plane, random));
+  return byAxis([...giants, ...smalls].filter((planet) => kept(planet))).map((planet, k) => described(moved(planet), k, star, plane, random));
 }

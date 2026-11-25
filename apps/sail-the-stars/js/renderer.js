@@ -23,6 +23,7 @@ import { createCraftView } from './craft-view.js';
 import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
 import { grassMesh, MESH_FLOATS, ROCK_SHAPES, rockMesh } from './detail-meshes.js';
+import { createBlackHoleView } from './black-hole-view.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { createMapEdges } from './map-edges.js';
 import { RIBBON_FLOATS } from './rivers.js';
@@ -328,6 +329,9 @@ function brightestInDistanceOrder(seen) {
 
 const VALUES_PER_BODY = { uBodyNorth: 3, uBodyMeridian: 3, uBodyFlattening: 1 };
 const NO_STAR_SHIFT = [0, 0, 0];
+const NO_HOLE = [0, 0, 0, 0];
+const ONE_STAR_IMAGE = [0];
+const STAR_IMAGES = [0, 1];
 const SEEN_RADII = 1.5;
 const RINGS_SEEN_RADII = 2.5;
 const GLOW_SEEN_PIXELS = 200;
@@ -596,6 +600,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   let systemLight = SUNLIGHT;
   const giants = createGiantPainter(gl, emptyVao);
   const craftView = createCraftView(gl, emptyVao);
+  const blackHoleView = createBlackHoleView(gl, emptyVao, { keptSkyUnit: KEPT_SKY_UNIT, latticeUnit: LATTICE_UNIT });
   const settlements = createSettlementPainter(gl, SETTLEMENTS_UNIT);
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
 
@@ -1269,8 +1274,10 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.uniform2fv(program.uniforms.uStruts, cockpit.struts);
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies: placedBodies, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
     systemLight = starlight ?? SUNLIGHT;
+    const bodies = placedBodies?.filter(({ body }) => !body.hole) ?? null;
+    const hole = placedBodies?.find(({ body }) => body.hole);
     if (blurMotion) motionBlur ??= createMotionBlur(gl, emptyVao);
     const motion = motionBlur?.planFor(blurMotion ? motionSeen({ view, cockpit, bodies, ground }) : null);
     const planetValues = planetUniforms(planet, view.camera);
@@ -1285,11 +1292,12 @@ export function createRenderer(canvas, armMap, galaxies) {
     giants.advance(bodies ?? [], view.pixelAngle, cloudSeconds);
     riverSeconds = (riverSeconds + cloudSeconds) % RIVER_CYCLE_SECONDS;
     const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
+    const lens = warp ? null : blackHoleView.lensed({ seen: hole, view, sky: shownSky.textures[0], keptSkyReady: keptSky?.tiles >= KEPT_SKY_TILE_COUNT, width: canvas.width, height: canvas.height });
     gl.bindFramebuffer(gl.FRAMEBUFFER, motion?.needed ? motionBlur.pictureFitting(canvas.width, canvas.height).framebuffer : null);
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.useProgram(eyeProgram.program);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, shownSky.textures[0]);
+    gl.bindTexture(gl.TEXTURE_2D, lens?.sky ?? shownSky.textures[0]);
     gl.uniform1i(eyeProgram.uniforms.uSky, 0);
     if (groundView) {
       gl.activeTexture(gl.TEXTURE0 + GROUND_VIEW_UNIT);
@@ -1301,7 +1309,7 @@ export function createRenderer(canvas, armMap, galaxies) {
       gl.uniform1i(eyeProgram.uniforms.uCloudView, CLOUD_VIEW_UNIT);
       setUniforms(gl, eyeProgram, { uCloudsOn: groundView.clouds ? 1 : 0 });
     }
-    setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0 });
+    setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0, uFlowOn: lens?.glowing ? 1 : 0, uDazzle: lens?.dazzle ?? 0 });
     setCockpit(eyeProgram, cockpit);
     setUniforms(gl, eyeProgram, planetValues);
     setBodies(eyeProgram, bodies, ground, view.pixelAngle);
@@ -1313,7 +1321,10 @@ export function createRenderer(canvas, armMap, galaxies) {
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
     setBodies(eyeStarProgram, bodies, null, 0, ground?.body);
     bindWarp(eyeStarProgram, warp, adaptation);
-    drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT }, HIDDEN_BEHIND_FOREGROUND);
+    blackHoleView.bindStarImages(eyeStarProgram);
+    for (const image of lens ? STAR_IMAGES : ONE_STAR_IMAGE) {
+      drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT, uHole: NO_HOLE, ...lens?.starUniforms, uHoleImage: { int: image } }, HIDDEN_BEHIND_FOREGROUND);
+    }
     if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);
     if (craft.length && !warp) craftView.draw({ craft, bodies, ground, groundDepth: groundView?.depth ?? null, view, width: canvas.width, height: canvas.height, light: systemLight, drawInto: null });
     gl.colorMask(false, false, false, true);

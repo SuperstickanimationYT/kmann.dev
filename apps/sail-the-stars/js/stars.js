@@ -52,7 +52,7 @@ export function hashCell(x, y, z, salt) {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-function poisson(random, mean) {
+export function poisson(random, mean) {
   if (mean > MAX_POISSON_EXACT) return Math.max(0, Math.round(mean + Math.sqrt(mean) * random.normal()));
   const threshold = Math.exp(-mean);
   let count = 0;
@@ -70,7 +70,7 @@ function boxRange(origin, reach) {
   return origin.map((value, axis) => [Math.max(low[axis], value - reach), Math.min(high[axis], value + reach)]);
 }
 
-function forEachCellInSphere(centre, radius, size, visit) {
+export function forEachCellInSphere(centre, radius, size, visit) {
   const range = boxRange(centre, radius);
   if (range.some(([low, high]) => low > high)) return;
   const [[x0, x1], [y0, y1], [z0, z1]] = range.map(([low, high]) => [Math.floor(low / size), Math.floor(high / size)]);
@@ -300,7 +300,7 @@ export function gatherStars({ camera, axis = null, tanHalf = 0, limit, budget, a
 
   const resolved = (absolute) => reaches[nearestBinIndex(absolute)] > 0;
   nearby.forEach((star) => {
-    if (resolved(star.absolute)) collector.add(star.position, star.velocity, star.absolute, star.colour, KIND.catalogue, star, star.name);
+    if (star.hole || resolved(star.absolute)) collector.add(star.position, star.velocity, star.absolute, star.colour, KIND.catalogue, star, star.name);
   });
   if (resolved(SUN_ABSOLUTE)) collector.add(SUN_POSITION, SUN_VELOCITY, SUN_ABSOLUTE, 0.65, KIND.sun, 'Sun', 'Sun');
 

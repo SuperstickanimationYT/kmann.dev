@@ -1,4 +1,5 @@
-import { EXOPLANET_HOSTS, madeUpSystem } from './exoplanets.js';
+import { KNOWN_BLACK_HOLES } from './black-holes.js';
+import { blackHoleSystem, EXOPLANET_HOSTS, madeUpSystem } from './exoplanets.js';
 import { DEGREES, frameToEquatorial, SUN_POSITION } from './milky-way.js';
 import { orbitPaths, placeBodies } from './solar-system.js';
 import { hashCell, KIND } from './stars.js';
@@ -11,7 +12,10 @@ const POSITION_STEPS_PER_PC = 4096;
 
 export const SOLAR_SYSTEM = { name: 'Sun', position: SUN_POSITION, light: [1, 1, 1], place: placeBodies, paths: orbitPaths };
 
-const others = [...EXOPLANET_HOSTS];
+const seedOf = ({ position }) => hashCell(...position.map((value) => Math.round(value * POSITION_STEPS_PER_PC)), 60013);
+const systemOfHole = (star) => blackHoleSystem(star, seedOf(star));
+
+const others = [...EXOPLANET_HOSTS, ...KNOWN_BLACK_HOLES.map(systemOfHole)];
 const byName = new Map([SOLAR_SYSTEM, ...others].map((system) => [system.name, system]));
 
 const distanceBetween = (a, b) => Math.hypot(...subtract(a, b));
@@ -44,7 +48,6 @@ function companionAu({ position }) {
   return nearest * AU_PER_PC;
 }
 
-const seedOf = ({ position }) => hashCell(...position.map((value) => Math.round(value * POSITION_STEPS_PER_PC)), 60013);
 const padded = (value) => String(Math.floor(value)).padStart(2, '0');
 const sexagesimal = (seconds) => padded(seconds / 3600) + padded((seconds / 60) % 60) + padded(seconds % 60);
 
@@ -64,7 +67,7 @@ export function systemAround(star) {
   const name = star.name ?? (star.kind === KIND.field ? simulatedName(star) : skyName(star));
   const known = systemNamed(star.host ?? name);
   if (known) return known;
-  const made = madeUpSystem({ ...star, name }, { seed: seedOf(star), companionAu: companionAu(star) });
+  const made = star.hole ? systemOfHole(star) : madeUpSystem({ ...star, name }, { seed: seedOf(star), companionAu: companionAu(star) });
   others.push(made);
   byName.set(name, made);
   return made;

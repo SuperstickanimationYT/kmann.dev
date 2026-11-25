@@ -3242,6 +3242,16 @@ vec4 groundThroughHaze(vec4 ground, vec3 direction) {
   return vec4(hazy.rgb - haze.light * haze.clear * ground.rgb * uGroundBlend, hazy.a);
 }
 
+uniform float uFlowOn;
+uniform float uDazzle;
+const vec3 FLOW_TINT = vec3(0.68, 0.75, 1.0);
+
+vec3 throughFlow(vec3 behind) {
+  if (uFlowOn < 0.5) return behind;
+  vec3 glow = pow(1.0 - exp(-texture(uSky, vUv).a * FLOW_TINT), vec3(0.4545));
+  return 1.0 - (1.0 - min(behind, 1.0)) * (1.0 - glow);
+}
+
 vec4 sceneSeen(vec3 direction) {
   vec4 planet = planetColour(direction);
   if (planet.a >= 1.0) {
@@ -3266,13 +3276,13 @@ vec4 sceneSeen(vec3 direction) {
   float broadband = 1.08e-4 * dot(sky / uWhiteBalance, vec3(1.0 / 3.0));
   bool photo = uLongExposure > 0.5 && uWarpAxis.w < 0.5;
   float seen = photo ? broadband * localContrastGain(broadband / 1.08e-4) : mix(scotopic, photopic, colourShare);
-  float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation;
+  float logSeen = log(max(seen, 1e-12)) / log(10.0) - uAdaptation - uDazzle;
   float lightness = photo ? photoLightness(logSeen) : nakedEyeLightness(logSeen, colourShare);
   vec3 tint = sky / uWhiteBalance;
   tint /= max(max(tint.r, tint.g), max(tint.b, 1e-9));
   tint = boostSaturation(tint, mix(1.0, LONG_EXPOSURE_SATURATION, uLongExposure));
   vec3 colour = mix(vec3(0.86, 0.9, 1.0), tint, colourShare);
-  vec3 behind = colour * max(lightness, 0.0) * (1.0 - body.a);
+  vec3 behind = throughFlow(colour * max(lightness, 0.0)) * (1.0 - body.a);
   vec3 throughAir = behind * (1.0 - ground.a) + body.rgb * (1.0 - bodyVeil) + ground.rgb;
   return vec4(mix(throughAir + planet.rgb, planet.rgb, planet.a), max(max(body.a, ground.a), planet.a));
 }
@@ -3307,9 +3317,40 @@ out float vSprite;
 uniform float uLongExposure;
 uniform float uSunSeen;
 uniform vec3 uStarShift;
+uniform vec4 uHole;
+uniform float uHoleDistancePc;
+uniform float uHoleHidesSprite;
+uniform int uHoleImage;
+uniform float uDazzle;
+uniform sampler2D uHoleImages;
+const float BEHIND_HOLE = 2.0;
+const float FAINTEST_DRAWN = 6.8;
+const float SPRITE_FADE_DECADES = 13.0;
+const float SPRITE_AT_HOLE_COSINE = 0.99;
+
+vec2 imageSeen(float skyAngle) {
+  float count = float(textureSize(uHoleImages, 0).x);
+  float place = clamp(pow(skyAngle / 3.14159265, 1.0 / 3.0) * count - 0.5, 0.0, count - 1.0);
+  int low = min(int(place), int(count) - 2);
+  return mix(texelFetch(uHoleImages, ivec2(low, uHoleImage), 0).rg, texelFetch(uHoleImages, ivec2(low + 1, uHoleImage), 0).rg, place - float(low));
+}
+
+float bendAroundHole(inout vec3 seen, float distance) {
+  float toward = dot(seen, uHole.xyz);
+  if (distance < BEHIND_HOLE * uHoleDistancePc) {
+    bool holeItself = toward > SPRITE_AT_HOLE_COSINE && distance > 0.5 * uHoleDistancePc;
+    return uHoleImage == 1 ? 0.0 : holeItself ? pow(10.0, -SPRITE_FADE_DECADES * uHoleHidesSprite) : 1.0;
+  }
+  vec3 across = seen - uHole.xyz * toward;
+  float miss = length(across);
+  vec2 image = imageSeen(atan(miss, toward));
+  across *= (uHoleImage == 0 ? 1.0 : -1.0) / max(miss, 1e-9);
+  seen = uHole.xyz * cos(image.x) + across * sin(image.x);
+  return image.y;
+}
 
 vec2 streakPixels(vec3 offset, vec2 ndc) {
-  if (uWarpAxis.w > 0.5) return vec2(0.0);
+  if (uWarpAxis.w > 0.5 || uHole.w > 0.5) return vec2(0.0);
   vec3 past = offset + uStarShift;
   float ahead = dot(past, uForward);
   if (ahead <= 0.0) return vec2(0.0);
@@ -3376,6 +3417,12 @@ void main() {
     }
     seen = atAngleFromAxis(seen, observed);
     warping = warpBrightening(aLook.y, pow(10.0, warpLookup(observed).y), magnification);
+  } else if (uHole.w > 0.5) {
+    warping = vec3(bendAroundHole(seen, distance) * pow(10.0, -uDazzle));
+    if (warping.g <= 0.0 || aLook.x + 5.0 * log(distance / 10.0) / log(10.0) - 2.5 * log(warping.g) / log(10.0) > FAINTEST_DRAWN) {
+      hide();
+      return;
+    }
   }
   vec3 local = vec3(dot(seen, uRight), dot(seen, uUp), dot(seen, uForward));
   bool behindPlanet = (uPlanet.w > 0.0 && dot(seen, uPlanet.xyz) > cos(uPlanet.w)) || behindBodyBeforeWarp;

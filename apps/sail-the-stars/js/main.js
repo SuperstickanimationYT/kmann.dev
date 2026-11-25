@@ -21,6 +21,7 @@ import { loadCloudMapsOf } from './clouds.js';
 import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
 import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
+import { blackHolesWithin, KNOWN_BLACK_HOLES, nearestBlackHole } from './black-holes.js';
 import { withExoplanetHosts } from './exoplanets.js';
 import { knowStarsNearSun, otherSystems, SOLAR_SYSTEM, SYSTEM_REACH_PC, systemAround, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
 import { drawCraftMarks, drawCraftPath, drawOrbits } from './orbits.js';
@@ -895,7 +896,10 @@ function startWarp(lightYears, destination) {
   clearGuides();
 }
 
-const destinationNamed = (name) => destinations().find((place) => place.name.toLowerCase() === name.trim().toLowerCase());
+function destinationNamed(name) {
+  const place = destinations().find((listed) => listed.name.toLowerCase() === name.trim().toLowerCase());
+  return place?.now ? place.now() : place;
+}
 
 function selectNamed(name) {
   const destination = destinationNamed(name);
@@ -937,7 +941,7 @@ function destinations() {
   const mirrorNames = mirrors.map(({ name }) => name).join();
   if (nearby.length && (!destinationList || mirrorNames !== listedMirrors || otherSystems().length !== listedSystems)) {
     listedMirrors = mirrorNames;
-    destinationList = listDestinations({ nearby, nebulae, galaxies, mirrors });
+    destinationList = listDestinations({ nearby, nebulae, galaxies, mirrors, nearestHole: (wanted) => nearestBlackHole(game.camera, armMap, (star) => !withinSystem(star, game.camera) && wanted(star)) });
     listedSystems = otherSystems().length;
     selectList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
   }
@@ -1132,9 +1136,11 @@ function riversUnder(holder, ground, up) {
 }
 
 const CRAFT_SOLID_SHARE = 0.05;
+const CLOSEST_HORIZON_RADII = 1.2;
 
 function lowestDistanceKm(holder, offsetKm) {
   if (holder.kind === 'craft') return CRAFT_SOLID_SHARE * holder.radiusKm;
+  if (holder.hole) return CLOSEST_HORIZON_RADII * holder.radiusKm;
   const ground = groundFor(holder);
   if (!ground) return radiusBelowKm(holder, offsetKm) + lowestAltitudeKm(holder);
   const frame = groundFrame(toBodyLocal(holder, offsetKm), holder.radiusKm);
@@ -1166,7 +1172,7 @@ function followSolarSystem() {
   const landingArmed = solarFrame.landingArmed || distance - lowest > LANDING_REARM_KM;
   const touchedDown = landed && landingArmed && thrusting && holder.kind !== 'craft';
   if (touchedDown) {
-    showStatus(`Touched down on ${spokenName(holder)}.`);
+    showStatus(holder.hole ? 'The ship goes no closer to the event horizon.' : `Touched down on ${spokenName(holder)}.`);
     if (holder.kind !== 'star') setRotatingWith(holder.name);
   }
   game.camera = add(system.position, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
@@ -1288,7 +1294,10 @@ function refreshEyeStars(now) {
   eyeAnchor = [...game.camera];
   eyeStars = gatherEyeStars(eyeAnchor);
   eyeNearestStarPc = nearestStarPc(eyeStars);
-  if (game.mode.solarSystem) meetStarsWithin(SYSTEM_REACH_PC + regatherDistancePc());
+  if (game.mode.solarSystem) {
+    meetStarsWithin(SYSTEM_REACH_PC + regatherDistancePc());
+    blackHolesWithin(game.camera, SYSTEM_REACH_PC + regatherDistancePc(), armMap).forEach(systemAround);
+  }
   eyeGatheredAt = now;
   eyeStarsChanged = true;
 }
@@ -2041,7 +2050,7 @@ if (!renderer) {
     .catch(() => showStatus("Earth's city lights failed to load; its night side stays dark."));
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     catalogue = stars;
-    nearby = withExoplanetHosts(stars);
+    nearby = [...withExoplanetHosts(stars), ...KNOWN_BLACK_HOLES.map(({ name }) => systemNamed(name).catalogueStar)];
     knowStarsNearSun(nearby);
   });
   requestAnimationFrame(frame);
