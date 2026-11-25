@@ -8,6 +8,7 @@ import { flightDates } from './spacecraft.js';
 import { KIND } from './stars.js';
 import { speculationShown } from './speculation.js';
 import { temperatureFromColour } from './stellar-properties.js';
+import { spokenHost } from './wormholes.js';
 
 const SUN_ABSOLUTE_MAGNITUDE = 4.83;
 const SUN_KELVIN = 5772;
@@ -192,8 +193,24 @@ function craftFacts({ body, distanceKm }) {
   };
 }
 
+function wormholeFacts({ body, distanceKm }) {
+  return {
+    title: body.name,
+    kind: 'Wormhole (made up)',
+    facts: [
+      ['Distance', formatMetres(distanceKm)],
+      ['Radius of throat', formatMetres(body.radiusKm)],
+      ['At', `60° ahead of ${body.host === 'Sun' ? body.planet : `${body.host} ${body.planet}`}`],
+      ['Leads to', spokenHost(body.leadsTo)],
+      ['Built by', body.builders],
+      ...(body.opened ? [['Opened', String(body.opened)]] : []),
+    ],
+  };
+}
+
 function bodyFacts(pick) {
   const { body } = pick;
+  if (body.kind === 'wormhole') return wormholeFacts(pick);
   if (body.kind === 'craft') return craftFacts(pick);
   const facts = [
     ['Distance to centre', formatKm(pick.distanceKm)],

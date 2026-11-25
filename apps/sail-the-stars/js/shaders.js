@@ -1,3 +1,4 @@
+import { DEFLECTION_SAMPLES } from './light-bending.js';
 import { GIANT_FACE_OVERSCAN, GIANT_FACE_SIZE } from './giant-shader.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { SMALLEST_ROCK_PIXELS } from './surface-scatter.js';
@@ -23,6 +24,18 @@ export const TABLE_WIDTH = 64;
 export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4, armedUnresolved: 5 };
 export const UNRESOLVED_NEAREST = 0.1;
 export const UNRESOLVED_FARTHEST = 1e6;
+
+export const DEFLECTION = `uniform sampler2D uDeflections;
+uniform float uShadow;
+uniform float uLeastLog;
+uniform float uLogSpan;
+
+float deflectionAt(float excess) {
+  float place = clamp((log(excess) - uLeastLog) / uLogSpan, 0.0, 1.0) * ${DEFLECTION_SAMPLES - 1}.0;
+  int low = min(int(place), ${DEFLECTION_SAMPLES - 2});
+  return mix(texelFetch(uDeflections, ivec2(low, 0), 0).r, texelFetch(uDeflections, ivec2(low + 1, 0), 0).r, place - float(low));
+}
+`;
 
 export const FULLSCREEN_VERTEX = `#version 300 es
 out vec2 vUv;
@@ -3242,14 +3255,30 @@ vec4 groundThroughHaze(vec4 ground, vec3 direction) {
   return vec4(hazy.rgb - haze.light * haze.clear * ground.rgb * uGroundBlend, hazy.a);
 }
 
+${DEFLECTION}
 uniform float uFlowOn;
 uniform float uDazzle;
+uniform vec4 uHoleInFront;
+uniform vec4 uFarSunLook;
 const vec3 FLOW_TINT = vec3(0.68, 0.75, 1.0);
 
 vec3 throughFlow(vec3 behind) {
+  if (uFarSunLook.a > 0.5) return mix(behind, uFarSunLook.rgb, texture(uSky, vUv).a);
   if (uFlowOn < 0.5) return behind;
   vec3 glow = pow(1.0 - exp(-texture(uSky, vUv).a * FLOW_TINT), vec3(0.4545));
   return 1.0 - (1.0 - min(behind, 1.0)) * (1.0 - glow);
+}
+
+bool bentAroundHole(inout vec3 direction) {
+  if (uHoleInFront.w < 0.5) return false;
+  float toward = dot(direction, uHoleInFront.xyz);
+  vec3 across = direction - uHoleInFront.xyz * toward;
+  float miss = length(across);
+  float angle = atan(miss, toward);
+  if (angle < uShadow) return true;
+  float bent = angle - deflectionAt(max(angle - uShadow, 1e-12));
+  direction = uHoleInFront.xyz * cos(bent) + across * (sin(bent) / max(miss, 1e-9));
+  return false;
 }
 
 vec4 sceneSeen(vec3 direction) {
@@ -3261,7 +3290,9 @@ vec4 sceneSeen(vec3 direction) {
   if (starVeil >= 1.0) {
     return vec4(ground.rgb, 1.0);
   }
-  vec4 body = bodiesColour(directionBeforeWarp(direction));
+  vec3 unbent = directionBeforeWarp(direction);
+  bool throughHole = bentAroundHole(unbent);
+  vec4 body = throughHole ? vec4(0.0) : bodiesColour(unbent);
   bool sunThroughAir = starHit && uGround >= 0 && uWarpAxis.w < 0.5;
   float bodyVeil = sunThroughAir ? starVeil : ground.a;
   if (sunThroughAir) body.rgb *= sunlightThroughAir(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera));
@@ -3323,6 +3354,8 @@ uniform float uHoleHidesSprite;
 uniform int uHoleImage;
 uniform float uDazzle;
 uniform sampler2D uHoleImages;
+uniform mat3 uFarToNear;
+const int FIRST_FAR_IMAGE = 2;
 const float BEHIND_HOLE = 2.0;
 const float FAINTEST_DRAWN = 6.8;
 const float SPRITE_FADE_DECADES = 13.0;
@@ -3335,7 +3368,19 @@ vec2 imageSeen(float skyAngle) {
   return mix(texelFetch(uHoleImages, ivec2(low, uHoleImage), 0).rg, texelFetch(uHoleImages, ivec2(low + 1, uHoleImage), 0).rg, place - float(low));
 }
 
+float bendThroughHole(inout vec3 seen) {
+  vec3 label = uFarToNear * seen;
+  float outward = -dot(label, uHole.xyz);
+  vec3 across = label + uHole.xyz * outward;
+  float miss = length(across);
+  vec2 image = imageSeen(atan(miss, outward));
+  across *= (uHoleImage == FIRST_FAR_IMAGE ? 1.0 : -1.0) / max(miss, 1e-9);
+  seen = uHole.xyz * cos(image.x) + across * sin(image.x);
+  return image.y;
+}
+
 float bendAroundHole(inout vec3 seen, float distance) {
+  if (uHoleImage >= FIRST_FAR_IMAGE) return bendThroughHole(seen);
   float toward = dot(seen, uHole.xyz);
   if (distance < BEHIND_HOLE * uHoleDistancePc) {
     bool holeItself = toward > SPRITE_AT_HOLE_COSINE && distance > 0.5 * uHoleDistancePc;
@@ -3405,7 +3450,7 @@ void main() {
   vec3 offset = aOffset - uAnchorShift;
   float distance = length(offset);
   vec3 seen = offset / distance;
-  bool behindBodyBeforeWarp = behindBody(seen);
+  bool behindBodyBeforeWarp = uHoleImage < FIRST_FAR_IMAGE && behindBody(seen);
   vec3 warping = vec3(1.0);
   vGlare = 0.0;
   if (uWarpAxis.w > 0.5) {

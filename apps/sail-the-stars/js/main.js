@@ -2,7 +2,7 @@ import { drawAtlas } from './atlas.js';
 import { nameButton, showTipsAbove } from './dock-buttons.js';
 import { CAMERA, imageFromRows, levelsFor, measureSignal, skyFillsPixels } from './camera.js';
 import { createCutscene } from './cutscene.js';
-import { bodyDestination, craftDestination, craftNow, galaxyDestination, listDestinations, mirrorsNow, nebulaDestination, placedNow, plainStarDestination, starDestination, SUN_DESTINATION } from './destinations.js';
+import { bodyDestination, craftDestination, craftNow, galaxyDestination, isSpeculative, listDestinations, nebulaDestination, placedNow, plainStarDestination, speculativeBodiesNow, starDestination, SUN_DESTINATION } from './destinations.js';
 import { GALAXIES, placeGalaxies } from './galaxies.js';
 import { AU_PER_LY, buildArmMap, DEGREES, equatorialToFrame, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
 import { describePick } from './picking.js';
@@ -37,6 +37,7 @@ import { riversNear } from './rivers.js';
 import { cockpitUniforms, OVERSHOOT_LY, SHIP, throughWindow, viewBasis } from './ship.js';
 import { fieldStarSeenAt, gatherStars, KIND, loadNearbyStars, placeNebulae, starsOfBoth, SUN_ABSOLUTE } from './stars.js';
 import { add, cross, dot, normalize, orthonormal, rotateAbout, rotateBasis, scale, subtract } from './vectors.js';
+import { otherEnd, spokenHost, throughThroat, travel } from './wormholes.js';
 
 const EYE_FIELD_HEIGHT = 50 * DEGREES;
 const WIDEST_FIELD_HEIGHT = 90 * DEGREES;
@@ -498,7 +499,7 @@ function showCompanionButtons() {
   const holder = solarFrame ? bodyNamed(solarFrame.holder) : null;
   const near = Boolean(holder) && holder.kind !== 'star';
   followButton.hidden = !near;
-  rotateButton.hidden = !near;
+  rotateButton.hidden = !near || holder.kind === 'wormhole';
   if (!near) return;
   const name = spokenName(holder);
   const label = (button, text, on) => {
@@ -737,6 +738,7 @@ function towardMiddle(destination) {
 }
 
 function standoffAt(destination) {
+  if (destination.beside) return destination.beside(game.camera);
   if (!destination.craft) return subtract(destination.arrival(game.camera), destination.target);
   const craft = craftAt(destination) ?? craftNow(destination.craft);
   const parent = craft.parent === 'Sun' ? SUN_AS_PARENT : placedNow({ name: craft.parent });
@@ -757,6 +759,7 @@ function glideTo(destination, announcement = `Arrived at ${destination.name}.`) 
     if (absent(destination)) return;
     const from = [...game.camera];
     const { target } = destination;
+    if (destination.beside) starsBeyond(beyondMouth(destination.subject.body));
     const away = awayFrom(destination);
     const standoff = standoffAt(destination);
     const path = planGlide({
@@ -934,14 +937,14 @@ function warpToSelection() {
 }
 
 let destinationList = null;
-let listedMirrors = '';
+let listedSpeculative = '';
 let listedSystems = 0;
 function destinations() {
-  const mirrors = mirrorsNow();
-  const mirrorNames = mirrors.map(({ name }) => name).join();
-  if (nearby.length && (!destinationList || mirrorNames !== listedMirrors || otherSystems().length !== listedSystems)) {
-    listedMirrors = mirrorNames;
-    destinationList = listDestinations({ nearby, nebulae, galaxies, mirrors, nearestHole: (wanted) => nearestBlackHole(game.camera, armMap, (star) => !withinSystem(star, game.camera) && wanted(star)) });
+  const speculative = speculativeBodiesNow();
+  const speculativeNames = speculative.map(({ name }) => name).join();
+  if (nearby.length && (!destinationList || speculativeNames !== listedSpeculative || otherSystems().length !== listedSystems)) {
+    listedSpeculative = speculativeNames;
+    destinationList = listDestinations({ nearby, nebulae, galaxies, speculative, nearestHole: (wanted) => nearestBlackHole(game.camera, armMap, (star) => !withinSystem(star, game.camera) && wanted(star)) });
     listedSystems = otherSystems().length;
     selectList.replaceChildren(...destinationList.map((place) => new Option(place.group, place.name)));
   }
@@ -1003,6 +1006,12 @@ function arrive(destination) {
     const standoff = standoffAt(destination);
     frameAroundCraft(craft, scale(standoff, KM_PER_PC));
     faceDirection(towardMiddle(destination), upAt(destination) ?? undefined);
+  } else if (destination.beside) {
+    const { body } = destination.subject;
+    const standoff = destination.beside(game.camera);
+    enterSystem(systemOf(body));
+    frameAround(placedNow(body), scale(standoff, KM_PER_PC));
+    faceDirection(scale(standoff, -1), destination.up);
   } else {
     game.camera = destination.arrival(game.camera);
     faceDirection(subtract(destination.target, game.camera), destination.up);
@@ -1118,8 +1127,70 @@ function enterSolarFrame() {
   return { holder: holder.name, offsetKm: subtract(fromSunKm, holder.fromSunKm), coRotating: false, localKm: null, camera: null, landed: false, landingArmed: true, body: holder };
 }
 
+const beyondMouth = (mouth) => otherEnd(mouth, systemNamed(mouth.leadsTo), simNow());
+
+let farSide = null;
+
+function starsBeyond(partner) {
+  if (farSide?.host !== partner.host) farSide = { host: partner.host, stars: gatherEyeStars(partner.centre), anchor: partner.centre };
+  return farSide;
+}
+
+const FRAME_AXES = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+
+function seenThroughMouth() {
+  const mouth = solarFrame && bodyNamed(solarFrame.holder);
+  if (mouth?.kind !== 'wormhole') return null;
+  const partner = beyondMouth(mouth);
+  const { stars, anchor } = starsBeyond(partner);
+  const seen = systemOf(partner).place(simNow()).filter(({ kind }) => kind !== 'wormhole').map((body) => ({ body, offsetKm: subtract(body.fromSunKm, partner.fromSunKm) }));
+  const star = seen.find(({ body }) => body.kind === 'star');
+  const starDistanceKm = Math.hypot(...star.offsetKm);
+  return {
+    mouth,
+    camera: partner.centre,
+    anchorShift: subtract(partner.centre, anchor),
+    stars,
+    planets: seen.filter((place) => place !== star),
+    sun: { direction: scale(star.offsetKm, 1 / starDistanceKm), angularRadius: Math.asin(star.body.radiusKm / starDistanceKm), light: star.body.tint },
+    nearToFar: FRAME_AXES.flatMap(throughThroat(mouth, partner)),
+    farToNear: FRAME_AXES.flatMap(throughThroat(partner, mouth)),
+  };
+}
+
+let wentThrough = false;
+
+function turnShip(turned) {
+  game.ship = orthonormal(turned(game.ship.forward), turned(game.ship.up));
+  game.basis = viewBasis(game.ship, game.head);
+}
+
+function comeOutBeside(partner, offsetKm) {
+  const left = { host: system.name, stars: eyeStars, anchor: eyeAnchor };
+  const beyond = starsBeyond(partner);
+  enterSystem(systemOf(partner));
+  frameAround(partner, offsetKm);
+  showStars(beyond);
+  eyeNearestStarPc = nearestStarPc(eyeStars);
+  farSide = left;
+  wentThrough = true;
+  showStatus(`Went through to ${spokenHost(partner.host)}.`);
+}
+
+function moveBesideMouth(mouth, shiftKm) {
+  const partner = beyondMouth(mouth);
+  const reached = travel({ mouth, partner, offsetKm: solarFrame.offsetKm, shiftKm });
+  turnShip(reached.turn);
+  if (reached.mouth === mouth) solarFrame.offsetKm = reached.offsetKm;
+  else comeOutBeside(partner, reached.offsetKm);
+}
+
 function moveInSolarFrame(shiftKm) {
   const holder = bodyNamed(solarFrame.holder);
+  if (holder.kind === 'wormhole') {
+    moveBesideMouth(holder, shiftKm);
+    return;
+  }
   if (solarFrame.coRotating) solarFrame.localKm = add(solarFrame.localKm, toBodyLocal(holder, shiftKm));
   else solarFrame.offsetKm = add(solarFrame.offsetKm, shiftKm);
 }
@@ -1140,6 +1211,7 @@ const CLOSEST_HORIZON_RADII = 1.2;
 
 function lowestDistanceKm(holder, offsetKm) {
   if (holder.kind === 'craft') return CRAFT_SOLID_SHARE * holder.radiusKm;
+  if (holder.kind === 'wormhole') return 0;
   if (holder.hole) return CLOSEST_HORIZON_RADII * holder.radiusKm;
   const ground = groundFor(holder);
   if (!ground) return radiusBelowKm(holder, offsetKm) + lowestAltitudeKm(holder);
@@ -1341,6 +1413,7 @@ function frame(now) {
       cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
+      beyond: seenThroughMouth(),
       craft: craftInView(),
       starlight: system.light,
       cloudSeconds: paused() || prefersStillness.matches ? 0 : seconds,
@@ -1348,9 +1421,10 @@ function frame(now) {
       warp: warpView,
       adaptation,
       longExposure: longExposureShown(),
-      blurMotion: motionBlurToggle.checked && !warpView && !intro && !photo && !menu,
+      blurMotion: motionBlurToggle.checked && !warpView && !intro && !photo && !menu && !wentThrough,
     });
     eyeStarsChanged = false;
+    wentThrough = false;
   }
   if (labelsShown() || selection || orbitsShown()) refreshGuides(now);
   placeCrosshair();
@@ -1706,7 +1780,7 @@ function timewarpToMissionStart() {
   selectionShownAt = -Infinity;
 }
 
-const dismantled = ({ kind, destination }) => kind === 'body' && destination.subject.body.kind === 'mirror' && system === SOLAR_SYSTEM && !solarBodies?.some(({ name }) => name === destination.name);
+const dismantled = ({ kind, destination }) => kind === 'body' && isSpeculative(destination.subject.body) && !speculativeBodiesNow().some(({ name }) => name === destination.name);
 
 function followSelection(context, now) {
   if (dismantled(selection)) {

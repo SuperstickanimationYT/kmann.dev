@@ -7,6 +7,7 @@ import { simNow } from './sim-clock.js';
 import { nebulaRadius } from './stars.js';
 import { halfSizeKm } from './spacecraft-models.js';
 import { add, cross, dot, normalize, scale, subtract } from './vectors.js';
+import { mouthsOpen, placeMouth, spokenHost } from './wormholes.js';
 
 const STAR_STANDOFF = 0.5 / LY_PER_PC;
 const NEBULA_STANDOFF_RADII = 6;
@@ -18,6 +19,7 @@ const SYSTEM_VIEW_RISE = 0.5;
 const HOLE_VIEW_RADII = 30;
 const HOLE_VIEW_RISE = 0.25;
 const HOLE_CROSSING_SECONDS = 3;
+const MOUTH_VIEW_RADII = 5;
 
 export const placedNow = (body) => systemOf(body).place(simNow()).find(({ name }) => name === body.name) ?? body;
 export function craftNow(craft) {
@@ -58,14 +60,25 @@ export const SUN_DESTINATION = plainStarDestination({ name: 'Sun', position: SUN
 const DWARF_GROUPS = { agreed: 'Dwarf planets', likely: 'Likely dwarf planets' };
 
 function groupOf(body) {
+  if (body.kind === 'wormhole') return `Made-up wormhole at ${spokenHost(body.host)}`;
   if (body.kind === 'mirror') return `Made-up mirrors of ${body.parent}`;
   if (body.host) return `${body.madeUp ? 'Made-up planet' : 'Planet'} of ${body.host}`;
   if (body.dwarf) return DWARF_GROUPS[body.dwarf];
   return body.parent ? `Moon of ${body.parent}` : 'Planets';
 }
 
+function mouthDestination(body) {
+  const beside = (from) => scale(normalize(subtract(from, placedNow(body).centre)), (MOUTH_VIEW_RADII * body.radiusKm) / KM_PER_PC);
+  return Object.assign(placeDestination(body), { beside, arrival: (from) => add(placedNow(body).centre, beside(from)) });
+}
+
 export function bodyDestination(body) {
   if (body.kind === 'star') return body.host ? starDestination(systemNamed(body.host).catalogueStar) : SUN_DESTINATION;
+  if (body.kind === 'wormhole') return mouthDestination(body);
+  return placeDestination(body);
+}
+
+function placeDestination(body) {
   return {
     name: body.name,
     group: groupOf(body),
@@ -145,16 +158,21 @@ const MILKY_WAY_DESTINATION = {
   arrival: () => MILKY_WAY_ABOVE,
 };
 
-export const mirrorsNow = () => SOLAR_SYSTEM.place(simNow()).filter(({ kind }) => kind === 'mirror');
+export function speculativeBodiesNow() {
+  const now = simNow();
+  return [...SOLAR_SYSTEM.place(now).filter(({ kind }) => kind === 'mirror'), ...mouthsOpen(now).map((mouth) => placeMouth(mouth, systemOf(mouth), now))];
+}
 
-export function listDestinations({ nearby, nebulae, galaxies, mirrors, nearestHole }) {
+export const isSpeculative = ({ kind }) => kind === 'mirror' || kind === 'wormhole';
+
+export function listDestinations({ nearby, nebulae, galaxies, speculative, nearestHole }) {
   const starsByName = nearby.filter((star) => star.name && !star.host).map(starDestination);
   const hosts = otherSystems().map(({ catalogueStar }) => hostDestination(catalogueStar));
   const stars = new Map([...starsByName, ...hosts].map((place) => [place.name, place]));
   return [
     SUN_DESTINATION,
     ...BODIES.filter((body) => body.kind !== 'star').map(bodyDestination),
-    ...mirrors.map(bodyDestination),
+    ...speculative.map(bodyDestination),
     ...[...SPACECRAFT, ...LANDED].map(craftDestination),
     MILKY_WAY_DESTINATION,
     ...nearestBlackHoleDestinations(nearestHole),

@@ -1,11 +1,20 @@
 import { createTarget, setUniforms, startProgram } from './gl.js';
 import { bendingAt, DEFLECTION_SAMPLES, IMAGE_SAMPLES, starImages } from './light-bending.js';
-import { FULLSCREEN_VERTEX, LATTICE_PERIOD } from './shaders.js';
+import { DEFLECTION, FULLSCREEN_VERTEX, LATTICE_PERIOD } from './shaders.js';
 import { simNow } from './sim-clock.js';
 import { KM_PER_PC } from './solar-system.js';
+import { scale } from './vectors.js';
+import { farStarImages, PASSAGES_PER_DEPTH, wormholeBendingAt } from './wormhole-bending.js';
 
 const RADII_PER_HORIZON = 2;
 const LEAST_BENDING_PIXELS = 1;
+const LEAST_MOUTH_PIXELS = 0.3;
+const NEAR_IMAGE_ROWS = 2;
+const IMAGE_ROWS = 2 * NEAR_IMAGE_ROWS;
+const STAR_IMAGES = [0, 1];
+const FAR_STAR_IMAGES = [2, 3];
+const ONE_IMAGE = [0];
+const NOTHING_COVERED = { uHoleInFront: [0, 0, 0, 0], uFarSunLook: [0, 0, 0, 0] };
 const REBEND_CHANGE = 2e-4;
 const DEFLECTION_UNIT = 28;
 const IMAGES_UNIT = 29;
@@ -53,20 +62,18 @@ precision highp samplerCube;
 uniform sampler2D uSky;
 uniform samplerCube uKeptSky;
 uniform float uKeptSkyOn;
-uniform sampler2D uDeflections;
 uniform sampler2D uFlow;
 uniform float uFlowOn;
-uniform float uShadow;
-uniform float uLeastLog;
-uniform float uLogSpan;
 uniform float uPixelAngle;
+uniform float uWormhole;
+uniform sampler2D uPassages;
+uniform samplerCube uFarSky;
+uniform float uFarSkyOn;
+uniform mat3 uNearToFar;
+uniform vec4 uFarSun;
 const float SEEN_SKY_EDGE = 0.04;
 
-float deflectionAt(float excess) {
-  float place = clamp((log(excess) - uLeastLog) / uLogSpan, 0.0, 1.0) * ${DEFLECTION_SAMPLES - 1}.0;
-  int low = min(int(place), ${DEFLECTION_SAMPLES - 2});
-  return mix(texelFetch(uDeflections, ivec2(low, 0), 0).r, texelFetch(uDeflections, ivec2(low + 1, 0), 0).r, place - float(low));
-}
+${DEFLECTION}
 
 vec3 skyToward(vec3 direction) {
   float ahead = dot(direction, uForward);
@@ -76,6 +83,22 @@ vec3 skyToward(vec3 direction) {
   if (uKeptSkyOn < 0.5) return textureLod(uSky, ahead > 0.0 ? clamp(uv, 0.0, 1.0) : vUv, 0.0).rgb;
   vec3 whole = onScreen < 1.0 ? textureLod(uKeptSky, direction, 0.0).rgb : vec3(0.0);
   return onScreen > 0.0 ? mix(whole, textureLod(uSky, uv, 0.0).rgb, onScreen) : whole;
+}
+
+float azimuthThrough(float angle) {
+  float place = min(-log(max(1.0 - angle / uShadow, 1e-9)) * ${PASSAGES_PER_DEPTH.toFixed(6)}, ${IMAGE_SAMPLES - 1}.0);
+  int low = min(int(place), ${IMAGE_SAMPLES - 2});
+  return mix(texelFetch(uPassages, ivec2(low, ${IMAGE_ROWS}), 0).r, texelFetch(uPassages, ivec2(low + 1, ${IMAGE_ROWS}), 0).r, place - float(low));
+}
+
+vec4 skyBeyond(vec3 direction, float angle) {
+  float azimuth = azimuthThrough(angle);
+  vec3 beyond = uNearToFar * (acrossFrom(direction) * sin(azimuth) - uHole * cos(azimuth));
+  vec3 sky = uFarSkyOn > 0.5 ? textureLod(uFarSky, beyond, 0.0).rgb : vec3(0.0);
+  float fromSun = atan(length(cross(uFarSun.xyz, beyond)), dot(uFarSun.xyz, beyond));
+  float soft = max(fwidth(fromSun), 1e-6);
+  float disc = clamp((uFarSun.w - fromSun) / soft + 0.5, 0.0, 1.0);
+  return vec4(sky, soft < 2.0 * uFarSun.w ? disc : 0.0);
 }
 
 float flowSeen() {
@@ -88,8 +111,12 @@ float flowSeen() {
 void main() {
   vec3 direction = viewDirection();
   float angle = angleFromHole(direction);
+  if (uWormhole > 0.5 && angle < uShadow) {
+    outColour = skyBeyond(direction, angle);
+    return;
+  }
   float flow = uFlowOn > 0.5 ? flowSeen() : 0.0;
-  float outside = smoothstep(-0.5, 0.5, (angle - uShadow) / uPixelAngle);
+  float outside = uWormhole > 0.5 ? 1.0 : smoothstep(-0.5, 0.5, (angle - uShadow) / uPixelAngle);
   if (outside <= 0.0) {
     outColour = vec4(0.0, 0.0, 0.0, flow);
     return;
@@ -228,22 +255,32 @@ function spriteHidden(horizons) {
   return Math.min(1, Math.max(0, Math.log(shown / horizons) / Math.log(shown / hidden)));
 }
 
-export function createBlackHoleView(gl, emptyVao, { keptSkyUnit, latticeUnit }) {
+export function createBlackHoleView(gl, emptyVao, { latticeUnit }) {
   const compiling = [LENS_FRAGMENT, FLOW_FRAGMENT].map((fragment) => startProgram(gl, FULLSCREEN_VERTEX, fragment));
   let programs = null;
   let tables = null;
   let bending = null;
   const targets = new Map();
 
-  function bendFor(radius) {
+  function bendFor(wormhole, depth, radius) {
     tables ??= {
       deflections: tableTexture(gl, DEFLECTION_UNIT, gl.R32F, DEFLECTION_SAMPLES, 1),
-      images: tableTexture(gl, IMAGES_UNIT, gl.RG32F, IMAGE_SAMPLES, 2),
+      images: tableTexture(gl, IMAGES_UNIT, gl.RG32F, IMAGE_SAMPLES, IMAGE_ROWS + 1),
     };
-    if (bending && Math.abs(radius / bending.radius - 1) < REBEND_CHANGE) return;
-    bending = bendingAt(radius);
-    tables.deflections(gl.RED, bending.deflections);
-    tables.images(gl.RG, starImages(bending));
+    const reach = wormhole ? Math.hypot(depth, radius) : depth;
+    if (bending?.wormhole === wormhole && bending.mouthRadius === radius && Math.abs(depth - bending.depth) < REBEND_CHANGE * reach) return;
+    const bent = wormhole ? wormholeBendingAt(depth, radius) : bendingAt(depth / radius);
+    const images = new Float32Array(2 * IMAGE_SAMPLES * (IMAGE_ROWS + 1));
+    images.set(starImages(bent));
+    if (wormhole) {
+      images.set(farStarImages(bent), 2 * IMAGE_SAMPLES * NEAR_IMAGE_ROWS);
+      bent.passages.forEach((azimuth, k) => {
+        images[2 * (IMAGE_SAMPLES * IMAGE_ROWS + k)] = azimuth;
+      });
+    }
+    tables.deflections(gl.RED, bent.deflections);
+    tables.images(gl.RG, images);
+    bending = { ...bent, wormhole, depth, mouthRadius: radius };
   }
 
   function targetFor(name, width, height) {
@@ -266,45 +303,92 @@ export function createBlackHoleView(gl, emptyVao, { keptSkyUnit, latticeUnit }) 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
-  function lensed({ seen, view, sky, keptSkyReady, width, height }) {
-    if (!seen) return null;
-    const { body, offsetKm } = seen;
+  const tableScale = () => ({ uShadow: bending.shadow, uLeastLog: bending.leastLog, uLogSpan: bending.logSpan });
+  const coversOf = (hole) => ({ uHoleInFront: [...hole, 1], uFarSunLook: NOTHING_COVERED.uFarSunLook });
+  const raysTo = (hole, { basis, tanHalf }) => ({ uRight: basis.right, uUp: basis.up, uForward: basis.forward, uTanHalf: tanHalf, uHole: hole });
+
+  function bendSky(hole, { view, sky, keptSky, width, height }, values, textures) {
+    gl.activeTexture(gl.TEXTURE0);
+    const target = targetFor('lens', width, height);
+    gl.bindTexture(gl.TEXTURE_2D, sky);
+    draw(programs[0], target, {
+      ...raysTo(hole, view),
+      uKeptSkyOn: keptSky.ready ? 1 : 0,
+      ...tableScale(),
+      uPixelAngle: view.pixelAngle,
+      ...values,
+    }, { uSky: 0, uKeptSky: keptSky.unit, uDeflections: DEFLECTION_UNIT, uFlow: FLOW_UNIT, uPassages: IMAGES_UNIT, uFarSky: keptSky.unit, ...textures });
+    return target.textures[0];
+  }
+
+  function drawFlow(hole, body, horizons, { view, width, height }) {
+    const resolution = horizons < FLOW_HORIZONS ? FLOW_RESOLUTION.inside : FLOW_RESOLUTION.outside;
+    const target = targetFor('flow', Math.round(width * resolution), Math.round(height * resolution));
+    draw(programs[1], target, { ...raysTo(hole, view), ...swirlNow(body.radiusKm), uHorizons: horizons, uAxis: body.north }, { uLattice: latticeUnit });
+    gl.activeTexture(gl.TEXTURE0 + FLOW_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, target.textures[0]);
+  }
+
+  function aroundBlackHole({ body, offsetKm }, scene) {
+    const { view } = scene;
     const distanceKm = Math.hypot(...offsetKm);
     const horizons = distanceKm / body.radiusKm;
     if (Math.sqrt(RADII_PER_HORIZON / horizons) < LEAST_BENDING_PIXELS * view.pixelAngle) return null;
-    programs ??= compiling.map((program) => program.finish());
-    const [lens, flow] = programs;
-    bendFor(RADII_PER_HORIZON * horizons);
-    const hole = offsetKm.map((value) => value / distanceKm);
-    const { right, up, forward } = view.basis;
-    const ray = { uRight: right, uUp: up, uForward: forward, uTanHalf: view.tanHalf, uHole: hole };
-    const target = targetFor('lens', width, height);
+    bendFor(false, distanceKm, body.radiusKm / RADII_PER_HORIZON);
+    const hole = scale(offsetKm, 1 / distanceKm);
     const glowing = body.hole.glowing && FLOW_HORIZONS / horizons > LEAST_FLOW_PIXELS * view.pixelAngle;
-    if (glowing) {
-      const resolution = horizons < FLOW_HORIZONS ? FLOW_RESOLUTION.inside : FLOW_RESOLUTION.outside;
-      const flowTarget = targetFor('flow', Math.round(width * resolution), Math.round(height * resolution));
-      draw(flow, flowTarget, { ...ray, ...swirlNow(body.radiusKm), uHorizons: horizons, uAxis: body.north }, { uLattice: latticeUnit });
-      gl.activeTexture(gl.TEXTURE0 + FLOW_UNIT);
-      gl.bindTexture(gl.TEXTURE_2D, flowTarget.textures[0]);
-    }
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, sky);
-    draw(lens, target, {
-      ...ray,
-      uKeptSkyOn: keptSkyReady ? 1 : 0,
-      uFlowOn: glowing ? 1 : 0,
-      uShadow: bending.shadow,
-      uLeastLog: bending.leastLog,
-      uLogSpan: bending.logSpan,
-      uPixelAngle: view.pixelAngle,
-    }, { uSky: 0, uKeptSky: keptSkyUnit, uDeflections: DEFLECTION_UNIT, uFlow: FLOW_UNIT });
+    if (glowing) drawFlow(hole, body, horizons, scene);
+    const sky = bendSky(hole, scene, { uFlowOn: glowing ? 1 : 0, uWormhole: 0 });
     const dazzle = glowing ? DAZZLE_PER_DECADE * Math.log10(1 + FLOW_LUX_AT_AU * (KM_PER_AU / distanceKm) ** 2 / UNDAZZLING_LUX) : 0;
-    return { sky: target.textures[0], glowing, dazzle, starUniforms: { uHole: [...hole, 1], uHoleDistancePc: distanceKm / KM_PER_PC, uHoleHidesSprite: glowing ? spriteHidden(horizons) : 0, uDazzle: dazzle } };
+    return {
+      sky,
+      glowing,
+      dazzle,
+      covers: coversOf(hole),
+      starImages: STAR_IMAGES,
+      starUniforms: { uHole: [...hole, 1], uHoleDistancePc: distanceKm / KM_PER_PC, uHoleHidesSprite: glowing ? spriteHidden(horizons) : 0, uDazzle: dazzle },
+    };
+  }
+
+  function throughWormhole({ body, offsetKm, beyond }, scene) {
+    const { view, farSky } = scene;
+    const depth = Math.hypot(...offsetKm);
+    bendFor(true, depth, body.radiusKm);
+    const hole = scale(offsetKm, 1 / depth);
+    const farStarUniforms = { uHole: [...hole, 1], uHoleDistancePc: 0, uHoleHidesSprite: 0, uFarToNear: beyond.farToNear, uSunSeen: 1 };
+    const unseen = { sky: null, glowing: false, dazzle: 0, covers: NOTHING_COVERED, starImages: ONE_IMAGE, starUniforms: {}, farStarImages: FAR_STAR_IMAGES, farStarUniforms };
+    if (bending.shadow < LEAST_MOUTH_PIXELS * view.pixelAngle) return unseen;
+    const { direction, angularRadius, light } = beyond.sun;
+    return {
+      ...unseen,
+      sky: bendSky(hole, scene, {
+        uFlowOn: 0,
+        uWormhole: 1,
+        uNearToFar: beyond.nearToFar,
+        uFarSkyOn: farSky.ready ? 1 : 0,
+        uFarSun: [...direction, angularRadius],
+      }, { uFarSky: farSky.unit }),
+      covers: { ...coversOf(hole), uFarSunLook: [...light, 1] },
+      starImages: STAR_IMAGES,
+      starUniforms: { uHole: [...hole, 1], uHoleDistancePc: depth / KM_PER_PC, uHoleHidesSprite: 0 },
+    };
+  }
+
+  function lensed(seen, scene) {
+    if (!seen || (seen.body.kind === 'wormhole' && !seen.beyond)) return null;
+    programs ??= compiling.map((program) => program.finish());
+    return seen.beyond ? throughWormhole(seen, scene) : aroundBlackHole(seen, scene);
+  }
+
+  function bindDeflections(program, lens, inFront) {
+    gl.uniform1i(program.uniforms.uDeflections, DEFLECTION_UNIT);
+    const { uHoleInFront, uFarSunLook } = lens?.covers ?? NOTHING_COVERED;
+    setUniforms(gl, program, { uFarSunLook, uHoleInFront: inFront ? uHoleInFront : NOTHING_COVERED.uHoleInFront, ...(bending && tableScale()) });
   }
 
   function bindStarImages(program) {
     gl.uniform1i(program.uniforms.uHoleImages, IMAGES_UNIT);
   }
 
-  return { lensed, bindStarImages };
+  return { lensed, bindDeflections, bindStarImages };
 }

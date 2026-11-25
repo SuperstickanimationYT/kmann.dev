@@ -75,7 +75,7 @@ function angleSeenAt({ angles, deflections, shadow }, skyAngle) {
   return { seen, slope: 1 / (1 - steepness) };
 }
 
-const skyAngleOfSample = (k) => Math.PI * ((k + 0.5) / IMAGE_SAMPLES) ** 3;
+export const skyAngleOfSample = (k) => Math.PI * ((k + 0.5) / IMAGE_SAMPLES) ** 3;
 
 export function starImages(bending) {
   const images = new Float32Array(2 * 2 * IMAGE_SAMPLES);

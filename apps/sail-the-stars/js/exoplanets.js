@@ -262,6 +262,7 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
     data,
     outermostKm: Math.max(LONE_STAR_VIEW_RADII * radiusKm, ...planets.map(({ orbit }) => orbit.a * (1 + orbit.e))),
     catalogueStar,
+    planetFromStarKm: (letter, ms) => offsetAt(planets.find(({ measured }) => measured.letter === letter), ms),
     place(ms) {
       const bodies = planets.map((planet) => {
         const fromSunKm = offsetAt(planet, ms);
