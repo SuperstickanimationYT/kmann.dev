@@ -85,7 +85,49 @@
   outline-offset: 2px;
 }
 
-.fh-visually-hidden {
+.fh-icons {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.fh-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin: 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fh-tip {
+  position: absolute;
+  width: max-content;
+  max-width: min(260px, calc(100% - 16px));
+  padding: 7px 10px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #071627;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.fh-tip strong {
+  color: var(--text-strong);
+}
+
+.fh-tip span {
+  display: block;
+}
+
+.fh-visually-hidden,
+.fh-name {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -663,6 +705,7 @@
   accent-color: var(--edge-bright);
 }
 
+.fh-tip kbd,
 .fh-check kbd {
   padding: 1px 5px;
   border: 1px solid var(--edge);
@@ -805,6 +848,17 @@
 
   .fh-dock button {
     min-height: 44px;
+  }
+
+  .fh-name {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    margin-top: 3px;
+    clip-path: none;
+    font-size: 11px;
+    font-weight: 400;
   }
 
   .fh-dock-select {
@@ -1094,6 +1148,6 @@
   }
 
   .fh-tray-open .fh-dock-select {
-    flex-basis: calc(100% - 240px);
+    flex-basis: calc(100% - 330px);
   }
 }
