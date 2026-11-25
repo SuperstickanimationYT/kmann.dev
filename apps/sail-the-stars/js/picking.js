@@ -2,6 +2,7 @@ import { LY_PER_PC } from './milky-way.js';
 import { formatDistance } from './practice.js';
 import { settlementShown } from './settlements.js';
 import { KM_PER_PC } from './solar-system.js';
+import { flightDates } from './spacecraft.js';
 import { KIND } from './stars.js';
 import { speculationShown } from './speculation.js';
 
@@ -126,8 +127,34 @@ function dwarfKind({ dwarf, map }) {
   return dwarf && `${DWARF_KINDS[dwarf]}${map ? '' : ', surface made up'}`;
 }
 
+const dateOf = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+function formatMetres(km) {
+  return km < 10 ? `${Math.round(km * 1000).toLocaleString('en')} m` : formatKm(km);
+}
+
+function formatPlace({ lat, lon }) {
+  return `${Math.abs(lat).toFixed(2)}° ${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(2)}° ${lon < 0 ? 'W' : 'E'}`;
+}
+
+function flightFacts(body) {
+  const { from } = flightDates(body);
+  if (body.landed) return [['Landed', dateOf(from)], ['Stands at', formatPlace(body.stop)]];
+  const around = body.parent === 'Sun' ? 'the Sun' : body.parent === 'Moon' ? 'the Moon' : body.parent;
+  return [['Flying since', dateOf(from)], ['Speed', `${body.kmPerSecond.toFixed(body.kmPerSecond < 10 ? 2 : 1)} km/s, measured from ${around}`]];
+}
+
+function craftFacts({ body, distanceKm }) {
+  return {
+    title: body.name,
+    kind: body.landed ? `${body.rover ? 'Rover' : 'Lander'} on ${body.on === 'Moon' ? 'the Moon' : body.on}` : 'Spacecraft',
+    facts: [['Distance', formatMetres(distanceKm)], ['Sent by', body.agency], ...flightFacts(body), ['', body.did]],
+  };
+}
+
 function bodyFacts(pick) {
   const { body } = pick;
+  if (body.kind === 'craft') return craftFacts(pick);
   const facts = [
     ['Distance to centre', formatKm(pick.distanceKm)],
     ['Radius', `${Math.round(body.radiusKm).toLocaleString('en')} km`],

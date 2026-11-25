@@ -93,7 +93,7 @@ function visiblePieces(segment, hiders) {
 
 const pointHidden = (point, hiders) => hiders.some((hider) => hiddenSpans(point, point, hider).length > 0);
 
-export function drawOrbits(context, { paths, offsetOf, bodies, basis, tanHalf, width, height }) {
+function pencil(context, { bodies, basis, tanHalf, width, height }) {
   const pixelsPerTan = height / 2 / tanHalf[1];
   const toCamera = (offset) => [dot(offset, basis.right), dot(offset, basis.up), dot(offset, basis.forward)];
   const toScreen = ([x, y, z]) => [((x / z / tanHalf[0]) * 0.5 + 0.5) * width, (0.5 - (y / z / tanHalf[1]) * 0.5) * height];
@@ -109,6 +109,12 @@ export function drawOrbits(context, { paths, offsetOf, bodies, basis, tanHalf, w
       context.moveTo(...toScreen(from));
       context.lineTo(...toScreen(to));
     });
+  const seen = (point) => Boolean(clipToView(point, point, tanHalf)) && !pointHidden(point, hiders);
+  return { pixelsPerTan, toCamera, toScreen, shownPieces, tracePieces, seen };
+}
+
+export function drawOrbits(context, { paths, offsetOf, ...scene }) {
+  const { pixelsPerTan, toCamera, toScreen, shownPieces, tracePieces, seen } = pencil(context, scene);
   context.save();
   context.lineWidth = 1.25;
   for (const { name, parent, pointsKm } of paths) {
@@ -131,11 +137,53 @@ export function drawOrbits(context, { paths, offsetOf, bodies, basis, tanHalf, w
       tracePieces(pieces);
       context.stroke();
     });
-    if (!clipToView(points[0], points[0], tanHalf) || pointHidden(points[0], hiders)) continue;
+    if (!seen(points[0])) continue;
     context.fillStyle = `rgb(${ORBIT_RGB})`;
     context.beginPath();
     context.arc(...toScreen(points[0]), BODY_DOT_PX, 0, 2 * Math.PI);
     context.fill();
+  }
+  context.restore();
+}
+
+const PATH_RGB = '255, 196, 110';
+const PATH_ALPHA = { past: 0.85, future: 0.3 };
+const MARK_FONT = '12px "Trebuchet MS", sans-serif';
+const MARK_TEXT_HEIGHT = 15;
+
+export function drawCraftPath(context, { past, future, ...scene }) {
+  const { toCamera, shownPieces, tracePieces } = pencil(context, scene);
+  context.save();
+  context.lineWidth = 1.5;
+  for (const [points, alpha] of [[future, PATH_ALPHA.future], [past, PATH_ALPHA.past]]) {
+    const seen = points.map(toCamera);
+    context.strokeStyle = `rgba(${PATH_RGB}, ${alpha})`;
+    context.beginPath();
+    for (let k = 0; k + 1 < seen.length; k++) tracePieces(shownPieces(seen[k], seen[k + 1]));
+    context.stroke();
+  }
+  context.restore();
+}
+
+export function drawCraftMarks(context, { craft, ...scene }) {
+  const { toCamera, toScreen, seen } = pencil(context, scene);
+  const written = [];
+  const crowded = (box) => written.some((other) => box.x < other.x + other.width && other.x < box.x + box.width && Math.abs(box.y - other.y) < MARK_TEXT_HEIGHT);
+  context.save();
+  context.font = MARK_FONT;
+  context.textBaseline = 'middle';
+  context.fillStyle = `rgb(${PATH_RGB})`;
+  for (const { body, offsetKm } of [...craft].sort((a, b) => Math.hypot(...a.offsetKm) - Math.hypot(...b.offsetKm))) {
+    const point = toCamera(offsetKm);
+    if (!seen(point)) continue;
+    const [x, y] = toScreen(point);
+    context.beginPath();
+    context.arc(x, y, BODY_DOT_PX, 0, 2 * Math.PI);
+    context.fill();
+    const box = { x: x + 7, y, width: context.measureText(body.name).width };
+    if (crowded(box)) continue;
+    written.push(box);
+    context.fillText(body.name, box.x, box.y);
   }
   context.restore();
 }
