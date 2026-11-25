@@ -320,7 +320,8 @@
   margin-top: 10px;
 }
 
-.fh-pick-close {
+.fh-pick-close,
+.fh-pick-fold {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -926,6 +927,11 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
     font-size: 16px;
   }
 
+  .fh-dock .fh-dock-select button {
+    flex-shrink: 0;
+    padding-inline: 10px;
+  }
+
   .fh-dock-buttons {
     display: contents;
   }
@@ -1106,6 +1112,7 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
   }
 
   .fh-pick-close,
+  .fh-pick-fold,
   .fh-close {
     width: 44px;
     height: 44px;
@@ -1114,6 +1121,74 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
   .fh-pick-close {
     top: 0;
     right: 0;
+  }
+
+  .fh-pick {
+    width: min(264px, calc(100% - var(--edge-left) - var(--edge-right)));
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .fh-pick h2 {
+    margin: 3px 76px 2px 0;
+    font-size: 15px;
+  }
+
+  .fh-pick p {
+    margin-bottom: 4px;
+  }
+
+  .fh-pick dl {
+    gap: 1px 10px;
+  }
+
+  .fh-pick .fh-pick-note {
+    margin-top: 4px;
+  }
+
+  .fh-pick .fh-pick-warp {
+    gap: 10px 8px;
+    margin-top: 6px;
+  }
+
+  .fh-pick .fh-pick-warp button {
+    position: relative;
+    flex: 0 1 auto;
+    min-height: 0;
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+
+  .fh-pick .fh-pick-warp button::after {
+    content: '';
+    position: absolute;
+    inset: -5px 0;
+  }
+
+  .fh-pick .fh-pick-fold {
+    top: 0;
+    right: 44px;
+    font-size: 11px;
+  }
+
+  .fh-pick .fh-pick-fold::before {
+    content: '\25B2';
+  }
+
+  .fh-pick .fh-pick-fold[aria-expanded="false"]::before {
+    content: '\25BC';
+  }
+
+  .fh-pick:has(.fh-pick-fold[aria-expanded="false"]) > :not(h2, button) {
+    display: none;
+  }
+
+  .fh-pick:has(.fh-pick-fold[aria-expanded="false"]) {
+    width: max-content;
+    max-width: calc(100% - var(--edge-left) - var(--edge-right));
+    min-height: 46px;
+    overflow: hidden;
   }
 
   .fh-actions button,
