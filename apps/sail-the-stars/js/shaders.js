@@ -3,6 +3,7 @@ import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { SMALLEST_ROCK_PIXELS } from './surface-scatter.js';
 import { ANCHOR_METRES, COAST_ROUGHNESS, GROUND_OCTAVES } from './terrain.js';
 
+export const LAYERS_PER_MAP = 3;
 export const MAX_NEBULAE = 64;
 export const MAX_GALAXIES = 4;
 export const MAX_BODIES = 12;
@@ -669,6 +670,54 @@ float detailNoise(vec3 p, float octaves) {
     amplitude *= DETAIL_PERSISTENCE;
   }
   return total;
+}
+
+const float EDGE_OCTAVES = 7.0;
+const float EDGE_PERSISTENCE = 0.6;
+const float EDGE_RAGGEDNESS = 1.2;
+const float EDGE_WANDER_TEXELS = 1.3;
+const float EDGE_WANDER_OCTAVES = 2.0;
+const float EDGE_SHARPEST = 0.02;
+const float EDGE_SOFTEST = 0.2;
+const float EDGE_SOFTNESS_PATCH_TEXELS = 4.0;
+const vec2 EDGE_CONTRAST = vec2(0.02, 0.06);
+const vec3 LUMINANCE = vec3(0.3, 0.5, 0.2);
+
+float raggedNoise(vec3 p, float octaves, float start, float settled) {
+  float total = start;
+  float amplitude = 0.5;
+  for (int i = 0; i < int(EDGE_OCTAVES); i++) {
+    float weight = clamp(octaves - float(i), 0.0, 1.0);
+    float furthest = 0.5 * amplitude / (1.0 - EDGE_PERSISTENCE);
+    if (weight <= 0.0 || abs(total) > settled + furthest) break;
+    total += weight * amplitude * (smoothNoise(p) - 0.5);
+    p = p * 2.03 + vec3(7.1, 2.9, 5.3);
+    amplitude *= EDGE_PERSISTENCE;
+  }
+  return total;
+}
+
+vec3 sharpEdged(vec3 albedo, vec2 uv, float layer, vec3 local, float footprint) {
+  float texel = 6.2831853 / MAP_WIDTH;
+  float octaves = clamp(log2(texel / footprint), 0.0, EDGE_OCTAVES);
+  if (octaves <= 0.0) return albedo;
+  float maps = float(textureSize(uBodyColour, 0).z / ${LAYERS_PER_MAP});
+  vec4 dark = textureLod(uBodyColour, vec3(uv, layer + maps), 0.0);
+  vec3 span = textureLod(uBodyColour, vec3(uv, layer + 2.0 * maps), 0.0).rgb - dark.rgb;
+  float contrast = dot(span, LUMINANCE);
+  float shown = smoothstep(EDGE_CONTRAST.x, EDGE_CONTRAST.y, contrast) * min(octaves, 1.0);
+  if (shown <= 0.0) return albedo;
+  vec3 p = local / texel;
+  float wanderOctaves = min(octaves, EDGE_WANDER_OCTAVES);
+  vec2 wander = vec2(raggedNoise(0.7 * p + 3.0, wanderOctaves, 0.0, 1.0), raggedNoise(0.7 * p + 40.0, wanderOctaves, 0.0, 1.0));
+  float darkest = dot(dark.rgb, LUMINANCE);
+  float wandered = textureLod(uBodyColour, vec3(uv + EDGE_WANDER_TEXELS * wander / vec2(MAP_WIDTH, MAP_HEIGHT), layer + maps), 0.0).a;
+  float dustiness = smoothNoise(p / EDGE_SOFTNESS_PATCH_TEXELS + 60.0);
+  float softness = clamp(footprint / texel, mix(EDGE_SHARPEST, EDGE_SOFTEST, dustiness * dustiness), 0.5);
+  float blurred = clamp((dark.a - darkest) / contrast, 0.0, 1.0);
+  float bright = (wandered - darkest) / contrast - 0.5;
+  float ragged = EDGE_RAGGEDNESS * raggedNoise(0.9 * p + 17.0, octaves, bright / EDGE_RAGGEDNESS, softness / EDGE_RAGGEDNESS);
+  return max(albedo + shown * span * (smoothstep(-softness, softness, ragged) - blurred), vec3(0.0));
 }
 
 vec3 bodyLocal(vec3 surface, BodyFrame frame) {
@@ -1517,6 +1566,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   float mapTexel = 6.2831853 / MAP_WIDTH;
   float octaves = clamp(log2(mapTexel / max(footprint, 1e-9)), 0.0, MAX_DETAIL_OCTAVES);
   vec3 detailPoint = local / mapTexel;
+  if (mapped && look.w != BODY_CLOUDED && look.w != BODY_HAZY) albedo = sharpEdged(albedo, uv, map.x, local, footprint);
   if (look.w == BODY_OCEAN_WORLD && mapped) {
     float edgeWidth = clamp(0.5 * footprint / mapTexel, COAST_SHARPEST, 0.5);
     float nearCoast = 4.0 * land * (1.0 - land);
@@ -2513,7 +2563,7 @@ vec3 shadeGround(vec3 up, vec3 offset, vec3 normal, bool water, float t, float f
   bool invented = groundInvented();
   vec2 uv = groundUv(up);
   vec4 painted = invented ? inventedPaint(uv, footprint / (1000.0 * uGroundRadius)) : textureLod(uBodyColour, vec3(uv, groundLayer()), 0.0);
-  vec3 albedo = painted.rgb;
+  vec3 albedo = invented || water ? painted.rgb : sharpEdged(painted.rgb, uv, groundLayer(), up, footprint / (1000.0 * uGroundRadius));
   if (invented) albedo *= 1.0 + inventedMottle(offset, footprint);
   vec3 seaAlbedo = invented ? INVENTED_OCEAN : OCEAN_ALBEDO;
   if (freshWater.x >= 0.0) seaAlbedo = mix(seaAlbedo, freshWater, smoothstep(0.0, RIVER_MEETS_SEA_METRES, riverLevel));

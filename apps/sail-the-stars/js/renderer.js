@@ -9,7 +9,7 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT, EARTH_CLOUDS,
+  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT, EARTH_CLOUDS, LAYERS_PER_MAP,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, LATTICE_PERIOD, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, RIVER_FRAGMENT, RIVER_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, ROCK_SHADOW_LAYER, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
@@ -24,6 +24,7 @@ import { createMotionBlur } from './motion-blur.js';
 import { createGiantPainter } from './giant-painter.js';
 import { grassMesh, MESH_FLOATS, ROCK_SHAPES, rockMesh } from './detail-meshes.js';
 import { SHADOW_MAP_SIZE } from './ground-patches.js';
+import { createMapEdges } from './map-edges.js';
 import { RIBBON_FLOATS } from './rivers.js';
 import { rocksSeen, SCATTER_FLOATS, SCATTER_LAYERS } from './surface-scatter.js';
 import { apparentMagnitude, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
@@ -475,11 +476,11 @@ export function createRenderer(canvas, armMap, galaxies) {
   const noiseTexture = createNoiseTexture(0, NOISE_SIZE, new Uint8Array(NOISE_SIZE ** 3).map(() => Math.floor(random.next() * 256)));
   createNoiseTexture(LATTICE_UNIT, LATTICE_PERIOD, new Uint8Array(LATTICE_PERIOD ** 3).map(latticeByte));
 
-  const createBodyMaps = (unit, format) => {
+  const createBodyMaps = (unit, format, layersPerMap = 1) => {
     const texture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0 + unit);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, format, ...BODY_MAP_SIZE, Math.max(1, MAPPED_BODIES.length));
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, format, ...BODY_MAP_SIZE, layersPerMap * Math.max(1, MAPPED_BODIES.length));
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
@@ -487,21 +488,19 @@ export function createRenderer(canvas, armMap, galaxies) {
     gl.activeTexture(gl.TEXTURE0);
     return texture;
   };
-  const bodyColourMaps = createBodyMaps(BODY_COLOUR_UNIT, gl.RGBA8);
+  const bodyColourMaps = createBodyMaps(BODY_COLOUR_UNIT, gl.RGBA8, LAYERS_PER_MAP);
+  const bakeMapEdges = createMapEdges(gl, emptyVao, BODY_MAP_SIZE);
   const bodyHeightMaps = createBodyMaps(BODY_HEIGHT_UNIT, gl.R8);
   const mapRelief = [];
   const mapRanges = [];
 
   function loadBodyMap(layer, { colour, heights, relief, ground }) {
-    const upload = (unit, texture, format, pixels) => {
-      gl.activeTexture(gl.TEXTURE0 + unit);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, ...BODY_MAP_SIZE, 1, format, gl.UNSIGNED_BYTE, pixels);
-    };
-    upload(BODY_COLOUR_UNIT, bodyColourMaps, gl.RGBA, colour);
-    upload(BODY_HEIGHT_UNIT, bodyHeightMaps, gl.RED, heights.values);
+    gl.activeTexture(gl.TEXTURE0 + BODY_HEIGHT_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, bodyHeightMaps);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, ...BODY_MAP_SIZE, 1, gl.RED, gl.UNSIGNED_BYTE, heights.values);
     gl.activeTexture(gl.TEXTURE0);
+    bakeMapEdges(bodyColourMaps, layer, MAPPED_BODIES.length, colour);
     mapRelief[layer] = relief;
     mapRanges[layer] = ground;
   }
