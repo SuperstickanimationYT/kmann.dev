@@ -1763,6 +1763,10 @@ function clearSelection() {
   clearGuides();
 }
 
+function togglePickDetails({ currentTarget }) {
+  currentTarget.setAttribute('aria-expanded', currentTarget.getAttribute('aria-expanded') !== 'true');
+}
+
 function showSelectionFacts() {
   const { title, kind, facts, note } = describePick(selection);
   $('[data-pick-title]').textContent = title;
@@ -2092,6 +2096,7 @@ $('[data-pick-warp]').addEventListener('click', warpToSelection);
 missionStartButton.addEventListener('click', timewarpToMissionStart);
 labelsToggle.addEventListener('change', () => setLabels(labelsToggle.checked));
 $('[data-pick-close]').addEventListener('click', clearSelection);
+$('[data-pick-fold]').addEventListener('click', togglePickDetails);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
 speculationToggle.checked = speculationShown();
