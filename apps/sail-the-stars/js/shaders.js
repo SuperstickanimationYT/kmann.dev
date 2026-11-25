@@ -1930,6 +1930,12 @@ float spikeReachOf(float pointBrightness) {
   return max(SPIKE_FAINTEST_MAGNITUDE - magnitude, 0.0) * SPIKE_PIXELS_PER_MAGNITUDE;
 }
 
+vec2 pixelsFrom(vec3 direction, vec3 place) {
+  vec3 away = direction - place;
+  vec2 onScreen = vec2(dot(away, uRight), dot(away, uUp));
+  return onScreen * length(away) / max(length(onScreen) * uPixelAngle, 1e-12);
+}
+
 struct Strike {
   int body;
   float hit;
@@ -1981,8 +1987,7 @@ vec4 bodiesColour(vec3 direction) {
     if (along > 0.0) points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
     float spikeReach = spikeReachOf(uBodyMap[i].w);
     if (along > 0.0 && unresolved > 0.0 && spikeReach > 0.0 && miss < spikeReach * uPixelAngle) {
-      vec2 offset = vec2(dot(direction - place.xyz, uRight), dot(direction - place.xyz, uUp)) / uPixelAngle;
-      points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * starburst(offset, spikeReach);
+      points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * starburst(pixelsFrom(direction, place.xyz), spikeReach);
     }
     if (along > 0.0 && uBodyLook[i].w == STAR_KIND) points += coronaLight(i, direction);
     if (uBodyLook[i].w == BODY_MIRROR) {
@@ -3241,8 +3246,7 @@ vec3 sunGlare(vec3 direction) {
   vec3 toSun = uBodyPlace[sun].xyz;
   float degreesOff = degrees(acos(clamp(dot(direction, toSun), -1.0, 1.0)));
   float spread = SUN_GLARE_CORE * exp(-degreesOff / SUN_GLARE_CORE_DEGREES) + SUN_GLARE_WIDE * exp(-degreesOff / SUN_GLARE_WIDE_DEGREES);
-  vec2 onScreen = vec2(dot(direction - toSun, uRight), dot(direction - toSun, uUp)) / uPixelAngle;
-  if (degreesOff < 90.0) spread += SUN_SPIKE_LIGHT * starburst(onScreen, SPIKE_LONGEST_REACH);
+  spread += SUN_SPIKE_LIGHT * starburst(pixelsFrom(direction, toSun), SPIKE_LONGEST_REACH);
   vec3 tint = uBodyLook[sun].rgb * sunlightThroughAir(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera));
   return tint * spread * sunVisibleFromGround(toSun) * uGroundBlend * uSunSeen;
 }
