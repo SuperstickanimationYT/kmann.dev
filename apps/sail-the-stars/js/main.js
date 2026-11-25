@@ -15,6 +15,7 @@ import { describeStar, drawEdgeArrow, drawGuides, formatDistance } from './pract
 import { eased, planGlide } from './glide-path.js';
 import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
+import { hideLoading, showShadersReady } from './loading-screen.js';
 import { createRenderer } from './renderer.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
@@ -129,7 +130,7 @@ const galaxies = placeGalaxies(GALAXIES);
 let renderer = null;
 let rendererProblem = 'This game needs WebGL 2 with float render targets.';
 try {
-  renderer = createRenderer(view, armMap, galaxies);
+  renderer = await createRenderer(view, armMap, galaxies, showShadersReady);
 } catch (error) {
   rendererProblem = `Your graphics chip could not run the sky shader: ${String(error.message).split('\n')[0]}`;
 }
@@ -2104,6 +2105,7 @@ $('[data-new-game]').addEventListener('click', () => newGame());
 new ResizeObserver(resize).observe(stage);
 
 if (!renderer) {
+  hideLoading();
   showStatus(rendererProblem, 3600);
 } else {
   const requested = Number(new URL(window.location.href).searchParams.get('seed'));
@@ -2134,6 +2136,6 @@ if (!renderer) {
     catalogue = stars;
     nearby = [...withExoplanetHosts(stars), ...KNOWN_BLACK_HOLES.map(({ name }) => systemNamed(name).catalogueStar)];
     knowStarsNearSun(nearby);
-  });
+  }).finally(() => requestAnimationFrame(() => requestAnimationFrame(hideLoading)));
   requestAnimationFrame(frame);
 }

@@ -1,4 +1,4 @@
-import { createByteTarget, createProgram, setUniforms } from './gl.js';
+import { createByteTarget, setUniforms, startProgram } from './gl.js';
 import { FULLSCREEN_VERTEX, INVENTED_COLOUR_WIDTH, INVENTED_GROUND_FRAGMENT } from './shaders.js';
 
 const COLOUR_SIZE = [INVENTED_COLOUR_WIDTH, INVENTED_COLOUR_WIDTH / 2];
@@ -29,13 +29,14 @@ const twoChannels = (pixels, first) => Uint8Array.from({ length: pixels.length /
 const channel = (pixels, index) => Uint8Array.from({ length: pixels.length / 4 }, (_, texel) => pixels[texel * 4 + index]);
 
 export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, landUnit, heightUnit, heightLayerOf, heightRangeOf }) {
+  const compiling = startProgram(gl, FULLSCREEN_VERTEX, INVENTED_GROUND_FRAGMENT);
   let colourBuffer = null;
   let program = null;
   let baking = null;
   let baked = null;
 
   function prepare() {
-    program = createProgram(gl, FULLSCREEN_VERTEX, INVENTED_GROUND_FRAGMENT);
+    program = compiling.finish();
     const colour = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0 + colourUnit);
     gl.bindTexture(gl.TEXTURE_2D, colour);

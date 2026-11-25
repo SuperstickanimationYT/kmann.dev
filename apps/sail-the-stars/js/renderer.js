@@ -1,4 +1,4 @@
-import { createByteTarget, createContext, createProgram, createTarget, setUniforms } from './gl.js';
+import { createByteTarget, createContext, createProgram, createPrograms, createTarget, setUniforms } from './gl.js';
 import { createInventedGround } from './invented-ground.js';
 import { SIMULATED_CLOUD_MAPS } from './clouds.js';
 import {
@@ -422,19 +422,35 @@ function planetUniforms(planet, camera) {
   };
 }
 
-export function createRenderer(canvas, armMap, galaxies) {
+const PROGRAM_SOURCES = {
+  eyeProgram: [FULLSCREEN_VERTEX, EYE_FRAGMENT],
+  skyProgram: [FULLSCREEN_VERTEX, SKY_FRAGMENT],
+  skyFromCubeProgram: [FULLSCREEN_VERTEX, SKY_FROM_CUBE_FRAGMENT],
+  groundSkyProgram: [FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT],
+  cloudProgram: [FULLSCREEN_VERTEX, CLOUD_FRAGMENT],
+  cloudNearbyProgram: [FULLSCREEN_VERTEX, CLOUD_NEARBY_FRAGMENT],
+  patchProgram: [PATCH_VERTEX, PATCH_FRAGMENT],
+  riverProgram: [RIVER_VERTEX, RIVER_FRAGMENT],
+  shadowProgram: [SHADOW_VERTEX, SHADOW_FRAGMENT],
+  eyeStarProgram: [EYE_STAR_VERTEX, EYE_STAR_FRAGMENT],
+  cameraStarProgram: [CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT],
+  developProgram: [FULLSCREEN_VERTEX, DEVELOP_FRAGMENT],
+  sampleProgram: [FULLSCREEN_VERTEX, SAMPLE_FRAGMENT],
+};
+
+export async function createRenderer(canvas, armMap, galaxies, showProgress) {
   const gl = createContext(canvas);
   if (!gl) return null;
 
-  const skyProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FRAGMENT);
-  const skyFromCubeProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FROM_CUBE_FRAGMENT);
-  const eyeProgram = createProgram(gl, FULLSCREEN_VERTEX, EYE_FRAGMENT);
-  const groundSkyProgram = createProgram(gl, FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT);
-  const cloudProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_FRAGMENT);
-  const cloudNearbyProgram = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_NEARBY_FRAGMENT);
-  const patchProgram = createProgram(gl, PATCH_VERTEX, PATCH_FRAGMENT);
-  const riverProgram = createProgram(gl, RIVER_VERTEX, RIVER_FRAGMENT);
-  const shadowProgram = createProgram(gl, SHADOW_VERTEX, SHADOW_FRAGMENT);
+  const emptyVao = gl.createVertexArray();
+  const bakeMapEdges = createMapEdges(gl, emptyVao, BODY_MAP_SIZE);
+  const giants = createGiantPainter(gl, emptyVao);
+  const blackHoleView = createBlackHoleView(gl, emptyVao, { latticeUnit: LATTICE_UNIT });
+  const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
+  const {
+    skyProgram, skyFromCubeProgram, eyeProgram, groundSkyProgram, cloudProgram, cloudNearbyProgram, patchProgram, riverProgram, shadowProgram,
+    eyeStarProgram, cameraStarProgram, developProgram, sampleProgram,
+  } = await createPrograms(gl, PROGRAM_SOURCES, showProgress);
   let shadowMaps = null;
   const groundDetailTexture = (() => {
     const { size, texels } = groundDetailTexels();
@@ -462,12 +478,7 @@ export function createRenderer(canvas, armMap, galaxies) {
   let cloudFrame = 0;
   let previousCloudView = null;
   let riverSeconds = 0;
-  const eyeStarProgram = createProgram(gl, EYE_STAR_VERTEX, EYE_STAR_FRAGMENT);
-  const cameraStarProgram = createProgram(gl, CAMERA_STAR_VERTEX, CAMERA_STAR_FRAGMENT);
-  const developProgram = createProgram(gl, FULLSCREEN_VERTEX, DEVELOP_FRAGMENT);
-  const sampleProgram = createProgram(gl, FULLSCREEN_VERTEX, SAMPLE_FRAGMENT);
   const sampleTarget = createByteTarget(gl, SAMPLE_WIDTH, SAMPLE_HEIGHT);
-  const emptyVao = gl.createVertexArray();
 
   const armTexture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, armTexture);
@@ -505,7 +516,6 @@ export function createRenderer(canvas, armMap, galaxies) {
     return texture;
   };
   const bodyColourMaps = createBodyMaps(BODY_COLOUR_UNIT, gl.RGBA8, LAYERS_PER_MAP);
-  const bakeMapEdges = createMapEdges(gl, emptyVao, BODY_MAP_SIZE);
   const bodyHeightMaps = createBodyMaps(BODY_HEIGHT_UNIT, gl.R8);
   const mapRelief = [];
   const mapRanges = [];
@@ -610,11 +620,8 @@ export function createRenderer(canvas, armMap, galaxies) {
 
   let motionBlur = null;
   let systemLight = SUNLIGHT;
-  const giants = createGiantPainter(gl, emptyVao);
   const craftView = createCraftView(gl, emptyVao);
-  const blackHoleView = createBlackHoleView(gl, emptyVao, { latticeUnit: LATTICE_UNIT });
   const settlements = createSettlementPainter(gl, SETTLEMENTS_UNIT);
-  const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
 
   function setBodies(program, seen, ground, pixelAngle = 0, standingOn = ground?.body) {
     if (program.uniforms.uCloudNearby) gl.uniform1i(program.uniforms.uCloudNearby, CLOUD_NEARBY_UNIT);

@@ -44,6 +44,7 @@ function createFaces(gl, unit, format, size, levels, layers) {
 }
 
 export function createGiantPainter(gl, emptyVao) {
+  const compiling = startProgram(gl, FULLSCREEN_VERTEX, GIANT_FRAGMENT);
   const paintedSlots = new Map();
   let looks = new Map();
   let resources = null;
@@ -56,11 +57,10 @@ export function createGiantPainter(gl, emptyVao) {
       flow: createFaces(gl, FLOW_UNIT, gl.RGBA16F, GIANT_FLOW_SIZE, 1, FACES),
       framebuffer: gl.createFramebuffer(),
       smallerFramebuffer: gl.createFramebuffer(),
-      compiling: startProgram(gl, FULLSCREEN_VERTEX, GIANT_FRAGMENT),
       program: null,
     };
-    if (!resources.program && !resources.compiling.ready()) return false;
-    resources.program ??= resources.compiling.finish();
+    if (!resources.program && !compiling.ready()) return false;
+    resources.program ??= compiling.finish();
     return true;
   }
 

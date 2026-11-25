@@ -12,14 +12,18 @@ function startCompiling(gl, type, source) {
   return shader;
 }
 
+function isLinked(gl, program) {
+  const parallel = gl.getExtension('KHR_parallel_shader_compile');
+  return !parallel || gl.getProgramParameter(program, parallel.COMPLETION_STATUS_KHR);
+}
+
 export function startProgram(gl, vertexSource, fragmentSource) {
   const program = gl.createProgram();
   const shaders = [startCompiling(gl, gl.VERTEX_SHADER, vertexSource), startCompiling(gl, gl.FRAGMENT_SHADER, fragmentSource)];
   shaders.forEach((shader) => gl.attachShader(program, shader));
   gl.linkProgram(program);
-  const parallel = gl.getExtension('KHR_parallel_shader_compile');
   return {
-    ready: () => !parallel || gl.getProgramParameter(program, parallel.COMPLETION_STATUS_KHR),
+    ready: () => isLinked(gl, program),
     finish: () => finishProgram(gl, program, shaders),
   };
 }
@@ -39,6 +43,20 @@ function finishProgram(gl, program, shaders) {
 
 export function createProgram(gl, vertexSource, fragmentSource) {
   return startProgram(gl, vertexSource, fragmentSource).finish();
+}
+
+const PROGRAM_POLL_MS = 50;
+const nextPoll = () => new Promise((resolve) => setTimeout(resolve, PROGRAM_POLL_MS));
+
+export async function createPrograms(gl, sources, showProgress) {
+  const started = Object.entries(sources).map(([name, source]) => [name, startProgram(gl, ...source)]);
+  for (let ready = -1; ready < started.length; ) {
+    await nextPoll();
+    ready = started.filter(([, program]) => program.ready()).length;
+    showProgress(ready, started.length);
+  }
+  await nextPoll();
+  return Object.fromEntries(started.map(([name, program]) => [name, program.finish()]));
 }
 
 export function setUniforms(gl, { uniforms }, values) {
