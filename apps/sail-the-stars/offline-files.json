@@ -1,5 +1,5 @@
 {
-  "bytes": 7226143,
+  "bytes": 7234976,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -74,6 +74,7 @@
     "js/kepler.js",
     "js/lander-models.js",
     "js/main.js",
+    "js/map-edges.js",
     "js/menu-scene.js",
     "js/milky-way.js",
     "js/model-builder.js",
