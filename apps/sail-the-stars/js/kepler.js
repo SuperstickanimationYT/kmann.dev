@@ -11,14 +11,14 @@ function stumpff(z) {
   return { c: (Math.cosh(root) - 1) / -z, s: (Math.sinh(root) - root) / root ** 3 };
 }
 
-export function coasted({ position, velocity }, mu, seconds) {
+export function coastedState({ position, velocity }, mu, seconds) {
   const distance = Math.hypot(...position);
   const rootMu = Math.sqrt(mu);
   const alpha = 2 / distance - dot(velocity, velocity) / mu;
   const climb = dot(position, velocity) / rootMu;
   const period = alpha > 0 ? (2 * Math.PI) / (rootMu * alpha ** 1.5) : Infinity;
   const wanted = Number.isFinite(period) ? seconds - period * Math.round(seconds / period) : seconds;
-  if (wanted === 0) return position;
+  if (wanted === 0) return { position, velocity };
   const reached = (chi) => {
     const z = alpha * chi * chi;
     const { c, s } = stumpff(z);
@@ -44,9 +44,16 @@ export function coasted({ position, velocity }, mu, seconds) {
     const next = chi - (miss * rootMu) / radius;
     chi = (next - near) * direction > 0 && (far - next) * direction > 0 ? next : (near + far) / 2;
   }
-  const { c, s } = stumpff(alpha * chi * chi);
-  return add(scale(position, 1 - (chi * chi * c) / distance), scale(velocity, wanted - (chi ** 3 * s) / rootMu));
+  const z = alpha * chi * chi;
+  const { c, s } = stumpff(z);
+  const { radius } = reached(chi);
+  return {
+    position: add(scale(position, 1 - (chi * chi * c) / distance), scale(velocity, wanted - (chi ** 3 * s) / rootMu)),
+    velocity: add(scale(position, (rootMu / (radius * distance)) * chi * (z * s - 1)), scale(velocity, 1 - (chi * chi * c) / radius)),
+  };
 }
+
+export const coasted = (state, mu, seconds) => coastedState(state, mu, seconds).position;
 
 export function elementsOf({ position, velocity }, mu) {
   const distance = Math.hypot(...position);

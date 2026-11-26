@@ -52,6 +52,12 @@ export function hitTimeLimit() {
   return true;
 }
 
+export function capRate(fastest) {
+  if (rate() >= 0 && rate() <= fastest) return false;
+  setStep(rate() < 0 ? REAL_TIME_STEP : LADDER.findIndex(([value]) => value === fastest));
+  return true;
+}
+
 export const slower = () => setStep(step - 1);
 export const faster = () => setStep(step + 1);
 export const paused = () => rate() === 0;

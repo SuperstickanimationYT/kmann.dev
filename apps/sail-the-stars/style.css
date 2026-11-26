@@ -898,6 +898,14 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
     display: none;
   }
 
+  .fh-rocket .fh-hud-speed {
+    display: inline;
+  }
+
+  .fh-rocket .fh-dial {
+    visibility: hidden;
+  }
+
   .fh-dock {
     gap: 8px;
     padding: 7px var(--edge-right) max(7px, env(safe-area-inset-bottom)) var(--edge-left);

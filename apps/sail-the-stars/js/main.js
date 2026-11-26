@@ -17,10 +17,11 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { hideLoading, showShadersReady } from './loading-screen.js';
 import { createRenderer } from './renderer.js';
+import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, pullKmS2, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
 import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
-import { holdingBody, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
+import { holdingBody, KM_PER_AU, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
 import { blackHolesWithin, KNOWN_BLACK_HOLES, nearestBlackHole } from './black-holes.js';
 import { withExoplanetHosts } from './exoplanets.js';
@@ -29,7 +30,7 @@ import { drawCraftMarks, drawCraftPath, drawOrbits } from './orbits.js';
 import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
 import { createPathTracer } from './craft-path-line.js';
 import { offsetInStretch } from './spacecraft-paths.js';
-import { backToNow, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, simNow, slower, togglePause } from './sim-clock.js';
+import { backToNow, capRate, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen } from './touch-controls.js';
@@ -114,6 +115,8 @@ const musicToggle = $('[data-music]');
 const restartButton = $('[data-restart]');
 const selectField = $('[data-select-field]');
 const longExposureField = $('[data-long-exposure-field]');
+const rocketField = $('[data-rocket-field]');
+const rocketToggle = $('[data-rocket]');
 const motionBlurToggle = $('[data-motion-blur]');
 const speculationToggle = $('[data-speculation]');
 const longExposureToggle = $('[data-long-exposure]');
@@ -499,7 +502,7 @@ function setRotatingWith(name) {
 function showCompanionButtons() {
   const holder = solarFrame ? bodyNamed(solarFrame.holder) : null;
   const near = Boolean(holder) && holder.kind !== 'star';
-  followButton.hidden = !near;
+  followButton.hidden = !near || rocketAboard();
   rotateButton.hidden = !near || holder.kind === 'wormhole';
   if (!near) return;
   const name = spokenName(holder);
@@ -532,6 +535,8 @@ function setMode(name) {
   simDateField.hidden = !mode.solarSystem;
   if (!mode.solarSystem) timePanel.hidden = true;
   longExposureField.hidden = !mode.longExposure;
+  rocketField.hidden = mode !== MODES.explore;
+  if (rocketField.hidden && rocket) setRocket(false);
   solarNote.hidden = !mode.solarSystem;
   exploreBrief.hidden = mode !== MODES.explore;
   missionBrief.hidden = mode === MODES.explore;
@@ -1040,6 +1045,7 @@ let thrusting = false;
 
 function flightStep(seconds) {
   thrusting = false;
+  if (rocket) rocket.push = [0, 0, 0];
   if (menu || intro || photo?.running || warp || aim || glide) return;
   const move = [
     (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0) + stick.push.across,
@@ -1048,7 +1054,9 @@ function flightStep(seconds) {
   ];
   let moved = false;
   thrusting = move.some(Boolean);
-  if (thrusting) {
+  if (rocketAboard() && solarFrame) {
+    aimRocket(move);
+  } else if (thrusting) {
     const pcPerSecond = game.speed / LY_PER_PC;
     const step = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, move[2]));
     const shift = scale(step, pcPerSecond * seconds);
@@ -1236,12 +1244,14 @@ function followSolarSystem() {
     return;
   }
   if (solarFrame && game.camera !== solarFrame.camera) solarFrame = null;
+  const bodiesBefore = solarBodies;
   enterSystem((!solarFrame && systemNear(game.camera)) || system);
   solarFrame ??= enterSolarFrame();
   if (!solarFrame) return;
   const previous = bodyNamed(solarFrame.holder) ?? solarFrame.body;
   const carriedFrom = following ? previous.fromSunKm : solarFrame.body.fromSunKm;
-  const fromSunKm = add(carriedFrom, frameOffsetKm(previous, solarFrame));
+  const framedFromSunKm = add(carriedFrom, frameOffsetKm(previous, solarFrame));
+  const fromSunKm = rocketAboard() ? flyRocket(bodiesBefore, framedFromSunKm) : framedFromSunKm;
   const holder = holdingBody(holders(), fromSunKm);
   if (rotatingWith && rotatingWith !== holder.name) setRotatingWith(null);
   let offsetKm = subtract(fromSunKm, holder.fromSunKm);
@@ -1250,7 +1260,7 @@ function followSolarSystem() {
   const landed = distance <= lowest;
   if (landed) offsetKm = scale(offsetKm, lowest / distance);
   const landingArmed = solarFrame.landingArmed || distance - lowest > LANDING_REARM_KM;
-  const touchedDown = landed && landingArmed && thrusting && holder.kind !== 'craft';
+  const touchedDown = landed && landingArmed && thrusting && holder.kind !== 'craft' && !rocketAboard();
   if (touchedDown) {
     showStatus(holder.hole ? 'The ship goes no closer to the event horizon.' : `Touched down on ${spokenName(holder)}.`);
     if (holder.kind !== 'star') setRotatingWith(holder.name);
@@ -1259,7 +1269,106 @@ function followSolarSystem() {
   const coRotating = rotatingWith === holder.name;
   if (coRotating && solarFrame.coRotating && solarFrame.holder === holder.name) turnWithSpin(solarFrame.body, holder);
   solarFrame = { holder: holder.name, offsetKm, coRotating, localKm: coRotating ? toBodyLocal(holder, offsetKm) : null, camera: game.camera, landed, landingArmed: landingArmed && !touchedDown, body: holder };
+  if (rocket) rocket.camera = rocketAboard() ? game.camera : null;
   if (!withinSystem(system, game.camera)) solarFrame = null;
+}
+
+const GROUND_SPIN_SAMPLE_MS = 1000;
+const LOW_START_SHARE_OF_RADIUS = 1.1;
+const GENTLE_LANDING_KM_S = 0.01;
+const ROCKET_AU_FROM_KM = 1e7;
+let rocket = null;
+
+const rocketAboard = () => Boolean(rocket) && game.mode.solarSystem && !(menu || intro || photo?.running || warp || aim || glide);
+
+function setRocket(on) {
+  rocket = on ? { state: null, ms: simNow(), camera: null, system: null, push: [0, 0, 0], readout: '' } : null;
+  rocketToggle.checked = on;
+  document.body.classList.toggle('fh-rocket', on);
+  showStatus(on ? 'Rocket on: gravity is real now. Coast, or fire the engine with the flight keys.' : 'Rocket off: thrusters fly at a set speed again.');
+}
+
+function aimRocket(move) {
+  const push = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, move[2]));
+  const strength = Math.hypot(...push);
+  if (!strength) return;
+  if (capRate(FASTEST_BURN_RATE)) {
+    showStatus(`Time slowed to ${FASTEST_BURN_RATE}× while the engine fires.`);
+    return;
+  }
+  rocket.push = scale(push, ENGINE_KM_PER_S2 / Math.max(1, strength));
+}
+
+function groundVelocityKmS(body, offsetKm, ms) {
+  const [then, later] = [ms, ms + GROUND_SPIN_SAMPLE_MS].map((when) => system.place(when).find(({ name }) => name === body.name));
+  return scale(subtract(fromBodyLocal(later, toBodyLocal(then, offsetKm)), offsetKm), 1000 / GROUND_SPIN_SAMPLE_MS);
+}
+
+function rocketStart(well, offsetKm, ms) {
+  const distance = Math.hypot(...offsetKm);
+  const ground = lowestDistanceKm(well.body, offsetKm);
+  if (distance <= ground) return { holder: well.body.name, landedKm: toBodyLocal(well.body, scale(offsetKm, ground / distance)) };
+  if (distance > LOW_START_SHARE_OF_RADIUS * well.body.radiusKm) return circularOrbit(well, offsetKm);
+  return { holder: well.body.name, positionKm: offsetKm, velocityKmS: groundVelocityKmS(well.body, offsetKm, ms) };
+}
+
+function liftOff(well, ms, seconds) {
+  const offsetKm = fromBodyLocal(well.body, rocket.state.landedKm);
+  const up = normalize(offsetKm);
+  if (seconds <= 0 || dot(rocket.push, up) <= pullKmS2(well, Math.hypot(...offsetKm))) return;
+  rocket.state = { holder: well.body.name, positionKm: offsetKm, velocityKmS: add(groundVelocityKmS(well.body, offsetKm, ms), scale(rocket.push, seconds)) };
+  setRotatingWith(null);
+}
+
+function touchDown(well, ms) {
+  const { positionKm, velocityKmS } = rocket.state;
+  const offsetKm = scale(positionKm, lowestDistanceKm(well.body, positionKm) / Math.hypot(...positionKm));
+  const hitKmS = Math.hypot(...subtract(velocityKmS, groundVelocityKmS(well.body, offsetKm, ms)));
+  rocket.state = { holder: well.body.name, landedKm: toBodyLocal(well.body, offsetKm) };
+  const name = spokenName(well.body);
+  showStatus(hitKmS < GENTLE_LANDING_KM_S ? `Touched down on ${name} at ${Math.round(hitKmS * 1000)} m/s.` : `Hit ${name} at ${formatRocketSpeed(hitKmS)}. A real ship would not survive that.`, 6);
+  if (well.body.kind !== 'star') setRotatingWith(well.body.name);
+}
+
+function flyRocket(bodiesBefore, framedFromSunKm) {
+  const ms = simNow();
+  const { star, wells } = gravityWells(solarBodies);
+  const fresh = !rocket.state || rocket.camera !== game.camera || rocket.system !== system || !wells.has(rocket.state.holder);
+  if (fresh) {
+    const well = wellAround(wells, star, framedFromSunKm);
+    rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms);
+  } else if (rocket.state.landedKm) {
+    liftOff(wells.get(rocket.state.holder), ms, (ms - rocket.ms) / 1000);
+  } else {
+    const flight = flown(rocket.state, { wells, before: bodiesBefore ?? solarBodies, now: solarBodies, fromMs: rocket.ms, toMs: ms, pushKmS2: rocket.push, placeAt: system.place, groundKm: lowestDistanceKm });
+    rocket.state = flight.state;
+    if (flight.landed) touchDown(wells.get(flight.state.holder), flight.ms);
+  }
+  rocket.ms = ms;
+  rocket.system = system;
+  const well = wells.get(rocket.state.holder);
+  const offsetKm = rocket.state.landedKm ? fromBodyLocal(well.body, rocket.state.landedKm) : rocket.state.positionKm;
+  rocket.readout = rocketReadout(well, offsetKm);
+  return add(well.body.fromSunKm, offsetKm);
+}
+
+const nameOfWell = (body) => (body.kind === 'star' && body.name === 'Sun' ? 'the Sun' : spokenName(body));
+
+function formatRocketSpeed(kmS) {
+  if (kmS < 1) return `${Math.round(kmS * 1000).toLocaleString('en')} m/s`;
+  return `${kmS.toFixed(kmS < 100 ? 2 : 0)} km/s`;
+}
+
+function formatRocketDistance(km) {
+  return km < ROCKET_AU_FROM_KM ? `${Math.round(km).toLocaleString('en')} km` : `${(km / KM_PER_AU).toFixed(2)} AU`;
+}
+
+function rocketReadout(well, offsetKm) {
+  const name = nameOfWell(well.body);
+  if (rocket.state.landedKm) return `landed on ${name}`;
+  const speed = formatRocketSpeed(Math.hypot(...rocket.state.velocityKmS));
+  if (well.body.kind === 'star') return `${speed} around ${name}, ${formatRocketDistance(Math.hypot(...offsetKm))} out`;
+  return `${speed} around ${name}, ${formatRocketDistance(Math.hypot(...offsetKm) - well.body.radiusKm)} up`;
 }
 
 let spinSinceSharpSky = 0;
@@ -1437,7 +1546,9 @@ function frame(now) {
   if (labelsShown() || selection || orbitsShown()) refreshGuides(now);
   placeCrosshair();
   $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
-  $('[data-speed]').textContent = formatSpeed(game.speed);
+  const flyingRocket = rocketAboard() && solarFrame;
+  $('[data-speed-label]').textContent = flyingRocket ? 'Rocket' : 'Thrusters';
+  $('[data-speed]').textContent = flyingRocket ? rocket.readout : formatSpeed(game.speed);
   if (touchScreen.matches) showSpeedOnDial(game.speed, { slowest: game.mode.slowestSpeed, top: game.mode.topSpeed, label: formatSpeed(game.speed) });
   if (game.mode.solarSystem) showSimTime(now);
   showCompanionButtons();
@@ -2099,6 +2210,7 @@ $('[data-pick-close]').addEventListener('click', clearSelection);
 $('[data-pick-fold]').addEventListener('click', togglePickDetails);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
+rocketToggle.addEventListener('change', () => setRocket(rocketToggle.checked));
 speculationToggle.checked = speculationShown();
 speculationToggle.addEventListener('change', () => showSpeculation(speculationToggle.checked));
 longExposureToggle.addEventListener('change', () => setLongExposure(longExposureToggle.checked));
