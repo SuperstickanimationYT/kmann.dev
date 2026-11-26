@@ -58,6 +58,11 @@ export function capRate(fastest) {
   return true;
 }
 
+export function capRateWithin(simSeconds, realSeconds, slowest) {
+  const fitting = RATES.find(([value]) => value <= Math.max(slowest, simSeconds / realSeconds));
+  return capRate(fitting ? fitting[0] : slowest);
+}
+
 export const slower = () => setStep(step - 1);
 export const faster = () => setStep(step + 1);
 export const paused = () => rate() === 0;

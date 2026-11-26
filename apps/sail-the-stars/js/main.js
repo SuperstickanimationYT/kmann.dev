@@ -18,7 +18,8 @@ import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warp
 import { hideLoading, showShadersReady } from './loading-screen.js';
 import { createRenderer } from './renderer.js';
 import { segmentPath } from './rocket-path.js';
-import { createMotions, forecastPath } from './rocket-forecast.js';
+import { coast, createMotions, forecastPath, rangeOf } from './rocket-forecast.js';
+import { burnKmS, closestApproach, cutAtBurn, secondsToApsis, stateOnPath } from './rocket-burn.js';
 import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
 import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, pullKmS2, relativeMotions, wellAround } from './rocket.js';
@@ -34,7 +35,7 @@ import { drawCraftMarks, drawCraftPath, drawOrbits, drawRocketPath, rocketPathCo
 import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
 import { createPathTracer } from './craft-path-line.js';
 import { offsetInStretch } from './spacecraft-paths.js';
-import { backToNow, capRate, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, simNow, slower, togglePause } from './sim-clock.js';
+import { backToNow, capRate, capRateWithin, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen } from './touch-controls.js';
@@ -491,6 +492,10 @@ function drawSelectedPath(context, width, height) {
 const followButton = $('[data-follow]');
 const rocketViewButton = $('[data-rocket-view]');
 const rocketTurnButton = $('[data-rocket-turn]');
+const burnButton = $('[data-burn-open]');
+const burnPanel = $('[data-burn]');
+const burnPointButton = $('[data-burn-point]');
+const burnAutopilotButton = $('[data-burn-autopilot]');
 const rotateButton = $('[data-rotate-with]');
 let following = true;
 let rotatingWith = null;
@@ -511,6 +516,8 @@ function showCompanionButtons() {
   followButton.hidden = !near || rocketAboard();
   rocketViewButton.hidden = !rocketAboard();
   rocketTurnButton.hidden = !rocketOutside();
+  burnButton.hidden = !rocketAboard();
+  if (burnButton.hidden && !burnPanel.hidden) showBurnPanel(false);
   rotateButton.hidden = !near || holder.kind === 'wormhole';
   if (!near) return;
   const name = spokenName(holder);
@@ -1084,6 +1091,7 @@ function flightStep(seconds) {
   if (roll) game.ship = turn(game.ship, 'forward', roll * ROLL_RATE * seconds);
   if (yaw || pitch || roll) aimView();
   else if (moved) viewChanged();
+  if (rocket?.plan && rocketAboard() && solarFrame) steerToBurn(seconds, thrusting, Boolean(yaw || pitch || roll));
 }
 
 let system = SOLAR_SYSTEM;
@@ -1301,7 +1309,8 @@ const rocketOutside = () => rocketAboard() && rocket.view !== 'inside';
 
 function setRocket(on) {
   if (rocket && rocket.view !== 'inside') backInsideRocket();
-  rocket = on ? { state: null, ms: simNow(), camera: null, system: null, push: [0, 0, 0], readout: '', path: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
+  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], readout: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
+  showBurnPanel(false);
   rocketToggle.checked = on;
   rocketViewButton.setAttribute('aria-pressed', 'false');
   document.body.classList.toggle('fh-rocket', on);
@@ -1356,6 +1365,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   const { star, wells } = gravityWells(solarBodies);
   const fresh = !rocket.state || rocket.camera !== game.camera || rocket.system !== system || !wells.has(rocket.state.holder);
   if (fresh) {
+    if (rocket.plan) endPlan();
     const well = wellAround(wells, star, framedFromSunKm);
     rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms);
     if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
@@ -1366,11 +1376,13 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
     rocket.state = flight.state;
     if (flight.landed) touchDown(wells.get(flight.state.holder), flight.ms);
   }
+  rocket.stepSeconds = fresh ? 0 : (ms - rocket.ms) / 1000;
   rocket.ms = ms;
   rocket.system = system;
   const well = wells.get(rocket.state.holder);
   const offsetKm = rocket.state.landedKm ? fromBodyLocal(well.body, rocket.state.landedKm) : rocket.state.positionKm;
   rocket.path = rocket.state.landedKm ? null : rocketForecast(wells, ms);
+  if (rocket.plan) followPlan(wells, ms);
   rocket.readout = rocketReadout(well, offsetKm);
   return add(well.body.fromSunKm, offsetKm);
 }
@@ -1496,19 +1508,281 @@ function nextRocketView() {
 const FORECAST_EVERY_MS = { burning: 200, coasting: 2000 };
 const MOTIONS_LAST_SIM_MS = 86400000;
 
+function rocketTarget(wells) {
+  const subject = selection?.destination?.subject;
+  const name = subject?.kind === 'body' ? subject.body.name : null;
+  return name && wells.get(name)?.parent ? name : null;
+}
+
+const latestBurnMs = (segments) => (['orbit', 'horizon'].includes(segments.at(-1).end) ? Infinity : segments.at(-1).toMs - 1000);
+const withPaths = (segments) => segments.map((segment) => ({ ...segment, ...segmentPath(segment, segment.groundKm) }));
+
 function rocketForecast(wells, ms) {
   const now = performance.now();
   const kept = rocket.path;
+  const { plan } = rocket;
+  const target = rocketTarget(wells);
   const everyMs = rocket.push.some(Boolean) ? FORECAST_EVERY_MS.burning : FORECAST_EVERY_MS.coasting;
-  if (kept && kept.holder === rocket.state.holder && kept.system === system && ms >= kept.fromMs && ms < kept.staleMs && now - kept.madeAt < everyMs) return kept;
+  const same = kept && kept.holder === rocket.state.holder && kept.system === system && kept.planVersion === plan?.version && kept.target === target;
+  if (same && ms >= kept.fromMs && ms < kept.staleMs && now - kept.madeAt < everyMs) return kept;
   if (rocket.motions?.system !== system || Math.abs(ms - rocket.motions.ms) > MOTIONS_LAST_SIM_MS) rocket.motions = { system, ms, motions: createMotions(wells, relativeMotions(system.place, ms, wells), ms) };
-  const segments = forecastPath(rocket.state, { wells, motions: rocket.motions.motions, fromMs: ms, groundKm: (body) => body.radiusKm, edgeKm: systemEdgeKm() });
-  return { madeAt: now, holder: rocket.state.holder, system, fromMs: ms, staleMs: segments[0].toMs, segments: segments.map((segment) => ({ ...segment, ...segmentPath(segment, segment.groundKm) })) };
+  const { motions } = rocket.motions;
+  const options = { wells, motions, groundKm: (body) => body.radiusKm, edgeKm: systemEdgeKm() };
+  const ahead = Boolean(plan) && plan.ms > ms;
+  const forecast = forecastPath(rocket.state, { ...options, fromMs: ms, atLeastMs: ahead ? plan.ms : ms });
+  let segments = forecast;
+  let planned = [];
+  let burn = null;
+  if (ahead) {
+    plan.ms = Math.min(plan.ms, latestBurnMs(forecast));
+    const node = stateOnPath(forecast, plan.ms);
+    if (!plan.started) {
+      plan.holder = node.holder;
+      plan.kickKmS = burnKmS(node.state, plan.dvKmS);
+      plan.targetKmS = add(node.state.velocityKmS, plan.kickKmS);
+    }
+    const afterKmS = plan.holder === node.holder ? plan.targetKmS : add(node.state.velocityKmS, plan.kickKmS);
+    segments = cutAtBurn(forecast, node, plan.ms);
+    planned = forecastPath({ holder: node.holder, positionKm: node.state.positionKm, velocityKmS: afterKmS }, { ...options, fromMs: plan.ms });
+    burn = { index: node.index, pointKm: node.state.positionKm };
+  }
+  const approach = target ? closestApproach([...segments, ...planned], target, motions) : null;
+  return { madeAt: now, holder: rocket.state.holder, system, fromMs: ms, staleMs: segments[0].toMs, planVersion: plan?.version, target, segments: withPaths(segments), planned: withPaths(planned), burn, approach };
+}
+
+const BURN_AXES = ['prograde', 'normal', 'radial'];
+const BURN_DV_STEP_KMS = 0.001;
+const BURN_DV_STEP_MOST_KMS = 0.2;
+const BURN_TIME_STEP_SHARE = 1 / 720;
+const BURN_TIME_STEP_MOST_SHARE = 1 / 12;
+const NUDGE_GROWTH = 1.12;
+const NUDGE_REPEAT_MS = { first: 350, then: 60 };
+const FIRST_BURN_SECONDS = 600;
+const BURN_WINDOW_PAD_SECONDS = 60;
+const BURN_DONE_KMS = 0.0005;
+const BURN_CLOSE_ENOUGH_KMS = 0.001;
+const BURN_TURN_RADIANS_PER_S = 0.6;
+const AUTOPILOT_ALIGNED_RADIANS = (2 * Math.PI) / 180;
+const AUTOPILOT_LEAD_REAL_SECONDS = 4;
+const BURN_RGB = '120, 200, 255';
+const BURN_MARKER_PX = 9;
+const BURN_KEYS = new Map([
+  ['BracketLeft', ['time', -1]],
+  ['BracketRight', ['time', 1]],
+  ['Digit1', ['prograde', -1]],
+  ['Digit2', ['prograde', 1]],
+  ['Digit3', ['normal', -1]],
+  ['Digit4', ['normal', 1]],
+  ['Digit5', ['radial', -1]],
+  ['Digit6', ['radial', 1]],
+]);
+let burnKeyStreak = 0;
+
+const burnSeconds = (plan) => Math.hypot(...plan.kickKmS) / ENGINE_KM_PER_S2;
+const burnWindowSeconds = (plan) => burnSeconds(plan) + BURN_WINDOW_PAD_SECONDS;
+
+function planBurn() {
+  const first = rocket.path?.segments[0];
+  if (!first) {
+    showStatus('Take off first: a burn needs a path to sit on.');
+    return false;
+  }
+  const lowest = secondsToApsis(rocket.state, first.gm, 'lowest');
+  const quarter = rangeOf(rocket.state, first.gm).periodSeconds / 4;
+  const pathSeconds = first.end === 'orbit' ? Infinity : (first.toMs - rocket.ms) / 2000;
+  const seconds = Math.min(lowest ?? (Number.isFinite(quarter) ? quarter : FIRST_BURN_SECONDS), pathSeconds);
+  rocket.plan = { ms: rocket.ms + Math.max(1, seconds) * 1000, dvKmS: [0, 0, 0], version: 0, holder: first.holder, kickKmS: [0, 0, 0], targetKmS: null, started: false, autopilot: false };
+  return true;
+}
+
+function replanBurn() {
+  rocket.plan.version += 1;
+  rocket.plan.started = false;
+}
+
+function nudgeBurn(what, sign, streak) {
+  const plan = rocket?.plan;
+  if (!plan || !rocketAboard()) return;
+  const growth = NUDGE_GROWTH ** streak;
+  if (what === 'time') {
+    const leg = rocket.path?.segments.at(-1);
+    const periodSeconds = leg ? rangeOf(leg.start, leg.gm).periodSeconds : Infinity;
+    const spanSeconds = Number.isFinite(periodSeconds) ? periodSeconds : Math.max(leg ? (leg.toMs - leg.fromMs) / 1000 : 0, FIRST_BURN_SECONDS);
+    const stepSeconds = Math.min(spanSeconds * BURN_TIME_STEP_MOST_SHARE, Math.max(1, spanSeconds * BURN_TIME_STEP_SHARE * growth));
+    plan.ms = Math.max(rocket.ms + 1000, plan.ms + sign * stepSeconds * 1000);
+  } else {
+    const axis = BURN_AXES.indexOf(what);
+    const stepKmS = Math.min(BURN_DV_STEP_MOST_KMS, BURN_DV_STEP_KMS * growth);
+    plan.dvKmS = plan.dvKmS.map((value, k) => (k === axis ? Math.round((value + sign * stepKmS) / BURN_DV_STEP_KMS) * BURN_DV_STEP_KMS : value));
+  }
+  replanBurn();
+}
+
+function burnAtApsis(kind) {
+  const { plan, path } = rocket;
+  const leg = path?.burn ? path.segments.at(-1) : null;
+  const seconds = leg ? secondsToApsis(leg.finish, leg.gm, kind) : null;
+  if (!(seconds >= 1)) {
+    showStatus(kind === 'lowest' ? 'No lowest point ahead on this part of the path.' : 'No highest point: this part of the path never comes back.');
+    return;
+  }
+  plan.ms += seconds * 1000;
+  replanBurn();
+}
+
+function followPlan(wells, ms) {
+  const { plan, state } = rocket;
+  if (state.landedKm) {
+    endPlan();
+    return;
+  }
+  if (!plan.targetKmS) return;
+  const left = state.holder === plan.holder ? subtract(plan.targetKmS, coast(state, wells.get(plan.holder).gm, (plan.ms - ms) / 1000).velocityKmS) : plan.kickKmS;
+  const leftKmS = Math.hypot(...left);
+  rocket.burnLeftKmS = left;
+  if (plan.started && (leftKmS < BURN_DONE_KMS || dot(left, plan.kickKmS) <= 0)) endPlan(leftKmS < BURN_CLOSE_ENOUGH_KMS ? 'Burn done.' : `Burn done, ${formatRocketSpeed(leftKmS)} off the plan.`);
+  else if (!plan.started && (ms - plan.ms) / 1000 > burnWindowSeconds(plan)) endPlan('Missed the planned burn.');
+}
+
+function endPlan(news) {
+  rocket.plan = null;
+  rocket.burnLeftKmS = null;
+  setBurnPointing(false);
+  showBurnPanel(false);
+  if (news) showStatus(news, 6);
+}
+
+function setBurnPointing(on) {
+  if (rocket) rocket.pointing = on;
+  burnPointButton.setAttribute('aria-pressed', String(on));
+}
+
+function setAutopilot(on, news) {
+  rocket.plan.autopilot = on;
+  burnAutopilotButton.setAttribute('aria-pressed', String(on));
+  showStatus(news, 6);
+}
+
+function turnToward(direction, seconds) {
+  const angle = Math.acos(Math.min(1, Math.max(-1, dot(game.ship.forward, direction))));
+  if (!angle) return 0;
+  const across = cross(game.ship.forward, direction);
+  const axis = Math.hypot(...across) > Number.EPSILON ? normalize(across) : game.ship.up;
+  const turned = Math.min(angle, BURN_TURN_RADIANS_PER_S * seconds);
+  const basis = rotateBasis(game.ship, axis, turned);
+  game.ship = orthonormal(basis.forward, basis.up);
+  aimView();
+  return angle - turned;
+}
+
+function steerToBurn(seconds, thrusted, turned) {
+  const { plan } = rocket;
+  if ((thrusted || turned) && plan.autopilot) setAutopilot(false, 'Autopilot off: you have the controls.');
+  if (turned && rocket.pointing) setBurnPointing(false);
+  const left = rocket.burnLeftKmS;
+  const leftKmS = left ? Math.hypot(...left) : 0;
+  if (leftKmS && (plan.autopilot || rocket.pointing)) {
+    const angleLeft = turnToward(scale(left, 1 / leftKmS), seconds);
+    if (plan.autopilot) flyBurn(leftKmS, angleLeft);
+  }
+  if (!plan.started && rocket.push.some(Boolean) && Math.hypot(...plan.kickKmS) && Math.abs(rocket.ms - plan.ms) / 1000 < burnWindowSeconds(plan)) plan.started = true;
+}
+
+function flyBurn(leftKmS, angleLeft) {
+  const { plan } = rocket;
+  const startSeconds = (plan.ms - rocket.ms) / 1000 - burnSeconds(plan) / 2;
+  if (startSeconds > 0) {
+    if (capRateWithin(startSeconds, AUTOPILOT_LEAD_REAL_SECONDS, FASTEST_BURN_RATE)) showStatus('Autopilot slowed time for the burn.');
+    return;
+  }
+  if (angleLeft > AUTOPILOT_ALIGNED_RADIANS) return;
+  if (capRate(FASTEST_BURN_RATE)) {
+    showStatus(`Time slowed to ${FASTEST_BURN_RATE}× while the engine fires.`);
+    return;
+  }
+  const fullStepKmS = ENGINE_KM_PER_S2 * Math.max(rocket.stepSeconds, Number.EPSILON);
+  rocket.push = scale(game.ship.forward, ENGINE_KM_PER_S2 * Math.min(1, leftKmS / fullStepKmS));
+}
+
+function showBurnPanel(open) {
+  burnPanel.hidden = !open;
+  burnButton.setAttribute('aria-pressed', String(open));
+  if (open) refreshBurnPanel();
+}
+
+function toggleBurnPanel() {
+  if (!rocketAboard()) return;
+  setTray(false);
+  if (!burnPanel.hidden) {
+    showBurnPanel(false);
+    return;
+  }
+  if (!rocket.plan && !planBurn()) return;
+  timePanel.hidden = true;
+  timeButton.setAttribute('aria-pressed', 'false');
+  showBurnPanel(true);
+}
+
+const writeText = (element, text) => element.textContent !== text && (element.textContent = text);
+const formatBurnSpeed = (kmS) => (kmS ? `${kmS > 0 ? '+' : '−'}${formatRocketSpeed(Math.abs(kmS))}` : '0 m/s');
+
+function approachNews(path) {
+  if (!path?.target) return 'Select a planet or moon to see how close the path comes to it.';
+  const { approach } = path;
+  if (!approach) return '';
+  const body = bodyNamed(path.target);
+  const name = nameOfWell(body);
+  const wait = formatWait(approach.ms - rocket.ms);
+  const heightKm = approach.apartKm - body.radiusKm;
+  if (heightKm <= 0) return `Hits ${name} in ${wait}.`;
+  return `Closest to ${name}: ${formatRocketDistance(heightKm)} up, in ${wait}, passing at ${formatRocketSpeed(approach.speedKmS)}.`;
+}
+
+function refreshBurnPanel() {
+  const { plan } = rocket;
+  if (!plan) return;
+  const untilMs = plan.ms - rocket.ms;
+  writeText(burnPanel.querySelector('[data-burn-value="time"]'), untilMs > 0 ? formatWait(untilMs) : 'now');
+  BURN_AXES.forEach((axis, k) => writeText(burnPanel.querySelector(`[data-burn-value="${axis}"]`), formatBurnSpeed(plan.dvKmS[k])));
+  const plannedKmS = Math.hypot(...plan.kickKmS);
+  const total = plan.started ? `Left to burn: ${formatRocketSpeed(Math.hypot(...(rocket.burnLeftKmS ?? plan.kickKmS)))}` : plannedKmS ? `Total ${formatRocketSpeed(plannedKmS)}: ${formatWait(burnSeconds(plan) * 1000)} of engine.` : 'Add speed with + and − to shape the path after the burn.';
+  writeText(burnPanel.querySelector('[data-burn-total]'), total);
+  writeText(burnPanel.querySelector('[data-burn-closest]'), approachNews(rocket.path));
+  burnAutopilotButton.setAttribute('aria-pressed', String(plan.autopilot));
+}
+
+function drawBurnMarker(context, width, height) {
+  const left = rocket.burnLeftKmS;
+  const leftKmS = left ? Math.hypot(...left) : 0;
+  if (!leftKmS) return;
+  const direction = scale(left, 1 / leftKmS);
+  const label = `Burn ${formatRocketSpeed(leftKmS)}`;
+  const spot = spotOnStage(direction);
+  context.save();
+  context.strokeStyle = `rgb(${BURN_RGB})`;
+  context.fillStyle = `rgb(${BURN_RGB})`;
+  context.font = SELECTION_FONT;
+  context.lineWidth = 1.5;
+  if (!spot || spot.x < 0 || spot.x > width || spot.y < 0 || spot.y > height) drawEdgeArrow(context, { direction: edgeDirection(direction) }, width, height, label);
+  else {
+    context.beginPath();
+    context.arc(spot.x, spot.y, BURN_MARKER_PX, 0, 2 * Math.PI);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      context.moveTo(spot.x + dx * BURN_MARKER_PX, spot.y + dy * BURN_MARKER_PX);
+      context.lineTo(spot.x + dx * (BURN_MARKER_PX + 5), spot.y + dy * (BURN_MARKER_PX + 5));
+    }
+    context.stroke();
+    context.textBaseline = 'middle';
+    context.fillText(label, spot.x + BURN_MARKER_PX + 8, spot.y);
+  }
+  context.restore();
 }
 
 function formatWait(ms) {
-  const hours = ms / 3600000;
-  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  const seconds = ms / 1000;
+  if (seconds < 90) return `${Math.max(1, Math.round(seconds))} s`;
+  const hours = seconds / 3600;
+  if (hours < 1) return `${Math.round(hours * 60)} min`;
   if (hours < 48) return `${Math.round(hours)} h`;
   const days = hours / 24;
   if (days < 730) return `${days < 10 ? days.toFixed(1) : Math.round(days)} days`;
@@ -1539,22 +1813,37 @@ function drawRocketLine(context, width, height) {
     drawRocketPath(context, { ...scene, lines: [], marks: ships });
     return;
   }
-  const anchors = new Map();
+  const { segments, planned, burn, approach, target } = rocket.path;
+  const anchors = new Map([[rocket.state.holder, subtract(rocket.shipFromEyeKm, rocket.state.positionKm)]]);
+  const legAnchors = [];
   const lines = [];
   const marks = [...ships];
-  rocket.path.segments.forEach((segment, index) => {
+  const drawLegs = (legs, plannedLegs) => legs.forEach((segment) => {
+    const index = legAnchors.length;
     const anchorOf = (name) => anchors.get(name) ?? scene.offsetOf(name);
     const anchor = segment.met ? add(anchorOf(segment.met.parent), segment.met.offsetKm) : anchorOf(segment.holder);
     anchors.set(segment.holder, anchor);
+    legAnchors.push(anchor);
     const rgb = rocketPathColour(index);
     const holder = bodyNamed(segment.holder);
-    const fromEye = index ? (pointKm) => add(anchor, pointKm) : (pointKm) => add(subtract(pointKm, rocket.state.positionKm), rocket.shipFromEyeKm);
-    lines.push({ pointsKm: segment.pointsKm.map(fromEye), rgb });
+    const fromEye = (pointKm) => add(anchor, pointKm);
+    lines.push({ pointsKm: segment.pointsKm.map(fromEye), rgb, planned: plannedLegs });
     for (const mark of segment.marks) marks.push({ pointKm: fromEye(mark.pointKm), label: pathMarkLabel(holder, mark, index > 0), rgb });
     if (segment.met) marks.push({ pointKm: anchor, label: `${holder.name} then`, rgb, hollow: true, side: 'left' });
     const label = segmentEndLabel(segment);
     if (label) marks.push({ pointKm: fromEye(segment.finish.positionKm), label, rgb });
   });
+  drawLegs(segments, false);
+  if (burn) marks.push({ pointKm: add(legAnchors[burn.index], burn.pointKm), label: rocket.plan && rocket.plan.ms > rocket.ms ? `Burn in ${formatWait(rocket.plan.ms - rocket.ms)}` : 'Burn now', rgb: BURN_RGB, hollow: true });
+  drawLegs(planned, true);
+  if (approach && approach.holder !== target) {
+    const anchor = legAnchors[approach.index];
+    const body = bodyNamed(target);
+    const heightKm = approach.apartKm - body.radiusKm;
+    const rgb = rocketPathColour(approach.index);
+    marks.push({ pointKm: add(anchor, approach.pointKm), label: heightKm > 0 ? `Closest to ${nameOfWell(body)}: ${formatRocketDistance(heightKm)}` : `Hits ${nameOfWell(body)}`, rgb });
+    marks.push({ pointKm: add(anchor, approach.targetKm), label: `${body.name} then`, rgb, hollow: true, side: 'left' });
+  }
   drawRocketPath(context, { ...scene, lines, marks });
 }
 
@@ -1573,8 +1862,10 @@ function rocketReadout(well, offsetKm) {
   const name = nameOfWell(well.body);
   if (rocket.state.landedKm) return `landed on ${name}`;
   const speed = formatRocketSpeed(Math.hypot(...rocket.state.velocityKmS));
-  if (well.body.kind === 'star') return `${speed} around ${name}, ${formatRocketDistance(Math.hypot(...offsetKm))} out`;
-  return `${speed} around ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - well.body.radiusKm))} up`;
+  const { plan } = rocket;
+  const burnNews = !plan ? '' : plan.ms > rocket.ms ? `, burn in ${formatWait(plan.ms - rocket.ms)}` : ', burn now';
+  if (well.body.kind === 'star') return `${speed} around ${name}, ${formatRocketDistance(Math.hypot(...offsetKm))} out${burnNews}`;
+  return `${speed} around ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - well.body.radiusKm))} up${burnNews}`;
 }
 
 let spinSinceSharpSky = 0;
@@ -1758,6 +2049,7 @@ function frame(now) {
   if (touchScreen.matches) showSpeedOnDial(game.speed, { slowest: game.mode.slowestSpeed, top: game.mode.topSpeed, label: formatSpeed(game.speed) });
   if (game.mode.solarSystem) showSimTime(now);
   showCompanionButtons();
+  if (rocket?.plan && !burnPanel.hidden) refreshBurnPanel();
   $('[data-energy]').textContent = !game.mode.scored ? 'unlimited' : `${formatWarpTime(game.energy)} (${formatLightYears(Math.max(0, game.energy))})`;
   requestAnimationFrame(frame);
 }
@@ -1790,6 +2082,7 @@ function refreshGuides(now) {
   if (selection) followSelection(context, now);
   if (selection?.destination?.craft) drawSelectedPath(context, width, height);
   if (rocketOutside() && solarFrame) drawRocketLine(context, width, height);
+  if (rocket?.plan && rocketAboard() && solarFrame) drawBurnMarker(context, width, height);
 }
 
 function photoSize() {
@@ -2269,6 +2562,11 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'Slash' && game.mode.solarSystem) changeTime(togglePause);
   else if (event.code === 'KeyO' && game.mode.solarSystem) setOrbits(!orbitsShown());
   else if (event.code === 'KeyV' && rocketAboard()) nextRocketView();
+  else if (event.code === 'KeyB' && rocketAboard()) toggleBurnPanel();
+  else if (BURN_KEYS.has(event.code) && rocket?.plan) {
+    burnKeyStreak = event.repeat ? burnKeyStreak + 1 : 0;
+    nudgeBurn(...BURN_KEYS.get(event.code), burnKeyStreak);
+  }
   else if (event.code === 'KeyL' && game.mode.labels) setLabels(!labelsToggle.checked);
   else if (event.code === 'KeyP' && game.mode.longExposure) setLongExposure(!longExposureToggle.checked);
   else if (event.code === 'Escape') {
@@ -2331,11 +2629,39 @@ orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
 followButton.addEventListener('click', () => setFollowing(!following));
 rocketViewButton.addEventListener('click', nextRocketView);
 rocketTurnButton.addEventListener('click', () => rocket && setRocketTurning(!rocket.turning));
+burnButton.addEventListener('click', toggleBurnPanel);
+$('[data-burn-close]').addEventListener('click', () => showBurnPanel(false));
+$('[data-burn-delete]').addEventListener('click', () => rocket?.plan && endPlan('Burn plan deleted.'));
+burnPointButton.addEventListener('click', () => rocket?.plan && setBurnPointing(!rocket.pointing));
+burnAutopilotButton.addEventListener('click', () => {
+  if (!rocket?.plan) return;
+  const on = !rocket.plan.autopilot;
+  setAutopilot(on, on ? 'Autopilot on: it turns the rocket, slows time and fires the engine for the planned burn.' : 'Autopilot off.');
+});
+for (const button of burnPanel.querySelectorAll('[data-burn-apsis]')) button.addEventListener('click', () => rocket?.plan && burnAtApsis(button.dataset.burnApsis));
+for (const button of burnPanel.querySelectorAll('[data-burn-nudge]')) {
+  const nudge = (streak) => nudgeBurn(button.dataset.burnNudge, Number(button.dataset.sign), streak);
+  let repeating = null;
+  const stop = () => clearTimeout(repeating);
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    let streak = 0;
+    const again = () => {
+      nudge(streak);
+      repeating = setTimeout(again, streak++ ? NUDGE_REPEAT_MS.then : NUDGE_REPEAT_MS.first);
+    };
+    again();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, stop);
+  button.addEventListener('click', (event) => event.detail === 0 && nudge(0));
+}
 rotateButton.addEventListener('click', () => setRotatingWith(rotatingWith ? null : solarFrame?.holder ?? null));
 timeButton.addEventListener('click', () => {
   setTray(false);
   timePanel.hidden = !timePanel.hidden;
   timeButton.setAttribute('aria-pressed', String(!timePanel.hidden));
+  if (!timePanel.hidden) showBurnPanel(false);
 });
 $('[data-time-close]').addEventListener('click', () => timeButton.click());
 $('[data-time-slower]').addEventListener('click', () => changeTime(slower));
