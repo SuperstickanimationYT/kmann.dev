@@ -118,6 +118,18 @@ function relativeMotion(placeAt, ms, child, parent) {
   return { positionKm: scale(add(before, after), 0.5), velocityKmS: scale(subtract(after, before), 1000 / (2 * PLACING_STEP_MS)) };
 }
 
+export function relativeMotions(placeAt, ms, wells) {
+  const [before, after] = [placeAt(ms - PLACING_STEP_MS), placeAt(ms + PLACING_STEP_MS)].map(placesOf);
+  const motions = new Map();
+  for (const [name, { parent }] of wells) {
+    if (!parent) continue;
+    const offsetIn = (places) => subtract(places.get(name), places.get(parent));
+    const [from, to] = [offsetIn(before), offsetIn(after)];
+    motions.set(name, { positionKm: scale(add(from, to), 0.5), velocityKmS: scale(subtract(to, from), 1000 / (2 * PLACING_STEP_MS)) });
+  }
+  return motions;
+}
+
 function orbitRange(state, gm) {
   const { a, e } = elementsOf({ position: state.positionKm, velocity: state.velocityKmS }, gm);
   const lowest = a * (1 - e);
