@@ -903,6 +903,14 @@ const float CLOUD_FRAYING = 2.0;
 const float CLOUD_SHARPENING = 0.9;
 const float CLOUD_FRAYING_CLOSE = 3.0;
 const float CLOUD_STREAK_STRETCH = 0.35;
+const float CLOUD_PERIMETER_DIMENSION = 1.35;
+const float CLOUD_CLUSTER_PERSISTENCE = exp2(CLOUD_PERIMETER_DIMENSION - 2.0);
+const float CLOUD_CLUSTER_TEXELS = 2.0;
+const float CLOUD_CLUSTER_OCTAVES = 3.0;
+const float NOISE_OCTAVE_SPREAD = 0.185;
+const float CLOUD_CLUSTER_SPREAD = NOISE_OCTAVE_SPREAD / sqrt(1.0 - CLOUD_CLUSTER_PERSISTENCE * CLOUD_CLUSTER_PERSISTENCE);
+const float CLOUD_CLUSTER_SOFTNESS = 1.5;
+const float LOGISTIC_FOR_NORMAL = 1.702;
 const float CLOUD_SHADOW_REACH = 0.0009;
 const float CLOUD_TOWER_REACH = 0.0016;
 const float CLOUD_LOWEST_SHADOW_SUN = 0.12;
@@ -996,16 +1004,41 @@ float billowNoise(vec3 p, float octaves) {
   return total;
 }
 
-vec2 cloudSheet(vec3 local, float footprint) {
+float clusterField(vec3 p, float octaves) {
+  float total = 0.0;
+  float amplitude = 1.0;
+  for (int i = 0; i < int(CLOUD_CLUSTER_OCTAVES); i++) {
+    float weight = clamp(octaves - float(i), 0.0, 1.0);
+    if (weight <= 0.0) break;
+    total += weight * amplitude * (smoothNoise(p) - 0.5);
+    p = p * 2.03 + vec3(7.1, 2.9, 5.3);
+    amplitude *= CLOUD_CLUSTER_PERSISTENCE;
+  }
+  return total;
+}
+
+float clusteredCover(vec3 local, float cover, float footprint) {
+  float octaves = clamp(log2(CLOUD_CLUSTER_TEXELS * cloudTexel() / max(footprint, 1e-9)), 0.0, CLOUD_CLUSTER_OCTAVES);
+  if (octaves <= 0.0) return cover;
+  float unresolved = CLOUD_CLUSTER_SPREAD * pow(CLOUD_CLUSTER_PERSISTENCE, octaves);
+  float softness = max(unresolved, CLOUD_CLUSTER_SOFTNESS * CLOUD_CLUSTER_SPREAD);
+  float resolvedVariance = CLOUD_CLUSTER_SPREAD * CLOUD_CLUSTER_SPREAD - unresolved * unresolved;
+  float threshold = sqrt(resolvedVariance + softness * softness) * log((1.0 - cover) / cover) / LOGISTIC_FOR_NORMAL;
+  float field = clusterField(local / (CLOUD_CLUSTER_TEXELS * cloudTexel()), octaves);
+  return 1.0 / (1.0 + exp(-LOGISTIC_FOR_NORMAL * (field - threshold) / softness));
+}
+
+vec2 cloudSheet(vec3 local, float footprint, bool clustered) {
   float lod = max(log2(footprint / cloudTexel()), 0.0);
   float octaves = clamp(log2(cloudTexel() / max(footprint, 1e-9)), 0.0, CLOUD_SHEET_OCTAVES);
   vec2 mapped = cloudMapped(local, lod);
-  if (octaves <= 0.0) return mapped;
+  if (octaves <= 0.0) return vec2(clustered && mapped.x * (1.0 - mapped.x) > 0.004 ? clusteredCover(local, mapped.x, footprint) : mapped.x, mapped.y);
   vec3 p = local / cloudTexel();
   vec3 wander = vec3(detailNoise(p * 0.8, min(octaves, 2.0)), detailNoise(p * 0.8 + 37.1, min(octaves, 2.0)), 0.0);
   wander.z = -0.5 * (wander.x + wander.y);
   vec3 warped = normalize(local + CLOUD_WARP_TEXELS * cloudTexel() * 2.0 * wander);
   float cover = mix(mapped.x, smoothCloudCover(warped), min(octaves, 1.0));
+  if (clustered && cover * (1.0 - cover) > 0.004) cover = clusteredCover(local, cover, footprint);
   float high = smoothstep(0.25, 0.6, mapped.y);
   vec3 drifted = p + 2.0 * wander;
   if (cover * (1.0 - cover) <= 0.004) return vec2(step(0.5, cover), mapped.y);
@@ -1618,7 +1651,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec2 sheet = vec2(0.0);
   if (underClouds) {
     useClouds(i, sunLocal);
-    sheet = cloudSheet(inCloudFrame(local), footprint);
+    sheet = cloudSheet(inCloudFrame(local), footprint, true);
   }
   if (invented && sheet.x <= CLOUD_HIDES_SURFACE) {
     bool painted = i == uInventedBody && isSeaWorld(map.z);
@@ -2297,7 +2330,7 @@ vec4 cloudSheetFrom(vec3 ray, vec3 sun, float shellKm, float nearestSolidKm, boo
   vec3 drifted = inCloudFrame(up);
   float footprint = uPixelAngle * hitKm / uGroundRadius;
   if (onlyHigh && highCloudShare(cloudMapped(drifted, 0.0).y) <= 0.0) return vec4(0.0);
-  vec2 sheet = cloudSheet(drifted, onlyHigh ? max(footprint, CLOUD_HIGH_FOOTPRINT) : footprint);
+  vec2 sheet = cloudSheet(drifted, onlyHigh ? max(footprint, CLOUD_HIGH_FOOTPRINT) : footprint, true);
   float opacity = onlyHigh ? CLOUD_HIGH_OPACITY * sheet.x * highCloudShare(sheet.y) : CLOUD_OPACITY * sheet.x;
   float sunHeight = dot(sun, up);
   vec3 light = onlyHigh
@@ -2940,7 +2973,7 @@ void main() {
   vec3 up = uCloudNearbyUp * sqrt(max(1.0 - dot(across, across), 0.0)) + uCloudNearbyEast * across.x + cross(uCloudNearbyUp, uCloudNearbyEast) * across.y;
   float footprint = cloudNearbyTexelKm(distanceKm) / uGroundRadius;
   useClouds(uGround, groundLocal(uBodySun[uGround].xyz));
-  outColour = vec4(cloudSheet(normalize(up), footprint), 0.0, 1.0);
+  outColour = vec4(cloudSheet(normalize(up), footprint, false), 0.0, 1.0);
 }`;
 
 const SUN_ON_GROUND = `
