@@ -242,7 +242,8 @@
   color: var(--text-dim);
 }
 
-.fh-time {
+.fh-time,
+.fh-burn {
   position: absolute;
   z-index: 3;
   bottom: calc(var(--dock-height) + 12px);
@@ -256,18 +257,58 @@
   color: var(--text-dim);
 }
 
-.fh-time h2 {
+.fh-time h2,
+.fh-burn h2 {
   margin: 0 28px 8px 0;
   font-size: 16px;
   color: var(--text-strong);
 }
 
-.fh-time p {
+.fh-time p,
+.fh-burn p {
   margin: 8px 0;
 }
 
-.fh-time strong {
+.fh-time strong,
+.fh-burn strong {
   color: var(--text-strong);
+}
+
+.fh-burn-steps {
+  display: grid;
+  grid-template-columns: 1fr auto 7.5em auto;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 10px;
+}
+
+.fh-burn-steps strong {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.fh-burn-steps button {
+  width: 34px;
+  height: 30px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.fh-burn .fh-actions button {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.fh-burn [aria-pressed='true'] {
+  border-color: var(--link);
+  background: #1d4d7d;
 }
 
 .fh-time-date {
@@ -1099,7 +1140,8 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
   }
 
   .fh-pick,
-  .fh-time {
+  .fh-time,
+  .fh-burn {
     inset: calc(var(--edge-top) + 46px) auto auto var(--edge-left);
     width: min(300px, calc(100% - var(--edge-left) - var(--edge-right)));
     max-height: calc(100% - var(--dock-height) - var(--edge-top) - 60px);
@@ -1107,11 +1149,12 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
     touch-action: pan-y;
   }
 
-  .fh-stage:has(.fh-time:not([hidden])) .fh-pick {
+  .fh-stage:has(:is(.fh-time, .fh-burn):not([hidden])) .fh-pick,
+  .fh-stage:has(.fh-time:not([hidden])) .fh-burn {
     display: none;
   }
 
-  .fh-stage:has(:is(.fh-time, .fh-pick):not([hidden])) .fh-status {
+  .fh-stage:has(:is(.fh-time, .fh-pick, .fh-burn):not([hidden])) .fh-status {
     display: none;
   }
 
@@ -1270,7 +1313,8 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
   }
 
   .fh-pick,
-  .fh-time {
+  .fh-time,
+  .fh-burn {
     left: calc(var(--edge-left) + 142px);
   }
 

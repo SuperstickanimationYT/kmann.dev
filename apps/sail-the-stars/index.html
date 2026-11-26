@@ -30,6 +30,7 @@
   <symbol id="icon-outside" viewBox="0 0 24 24"><path d="M3 7.5V3h4.5M16.5 3H21v4.5M21 16.5V21h-4.5M7.5 21H3v-4.5M6.5 16.5c2.5-5 6-8 11-9"/><circle cx="11" cy="11.6" r="2" fill="currentColor" stroke="none"/></symbol>
   <symbol id="icon-follow" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .4l3-3a4.2 4.2 0 0 0-6-6l-1.6 1.6M14 10a4 4 0 0 0-6-.4l-3 3a4.2 4.2 0 0 0 6 6l1.6-1.6"/></symbol>
   <symbol id="icon-rotate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M20.5 9.5A9 9 0 0 0 4 8M3.5 14.5A9 9 0 0 0 20 16M4 3.5V8h4.5M20 20.5V16h-4.5"/></symbol>
+  <symbol id="icon-burn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/><path d="M12 12l5.5-5.5M14 6.5h3.5V10"/></symbol>
   <symbol id="icon-time" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6.5V12l3.7 2.3"/></symbol>
   <symbol id="icon-align" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4.5M12 17.5V22M2 12h4.5M17.5 12H22"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
   <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.300l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.700l1.8-1.8M16.9 7.100l1.8-1.8"/></symbol>
@@ -58,6 +59,27 @@
     <dl data-pick-facts></dl>
     <p class="fh-pick-note" data-pick-note></p>
     <div class="fh-actions fh-pick-warp"><button type="button" class="fh-primary" data-pick-warp>Warp here</button><button type="button" data-pick-mission-start hidden></button></div>
+  </aside>
+  <aside class="fh-burn" data-burn hidden aria-label="Planned burn">
+    <button type="button" class="fh-pick-close" data-burn-close aria-label="Close the burn plan">&times;</button>
+    <h2>Planned burn</h2>
+    <div class="fh-burn-steps">
+      <span>Burn in</span><button type="button" data-burn-nudge="time" data-sign="-1" aria-label="Earlier" title="Earlier ([)">&minus;</button><strong data-burn-value="time"></strong><button type="button" data-burn-nudge="time" data-sign="1" aria-label="Later" title="Later (])">+</button>
+      <span>Prograde</span><button type="button" data-burn-nudge="prograde" data-sign="-1" aria-label="Less prograde" title="Retrograde (1)">&minus;</button><strong data-burn-value="prograde"></strong><button type="button" data-burn-nudge="prograde" data-sign="1" aria-label="More prograde" title="Prograde (2)">+</button>
+      <span>Normal</span><button type="button" data-burn-nudge="normal" data-sign="-1" aria-label="Less normal" title="Anti-normal (3)">&minus;</button><strong data-burn-value="normal"></strong><button type="button" data-burn-nudge="normal" data-sign="1" aria-label="More normal" title="Normal (4)">+</button>
+      <span>Radial out</span><button type="button" data-burn-nudge="radial" data-sign="-1" aria-label="Less radial out" title="Radial in (5)">&minus;</button><strong data-burn-value="radial"></strong><button type="button" data-burn-nudge="radial" data-sign="1" aria-label="More radial out" title="Radial out (6)">+</button>
+    </div>
+    <div class="fh-actions">
+      <button type="button" data-burn-apsis="lowest">Next lowest</button>
+      <button type="button" data-burn-apsis="highest">Next highest</button>
+    </div>
+    <p data-burn-total></p>
+    <p data-burn-closest></p>
+    <div class="fh-actions">
+      <button type="button" data-burn-point aria-pressed="false">Point at burn</button>
+      <button type="button" data-burn-autopilot aria-pressed="false">Autopilot</button>
+      <button type="button" data-burn-delete>Delete</button>
+    </div>
   </aside>
   <aside class="fh-time" data-time hidden aria-label="Time">
     <button type="button" class="fh-pick-close" data-time-close aria-label="Close time controls">&times;</button>
@@ -88,6 +110,7 @@
       <button type="button" data-atlas-open aria-description="Map of the Milky Way" aria-keyshortcuts="M"><svg class="fh-icon" aria-hidden="true"><use href="#icon-atlas"/></svg><span class="fh-name">Atlas</span></button>
       <button type="button" data-orbits aria-pressed="false" aria-description="Show the paths of planets and moons, and where spacecraft are" aria-keyshortcuts="O" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-orbits"/></svg><span class="fh-name">Orbits</span></button>
       <button type="button" data-rocket-view aria-pressed="false" aria-description="Switch between inside the rocket, a chase camera behind it, and a view of its whole orbit" aria-keyshortcuts="V" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-outside"/></svg><span class="fh-name">View</span></button>
+      <button type="button" data-burn-open aria-pressed="false" aria-description="Plan a burn on the rocket's path and see how close it comes to the selected body" aria-keyshortcuts="B" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-burn"/></svg><span class="fh-name">Burn</span></button>
       <button type="button" data-follow aria-pressed="true" aria-description="Move along with it" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-follow"/></svg><span class="fh-name">Follow</span></button>
       <button type="button" data-rotate-with aria-pressed="false" aria-description="Turn along with its spin" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-rotate"/></svg><span class="fh-name">Rotate with</span></button>
       <button type="button" data-time-open aria-pressed="false" aria-description="Change the date and how fast time runs" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-time"/></svg><span class="fh-name">Time</span></button>

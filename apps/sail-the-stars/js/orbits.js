@@ -174,6 +174,7 @@ export function drawCraftPath(context, { past, future, ...scene }) {
 const ROCKET_PATH_RGBS = ['150, 235, 170', '255, 205, 120', '235, 150, 235', '140, 210, 255'];
 const ROCKET_PATH_ALPHA = 0.7;
 const LABEL_NUDGES = [0, 1, -1, 2, -2];
+const PLANNED_DASH = [6, 5];
 
 export const rocketPathColour = (index) => ROCKET_PATH_RGBS[index % ROCKET_PATH_RGBS.length];
 
@@ -181,13 +182,15 @@ export function drawRocketPath(context, { lines, marks, ...scene }) {
   const { toCamera, toScreen, shownPieces, tracePieces, seen } = pencil(context, scene);
   context.save();
   context.lineWidth = 1.5;
-  for (const { pointsKm, rgb } of lines) {
+  for (const { pointsKm, rgb, planned } of lines) {
     const points = pointsKm.map(toCamera);
+    context.setLineDash(planned ? PLANNED_DASH : []);
     context.strokeStyle = `rgba(${rgb}, ${ROCKET_PATH_ALPHA})`;
     context.beginPath();
     for (let k = 0; k + 1 < points.length; k++) tracePieces(shownPieces(points[k], points[k + 1]));
     context.stroke();
   }
+  context.setLineDash([]);
   context.font = MARK_FONT;
   context.textBaseline = 'middle';
   const written = [];
