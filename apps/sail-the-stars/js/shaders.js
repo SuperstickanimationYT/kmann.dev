@@ -1063,6 +1063,30 @@ vec3 alongSurfaceTowardSun(vec3 local, vec3 sun) {
   return (sun - local * sunHeight) / max(sunHeight, CLOUD_LOWEST_SHADOW_SUN);
 }
 
+const float DECK_CELL_TEXELS = 1.5;
+const float DECK_RELIEF_OCTAVES = 6.0;
+const float DECK_THICKNESS_CONTRAST = 0.35;
+const float DECK_SLOPE_SHADING = 0.5;
+const float DECK_SLOPE_PROBE = 0.15;
+const float DECK_STEEPEST_SUN = 3.0;
+const float DECK_SLOPE_PIXELS = 3.0;
+const float HIGH_DECK_FLATTENING = 0.6;
+
+float deckRelief(vec3 local, vec2 sheet, vec3 toSun, float footprint) {
+  float deck = smoothstep(0.6, 1.0, sheet.x) * (1.0 - HIGH_DECK_FLATTENING * smoothstep(0.25, 0.6, sheet.y));
+  float cell = DECK_CELL_TEXELS * cloudTexel();
+  float octaves = clamp(log2(cell / max(footprint, 1e-9)), 0.0, DECK_RELIEF_OCTAVES);
+  if (deck <= 0.0 || octaves <= 0.0) return 1.0;
+  vec3 p = local / cell;
+  float tops = billowNoise(p, octaves);
+  float probe = max(DECK_SLOPE_PROBE, DECK_SLOPE_PIXELS * footprint / cell);
+  float sunwardLength = min(length(toSun), DECK_STEEPEST_SUN);
+  float towardSun = billowNoise(p + probe * toSun / max(length(toSun), 1e-5), octaves);
+  float facing = (towardSun - tops) / probe * sunwardLength / DECK_STEEPEST_SUN;
+  float relief = DECK_THICKNESS_CONTRAST * tops - DECK_SLOPE_SHADING * facing;
+  return 1.0 + deck * min(octaves, 1.0) * relief;
+}
+
 float cloudSheetLight(vec3 local, vec2 sheet, vec3 sun, float footprint) {
   float lod = max(log2(footprint / cloudTexel()), 0.0);
   vec3 toSun = alongSurfaceTowardSun(local, sun);
@@ -1070,7 +1094,7 @@ float cloudSheetLight(vec3 local, vec2 sheet, vec3 sun, float footprint) {
   float shaded = clamp(beside.x * beside.y - sheet.x * sheet.y, 0.0, 1.0);
   vec2 near = cloudMapped(normalize(local + CLOUD_EMBOSS_TEXELS * max(cloudTexel(), footprint) * normalize(toSun + 1e-5)), lod);
   float emboss = clamp(sheet.x - near.x, -0.5, 0.5) * (1.0 - max(dot(sun, local), 0.0) * 0.6);
-  return (1.0 - CLOUD_SELF_SHADOW * shaded) * (1.0 + CLOUD_EMBOSS * emboss) * mix(0.86, 1.0, sheet.x);
+  return (1.0 - CLOUD_SELF_SHADOW * shaded) * (1.0 + CLOUD_EMBOSS * emboss) * mix(0.86, 1.0, sheet.x) * deckRelief(local, sheet, toSun, footprint);
 }
 
 float cloudSheetShadow(vec3 local, vec3 sun, float lod) {
