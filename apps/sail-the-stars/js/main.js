@@ -18,11 +18,13 @@ import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warp
 import { hideLoading, showShadersReady } from './loading-screen.js';
 import { createRenderer } from './renderer.js';
 import { predictedPath } from './rocket-path.js';
+import { cameraBasis, swungAround } from './rocket-camera.js';
+import { halfSizeKm } from './spacecraft-models.js';
 import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, pullKmS2, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
 import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
-import { holdingBody, KM_PER_AU, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm } from './solar-system.js';
+import { holdingBody, KM_PER_AU, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm, sunShareVisible } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
 import { blackHolesWithin, KNOWN_BLACK_HOLES, nearestBlackHole } from './black-holes.js';
 import { withExoplanetHosts } from './exoplanets.js';
@@ -487,6 +489,7 @@ function drawSelectedPath(context, width, height) {
 }
 const followButton = $('[data-follow]');
 const rocketViewButton = $('[data-rocket-view]');
+const rocketTurnButton = $('[data-rocket-turn]');
 const rotateButton = $('[data-rotate-with]');
 let following = true;
 let rotatingWith = null;
@@ -506,6 +509,7 @@ function showCompanionButtons() {
   const near = Boolean(holder) && holder.kind !== 'star';
   followButton.hidden = !near || rocketAboard();
   rocketViewButton.hidden = !rocketAboard();
+  rocketTurnButton.hidden = !rocketOutside();
   rotateButton.hidden = !near || holder.kind === 'wormhole';
   if (!near) return;
   const name = spokenName(holder);
@@ -650,7 +654,7 @@ function letGo() {
 }
 
 function aimView() {
-  game.basis = viewBasis(game.ship, game.head);
+  game.basis = rocketOutside() ? cameraBasis(rocket.away, rocket.outward) : viewBasis(game.ship, game.head);
   viewChanged();
 }
 
@@ -1050,10 +1054,13 @@ function flightStep(seconds) {
   thrusting = false;
   if (rocket) rocket.push = [0, 0, 0];
   if (menu || intro || photo?.running || warp || aim || glide) return;
+  const stickTurns = rocketOutside() && rocket.turning;
+  const thrustStick = stickTurns ? { across: 0, along: 0 } : stick.push;
+  const turnStick = stickTurns ? stick.push : { across: 0, along: 0 };
   const move = [
-    (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0) + stick.push.across,
+    (held.has('KeyD') ? 1 : 0) - (held.has('KeyA') ? 1 : 0) + thrustStick.across,
     (held.has('KeyR') ? 1 : 0) - (held.has('KeyF') ? 1 : 0),
-    (held.has('KeyW') ? 1 : 0) - (held.has('KeyS') ? 1 : 0) + stick.push.along,
+    (held.has('KeyW') ? 1 : 0) - (held.has('KeyS') ? 1 : 0) + thrustStick.along,
   ];
   let moved = false;
   thrusting = move.some(Boolean);
@@ -1067,8 +1074,8 @@ function flightStep(seconds) {
     else game.camera = add(game.camera, shift);
     moved = true;
   }
-  const yaw = (held.has('ArrowRight') ? 1 : 0) - (held.has('ArrowLeft') ? 1 : 0);
-  const pitch = (held.has('ArrowUp') ? 1 : 0) - (held.has('ArrowDown') ? 1 : 0);
+  const yaw = (held.has('ArrowRight') ? 1 : 0) - (held.has('ArrowLeft') ? 1 : 0) + turnStick.across;
+  const pitch = (held.has('ArrowUp') ? 1 : 0) - (held.has('ArrowDown') ? 1 : 0) + turnStick.along;
   const roll = (held.has('KeyE') ? 1 : 0) - (held.has('KeyQ') ? 1 : 0);
   const lookRate = LOOK_RATE * Math.min(1, fieldHeight / EYE_FIELD_HEIGHT);
   if (yaw) game.ship = turn(game.ship, 'up', -yaw * lookRate * seconds);
@@ -1247,7 +1254,7 @@ function followSolarSystem() {
     return;
   }
   if (solarFrame && game.camera !== solarFrame.camera) solarFrame = null;
-  if (rocket?.outside && !rocketAboard()) backInsideRocket({ turnBack: false });
+  if (rocket && rocket.view !== 'inside' && !rocketAboard()) backInsideRocket();
   const bodiesBefore = solarBodies;
   enterSystem((!solarFrame && systemNear(game.camera)) || system);
   solarFrame ??= enterSolarFrame();
@@ -1256,7 +1263,8 @@ function followSolarSystem() {
   const carriedFrom = following ? previous.fromSunKm : solarFrame.body.fromSunKm;
   const framedFromSunKm = add(carriedFrom, frameOffsetKm(previous, solarFrame));
   const shipFromSunKm = rocketAboard() ? flyRocket(bodiesBefore, framedFromSunKm) : framedFromSunKm;
-  const fromSunKm = rocketAboard() && rocket.outside ? add(shipFromSunKm, scale(game.basis.forward, -outsideViewKm())) : shipFromSunKm;
+  if (rocketAboard()) rocket.outward = normalize(subtract(shipFromSunKm, bodyNamed(rocket.state.holder).fromSunKm));
+  const fromSunKm = rocketOutside() ? rocketEyeFromSunKm(shipFromSunKm) : shipFromSunKm;
   const holder = holdingBody(holders(), fromSunKm);
   if (rotatingWith && rotatingWith !== holder.name) setRotatingWith(null);
   let offsetKm = subtract(fromSunKm, holder.fromSunKm);
@@ -1276,6 +1284,8 @@ function followSolarSystem() {
   solarFrame = { holder: holder.name, offsetKm, coRotating, localKm: coRotating ? toBodyLocal(holder, offsetKm) : null, camera: game.camera, landed, landingArmed: landingArmed && !touchedDown, body: holder };
   if (rocket) rocket.camera = rocketAboard() ? game.camera : null;
   if (rocket) rocket.shipFromEyeKm = subtract(shipFromSunKm, add(holder.fromSunKm, offsetKm));
+  if (rocket) rocket.shipFromSunKm = shipFromSunKm;
+  if (rocketOutside()) game.basis = cameraBasis(rocket.away, rocket.outward);
   if (!withinSystem(system, game.camera)) solarFrame = null;
 }
 
@@ -1286,10 +1296,11 @@ const ROCKET_AU_FROM_KM = 1e7;
 let rocket = null;
 
 const rocketAboard = () => Boolean(rocket) && game.mode.solarSystem && !(menu || intro || photo?.running || warp || aim || glide);
+const rocketOutside = () => rocketAboard() && rocket.view !== 'inside';
 
 function setRocket(on) {
-  if (rocket?.outside) backInsideRocket({ turnBack: true });
-  rocket = on ? { state: null, ms: simNow(), camera: null, system: null, push: [0, 0, 0], readout: '', path: null, outside: false, insideFacing: null, shipFromEyeKm: [0, 0, 0] } : null;
+  if (rocket && rocket.view !== 'inside') backInsideRocket();
+  rocket = on ? { state: null, ms: simNow(), camera: null, system: null, push: [0, 0, 0], readout: '', path: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
   rocketToggle.checked = on;
   rocketViewButton.setAttribute('aria-pressed', 'false');
   document.body.classList.toggle('fh-rocket', on);
@@ -1346,7 +1357,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   if (fresh) {
     const well = wellAround(wells, star, framedFromSunKm);
     rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms);
-    if (rocket.outside) lookDownOnOrbit();
+    if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
   } else if (rocket.state.landedKm) {
     liftOff(wells.get(rocket.state.holder), ms, (ms - rocket.ms) / 1000);
   } else {
@@ -1368,6 +1379,27 @@ const OUTSIDE_VIEW_PATH_SHARE = 3;
 const OUTSIDE_VIEW_NEAREST_RADII = 1;
 const OUTSIDE_VIEW_SYSTEM_SHARE = 0.3;
 const OUTSIDE_VIEW_TILT_RADIANS = (20 * Math.PI) / 180;
+const ROCKET_NAME = 'Your rocket';
+
+function rocketInView() {
+  if (!rocketOutside() || !rocket.shipFromSunKm) return [];
+  const here = rocket.shipFromSunKm;
+  const star = solarBodies.find(({ kind }) => kind === 'star');
+  const body = {
+    name: ROCKET_NAME,
+    kind: 'craft',
+    model: 'rocket',
+    radiusKm: halfSizeKm('rocket'),
+    parent: rocket.state.holder,
+    landed: Boolean(rocket.state.landedKm),
+    fromSunKm: here,
+    north: game.ship.forward,
+    meridian: game.ship.up,
+    sunward: normalize(subtract(star.fromSunKm, here)),
+    sunlitShare: sunShareVisible(solarBodies.map((other) => ({ body: other, offsetKm: subtract(other.fromSunKm, here) })), ROCKET_NAME),
+  };
+  return [{ body, offsetKm: rocket.shipFromEyeKm }];
+}
 
 function outsideViewKm() {
   const { state, path } = rocket;
@@ -1376,40 +1408,81 @@ function outsideViewKm() {
   return Math.min(Math.max(OUTSIDE_VIEW_PATH_SHARE * farthestKm, nearestKm), OUTSIDE_VIEW_SYSTEM_SHARE * systemEdgeKm());
 }
 
-function lookDownOnOrbit() {
+const CHASE_VIEW_KM = 0.045;
+const CHASE_VIEW_RISE_RADIANS = (25 * Math.PI) / 180;
+const LEVEL_ENOUGH = 0.3;
+const ROCKET_MIDDLE_KM = 0.005;
+const CAMERA_ZOOM_RANGE = [0.2, 500];
+const NEXT_ROCKET_VIEW = { inside: 'chase', chase: 'orbit', orbit: 'inside' };
+const ROCKET_VIEW_NEWS = {
+  inside: 'Back inside the rocket.',
+  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. The flight keys fire along the rocket.',
+  chaseByTouch: 'Chase view: drag to swing the camera, pinch to zoom. Tap Turn to steer the rocket with the stick.',
+  orbit: 'Orbit view: the whole path, from above the orbit.',
+};
+
+function awayAboveOrbit() {
   const { positionKm, velocityKmS } = rocket.state;
-  if (!velocityKmS) return;
+  if (!velocityKmS) return null;
   const momentum = cross(positionKm, velocityKmS);
-  if (!Math.hypot(...momentum)) return;
-  const outward = normalize(positionKm);
-  const down = add(scale(normalize(momentum), -Math.cos(OUTSIDE_VIEW_TILT_RADIANS)), scale(outward, -Math.sin(OUTSIDE_VIEW_TILT_RADIANS)));
-  faceDirection(down, outward);
+  if (!Math.hypot(...momentum)) return null;
+  return add(scale(normalize(momentum), Math.cos(OUTSIDE_VIEW_TILT_RADIANS)), scale(normalize(positionKm), Math.sin(OUTSIDE_VIEW_TILT_RADIANS)));
 }
 
-function backInsideRocket({ turnBack }) {
-  if (turnBack && rocket.insideFacing) faceDirection(rocket.insideFacing.forward, rocket.insideFacing.up);
+function awayBehindRocket() {
+  const level = (direction) => subtract(direction, scale(rocket.outward, dot(direction, rocket.outward)));
+  const behind = level(scale(game.ship.forward, -1));
+  const across = Math.hypot(...behind) > LEVEL_ENOUGH ? behind : level(scale(game.ship.up, -1));
+  return add(scale(normalize(across), Math.cos(CHASE_VIEW_RISE_RADIANS)), scale(rocket.outward, Math.sin(CHASE_VIEW_RISE_RADIANS)));
+}
+
+function rocketEyeFromSunKm(shipFromSunKm) {
+  const chasing = rocket.view === 'chase';
+  const aimedAt = chasing ? add(shipFromSunKm, scale(game.ship.forward, ROCKET_MIDDLE_KM)) : shipFromSunKm;
+  const distanceKm = Math.min((chasing ? CHASE_VIEW_KM : outsideViewKm()) * rocket.zoom, OUTSIDE_VIEW_SYSTEM_SHARE * systemEdgeKm());
+  return add(aimedAt, scale(rocket.away, distanceKm));
+}
+
+function zoomRocketCamera(factor) {
+  rocket.zoom = Math.min(CAMERA_ZOOM_RANGE[1], Math.max(CAMERA_ZOOM_RANGE[0], rocket.zoom * factor));
+}
+
+function swingRocketCamera(across, down) {
+  rocket.away = swungAround(rocket.away, rocket.outward, across, down);
+  aimView();
+}
+
+function backInsideRocket() {
   if (solarFrame) {
     const body = bodyNamed(solarFrame.holder) ?? solarFrame.body;
     const offsetKm = add(frameOffsetKm(body, solarFrame), rocket.shipFromEyeKm);
     solarFrame = { ...solarFrame, offsetKm, localKm: solarFrame.coRotating ? toBodyLocal(body, offsetKm) : null };
   }
-  rocket.outside = false;
+  rocket.view = 'inside';
+  setRocketTurning(false);
   rocketViewButton.setAttribute('aria-pressed', 'false');
+  aimView();
   clearGuides();
 }
 
-function setOutsideView(on) {
+function setRocketTurning(on) {
+  rocket.turning = on;
+  rocketTurnButton.setAttribute('aria-pressed', String(on));
+}
+
+function nextRocketView() {
   if (!rocketAboard()) return;
-  if (on) {
-    rocket.insideFacing = { forward: game.ship.forward, up: game.ship.up };
-    lookDownOnOrbit();
-    rocket.outside = true;
+  const view = NEXT_ROCKET_VIEW[rocket.view];
+  if (view === 'inside') backInsideRocket();
+  else {
+    rocket.away = view === 'chase' ? awayBehindRocket() : awayAboveOrbit() ?? rocket.away;
+    rocket.zoom = 1;
+    rocket.view = view;
     rocketViewButton.setAttribute('aria-pressed', 'true');
+    aimView();
     clearGuides();
-  } else {
-    backInsideRocket({ turnBack: true });
   }
-  showStatus(on ? 'Outside view: drag to swing around the rocket. The flight keys still fire the engine.' : 'Back inside the rocket.');
+  showStatus(ROCKET_VIEW_NEWS[view === 'chase' && touchScreen.matches ? 'chaseByTouch' : view], 6);
 }
 
 function rocketPath(well) {
@@ -1428,14 +1501,14 @@ function drawRocketLine(context, width, height) {
   if (!scene) return;
   const body = bodyNamed(rocket.state.holder);
   const up = normalize(subtract(rocket.shipFromEyeKm, scene.offsetOf(body.name)));
-  const ship = { pointKm: add(rocket.shipFromEyeKm, scale(up, LANDER_MARK_RAISED_RADII * body.radiusKm)), label: 'Rocket', side: 'left' };
+  const ships = rocket.view === 'orbit' ? [{ pointKm: add(rocket.shipFromEyeKm, scale(up, LANDER_MARK_RAISED_RADII * body.radiusKm)), label: 'Rocket', side: 'left' }] : [];
   if (!rocket.path) {
-    drawRocketPath(context, { ...scene, pointsKm: [], marks: [ship] });
+    drawRocketPath(context, { ...scene, pointsKm: [], marks: ships });
     return;
   }
   const fromEye = (pointKm) => add(subtract(pointKm, rocket.state.positionKm), rocket.shipFromEyeKm);
   const marks = rocket.path.marks.map((mark) => ({ pointKm: fromEye(mark.pointKm), label: pathMarkLabel(body, mark) }));
-  drawRocketPath(context, { ...scene, pointsKm: rocket.path.pointsKm.map(fromEye), marks: [ship, ...marks] });
+  drawRocketPath(context, { ...scene, pointsKm: rocket.path.pointsKm.map(fromEye), marks: [...ships, ...marks] });
 }
 
 const nameOfWell = (body) => (body.kind === 'star' && body.name === 'Sun' ? 'the Sun' : spokenName(body));
@@ -1613,11 +1686,11 @@ function frame(now) {
       starsChanged: eyeStarsChanged,
       seed: frameSeed,
       ...nextSkyRedraw(),
-      cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit },
+      cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit && !rocketOutside() },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
       beyond: seenThroughMouth(),
-      craft: craftInView(),
+      craft: [...craftInView(), ...rocketInView()],
       starlight: system.light,
       cloudSeconds: paused() || prefersStillness.matches ? 0 : seconds,
       ground,
@@ -1669,7 +1742,7 @@ function refreshGuides(now) {
   if (labelsShown()) drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
   if (selection) followSelection(context, now);
   if (selection?.destination?.craft) drawSelectedPath(context, width, height);
-  if (rocket?.outside && rocketAboard() && solarFrame) drawRocketLine(context, width, height);
+  if (rocketOutside() && solarFrame) drawRocketLine(context, width, height);
 }
 
 function photoSize() {
@@ -2046,7 +2119,10 @@ function finish(found) {
 }
 
 const fingers = createTwoFingerGesture({
-  zoomBy,
+  zoomBy(factor) {
+    if (rocketOutside()) zoomRocketCamera(1 / factor);
+    else zoomBy(factor);
+  },
   rollBy(angle) {
     if (warp || aim || glide || intro || menu) return;
     game.ship = turn(game.ship, 'forward', -angle);
@@ -2072,7 +2148,8 @@ view.addEventListener('pointermove', (event) => {
   const perPixel = fieldHeight / stage.clientHeight;
   const across = (event.clientX - drag.x) * perPixel;
   const down = (event.clientY - drag.y) * perPixel;
-  if (game.mode.dragSteersShip && !aim && !glide) {
+  if (rocketOutside()) swingRocketCamera(across, down);
+  else if (game.mode.dragSteersShip && !aim && !glide) {
     game.ship = turn(turn(game.ship, 'up', across), 'right', down);
     aimView();
   } else turnHead(-across, down);
@@ -2097,7 +2174,8 @@ view.addEventListener(
     if (event.ctrlKey) {
       const pixels = Math.max(-MOST_WHEEL_PIXELS_PER_EVENT, Math.min(MOST_WHEEL_PIXELS_PER_EVENT, event.deltaY));
       zoomBy(Math.exp(-pixels * ZOOM_PER_WHEEL_PIXEL));
-    } else changeSpeed(event.deltaY < 0 ? 1.25 : 0.8);
+    } else if (rocketOutside()) zoomRocketCamera(event.deltaY < 0 ? 0.8 : 1.25);
+    else changeSpeed(event.deltaY < 0 ? 1.25 : 0.8);
   },
   { passive: false },
 );
@@ -2143,7 +2221,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'Period' && game.mode.solarSystem) changeTime(faster);
   else if (event.code === 'Slash' && game.mode.solarSystem) changeTime(togglePause);
   else if (event.code === 'KeyO' && game.mode.solarSystem) setOrbits(!orbitsShown());
-  else if (event.code === 'KeyV' && rocketAboard()) setOutsideView(!rocket.outside);
+  else if (event.code === 'KeyV' && rocketAboard()) nextRocketView();
   else if (event.code === 'KeyL' && game.mode.labels) setLabels(!labelsToggle.checked);
   else if (event.code === 'KeyP' && game.mode.longExposure) setLongExposure(!longExposureToggle.checked);
   else if (event.code === 'Escape') {
@@ -2204,7 +2282,8 @@ giveUpButton.addEventListener('click', () => {
 $('[data-jump]').addEventListener('click', jump);
 orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
 followButton.addEventListener('click', () => setFollowing(!following));
-rocketViewButton.addEventListener('click', () => setOutsideView(!rocket?.outside));
+rocketViewButton.addEventListener('click', nextRocketView);
+rocketTurnButton.addEventListener('click', () => rocket && setRocketTurning(!rocket.turning));
 rotateButton.addEventListener('click', () => setRotatingWith(rotatingWith ? null : solarFrame?.holder ?? null));
 timeButton.addEventListener('click', () => {
   setTray(false);

@@ -426,6 +426,26 @@ function marsOrbiter(b) {
   b.tube([0, 1, 1.2], [-7, 1.2, 1.2], 0.03, steel, thin);
 }
 
+const ROCKET_FEET_Z = -2;
+
+function rocket(b) {
+  const legTop = 1.2;
+  b.tube([0, 0, -0.6], [0, 0, 10], 1.5, white);
+  b.tube([0, 0, 10], [0, 0, 13], 1.5, white, { end: 0.12 });
+  b.tube([0, 0, 6.5], [0, 0, 7.1], 1.52, black);
+  b.tube([0, 0, 0.6], [0, 0, 1], 1.52, black);
+  b.tube([0, 0, -0.6], [0, 0, -1.6], 0.35, dark, { end: 0.95, open: true });
+  b.disc([0, 0, -0.6], [0, 0, -1], 1.5, grey);
+  for (const [angle] of evenly(4, (angle) => [angle + Math.PI / 4])) {
+    const foot = turnedBy(angle, 3, ROCKET_FEET_Z + 0.08);
+    b.tube(turnedBy(angle, 1.45, legTop), foot, 0.1, grey, thin);
+    b.tube(turnedBy(angle, 1.45, -0.4), turnedBy(angle, 2.3, ROCKET_FEET_Z + 0.5), 0.06, grey, thin);
+    b.disc(foot, [0, 0, 1], 0.35, steel);
+    b.box(turnedBy(angle, 1.55, 9.2), [0.25, 0.25, 0.25], dark);
+  }
+  b.box(turnedBy(0, 1.48, 8.4), [0.1, 0.7, 0.5], glass);
+}
+
 function maven(b) {
   b.box([0, 0, 0], [2.3, 2.3, 2], gold);
   highGain(b, { radius: 1, z: 1 });
@@ -442,12 +462,12 @@ function maven(b) {
 
 const MODELS = {
   voyager, pioneer, newHorizons, galileo, cassini, juno, ulysses, messenger, dawn, rosetta, parker, solarOrbiter, bepiColombo, juice, europaClipper, lucy, psyche,
-  osirisRex, hayabusa2, kepler, roadster, jamesWebb, roman, soho, gaia, orion, spaceStation, tiangong, hubble, lunarOrbiter, marsOrbiter, maven, ...LANDER_MODELS,
+  osirisRex, hayabusa2, kepler, roadster, jamesWebb, roman, soho, gaia, orion, spaceStation, tiangong, hubble, lunarOrbiter, marsOrbiter, maven, rocket, ...LANDER_MODELS,
 };
 
 const HALF_SIZE_METRES = {
   voyager: 3, pioneer: 2, newHorizons: 1.8, galileo: 4, cassini: 4, juno: 9, ulysses: 2.5, messenger: 2.5, dawn: 6, rosetta: 10, parker: 1.8, solarOrbiter: 5, bepiColombo: 9, juice: 9, europaClipper: 11, lucy: 7, psyche: 9,
-  osirisRex: 3, hayabusa2: 3, kepler: 2.4, roadster: 2, jamesWebb: 9, roman: 6, soho: 3.5, gaia: 5, orion: 7, spaceStation: 45, tiangong: 26, hubble: 7, lunarOrbiter: 3.5, marsOrbiter: 5, maven: 5,
+  osirisRex: 3, hayabusa2: 3, kepler: 2.4, roadster: 2, jamesWebb: 9, roman: 6, soho: 3.5, gaia: 5, orion: 7, spaceStation: 45, tiangong: 26, hubble: 7, lunarOrbiter: 3.5, marsOrbiter: 5, maven: 5, rocket: 7.5,
   apolloSite: 5, apolloRoverSite: 5, luna9: 0.8, surveyor: 2.2, lunokhod: 1.5, changE: 2.6, yutu: 1.3, vikram: 1.8, slim: 1.6, novaC: 2.2, blueGhost: 1.9, viking: 1.6, pathfinder: 1.5, explorationRover: 1.4, phoenix: 1.8, insight: 2,
   bigRover: 1.9, ingenuity: 0.6, zhurong: 1.5, beagle: 0.7, venera: 1.6, veneraSphere: 0.9, huygens: 0.8,
 };
