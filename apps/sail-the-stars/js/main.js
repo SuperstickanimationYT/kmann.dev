@@ -1637,7 +1637,7 @@ function followPlan(wells, ms) {
     return;
   }
   if (!plan.targetKmS) return;
-  const left = state.holder === plan.holder ? subtract(plan.targetKmS, coast(state, wells.get(plan.holder).gm, (plan.ms - ms) / 1000).velocityKmS) : plan.kickKmS;
+  const left = plan.started && state.holder === plan.holder ? subtract(plan.targetKmS, coast(state, wells.get(plan.holder).gm, (plan.ms - ms) / 1000).velocityKmS) : plan.kickKmS;
   const leftKmS = Math.hypot(...left);
   rocket.burnLeftKmS = left;
   if (plan.started && (leftKmS < BURN_DONE_KMS || dot(left, plan.kickKmS) <= 0)) endPlan(leftKmS < BURN_CLOSE_ENOUGH_KMS ? 'Burn done.' : `Burn done, ${formatRocketSpeed(leftKmS)} off the plan.`);
