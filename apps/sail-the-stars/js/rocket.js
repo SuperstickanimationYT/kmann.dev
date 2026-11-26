@@ -100,12 +100,23 @@ export function wellAround(wells, star, fromSunKm) {
   }
 }
 
-export function circularOrbit(well, offsetKm) {
+const STRAIGHT_ALONG_POLE = 1e-9;
+
+const sidewaysOf = (direction) => normalize(cross(direction, Math.abs(direction[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
+
+export function circularOrbit(well, offsetKm, pole) {
   const distance = Math.hypot(...offsetKm);
-  const north = well.body.north ?? [0, 0, 1];
-  const sideways = cross(north, offsetKm);
-  const ahead = Math.hypot(...sideways) > 1e-9 * distance ? normalize(sideways) : normalize(cross([1, 0, 0], offsetKm));
-  return { holder: well.body.name, positionKm: offsetKm, velocityKmS: scale(ahead, Math.sqrt(well.gm / distance)) };
+  const inPlane = subtract(offsetKm, scale(pole, dot(offsetKm, pole)));
+  const outward = Math.hypot(...inPlane) > STRAIGHT_ALONG_POLE * distance ? normalize(inPlane) : sidewaysOf(pole);
+  return { holder: well.body.name, positionKm: scale(outward, distance), velocityKmS: scale(cross(pole, outward), Math.sqrt(well.gm / distance)) };
+}
+
+export function orbitalPlanePole(wells, name, placeAt, ms) {
+  const well = wells.get(name);
+  const orbiter = well.parent ? well : childrenOf(wells, name).reduce((heaviest, child) => (!heaviest || child.gm > heaviest.gm ? child : heaviest), null);
+  if (!orbiter) return well.body.north ?? [0, 0, 1];
+  const { positionKm, velocityKmS } = relativeMotion(placeAt, ms, orbiter.body.name, orbiter.parent);
+  return normalize(cross(positionKm, velocityKmS));
 }
 
 function relativeMotion(placeAt, ms, child, parent) {

@@ -22,7 +22,7 @@ import { coast, createMotions, forecastPath, rangeOf } from './rocket-forecast.j
 import { burnKmS, closestApproach, cutAtBurn, secondsToApsis, stateOnPath } from './rocket-burn.js';
 import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
-import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, pullKmS2, relativeMotions, wellAround } from './rocket.js';
+import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
 import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
@@ -1334,11 +1334,11 @@ function groundVelocityKmS(body, offsetKm, ms) {
   return scale(subtract(fromBodyLocal(later, toBodyLocal(then, offsetKm)), offsetKm), 1000 / GROUND_SPIN_SAMPLE_MS);
 }
 
-function rocketStart(well, offsetKm, ms) {
+function rocketStart(well, offsetKm, ms, wells) {
   const distance = Math.hypot(...offsetKm);
   const ground = lowestDistanceKm(well.body, offsetKm);
   if (distance <= ground) return { holder: well.body.name, landedKm: toBodyLocal(well.body, scale(offsetKm, ground / distance)) };
-  if (distance > LOW_START_SHARE_OF_RADIUS * well.body.radiusKm) return circularOrbit(well, offsetKm);
+  if (distance > LOW_START_SHARE_OF_RADIUS * well.body.radiusKm) return circularOrbit(well, offsetKm, orbitalPlanePole(wells, well.body.name, system.place, ms));
   return { holder: well.body.name, positionKm: offsetKm, velocityKmS: groundVelocityKmS(well.body, offsetKm, ms) };
 }
 
@@ -1367,7 +1367,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   if (fresh) {
     if (rocket.plan) endPlan();
     const well = wellAround(wells, star, framedFromSunKm);
-    rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms);
+    rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms, wells);
     if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
   } else if (rocket.state.landedKm) {
     liftOff(wells.get(rocket.state.holder), ms, (ms - rocket.ms) / 1000);
@@ -1637,7 +1637,7 @@ function followPlan(wells, ms) {
     return;
   }
   if (!plan.targetKmS) return;
-  const left = state.holder === plan.holder ? subtract(plan.targetKmS, coast(state, wells.get(plan.holder).gm, (plan.ms - ms) / 1000).velocityKmS) : plan.kickKmS;
+  const left = plan.started && state.holder === plan.holder ? subtract(plan.targetKmS, coast(state, wells.get(plan.holder).gm, (plan.ms - ms) / 1000).velocityKmS) : plan.kickKmS;
   const leftKmS = Math.hypot(...left);
   rocket.burnLeftKmS = left;
   if (plan.started && (leftKmS < BURN_DONE_KMS || dot(left, plan.kickKmS) <= 0)) endPlan(leftKmS < BURN_CLOSE_ENOUGH_KMS ? 'Burn done.' : `Burn done, ${formatRocketSpeed(leftKmS)} off the plan.`);
