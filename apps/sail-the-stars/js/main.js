@@ -19,7 +19,7 @@ import { hideLoading, showShadersReady } from './loading-screen.js';
 import { createRenderer } from './renderer.js';
 import { segmentPath } from './rocket-path.js';
 import { createMotions, forecastPath } from './rocket-forecast.js';
-import { cameraBasis, swungAround } from './rocket-camera.js';
+import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
 import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
@@ -655,7 +655,7 @@ function letGo() {
 }
 
 function aimView() {
-  game.basis = rocketOutside() ? cameraBasis(rocket.away, rocket.outward) : viewBasis(game.ship, game.head);
+  game.basis = rocketOutside() ? cameraBasis(rocket.away, rocketCameraPole()) : viewBasis(game.ship, game.head);
   viewChanged();
 }
 
@@ -1286,7 +1286,7 @@ function followSolarSystem() {
   if (rocket) rocket.camera = rocketAboard() ? game.camera : null;
   if (rocket) rocket.shipFromEyeKm = subtract(shipFromSunKm, add(holder.fromSunKm, offsetKm));
   if (rocket) rocket.shipFromSunKm = shipFromSunKm;
-  if (rocketOutside()) game.basis = cameraBasis(rocket.away, rocket.outward);
+  if (rocketOutside()) game.basis = cameraBasis(rocket.away, rocketCameraPole());
   if (!withinSystem(system, game.camera)) solarFrame = null;
 }
 
@@ -1444,12 +1444,19 @@ function rocketEyeFromSunKm(shipFromSunKm) {
   return add(aimedAt, scale(rocket.away, distanceKm));
 }
 
+function rocketCameraPole() {
+  const { state } = rocket;
+  if (!state || state.landedKm) return rocket.outward;
+  const holder = bodyNamed(state.holder);
+  return cameraPole(rocket.outward, state, Math.hypot(...state.positionKm) - holder.radiusKm, holder.north ?? [0, 0, 1]);
+}
+
 function zoomRocketCamera(factor) {
   rocket.zoom = Math.min(CAMERA_ZOOM_RANGE[1], Math.max(CAMERA_ZOOM_RANGE[0], rocket.zoom * factor));
 }
 
 function swingRocketCamera(across, down) {
-  rocket.away = swungAround(rocket.away, rocket.outward, across, down);
+  rocket.away = swungAround(rocket.away, rocketCameraPole(), across, down);
   aimView();
 }
 
