@@ -94,7 +94,7 @@ export function createGroundPatches(release, releaseDetails, releaseRibbon) {
     const spacingKm = (level) => patchEdgeMetres(radiusKm, level) / PATCH_CELLS / 1000;
     const wanted = [];
 
-    const gather = (judge) => {
+    const gather = (judge, { unbuiltLeavesGap = false } = {}) => {
       const chosen = [];
       const visit = (face, level, ix, iy, parent) => {
         const key = keyOf(body, face, level, ix, iy);
@@ -109,8 +109,10 @@ export function createGroundPatches(release, releaseDetails, releaseRibbon) {
         if (level < finestLevel && (verdict.finer || verdict.soon)) {
           const children = [0, 1, 2, 3].map((child) => ({ face, level: level + 1, ix: ix * 2 + (child & 1), iy: iy * 2 + (child >> 1) }));
           const ready = children.map((child) => patches.get(keyOf(body, face, child.level, child.ix, child.iy)));
-          if (verdict.finer && ready.every(Boolean)) {
-            children.forEach((child) => visit(child.face, child.level, child.ix, child.iy, { patch, reachKm: verdict.reachKm }));
+          if (verdict.finer && (unbuiltLeavesGap || ready.every(Boolean))) {
+            children.forEach((child, i) =>
+              ready[i] ? visit(child.face, child.level, child.ix, child.iy, { patch, reachKm: verdict.reachKm }) : wanted.push({ ...child, key: keyOf(body, face, child.level, child.ix, child.iy), distance: verdict.distance, early: false }),
+            );
             return;
           }
           ready.forEach((child) => child && (child.seenFrame = seenFrame));
@@ -166,7 +168,7 @@ export function createGroundPatches(release, releaseDetails, releaseRibbon) {
     };
 
     const drawn = gather(seenFromCamera).sort((a, b) => distanceBetween(a.centreKm, camera) - a.boundKm - (distanceBetween(b.centreKm, camera) - b.boundKm));
-    const casters = light ? gather(castingShadow) : [];
+    const casters = light ? gather(castingShadow, { unbuiltLeavesGap: true }) : [];
     wanted.sort((a, b) => a.early - b.early || a.level - b.level || a.distance - b.distance);
     for (const request of wanted) {
       if (building.size >= BUILDERS * BUILDS_QUEUED_PER_BUILDER) break;
