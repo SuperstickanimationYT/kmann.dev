@@ -17,10 +17,11 @@ import { createRandom, randomSeed } from './random.js';
 import { adaptEyes, glareForRow, loadWarpOptics, rowForSpeed, WARP_SECONDS, warpStage } from './warp.js';
 import { hideLoading, showShadersReady } from './loading-screen.js';
 import { createRenderer } from './renderer.js';
-import { predictedPath } from './rocket-path.js';
+import { segmentPath } from './rocket-path.js';
+import { createMotions, forecastPath } from './rocket-forecast.js';
 import { cameraBasis, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
-import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, pullKmS2, wellAround } from './rocket.js';
+import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
 import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
@@ -29,7 +30,7 @@ import { showSpeculation, speculationShown } from './speculation.js';
 import { blackHolesWithin, KNOWN_BLACK_HOLES, nearestBlackHole } from './black-holes.js';
 import { withExoplanetHosts } from './exoplanets.js';
 import { knowStarsNearSun, nearestCivilization, otherSystems, SOLAR_SYSTEM, SYSTEM_REACH_PC, systemAround, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
-import { drawCraftMarks, drawCraftPath, drawOrbits, drawRocketPath } from './orbits.js';
+import { drawCraftMarks, drawCraftPath, drawOrbits, drawRocketPath, rocketPathColour } from './orbits.js';
 import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
 import { createPathTracer } from './craft-path-line.js';
 import { offsetInStretch } from './spacecraft-paths.js';
@@ -1369,7 +1370,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   rocket.system = system;
   const well = wells.get(rocket.state.holder);
   const offsetKm = rocket.state.landedKm ? fromBodyLocal(well.body, rocket.state.landedKm) : rocket.state.positionKm;
-  rocket.path = rocket.state.landedKm ? null : rocketPath(well);
+  rocket.path = rocket.state.landedKm ? null : rocketForecast(wells, ms);
   rocket.readout = rocketReadout(well, offsetKm);
   return add(well.body.fromSunKm, offsetKm);
 }
@@ -1404,7 +1405,7 @@ function rocketInView() {
 function outsideViewKm() {
   const { state, path } = rocket;
   const nearestKm = OUTSIDE_VIEW_NEAREST_RADII * bodyNamed(state.holder).radiusKm;
-  const farthestKm = path ? Math.max(...path.pointsKm.map((pointKm) => Math.hypot(...subtract(pointKm, state.positionKm)))) : 0;
+  const farthestKm = path ? Math.max(...path.segments[0].pointsKm.map((pointKm) => Math.hypot(...subtract(pointKm, state.positionKm)))) : 0;
   return Math.min(Math.max(OUTSIDE_VIEW_PATH_SHARE * farthestKm, nearestKm), OUTSIDE_VIEW_SYSTEM_SHARE * systemEdgeKm());
 }
 
@@ -1485,15 +1486,40 @@ function nextRocketView() {
   showStatus(ROCKET_VIEW_NEWS[view === 'chase' && touchScreen.matches ? 'chaseByTouch' : view], 6);
 }
 
-function rocketPath(well) {
-  const { positionKm } = rocket.state;
-  const groundKm = Math.min(well.body.radiusKm, Math.hypot(...positionKm));
-  return predictedPath(rocket.state, { gm: well.gm, groundKm, reachKm: Math.min(well.reachKm, systemEdgeKm()) });
+const FORECAST_EVERY_MS = { burning: 200, coasting: 2000 };
+const MOTIONS_LAST_SIM_MS = 86400000;
+
+function rocketForecast(wells, ms) {
+  const now = performance.now();
+  const kept = rocket.path;
+  const everyMs = rocket.push.some(Boolean) ? FORECAST_EVERY_MS.burning : FORECAST_EVERY_MS.coasting;
+  if (kept && kept.holder === rocket.state.holder && kept.system === system && ms >= kept.fromMs && ms < kept.staleMs && now - kept.madeAt < everyMs) return kept;
+  if (rocket.motions?.system !== system || Math.abs(ms - rocket.motions.ms) > MOTIONS_LAST_SIM_MS) rocket.motions = { system, ms, motions: createMotions(wells, relativeMotions(system.place, ms, wells), ms) };
+  const segments = forecastPath(rocket.state, { wells, motions: rocket.motions.motions, fromMs: ms, groundKm: (body) => body.radiusKm, edgeKm: systemEdgeKm() });
+  return { madeAt: now, holder: rocket.state.holder, system, fromMs: ms, staleMs: segments[0].toMs, segments: segments.map((segment) => ({ ...segment, ...segmentPath(segment, segment.groundKm) })) };
 }
 
-function pathMarkLabel(body, { kind, distanceKm }) {
-  if (body.kind === 'star') return `${kind === 'lowest' ? 'Closest' : 'Farthest'} ${formatRocketDistance(distanceKm)}`;
-  return `${kind === 'lowest' ? 'Lowest' : 'Highest'} ${formatRocketDistance(distanceKm - body.radiusKm)}`;
+function formatWait(ms) {
+  const hours = ms / 3600000;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  if (hours < 48) return `${Math.round(hours)} h`;
+  const days = hours / 24;
+  if (days < 730) return `${days < 10 ? days.toFixed(1) : Math.round(days)} days`;
+  return `${Math.round(days / 365.25)} years`;
+}
+
+function pathMarkLabel(body, { kind, distanceKm }, aside) {
+  const over = aside ? ` over ${nameOfWell(body)}` : '';
+  if (body.kind === 'star') return `${kind === 'lowest' ? 'Closest' : 'Farthest'} ${formatRocketDistance(distanceKm)}${aside ? ` from ${nameOfWell(body)}` : ''}`;
+  return `${kind === 'lowest' ? 'Lowest' : 'Highest'} ${formatRocketDistance(distanceKm - body.radiusKm)}${over}`;
+}
+
+function segmentEndLabel({ end, holder, next, toMs }) {
+  const wait = formatWait(toMs - rocket.ms);
+  if (end === 'enters') return `Into ${nameOfWell(bodyNamed(next))}'s pull in ${wait}`;
+  if (end === 'leaves') return `Out of ${nameOfWell(bodyNamed(holder))}'s pull in ${wait}`;
+  if (end === 'ground') return `Hits ${nameOfWell(bodyNamed(holder))} in ${wait}`;
+  return null;
 }
 
 function drawRocketLine(context, width, height) {
@@ -1501,14 +1527,28 @@ function drawRocketLine(context, width, height) {
   if (!scene) return;
   const body = bodyNamed(rocket.state.holder);
   const up = normalize(subtract(rocket.shipFromEyeKm, scene.offsetOf(body.name)));
-  const ships = rocket.view === 'orbit' ? [{ pointKm: add(rocket.shipFromEyeKm, scale(up, LANDER_MARK_RAISED_RADII * body.radiusKm)), label: 'Rocket', side: 'left' }] : [];
+  const ships = rocket.view === 'orbit' ? [{ pointKm: add(rocket.shipFromEyeKm, scale(up, LANDER_MARK_RAISED_RADII * body.radiusKm)), label: 'Rocket', side: 'left', rgb: rocketPathColour(0) }] : [];
   if (!rocket.path) {
-    drawRocketPath(context, { ...scene, pointsKm: [], marks: ships });
+    drawRocketPath(context, { ...scene, lines: [], marks: ships });
     return;
   }
-  const fromEye = (pointKm) => add(subtract(pointKm, rocket.state.positionKm), rocket.shipFromEyeKm);
-  const marks = rocket.path.marks.map((mark) => ({ pointKm: fromEye(mark.pointKm), label: pathMarkLabel(body, mark) }));
-  drawRocketPath(context, { ...scene, pointsKm: rocket.path.pointsKm.map(fromEye), marks: [...ships, ...marks] });
+  const anchors = new Map();
+  const lines = [];
+  const marks = [...ships];
+  rocket.path.segments.forEach((segment, index) => {
+    const anchorOf = (name) => anchors.get(name) ?? scene.offsetOf(name);
+    const anchor = segment.met ? add(anchorOf(segment.met.parent), segment.met.offsetKm) : anchorOf(segment.holder);
+    anchors.set(segment.holder, anchor);
+    const rgb = rocketPathColour(index);
+    const holder = bodyNamed(segment.holder);
+    const fromEye = index ? (pointKm) => add(anchor, pointKm) : (pointKm) => add(subtract(pointKm, rocket.state.positionKm), rocket.shipFromEyeKm);
+    lines.push({ pointsKm: segment.pointsKm.map(fromEye), rgb });
+    for (const mark of segment.marks) marks.push({ pointKm: fromEye(mark.pointKm), label: pathMarkLabel(holder, mark, index > 0), rgb });
+    if (segment.met) marks.push({ pointKm: anchor, label: `${holder.name} then`, rgb, hollow: true, side: 'left' });
+    const label = segmentEndLabel(segment);
+    if (label) marks.push({ pointKm: fromEye(segment.finish.positionKm), label, rgb });
+  });
+  drawRocketPath(context, { ...scene, lines, marks });
 }
 
 const nameOfWell = (body) => (body.kind === 'star' && body.name === 'Sun' ? 'the Sun' : spokenName(body));

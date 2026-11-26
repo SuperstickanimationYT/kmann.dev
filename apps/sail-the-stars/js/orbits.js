@@ -171,30 +171,43 @@ export function drawCraftPath(context, { past, future, ...scene }) {
   context.restore();
 }
 
-const ROCKET_PATH_RGB = '150, 235, 170';
+const ROCKET_PATH_RGBS = ['150, 235, 170', '255, 205, 120', '235, 150, 235', '140, 210, 255'];
 const ROCKET_PATH_ALPHA = 0.7;
+const LABEL_NUDGES = [0, 1, -1, 2, -2];
 
-export function drawRocketPath(context, { pointsKm, marks, ...scene }) {
+export const rocketPathColour = (index) => ROCKET_PATH_RGBS[index % ROCKET_PATH_RGBS.length];
+
+export function drawRocketPath(context, { lines, marks, ...scene }) {
   const { toCamera, toScreen, shownPieces, tracePieces, seen } = pencil(context, scene);
-  const points = pointsKm.map(toCamera);
   context.save();
   context.lineWidth = 1.5;
-  context.strokeStyle = `rgba(${ROCKET_PATH_RGB}, ${ROCKET_PATH_ALPHA})`;
-  context.beginPath();
-  for (let k = 0; k + 1 < points.length; k++) tracePieces(shownPieces(points[k], points[k + 1]));
-  context.stroke();
+  for (const { pointsKm, rgb } of lines) {
+    const points = pointsKm.map(toCamera);
+    context.strokeStyle = `rgba(${rgb}, ${ROCKET_PATH_ALPHA})`;
+    context.beginPath();
+    for (let k = 0; k + 1 < points.length; k++) tracePieces(shownPieces(points[k], points[k + 1]));
+    context.stroke();
+  }
   context.font = MARK_FONT;
   context.textBaseline = 'middle';
-  context.fillStyle = `rgb(${ROCKET_PATH_RGB})`;
-  for (const { pointKm, label, side } of marks) {
+  const written = [];
+  const crowded = (box) => written.some((other) => box.x < other.x + other.width && other.x < box.x + box.width && Math.abs(box.y - other.y) < MARK_TEXT_HEIGHT);
+  for (const { pointKm, label, side, rgb, hollow } of marks) {
     const point = toCamera(pointKm);
     if (!seen(point)) continue;
     const [x, y] = toScreen(point);
+    context.fillStyle = `rgb(${rgb})`;
+    context.strokeStyle = `rgb(${rgb})`;
     context.beginPath();
-    context.arc(x, y, BODY_DOT_PX, 0, 2 * Math.PI);
-    context.fill();
-    context.textAlign = side === 'left' ? 'right' : 'left';
-    context.fillText(label, side === 'left' ? x - 7 : x + 7, y);
+    context.arc(x, y, hollow ? 2 * BODY_DOT_PX : BODY_DOT_PX, 0, 2 * Math.PI);
+    if (hollow) context.stroke();
+    else context.fill();
+    const width = context.measureText(label).width;
+    const box = LABEL_NUDGES.map((nudge) => ({ x: side === 'left' ? x - 7 - width : x + 7, y: y + nudge * MARK_TEXT_HEIGHT, width })).find((placed) => !crowded(placed));
+    if (!box) continue;
+    written.push(box);
+    context.textAlign = 'left';
+    context.fillText(label, box.x, box.y);
   }
   context.restore();
 }
