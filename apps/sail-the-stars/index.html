@@ -87,7 +87,7 @@
       <button type="button" data-expose aria-description="Start or stop a long exposure" aria-keyshortcuts="T"><svg class="fh-icon" aria-hidden="true"><use href="#icon-photo"/></svg><span class="fh-name">Photo</span></button>
       <button type="button" data-atlas-open aria-description="Map of the Milky Way" aria-keyshortcuts="M"><svg class="fh-icon" aria-hidden="true"><use href="#icon-atlas"/></svg><span class="fh-name">Atlas</span></button>
       <button type="button" data-orbits aria-pressed="false" aria-description="Show the paths of planets and moons, and where spacecraft are" aria-keyshortcuts="O" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-orbits"/></svg><span class="fh-name">Orbits</span></button>
-      <button type="button" data-rocket-view aria-pressed="false" aria-description="Watch the rocket from outside, with its path ahead" aria-keyshortcuts="V" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-outside"/></svg><span class="fh-name">Outside</span></button>
+      <button type="button" data-rocket-view aria-pressed="false" aria-description="Switch between inside the rocket, a chase camera behind it, and a view of its whole orbit" aria-keyshortcuts="V" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-outside"/></svg><span class="fh-name">View</span></button>
       <button type="button" data-follow aria-pressed="true" aria-description="Move along with it" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-follow"/></svg><span class="fh-name">Follow</span></button>
       <button type="button" data-rotate-with aria-pressed="false" aria-description="Turn along with its spin" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-rotate"/></svg><span class="fh-name">Rotate with</span></button>
       <button type="button" data-time-open aria-pressed="false" aria-description="Change the date and how fast time runs" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-time"/></svg><span class="fh-name">Time</span></button>
@@ -112,6 +112,7 @@
     <div class="fh-touch-right">
       <button type="button" data-hold="KeyR" aria-label="Fly up">&#9650;<small>Up</small></button>
       <button type="button" data-hold="KeyF" aria-label="Fly down"><small>Down</small>&#9660;</button>
+      <button type="button" class="fh-turn" data-rocket-turn aria-pressed="false" aria-label="Stick turns the rocket" hidden>Turn<small>with stick</small></button>
       <div class="fh-dial" data-speed-dial role="slider" tabindex="0" aria-orientation="vertical" aria-label="Thruster speed">
         <span aria-hidden="true">faster</span>
         <strong data-dial-speed></strong>

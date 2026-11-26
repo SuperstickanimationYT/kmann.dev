@@ -1049,6 +1049,15 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
     text-align: center;
   }
 
+  .fh-touch-right .fh-turn {
+    grid-area: 1 / 2 / 3 / 3;
+  }
+
+  .fh-touch-right .fh-turn[aria-pressed='true'] {
+    border-color: var(--link);
+    background: rgba(22, 74, 122, 0.85);
+  }
+
   .fh-touch-right button:active {
     background: rgba(22, 74, 122, 0.85);
   }
