@@ -171,6 +171,34 @@ export function drawCraftPath(context, { past, future, ...scene }) {
   context.restore();
 }
 
+const ROCKET_PATH_RGB = '150, 235, 170';
+const ROCKET_PATH_ALPHA = 0.7;
+
+export function drawRocketPath(context, { pointsKm, marks, ...scene }) {
+  const { toCamera, toScreen, shownPieces, tracePieces, seen } = pencil(context, scene);
+  const points = pointsKm.map(toCamera);
+  context.save();
+  context.lineWidth = 1.5;
+  context.strokeStyle = `rgba(${ROCKET_PATH_RGB}, ${ROCKET_PATH_ALPHA})`;
+  context.beginPath();
+  for (let k = 0; k + 1 < points.length; k++) tracePieces(shownPieces(points[k], points[k + 1]));
+  context.stroke();
+  context.font = MARK_FONT;
+  context.textBaseline = 'middle';
+  context.fillStyle = `rgb(${ROCKET_PATH_RGB})`;
+  for (const { pointKm, label, side } of marks) {
+    const point = toCamera(pointKm);
+    if (!seen(point)) continue;
+    const [x, y] = toScreen(point);
+    context.beginPath();
+    context.arc(x, y, BODY_DOT_PX, 0, 2 * Math.PI);
+    context.fill();
+    context.textAlign = side === 'left' ? 'right' : 'left';
+    context.fillText(label, side === 'left' ? x - 7 : x + 7, y);
+  }
+  context.restore();
+}
+
 export function drawCraftMarks(context, { craft, ...scene }) {
   const { toCamera, toScreen, seen } = pencil(context, scene);
   const written = [];
