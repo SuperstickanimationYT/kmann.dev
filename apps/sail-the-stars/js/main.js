@@ -2081,7 +2081,7 @@ function refreshGuides(now) {
   if (labelsShown()) drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
   if (selection) followSelection(context, now);
   if (selection?.destination?.craft) drawSelectedPath(context, width, height);
-  if (rocketOutside() && solarFrame) drawRocketLine(context, width, height);
+  if (rocketOutside() && rocket.view === 'orbit' && solarFrame) drawRocketLine(context, width, height);
   if (rocket?.plan && rocketAboard() && solarFrame) drawBurnMarker(context, width, height);
 }
 
