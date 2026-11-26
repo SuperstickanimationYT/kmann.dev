@@ -897,12 +897,22 @@ const vec2 CLOUD_MAP_SIZE = vec2(${CLOUD_MAP_SIZE.map((size) => size.toFixed(1))
 const float CLOUD_TEXEL = 6.2831853 / CLOUD_MAP_SIZE.x;
 const float CLOUD_COVER_LAYER = 0.0;
 const float CLOUD_TOPS_LAYER = 1.0;
-const float CLOUD_WARP_TEXELS = 0.9;
-const float CLOUD_SHEET_OCTAVES = 5.0;
-const float CLOUD_FRAYING = 2.0;
-const float CLOUD_SHARPENING = 0.9;
-const float CLOUD_FRAYING_CLOSE = 3.0;
-const float CLOUD_STREAK_STRETCH = 0.35;
+const float CLOUD_PERIMETER_DIMENSION = 1.35;
+const float CLOUD_FRACTAL_PERSISTENCE = exp2(CLOUD_PERIMETER_DIMENSION - 2.0);
+const float CLOUD_FRACTAL_OCTAVES = 5.0;
+const float CLOUD_LOBE_PERSISTENCE = 0.45;
+const float CLOUD_EDGE_OCTAVES = 7.0;
+const float NOISE_OCTAVE_SPREAD = 0.185;
+const float CLOUD_FRACTAL_VARIANCE = NOISE_OCTAVE_SPREAD * NOISE_OCTAVE_SPREAD / (1.0 - CLOUD_FRACTAL_PERSISTENCE * CLOUD_FRACTAL_PERSISTENCE);
+const float CLOUD_FINEST_FRACTAL = pow(CLOUD_FRACTAL_PERSISTENCE, CLOUD_FRACTAL_OCTAVES);
+const float CLOUD_LOBE_VARIANCE = NOISE_OCTAVE_SPREAD * NOISE_OCTAVE_SPREAD / (1.0 - CLOUD_LOBE_PERSISTENCE * CLOUD_LOBE_PERSISTENCE);
+const float CLOUD_FIELD_SPREAD = sqrt(CLOUD_FRACTAL_VARIANCE * (1.0 - CLOUD_FINEST_FRACTAL * CLOUD_FINEST_FRACTAL) + CLOUD_FINEST_FRACTAL * CLOUD_FINEST_FRACTAL * CLOUD_LOBE_VARIANCE);
+const float LOGISTIC_FOR_NORMAL = 1.702;
+const float CLOUD_FIELD_TEXELS = 2.0;
+const float CLOUD_THINNEST = 0.5;
+const float CLOUD_THICKENING = 0.4;
+const vec2 THIN_EDGES_OPACITY_PER_COVER = vec2(0.726, 0.232);
+const float CIRRUS_VEIL = 0.75;
 const float CLOUD_SHADOW_REACH = 0.0009;
 const float CLOUD_TOWER_REACH = 0.0016;
 const float CLOUD_LOWEST_SHADOW_SUN = 0.12;
@@ -983,38 +993,59 @@ float smoothCloudCover(vec3 local) {
   return cloudsSimulated() ? simulatedCover(local, cover * uSimulatedCloudsOn) : cover * uCloudMapOn;
 }
 
-float billowNoise(vec3 p, float octaves) {
+float cloudField(vec3 p, float octaves) {
   float total = 0.0;
-  float amplitude = 0.5;
-  for (int i = 0; i < int(MAX_DETAIL_OCTAVES); i++) {
+  float amplitude = 1.0;
+  for (int i = 0; i < int(CLOUD_EDGE_OCTAVES); i++) {
     float weight = clamp(octaves - float(i), 0.0, 1.0);
     if (weight <= 0.0) break;
-    total += weight * amplitude * (2.0 * abs(smoothNoise(p) - 0.5) - 0.35);
+    total += weight * amplitude * (smoothNoise(p) - 0.5);
     p = p * 2.03 + vec3(7.1, 2.9, 5.3);
-    amplitude *= 0.62;
+    amplitude *= float(i) + 1.0 < CLOUD_FRACTAL_OCTAVES ? CLOUD_FRACTAL_PERSISTENCE : CLOUD_LOBE_PERSISTENCE;
   }
   return total;
 }
 
+float cloudFieldUnresolved(float octaves) {
+  if (octaves >= CLOUD_FRACTAL_OCTAVES) {
+    float lobe = CLOUD_FINEST_FRACTAL * pow(CLOUD_LOBE_PERSISTENCE, octaves - CLOUD_FRACTAL_OCTAVES);
+    return sqrt(lobe * lobe * CLOUD_LOBE_VARIANCE);
+  }
+  float fractal = pow(CLOUD_FRACTAL_PERSISTENCE, octaves);
+  return sqrt(CLOUD_FRACTAL_VARIANCE * (fractal * fractal - CLOUD_FINEST_FRACTAL * CLOUD_FINEST_FRACTAL) + CLOUD_FINEST_FRACTAL * CLOUD_FINEST_FRACTAL * CLOUD_LOBE_VARIANCE);
+}
+
+float cloudyShare(float field, float threshold, float unresolved) {
+  return 1.0 / (1.0 + exp(-LOGISTIC_FOR_NORMAL * (field - threshold) / unresolved));
+}
+
+float coverBeforeThinEdges(float cover, float resolved) {
+  float base = 1.0 - resolved * (1.0 - THIN_EDGES_OPACITY_PER_COVER.x);
+  float rising = resolved * THIN_EDGES_OPACITY_PER_COVER.y;
+  float widened = rising > 1e-4 ? (sqrt(base * base + 4.0 * rising * cover) - base) / (2.0 * rising) : cover / base;
+  return min(widened, 0.999);
+}
+
+float cloudOpacity(float field, float cover, float unresolved) {
+  float resolved = 1.0 - unresolved / CLOUD_FIELD_SPREAD;
+  float widened = coverBeforeThinEdges(cover, resolved);
+  float threshold = CLOUD_FIELD_SPREAD * log((1.0 - widened) / widened) / LOGISTIC_FOR_NORMAL;
+  float thickening = CLOUD_THICKENING * CLOUD_FIELD_SPREAD;
+  float thickness = cloudyShare(field, threshold + thickening, max(unresolved, thickening));
+  return cloudyShare(field, threshold, unresolved) * (1.0 - (1.0 - CLOUD_THINNEST) * resolved * (1.0 - thickness));
+}
+
 vec2 cloudSheet(vec3 local, float footprint) {
   float lod = max(log2(footprint / cloudTexel()), 0.0);
-  float octaves = clamp(log2(cloudTexel() / max(footprint, 1e-9)), 0.0, CLOUD_SHEET_OCTAVES);
+  float octaves = clamp(log2(CLOUD_FIELD_TEXELS * cloudTexel() / max(footprint, 1e-9)), 0.0, CLOUD_EDGE_OCTAVES);
   vec2 mapped = cloudMapped(local, lod);
   if (octaves <= 0.0) return mapped;
-  vec3 p = local / cloudTexel();
-  vec3 wander = vec3(detailNoise(p * 0.8, min(octaves, 2.0)), detailNoise(p * 0.8 + 37.1, min(octaves, 2.0)), 0.0);
-  wander.z = -0.5 * (wander.x + wander.y);
-  vec3 warped = normalize(local + CLOUD_WARP_TEXELS * cloudTexel() * 2.0 * wander);
-  float cover = mix(mapped.x, smoothCloudCover(warped), min(octaves, 1.0));
-  float high = smoothstep(0.25, 0.6, mapped.y);
-  vec3 drifted = p + 2.0 * wander;
-  if (cover * (1.0 - cover) <= 0.004) return vec2(step(0.5, cover), mapped.y);
-  float fray = cover * (1.0 - cover) * 4.0;
-  float grain = high < 1.0 ? (1.0 - high) * billowNoise(1.4 * drifted, octaves) : 0.0;
-  if (high > 0.0) grain += high * 0.45 * detailNoise(drifted * vec3(0.8, 0.8, 0.8 / CLOUD_STREAK_STRETCH), octaves);
-  float closeness = smoothstep(1.0, CLOUD_SHEET_OCTAVES, octaves);
-  cover += mix(CLOUD_FRAYING, CLOUD_FRAYING_CLOSE, closeness) * fray * 0.5 * grain;
-  return vec2(clamp(mix(cover, smoothstep(0.2, 0.8, cover), CLOUD_SHARPENING * closeness * (1.0 - 0.7 * high)), 0.0, 1.0), mapped.y);
+  float cover = mix(mapped.x, smoothCloudCover(local), min(octaves, 1.0));
+  if (cover <= 0.001 || cover >= 0.999) return vec2(step(0.5, cover), mapped.y);
+  float unresolved = cloudFieldUnresolved(octaves);
+  float field = cloudField(local / (CLOUD_FIELD_TEXELS * cloudTexel()), octaves);
+  float veil = CIRRUS_VEIL * smoothstep(0.25, 0.6, mapped.y);
+  return vec2(mix(cloudOpacity(field, cover, unresolved), cover, veil), mapped.y);
 }
 
 const float CLOUD_NEARBY_FINE_KM = 40.0;
