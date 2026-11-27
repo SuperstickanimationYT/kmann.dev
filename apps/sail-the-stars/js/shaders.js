@@ -1614,6 +1614,10 @@ vec3 placeOnShape(int i, vec3 fromCentre, BodyFrame frame, vec3 ballLocal) {
   return bodyLocal(fromCentre, frame) / sin(uBodyPlace[i].w);
 }
 
+#ifndef INVENTED_PASS
+#define INVENTED_PASS 0
+#endif
+
 vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec4 place = uBodyPlace[i];
   vec4 look = uBodyLook[i];
@@ -1621,7 +1625,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec3 normal = surfaceNormal(i, direction * hit - place.xyz);
   float mu = max(dot(normal, -direction), 0.0);
   if (look.w == BODY_STAR) return look.rgb * (0.4 + 0.6 * mu);
-  bool invented = look.w == BODY_INVENTED;
+  bool invented = INVENTED_PASS == 1;
 
   BodyFrame frame = BodyFrame(uBodyNorth[i], uBodyMeridian[i], cross(uBodyNorth[i], uBodyMeridian[i]));
   vec3 local = bodyLocal(normal, frame);
@@ -1636,6 +1640,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   float mapTexel = 6.2831853 / MAP_WIDTH;
   float octaves = clamp(log2(mapTexel / max(footprint, 1e-9)), 0.0, MAX_DETAIL_OCTAVES);
   vec3 detailPoint = local / mapTexel;
+#if INVENTED_PASS == 0
   if (mapped && look.w != BODY_CLOUDED && look.w != BODY_HAZY) albedo = sharpEdged(albedo, uv, map.x, local, footprint);
   if (look.w == BODY_OCEAN_WORLD && mapped) {
     float edgeWidth = clamp(0.5 * footprint / mapTexel, COAST_SHARPEST, 0.5);
@@ -1647,8 +1652,10 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   if (look.w == BODY_CLOUDED) albedo = look.rgb * cloudTopShade(local, detailPoint, octaves);
   if (look.w == BODY_GIANT && map.y >= 0.0) albedo = giantAlbedo(local, map.yz, footprint, bodyLocal(uBodySun[i].xyz, frame));
   if (look.w == BODY_HAZY) albedo = look.rgb * hazeShade(local, detailPoint, octaves);
+#endif
 
   vec3 shaded = normal;
+#if INVENTED_PASS == 0
   if (mapped && look.w != BODY_CLOUDED && look.w != BODY_HAZY) {
     float latitudeCos = max(sqrt(1.0 - local.z * local.z), 0.05);
     vec2 texel = vec2(1.0 / MAP_WIDTH, 1.0 / MAP_HEIGHT);
@@ -1667,6 +1674,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
       albedo *= 1.0 + land * DETAIL_ALBEDO * here;
     }
   }
+#endif
 
   vec3 sun = uBodySun[i].xyz;
   Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, albedo, 1.0, 0.0, 0.0, 0.0, 0.0);
@@ -1677,7 +1685,8 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     useClouds(i, sunLocal);
     sheet = cloudSheet(inCloudFrame(local), footprint, true);
   }
-  if (invented && sheet.x <= CLOUD_HIDES_SURFACE) {
+#if INVENTED_PASS
+  if (sheet.x <= CLOUD_HIDES_SURFACE) {
     bool painted = i == uInventedBody && isSeaWorld(map.z);
     if (painted) made = paintedSeaWorld(local, uv, map.y, footprint);
     else made = inventSurface(placeOnShape(i, direction * hit - place.xyz, frame, local), sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
@@ -1685,6 +1694,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
     vec3 slope = made.slope.x * frame.meridian + made.slope.y * frame.east + made.slope.z * frame.north;
     shaded = normalize(normal - (slope - normal * dot(slope, normal)));
   }
+#endif
   float daylight = look.w == BODY_HAZY ? smoothstep(-HAZE_TWILIGHT, HAZE_TWILIGHT, dot(normal, sun)) : smoothstep(-0.02, 0.05, dot(normal, sun));
   float sunHeight = max(dot(normal, sun), 0.0);
   float lighting = max(dot(shaded, sun), 0.0);
@@ -2026,6 +2036,7 @@ bool bodyOutOfSight(int i, vec3 direction) {
 }
 
 uniform sampler2D uSurfacesSeen;
+uniform sampler2D uInventedSurfacesSeen;
 
 struct Strike {
   int body;
@@ -2038,7 +2049,9 @@ struct Strike {
 
 vec4 strikeColour(Strike strike, vec3 direction, vec3 points) {
   starHit = uBodyLook[strike.body].w == STAR_KIND;
-  vec3 body = texelFetch(uSurfacesSeen, ivec2(gl_FragCoord.xy), 0).rgb;
+  ivec2 pixel = ivec2(gl_FragCoord.xy);
+  vec4 surface = texelFetch(uSurfacesSeen, pixel, 0);
+  vec3 body = surface.a > 0.0 ? surface.rgb : texelFetch(uInventedSurfacesSeen, pixel, 0).rgb;
   if (strike.body == uRingedBody) body *= sunThroughRings(strike.body, direction, strike.hit);
   float cover = strike.cover;
   vec4 ring = strike.ring;
@@ -2452,12 +2465,16 @@ vec2 mappedCloudField(float coverage, vec3 offset, float share, float blurMetres
   return vec2(thickness * smoothstep(low, high, sculpted), max(low - sculpted, 0.0));
 }
 
-float cloudDensityFor(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
-  if (uGroundCloudsMapped > 0.5) return mappedCloudField(coverage, offset, share, blurMetres, shareBlur, octaves).x;
+vec2 cloudFieldFor(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
+  if (uGroundCloudsMapped > 0.5) return mappedCloudField(coverage, offset, share, blurMetres, shareBlur, octaves);
   float threshold = mix(CLOUD_SPARSEST_CELL, CLOUD_DENSEST_CELL, coverage);
   float coarsestCell = ANCHOR_METRES / float(2 << 3);
   float softness = mix(CLOUD_BLURRED_SOFTNESS, CLOUD_EDGE_SOFTNESS, octaveFade(coarsestCell, blurMetres));
-  return smoothstep(threshold - 0.5 * softness, threshold + 0.5 * softness, cloudCells(offset, blurMetres, octaves) - cloudHeightErosion(share));
+  return vec2(smoothstep(threshold - 0.5 * softness, threshold + 0.5 * softness, cloudCells(offset, blurMetres, octaves) - cloudHeightErosion(share)), 0.0);
+}
+
+float cloudDensityFor(float coverage, vec3 offset, float share, float blurMetres, float shareBlur, int octaves) {
+  return cloudFieldFor(coverage, offset, share, blurMetres, shareBlur, octaves).x;
 }
 
 float cloudShare(vec3 fromCamera) {
@@ -2475,9 +2492,11 @@ float cloudDensity(float coverage, vec3 fromCamera, float blurMetres, float shar
 }
 
 float cloudDensityForLight(float coverage, vec3 fromCamera, float blurMetres, float shareBlur, int octaves) {
-  if (uGroundCloudsMapped < 0.5) return cloudDensity(coverage, fromCamera, blurMetres, shareBlur, octaves);
-  float share = max(cloudShare(fromCamera), 2.0 * CLOUD_MAPPED_BASE_SHARE);
-  return share > 1.0 ? 0.0 : cloudDensityFor(coverage, uGroundFromAnchor + fromCamera * 1000.0, share, blurMetres, shareBlur, octaves);
+  bool mapped = uGroundCloudsMapped > 0.5;
+  float share = cloudShare(fromCamera);
+  if (mapped) share = max(share, 2.0 * CLOUD_MAPPED_BASE_SHARE);
+  if (share > 1.0 || share < 0.0) return 0.0;
+  return cloudDensityFor(coverage, uGroundFromAnchor + fromCamera * 1000.0, share, blurMetres, shareBlur, octaves);
 }
 
 uniform float uCloudFrame;
@@ -2532,14 +2551,14 @@ vec4 cloudVolumeFrom(vec3 ray, vec3 sun, float nearestSolidKm, out float depthKm
     float shareBlur = (mapped ? blurKm : stepKm) * abs(dot(ray, normalize(uGroundCamera + ray * t))) / (uGroundClouds.y - uGroundClouds.x);
     float mapCoverage = mapped ? cloudCoverageAt(normalize(uGroundCamera + ray * t), blurMetres) : mix(coverageIn, coverageOut, along * along);
     float coverage = cloudRegionalCoverage(mapCoverage, uGroundFromAnchor + ray * t * 1000.0);
-    float density;
+    float heightShare = cloudShare(ray * t);
+    vec2 field = mapped || (heightShare >= 0.0 && heightShare <= 1.0) ? cloudFieldFor(coverage, uGroundFromAnchor + ray * t * 1000.0, mapped ? clamp(heightShare, 0.0, 1.0) : heightShare, blurMetres, shareBlur, CLOUD_ALL_CELL_OCTAVES) : vec2(0.0);
+    float density = field.x;
     if (mapped) {
-      vec2 field = mappedCloudField(coverage, uGroundFromAnchor + ray * t * 1000.0, clamp(cloudShare(ray * t), 0.0, 1.0), blurMetres, shareBlur, CLOUD_ALL_CELL_OCTAVES);
-      density = field.x;
       float clearKm = clamp(field.y / CLOUD_FIELD_SLOPE_PER_KM, finestKm, max(CLOUD_CLEAR_STEP_KM, CLOUD_CLEAR_STEP_SHARE * t));
       nextKm = t + (density > 0.0 ? stepKm : growth * clearKm);
       if (density <= 0.0) outsideKm = t;
-    } else density = cloudDensity(coverage, ray * t, blurMetres, shareBlur, CLOUD_ALL_CELL_OCTAVES);
+    }
     if (density > 0.0) {
       if (mapped && outsideKm >= 0.0) {
         float insideKm = t;
@@ -3440,7 +3459,8 @@ bool bentAroundHole(inout vec3 direction) {
 }
 `;
 
-export const SURFACES_FRAGMENT = `#version 300 es
+const surfacesFragment = (inventedPass) => `#version 300 es
+#define INVENTED_PASS ${inventedPass ? 1 : 0}
 ${EYE_SHARED}
 ${HOLE_BENDING}
 void main() {
@@ -3451,10 +3471,13 @@ void main() {
     if (bodyOutOfSight(i, unbent) || uBodyLook[i].w == BODY_MIRROR) continue;
     BodyHit seen = bodyHit(i, unbent);
     if (seen.cover <= 0.0) continue;
-    outColour = vec4(shadeBody(i, unbent, hitDistance(seen), seen.radius), 1.0);
+    if ((uBodyLook[i].w == BODY_INVENTED) == (INVENTED_PASS == 1)) outColour = vec4(shadeBody(i, unbent, hitDistance(seen), seen.radius), 1.0);
     return;
   }
 }`;
+
+export const SURFACES_FRAGMENT = surfacesFragment(false);
+export const INVENTED_SURFACES_FRAGMENT = surfacesFragment(true);
 
 export const BODIES_FRAGMENT = `#version 300 es
 ${EYE_SHARED}

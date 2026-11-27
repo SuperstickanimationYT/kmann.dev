@@ -13,7 +13,7 @@ import {
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, LATTICE_PERIOD, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, RIVER_FRAGMENT, RIVER_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, ROCK_SHADOW_LAYER, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
-  SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, SURFACES_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
+  SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, SURFACES_FRAGMENT, INVENTED_SURFACES_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
   SIMULATED_CLOUD_SIZE,
 } from './shaders.js';
@@ -214,6 +214,7 @@ const HIDDEN_BEHIND_FOREGROUND = true;
 const STANDING_SHADOW_HALF_KM = 0.03;
 const LATTICE_UNIT = 18;
 const SURFACES_SEEN_UNIT = 19;
+const INVENTED_SURFACES_SEEN_UNIT = 22;
 const BODIES_SEEN_UNIT = 31;
 const INVENTED_COLOUR_UNIT = 23;
 const INVENTED_LAND_UNIT = 24;
@@ -427,6 +428,7 @@ function planetUniforms(planet, camera) {
 const PROGRAM_SOURCES = {
   eyeProgram: [FULLSCREEN_VERTEX, EYE_FRAGMENT],
   surfacesProgram: [FULLSCREEN_VERTEX, SURFACES_FRAGMENT],
+  inventedSurfacesProgram: [FULLSCREEN_VERTEX, INVENTED_SURFACES_FRAGMENT],
   bodiesProgram: [FULLSCREEN_VERTEX, BODIES_FRAGMENT],
   skyProgram: [FULLSCREEN_VERTEX, SKY_FRAGMENT],
   skyFromCubeProgram: [FULLSCREEN_VERTEX, SKY_FROM_CUBE_FRAGMENT],
@@ -453,7 +455,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
   const blackHoleView = createBlackHoleView(gl, emptyVao, { latticeUnit: LATTICE_UNIT });
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
   const {
-    skyProgram, skyFromCubeProgram, eyeProgram, surfacesProgram, bodiesProgram, groundSkyProgram, cloudProgram, cloudNearbyProgram, cloudBillowsProgram, patchProgram, riverProgram, shadowProgram,
+    skyProgram, skyFromCubeProgram, eyeProgram, surfacesProgram, inventedSurfacesProgram, bodiesProgram, groundSkyProgram, cloudProgram, cloudNearbyProgram, cloudBillowsProgram, patchProgram, riverProgram, shadowProgram,
     eyeStarProgram, cameraStarProgram, developProgram, sampleProgram,
   } = await createPrograms(gl, PROGRAM_SOURCES, showProgress, {
     cloudProgram: (program) => compileVariantForTarget(gl, program, CLOUD_PASS_OUTPUTS, emptyVao),
@@ -481,6 +483,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
   })();
   let groundTarget = null;
   let bodiesSeenTargets = null;
+  let inventedSurfacesTarget = null;
   let cloudBillows = null;
   let cloudTargets = [];
   let cloudFrame = 0;
@@ -912,6 +915,14 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     bodiesSeenTargets?.bodies.destroy();
     bodiesSeenTargets = { surfaces: createFullFloatTarget(gl, width, height), bodies: createFullFloatTarget(gl, width, height) };
     return bodiesSeenTargets;
+  }
+
+  function inventedSurfacesTargetFitting() {
+    const { width, height } = canvas;
+    if (inventedSurfacesTarget?.width === width && inventedSurfacesTarget.height === height) return inventedSurfacesTarget;
+    inventedSurfacesTarget?.destroy();
+    inventedSurfacesTarget = createFullFloatTarget(gl, width, height);
+    return inventedSurfacesTarget;
   }
 
   function groundTargetFitting() {
@@ -1376,9 +1387,17 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, bodiesSeen.surfaces.framebuffer);
     useEyeView(surfacesProgram);
     drawFullscreen();
+    const inventedShown = bodies?.some(({ body }) => body.invented);
+    const inventedSurfaces = inventedShown ? inventedSurfacesTargetFitting() : bodiesSeen.surfaces;
+    if (inventedShown) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, inventedSurfaces.framebuffer);
+      useEyeView(inventedSurfacesProgram);
+      drawFullscreen();
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, bodiesSeen.bodies.framebuffer);
     useEyeView(bodiesProgram);
     bindSeen(bodiesProgram, 'uSurfacesSeen', SURFACES_SEEN_UNIT, bodiesSeen.surfaces.texture);
+    bindSeen(bodiesProgram, 'uInventedSurfacesSeen', INVENTED_SURFACES_SEEN_UNIT, inventedSurfaces.texture);
     drawFullscreen();
     gl.bindFramebuffer(gl.FRAMEBUFFER, motion?.needed ? motionBlur.pictureFitting(canvas.width, canvas.height).framebuffer : null);
     useEyeView(eyeProgram);
