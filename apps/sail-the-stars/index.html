@@ -265,6 +265,35 @@
       </fieldset>
 
       <fieldset>
+        <legend>True size</legend>
+        <label class="fh-check">
+          <input type="checkbox" data-true-size>
+          <span>Show everything as big as it would look through a window the size of the view</span>
+        </label>
+        <label class="fh-field">
+          <span>Screen width</span>
+          <input type="number" data-screen-width min="1" step="any" value="60" inputmode="decimal">
+        </label>
+        <label class="fh-field">
+          <span>Eyes to screen</span>
+          <input type="number" data-eye-distance min="1" step="any" value="60" inputmode="decimal">
+        </label>
+        <label class="fh-field">
+          <span>Units</span>
+          <select data-true-size-unit>
+            <option value="1" selected>cm</option>
+            <option value="2.54">inches</option>
+          </select>
+        </label>
+        <p class="fh-note">
+          Measure the lit part of your screen from side to side, then from your eyes to the screen, and sit
+          with your eyes in front of the middle of the view. The view then covers <output data-true-size-field>&mdash;</output>
+          top to bottom, the angle a window that size would. Zooming changes it; <kbd>0</kbd> or the field of view button
+          brings it back. Keep the browser at 100% zoom, since the screen's size is worked out from the pixels it reports.
+        </p>
+      </fieldset>
+
+      <fieldset>
         <legend>Flight</legend>
         <ul class="fh-keys">
           <li><kbd>Drag</kbd> turn your head &middot; <kbd>&larr;&uarr;&rarr;&darr;</kbd> <kbd>Q</kbd><kbd>E</kbd> turn the ship</li>
