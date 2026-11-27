@@ -1416,7 +1416,7 @@ function rocketInView() {
   return [{ body, offsetKm: rocket.shipFromEyeKm }];
 }
 
-function outsideViewKm() {
+function pathFramingKm() {
   const { state, path } = rocket;
   const nearestKm = OUTSIDE_VIEW_NEAREST_RADII * bodyNamed(state.holder).radiusKm;
   const farthestKm = path ? Math.max(...path.segments[0].pointsKm.map((pointKm) => Math.hypot(...subtract(pointKm, state.positionKm)))) : 0;
@@ -1433,7 +1433,7 @@ const ROCKET_VIEW_NEWS = {
   inside: 'Back inside the rocket.',
   chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. The flight keys fire along the rocket.',
   chaseByTouch: 'Chase view: drag to swing the camera, pinch to zoom. Tap Turn to steer the rocket with the stick.',
-  orbit: 'Orbit view: the whole path, from above the orbit.',
+  orbit: 'Orbit view: the whole path, from above the orbit. Zoom stays fixed as the path changes; the wheel or a pinch changes it.',
 };
 
 function awayAboveOrbit() {
@@ -1454,7 +1454,7 @@ function awayBehindRocket() {
 function rocketEyeFromSunKm(shipFromSunKm) {
   const chasing = rocket.view === 'chase';
   const aimedAt = chasing ? add(shipFromSunKm, scale(game.ship.forward, ROCKET_MIDDLE_KM)) : shipFromSunKm;
-  const distanceKm = Math.min((chasing ? CHASE_VIEW_KM : outsideViewKm()) * rocket.zoom, OUTSIDE_VIEW_SYSTEM_SHARE * systemEdgeKm());
+  const distanceKm = Math.min((chasing ? CHASE_VIEW_KM : rocket.orbitViewKm) * rocket.zoom, OUTSIDE_VIEW_SYSTEM_SHARE * systemEdgeKm());
   return add(aimedAt, scale(rocket.away, distanceKm));
 }
 
@@ -1499,6 +1499,7 @@ function nextRocketView() {
   else {
     rocket.away = view === 'chase' ? awayBehindRocket() : awayAboveOrbit() ?? rocket.away;
     rocket.zoom = 1;
+    rocket.orbitViewKm = pathFramingKm();
     rocket.view = view;
     rocketViewButton.setAttribute('aria-pressed', 'true');
     aimView();
