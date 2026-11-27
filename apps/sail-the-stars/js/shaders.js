@@ -1877,6 +1877,7 @@ const float CORONA_THREAD_CONTRAST = 0.16;
 const float CORONA_PLUME_CONTRAST = 0.4;
 const vec3 CORONA_COLOUR = vec3(1.0, 0.98, 0.96);
 bool starHit = false;
+const float STAR_HIT_MARK = 2.0;
 
 float angleApart(float a, float b) {
   return atan(sin(a - b), cos(a - b));
@@ -1993,6 +1994,39 @@ vec2 pixelsFrom(vec3 direction, vec3 place) {
   return onScreen * length(away) / max(length(onScreen) * uPixelAngle, 1e-12);
 }
 
+struct BodyHit {
+  float along;
+  float miss;
+  float radius;
+  float stretch;
+  float cover;
+};
+
+BodyHit bodyHit(int i, vec3 direction) {
+  vec4 place = uBodyPlace[i];
+  bool oblate = uBodyFlattening[i] > 0.0;
+  float radius = oblate ? longestRadius(i) : sin(place.w);
+  vec3 roundedRay = oblate ? rounded(i, direction) : direction;
+  float stretch = oblate ? length(roundedRay) : 1.0;
+  vec3 ray = roundedRay / stretch;
+  vec3 centre = oblate ? rounded(i, place.xyz) : place.xyz;
+  float along = dot(ray, centre);
+  float miss = length(ray * along - centre);
+  float cover = along > 0.0 ? clamp((radius - miss) / uPixelAngle + 0.5, 0.0, 1.0) : 0.0;
+  return BodyHit(along, miss, radius, stretch, cover);
+}
+
+float hitDistance(BodyHit seen) {
+  float inside = min(seen.miss, seen.radius * 0.9999);
+  return (seen.along - sqrt(seen.radius * seen.radius - inside * inside)) / seen.stretch;
+}
+
+bool bodyOutOfSight(int i, vec3 direction) {
+  return (i == uGround && uGroundBlend >= 1.0) || dot(direction, uBodyPlace[i].xyz) < uBodyReach[i];
+}
+
+uniform sampler2D uSurfacesSeen;
+
 struct Strike {
   int body;
   float hit;
@@ -2004,7 +2038,7 @@ struct Strike {
 
 vec4 strikeColour(Strike strike, vec3 direction, vec3 points) {
   starHit = uBodyLook[strike.body].w == STAR_KIND;
-  vec3 body = shadeBody(strike.body, direction, strike.hit, strike.radius);
+  vec3 body = texelFetch(uSurfacesSeen, ivec2(gl_FragCoord.xy), 0).rgb;
   if (strike.body == uRingedBody) body *= sunThroughRings(strike.body, direction, strike.hit);
   float cover = strike.cover;
   vec4 ring = strike.ring;
@@ -2021,8 +2055,7 @@ vec4 bodiesColour(vec3 direction) {
   Haze haze = NO_HAZE;
   Strike strike = Strike(-1, 0.0, 0.0, 0.0, vec4(0.0), -1.0);
   for (int i = 0; i < uBodyCount; i++) {
-    if (i == uGround && uGroundBlend >= 1.0) continue;
-    if (dot(direction, uBodyPlace[i].xyz) < uBodyReach[i]) continue;
+    if (bodyOutOfSight(i, direction)) continue;
     if (i != uGround || uWarpAxis.w > 0.5) {
       Haze ahead = hazeAround(i, direction);
       haze = Haze(haze.light + haze.clear * ahead.light, haze.clear * ahead.clear);
@@ -2030,17 +2063,13 @@ vec4 bodiesColour(vec3 direction) {
     float ringHit = -1.0;
     vec4 ring = i == uRingedBody ? ringSeen(i, direction, ringHit) : vec4(0.0);
     vec4 place = uBodyPlace[i];
-    bool oblate = uBodyFlattening[i] > 0.0;
-    float radius = oblate ? longestRadius(i) : sin(place.w);
-    vec3 roundedRay = oblate ? rounded(i, direction) : direction;
-    float stretch = oblate ? length(roundedRay) : 1.0;
-    vec3 ray = roundedRay / stretch;
-    vec3 centre = oblate ? rounded(i, place.xyz) : place.xyz;
-    float along = dot(ray, centre);
-    float miss = length(ray * along - centre);
+    BodyHit seen = bodyHit(i, direction);
+    float radius = seen.radius;
+    float along = seen.along;
+    float miss = seen.miss;
+    float cover = seen.cover;
     float pointSigma = POINT_SIGMA_PIXELS * uPixelAngle;
     float unresolved = 1.0 - smoothstep(0.5, 2.0, radius / uPixelAngle);
-    float cover = along > 0.0 ? clamp((radius - miss) / uPixelAngle + 0.5, 0.0, 1.0) : 0.0;
     if (along > 0.0) points += uBodyLook[i].rgb * uBodyMap[i].w * unresolved * exp(-0.5 * miss * miss / (pointSigma * pointSigma));
     float spikeReach = spikeReachOf(uBodyMap[i].w);
     if (along > 0.0 && unresolved > 0.0 && spikeReach > 0.0 && miss < spikeReach * uPixelAngle) {
@@ -2057,8 +2086,7 @@ vec4 bodiesColour(vec3 direction) {
       if (ring.a > 0.0) return throughHaze(vec4(ring.rgb + points, ring.a), haze);
       continue;
     }
-    float inside = min(miss, radius * 0.9999);
-    strike = Strike(i, (along - sqrt(radius * radius - inside * inside)) / stretch, radius, cover, ring, ringHit);
+    strike = Strike(i, hitDistance(seen), radius, cover, ring, ringHit);
     break;
   }
   vec4 seen = strike.body < 0 ? vec4(points, 0.0) : strikeColour(strike, direction, points);
@@ -3332,11 +3360,10 @@ vec4 groundThroughHaze(vec4 ground, vec3 direction) {
   return vec4(hazy.rgb - haze.light * haze.clear * ground.rgb * uGroundBlend, hazy.a);
 }
 
-${DEFLECTION}
 uniform float uFlowOn;
 uniform float uDazzle;
-uniform vec4 uHoleInFront;
 uniform vec4 uFarSunLook;
+uniform sampler2D uBodiesSeen;
 const vec3 FLOW_TINT = vec3(0.68, 0.75, 1.0);
 
 vec3 throughFlow(vec3 behind) {
@@ -3346,16 +3373,10 @@ vec3 throughFlow(vec3 behind) {
   return 1.0 - (1.0 - min(behind, 1.0)) * (1.0 - glow);
 }
 
-bool bentAroundHole(inout vec3 direction) {
-  if (uHoleInFront.w < 0.5) return false;
-  float toward = dot(direction, uHoleInFront.xyz);
-  vec3 across = direction - uHoleInFront.xyz * toward;
-  float miss = length(across);
-  float angle = atan(miss, toward);
-  if (angle < uShadow) return true;
-  float bent = angle - deflectionAt(max(angle - uShadow, 1e-12));
-  direction = uHoleInFront.xyz * cos(bent) + across * (sin(bent) / max(miss, 1e-9));
-  return false;
+vec4 bodiesSeen() {
+  vec4 seen = texelFetch(uBodiesSeen, ivec2(gl_FragCoord.xy), 0);
+  starHit = seen.a >= STAR_HIT_MARK;
+  return vec4(seen.rgb, starHit ? seen.a - STAR_HIT_MARK : seen.a);
 }
 
 vec4 sceneSeen(vec3 direction) {
@@ -3367,9 +3388,7 @@ vec4 sceneSeen(vec3 direction) {
   if (starVeil >= 1.0) {
     return vec4(ground.rgb, 1.0);
   }
-  vec3 unbent = directionBeforeWarp(direction);
-  bool throughHole = bentAroundHole(unbent);
-  vec4 body = throughHole ? vec4(0.0) : bodiesColour(unbent);
+  vec4 body = bodiesSeen();
   bool sunThroughAir = starHit && uGround >= 0 && uWarpAxis.w < 0.5;
   float bodyVeil = sunThroughAir ? starVeil : ground.a;
   if (sunThroughAir) body.rgb *= sunlightThroughAir(groundLocal(uBodySun[uGround].xyz), normalize(uGroundCamera));
@@ -3403,6 +3422,51 @@ void main() {
   vec4 scene = sceneSeen(direction);
   if (uGround >= 0 && uWarpAxis.w < 0.5) scene = groundThroughHaze(scene, direction);
   outColour = vec4(scene.rgb + sunGlare(direction), scene.a);
+}`;
+
+const HOLE_BENDING = `${DEFLECTION}
+uniform vec4 uHoleInFront;
+
+bool bentAroundHole(inout vec3 direction) {
+  if (uHoleInFront.w < 0.5) return false;
+  float toward = dot(direction, uHoleInFront.xyz);
+  vec3 across = direction - uHoleInFront.xyz * toward;
+  float miss = length(across);
+  float angle = atan(miss, toward);
+  if (angle < uShadow) return true;
+  float bent = angle - deflectionAt(max(angle - uShadow, 1e-12));
+  direction = uHoleInFront.xyz * cos(bent) + across * (sin(bent) / max(miss, 1e-9));
+  return false;
+}
+`;
+
+export const SURFACES_FRAGMENT = `#version 300 es
+${EYE_SHARED}
+${HOLE_BENDING}
+void main() {
+  vec3 unbent = directionBeforeWarp(viewDirection());
+  outColour = vec4(0.0);
+  if (bentAroundHole(unbent)) return;
+  for (int i = 0; i < uBodyCount; i++) {
+    if (bodyOutOfSight(i, unbent) || uBodyLook[i].w == BODY_MIRROR) continue;
+    BodyHit seen = bodyHit(i, unbent);
+    if (seen.cover <= 0.0) continue;
+    outColour = vec4(shadeBody(i, unbent, hitDistance(seen), seen.radius), 1.0);
+    return;
+  }
+}`;
+
+export const BODIES_FRAGMENT = `#version 300 es
+${EYE_SHARED}
+${HOLE_BENDING}
+void main() {
+  vec3 unbent = directionBeforeWarp(viewDirection());
+  if (bentAroundHole(unbent)) {
+    outColour = vec4(0.0);
+    return;
+  }
+  vec4 body = bodiesColour(unbent);
+  outColour = vec4(body.rgb, starHit ? body.a + STAR_HIT_MARK : body.a);
 }`;
 
 export const EYE_STAR_VERTEX = `#version 300 es

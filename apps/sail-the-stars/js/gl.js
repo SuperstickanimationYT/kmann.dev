@@ -135,6 +135,23 @@ export function compileVariantForTarget(gl, { program }, layers, vao) {
   target.destroy();
 }
 
+export function createFullFloatTarget(gl, width, height) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, width, height);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  const framebuffer = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  const destroy = () => {
+    gl.deleteTexture(texture);
+    gl.deleteFramebuffer(framebuffer);
+  };
+  return { framebuffer, texture, width, height, destroy };
+}
+
 export function createByteTarget(gl, width, height) {
   const texture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, texture);
