@@ -6,6 +6,7 @@ import { EXOPLANET_SYSTEMS } from './exoplanet-data.js';
 import { DEGREES, directionFromEquatorial, equatorialToFrame, fromHeliocentric, SUN_PECULIAR, SUN_POSITION, velocityFromHeliocentric } from './milky-way.js';
 import { createRandom } from './random.js';
 import { orbitPoint } from './kepler.js';
+import { apparentRadiusKm, PULSAR_SYSTEMS } from './pulsars.js';
 import { facingParent, inStarlight, KM_PER_AU, ORBIT_PATH_POINTS, SUN_RADIUS_KM, SYNCHRONOUS_LOOKAHEAD_DAYS } from './solar-system.js';
 import { speculationShown } from './speculation.js';
 import { stellarProperties, temperatureFromColour } from './stellar-properties.js';
@@ -218,6 +219,17 @@ export function madeUpSystem(star, drawn) {
   return buildSystem(data, { random, toFrame: (vector) => vector, catalogueStar: { ...star, host: star.name } });
 }
 
+const SUN_VISUAL_RADIANCE = planckBands(SUN_KELVIN)[1];
+const thermalAbsolute = ({ suns, kelvin }) => SUN_ABSOLUTE - 2.5 * Math.log10((apparentRadiusKm(suns) / SUN_RADIUS_KM) ** 2 * (planckBands(kelvin)[1] / SUN_VISUAL_RADIANCE));
+
+function pulsarSystem(data, index) {
+  const position = fromHeliocentric(scale(directionFromEquatorial(data.ra, data.dec), data.parsecs));
+  const absolute = data.visual === undefined ? thermalAbsolute(data.pulsar) : data.visual - 5 * Math.log10(data.parsecs / 10);
+  const catalogueStar = { name: data.name, host: data.name, position, velocity: velocityOf(data), absolute, colour: colourFromTemperature(data.pulsar.kelvin), wellKnown: true, pulsar: data.pulsar };
+  const planets = data.planets.map((planet) => ({ ...planet, inhabited: false }));
+  return buildSystem({ ...data, planets }, { random: createRandom(9001 + 97 * index), toFrame: skyFrame(data), catalogueStar });
+}
+
 export function blackHoleSystem(star, seed) {
   const random = createRandom(seed);
   const planets = star.hole.star ? generatePlanetsOfBlackHole(star.hole, random) : [];
@@ -227,27 +239,36 @@ export function blackHoleSystem(star, seed) {
 
 const starShape = ({ radius, kelvin }) => ({ radiusKm: radius * SUN_RADIUS_KM, light: whiteForSunlight(kelvin), starBands: planckBands(kelvin) });
 const holeShape = ({ suns }) => ({ radiusKm: suns * HORIZON_KM_PER_SUN, light: SKYLIGHT, starBands: planckBands(SUN_KELVIN) });
+const neutronStarShape = ({ suns, kelvin }) => ({ radiusKm: apparentRadiusKm(suns), light: whiteForSunlight(kelvin), starBands: planckBands(kelvin) });
+const shapeOf = (data) => (data.hole ? holeShape(data.hole) : data.pulsar ? neutronStarShape(data.pulsar) : starShape(data));
+const neutronStarLook = (pulsar) => ({ kind: 'star', tint: whiteForSunlight(pulsar.kelvin), pulsar });
+
+function spinFromSky({ positionAngle, fromEarthDegrees }, toFrame, random) {
+  const angle = (positionAngle ?? random.between(0, 360)) * DEGREES;
+  const fromEarth = fromEarthDegrees * DEGREES;
+  return normalize(toFrame([Math.sin(fromEarth) * Math.cos(angle), -Math.sin(fromEarth) * Math.sin(angle), -Math.cos(fromEarth)]));
+}
 
 function buildSystem(data, { random, toFrame, catalogueStar }) {
   const { position, absolute } = catalogueStar;
   const node = random.between(0, 2 * Math.PI);
   const madeUpInclination = random.between(...MADE_UP_INCLINATION);
-  const { radiusKm, light, starBands } = data.hole ? holeShape(data.hole) : starShape(data);
+  const { radiusKm, light, starBands } = shapeOf(data);
   const skylit = data.hole && { litFrom: normalize(scale(position, -1)), sunAngularRadius: SKYLIGHT_RADIANS };
   const selfLit = data.selfLit || SELF_LIT_HOSTS.includes(data.name);
   const planets = data.planets.map((planet) => {
     const orbit = orbitOf(planet, node, madeUpInclination, random);
     const synchronous = planet.periodDays < LONGEST_SYNCHRONOUS_DAYS;
-    const look = lookOf(planet, synchronous, selfLit, random);
-    const bodyRadiusKm = planet.earthRadii * EARTH_RADIUS_KM;
+    const look = planet.pulsar ? neutronStarLook(planet.pulsar) : lookOf(planet, synchronous, selfLit, random);
+    const bodyRadiusKm = planet.pulsar ? apparentRadiusKm(planet.pulsar.suns) : planet.earthRadii * EARTH_RADIUS_KM;
     const lamp = starBands.map((value) => value * (radiusKm / orbit.a) ** 2);
     const emits = selfLit && look.kind === 'giant';
-    const albedo = ALBEDO_FOR_BRIGHTNESS[look.kind];
+    const albedo = ALBEDO_FOR_BRIGHTNESS[look.kind] ?? 1;
     return {
-      name: `${data.name} ${planet.letter}`,
+      name: planet.name ?? `${data.name} ${planet.letter}`,
       host: data.name,
       radiusKm: bodyRadiusKm,
-      magnitude: 5 * Math.log10(ABSOLUTE_MAGNITUDE_KM / (2 * bodyRadiusKm * Math.sqrt(albedo))) + absolute - SUN_ABSOLUTE,
+      magnitude: planet.pulsar ? thermalAbsolute(planet.pulsar) : 5 * Math.log10(ABSOLUTE_MAGNITUDE_KM / (2 * bodyRadiusKm * Math.sqrt(albedo))) + absolute - SUN_ABSOLUTE,
       glowOverReflected: emits ? planckBands(planet.kelvin)[1] / lamp[1] / albedo : 0,
       glow: emits ? glowOf(lamp, planet.kelvin) : undefined,
       lamp,
@@ -263,9 +284,9 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
       ...skylit,
     };
   });
-  const north = data.hole?.pole ?? normalize(toFrame(poleOf(planets[0]?.orbit ?? { inclination: madeUpInclination * DEGREES, node })));
+  const north = data.hole?.pole ?? (data.pulsar?.spin && spinFromSky(data.pulsar.spin, toFrame, random)) ?? normalize(toFrame(poleOf(planets[0]?.orbit ?? { inclination: madeUpInclination * DEGREES, node })));
   const meridian = normalize(cross(north, [0.3, 0.5, 0.8]));
-  const star = { name: data.name, kind: 'star', radiusKm, tint: light, magnitude: absolute, host: data.name, hole: data.hole, north, meridian, fromSunKm: [0, 0, 0] };
+  const star = { name: data.name, kind: 'star', radiusKm, tint: light, magnitude: absolute, host: data.name, hole: data.hole, pulsar: data.pulsar, north, meridian, fromSunKm: [0, 0, 0] };
   const offsetAt = ({ orbit }, ms) => toFrame(orbitPoint({ ...orbit, meanAnomaly: orbit.meanAnomalyAt(ms) }));
 
   function facing(planet, offset, ms) {
@@ -304,6 +325,7 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
 }
 
 export const EXOPLANET_HOSTS = [...EXOPLANET_SYSTEMS, ...BRIGHT_SYSTEMS].map(measuredSystem);
+export const PULSAR_HOSTS = PULSAR_SYSTEMS.map(pulsarSystem);
 
 const SAME_STAR_DEGREES = 0.1;
 const SAME_STAR_MAGNITUDES = 1;

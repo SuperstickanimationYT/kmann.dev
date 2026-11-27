@@ -319,7 +319,7 @@ export function gatherStars({ camera, axis = null, tanHalf = 0, limit, budget, a
 
   const resolved = (absolute) => reaches[nearestBinIndex(absolute)] > 0;
   nearby.forEach((star) => {
-    if (star.hole || resolved(star.absolute)) collector.add(star.position, star.velocity, star.absolute, star.colour, KIND.catalogue, star, star.name);
+    if (star.hole || star.pulsar || resolved(star.absolute)) collector.add(star.position, star.velocity, star.absolute, star.colour, KIND.catalogue, star, star.name);
   });
   if (resolved(SUN_ABSOLUTE)) collector.add(SUN_POSITION, SUN_VELOCITY, SUN_ABSOLUTE, 0.65, KIND.sun, 'Sun', 'Sun');
 

@@ -34,12 +34,14 @@ const approach = (name, group, target, standoff, subject) => ({ name, group, tar
 export const plainStarDestination = (star) => approach(star.name, 'Stars', star.position, STAR_STANDOFF, { kind: 'star', star });
 
 function hostDestination(star) {
-  const { position, star: { north, hole, radiusKm }, outermostKm } = systemNamed(star.host);
-  const standoff = (hole ? HOLE_VIEW_RADII * radiusKm : SYSTEM_VIEW_ORBITS * outermostKm) / KM_PER_PC;
-  const rise = hole ? HOLE_VIEW_RISE : SYSTEM_VIEW_RISE;
+  const { position, star: { north, hole, pulsar, radiusKm }, planets, outermostKm } = systemNamed(star.host);
+  const compact = hole || (pulsar && !planets.length);
+  const standoff = (compact ? HOLE_VIEW_RADII * radiusKm : SYSTEM_VIEW_ORBITS * outermostKm) / KM_PER_PC;
+  const rise = compact ? HOLE_VIEW_RISE : SYSTEM_VIEW_RISE;
   return {
     ...plainStarDestination(star),
-    ...(hole && { group: 'Black holes', up: north, speed: (radiusKm / HOLE_CROSSING_SECONDS / KM_PER_PC) * LY_PER_PC }),
+    ...(pulsar && { group: 'Pulsars' }),
+    ...(compact && { group: hole ? 'Black holes' : 'Pulsars', up: north, speed: (radiusKm / HOLE_CROSSING_SECONDS / KM_PER_PC) * LY_PER_PC }),
     arrival: (from) => {
       const toward = normalize(subtract(from, position));
       const side = Math.sign(dot(toward, north)) || 1;
@@ -65,6 +67,7 @@ const DWARF_GROUPS = { agreed: 'Dwarf planets', likely: 'Likely dwarf planets' }
 function groupOf(body) {
   if (body.kind === 'wormhole') return `Made-up wormhole at ${spokenHost(body.host)}`;
   if (body.kind === 'mirror') return `Made-up mirrors of ${body.parent}`;
+  if (body.pulsar) return 'Pulsars';
   if (body.host) return `${body.madeUp ? 'Procedurally generated planet' : 'Planet'} of ${body.host}`;
   if (body.dwarf) return DWARF_GROUPS[body.dwarf];
   return body.parent ? `Moon of ${body.parent}` : 'Planets';
@@ -76,7 +79,7 @@ function mouthDestination(body) {
 }
 
 export function bodyDestination(body) {
-  if (body.kind === 'star') return body.host ? starDestination(systemNamed(body.host).catalogueStar) : SUN_DESTINATION;
+  if (body.kind === 'star' && !body.orbit) return body.host ? starDestination(systemNamed(body.host).catalogueStar) : SUN_DESTINATION;
   if (body.kind === 'wormhole') return mouthDestination(body);
   return placeDestination(body);
 }

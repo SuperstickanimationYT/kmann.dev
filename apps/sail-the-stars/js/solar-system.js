@@ -645,7 +645,7 @@ export function holdingBody(bodies, cameraFromSunKm) {
   let nearest = Infinity;
   for (const body of bodies) {
     const distance = Math.hypot(...subtract(cameraFromSunKm, body.fromSunKm));
-    if (body.kind !== 'star' && distance < (body.holdKm ?? HOLD_RADII * body.radiusKm) && distance < nearest) {
+    if ((body.kind !== 'star' || body.orbit) && distance < (body.holdKm ?? HOLD_RADII * body.radiusKm) && distance < nearest) {
       holder = body;
       nearest = distance;
     }

@@ -323,6 +323,10 @@ const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
 const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
 
 const bendsLight = ({ hole, kind }) => hole || kind === 'wormhole';
+const ABSOLUTE_MAGNITUDE_PC = 10;
+const nearest = (entries) => entries.reduce((best, entry) => (!best || Math.hypot(...entry.offsetKm) < Math.hypot(...best.offsetKm) ? entry : best), null);
+const shownAsPoint = (body) => body.kind !== 'star' || body.pulsar;
+const pointMagnitude = (body, offsetKm) => (body.pulsar ? body.magnitude + 5 * Math.log10(Math.hypot(...offsetKm) / KM_PER_PC / ABSOLUTE_MAGNITUDE_PC) : apparentMagnitude(body, offsetKm));
 
 function pointsOf(planets) {
   const values = planets.flatMap(({ body, offsetKm }) => {
@@ -409,7 +413,7 @@ function bodyArrays(shown, mapRelief, giants) {
       mapped ? body.mapLayer : -1,
       giantFaces ? giantFaces.now : body.invented?.seed ?? relief,
       giantFaces ? giantFaces.next : body.invented?.kelvin ?? body.measured?.kelvin ?? body.roughness ?? 0,
-      star ? 0 : starPointBrightness(apparentMagnitude(body, offsetKm)),
+      shownAsPoint(body) ? starPointBrightness(pointMagnitude(body, offsetKm)) : 0,
     ], i * 4);
   });
   return { arrays, count: shown.length, rings };
@@ -1344,8 +1348,9 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
 
   function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies: placedBodies, beyond, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
     systemLight = starlight ?? SUNLIGHT;
-    const bodies = placedBodies?.filter(({ body }) => !bendsLight(body)) ?? null;
-    const hole = placedBodies?.find(({ body }) => body.hole || body === beyond?.mouth);
+    const hole = nearest(placedBodies?.filter(({ body }) => body.hole || body.pulsar || body === beyond?.mouth) ?? []);
+    const holeInFront = Boolean(hole) && nearest(placedBodies) === hole;
+    const bodies = placedBodies?.filter((entry) => entry !== hole && !bendsLight(entry.body)) ?? null;
     if (blurMotion) motionBlur ??= createMotionBlur(gl, emptyVao);
     const motion = motionBlur?.planFor(blurMotion ? motionSeen({ view, cockpit, bodies, ground }) : null);
     const planetValues = planetUniforms(planet, view.camera);
@@ -1368,7 +1373,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
       gl.bindTexture(gl.TEXTURE_2D, lens?.sky ?? shownSky.textures[0]);
       gl.uniform1i(program.uniforms.uSky, 0);
       setUniforms(gl, program, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0, uFlowOn: lens?.glowing ? 1 : 0, uDazzle: lens?.dazzle ?? 0 });
-      blackHoleView.bindDeflections(program, lens, placedBodies?.[0] === hole);
+      blackHoleView.bindDeflections(program, lens, holeInFront);
       setCockpit(program, cockpit);
       setUniforms(gl, program, planetValues);
       setBodies(program, bodies, ground, view.pixelAngle);
