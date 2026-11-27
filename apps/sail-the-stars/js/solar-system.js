@@ -661,7 +661,7 @@ export function arrivalNear(body, from) {
 
 function pixelsThrough(bitmap, valueOf) {
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   context.drawImage(bitmap, 0, 0);
   const rgba = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
   const values = new Uint8Array(bitmap.width * bitmap.height);
