@@ -1,4 +1,4 @@
-import { compileVariantForTarget, createByteTarget, createContext, createPrograms, createTarget, setUniforms } from './gl.js';
+import { compileVariantForTarget, createByteTarget, createContext, createFullFloatTarget, createPrograms, createTarget, setUniforms } from './gl.js';
 import { createInventedGround } from './invented-ground.js';
 import { SIMULATED_CLOUD_MAPS } from './clouds.js';
 import {
@@ -9,11 +9,11 @@ import { ARMED_BINS, BULGE_BINS, luminosityOf, SMOOTH_OLD_BINS, WHITE_BALANCE, Y
 import { createRandom } from './random.js';
 import { planckNanomaggies } from './warp.js';
 import {
-  CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT, EARTH_CLOUDS, LAYERS_PER_MAP,
+  BODIES_FRAGMENT, CAMERA_STAR_FRAGMENT, CAMERA_STAR_VERTEX, CLOUD_BAKED_OCTAVES, CLOUD_BILLOWS_FRAGMENT, CLOUD_FRAGMENT, CLOUD_MAP_SIZE, CLOUD_NEARBY_FRAGMENT, CLOUD_NEARBY_WIDTH, DEVELOP_FRAGMENT, EARTH_CLOUDS, LAYERS_PER_MAP,
   EYE_FRAGMENT, EYE_STAR_FRAGMENT, EYE_STAR_VERTEX, FULLSCREEN_VERTEX,
   GROUND_DETAIL_PERIOD_CELLS, GROUND_DETAIL_SLOPE_RANGE, GROUND_SKY_FRAGMENT, LATTICE_PERIOD, MAX_BODIES, MAX_HAZY, MAX_GALAXIES, MAX_NEBULAE, NOISE_SIZE,
   PATCH_FRAGMENT, PATCH_VERTEX, RIVER_FRAGMENT, RIVER_VERTEX, SAMPLE_FRAGMENT, SAMPLE_LOG_FLOOR, SAMPLE_LOG_SPAN, ROCK_SHADOW_LAYER, SHADOW_CASCADES, SHADOW_FRAGMENT, SHADOW_VERTEX,
-  SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
+  SKY_FRAGMENT, SKY_FROM_CUBE_FRAGMENT, SURFACES_FRAGMENT, TABLE_ROWS, TABLE_WIDTH,
   UNRESOLVED_FARTHEST, UNRESOLVED_NEAREST, UNRESOLVED_STEPS,
   SIMULATED_CLOUD_SIZE,
 } from './shaders.js';
@@ -213,6 +213,8 @@ const CORONA_FADE_SHARE = 0.004;
 const HIDDEN_BEHIND_FOREGROUND = true;
 const STANDING_SHADOW_HALF_KM = 0.03;
 const LATTICE_UNIT = 18;
+const SURFACES_SEEN_UNIT = 19;
+const BODIES_SEEN_UNIT = 31;
 const INVENTED_COLOUR_UNIT = 23;
 const INVENTED_LAND_UNIT = 24;
 const CITY_LIGHTS_UNIT = 25;
@@ -424,6 +426,8 @@ function planetUniforms(planet, camera) {
 
 const PROGRAM_SOURCES = {
   eyeProgram: [FULLSCREEN_VERTEX, EYE_FRAGMENT],
+  surfacesProgram: [FULLSCREEN_VERTEX, SURFACES_FRAGMENT],
+  bodiesProgram: [FULLSCREEN_VERTEX, BODIES_FRAGMENT],
   skyProgram: [FULLSCREEN_VERTEX, SKY_FRAGMENT],
   skyFromCubeProgram: [FULLSCREEN_VERTEX, SKY_FROM_CUBE_FRAGMENT],
   groundSkyProgram: [FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT],
@@ -449,7 +453,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
   const blackHoleView = createBlackHoleView(gl, emptyVao, { latticeUnit: LATTICE_UNIT });
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
   const {
-    skyProgram, skyFromCubeProgram, eyeProgram, groundSkyProgram, cloudProgram, cloudNearbyProgram, cloudBillowsProgram, patchProgram, riverProgram, shadowProgram,
+    skyProgram, skyFromCubeProgram, eyeProgram, surfacesProgram, bodiesProgram, groundSkyProgram, cloudProgram, cloudNearbyProgram, cloudBillowsProgram, patchProgram, riverProgram, shadowProgram,
     eyeStarProgram, cameraStarProgram, developProgram, sampleProgram,
   } = await createPrograms(gl, PROGRAM_SOURCES, showProgress, {
     cloudProgram: (program) => compileVariantForTarget(gl, program, CLOUD_PASS_OUTPUTS, emptyVao),
@@ -476,6 +480,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     return indices.length;
   })();
   let groundTarget = null;
+  let bodiesSeenTargets = null;
   let cloudBillows = null;
   let cloudTargets = [];
   let cloudFrame = 0;
@@ -898,6 +903,15 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     scissored(0, rows, shownSky.width, rowsNow, () => drawSky({ ...view, pixelAngle: view.pixelAngle / resolution }, place.nebulae, place.stars.reaches, 1, seed));
     sharpening.rows += rowsNow;
     if (sharpening.rows >= shownSky.height) sharpening = null;
+  }
+
+  function bodiesSeenTargetsFitting() {
+    const { width, height } = canvas;
+    if (bodiesSeenTargets?.surfaces.width === width && bodiesSeenTargets.surfaces.height === height) return bodiesSeenTargets;
+    bodiesSeenTargets?.surfaces.destroy();
+    bodiesSeenTargets?.bodies.destroy();
+    bodiesSeenTargets = { surfaces: createFullFloatTarget(gl, width, height), bodies: createFullFloatTarget(gl, width, height) };
+    return bodiesSeenTargets;
   }
 
   function groundTargetFitting() {
@@ -1335,12 +1349,40 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     riverSeconds = (riverSeconds + cloudSeconds) % RIVER_CYCLE_SECONDS;
     const groundView = ground && !warp ? drawGround(view, bodies, ground) : null;
     const lens = warp ? null : blackHoleView.lensed(hole && { ...hole, beyond }, { view, sky: shownSky.textures[0], keptSky, farSky, width: canvas.width, height: canvas.height });
-    gl.bindFramebuffer(gl.FRAMEBUFFER, motion?.needed ? motionBlur.pictureFitting(canvas.width, canvas.height).framebuffer : null);
+    const useEyeView = (program) => {
+      gl.useProgram(program.program);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, lens?.sky ?? shownSky.textures[0]);
+      gl.uniform1i(program.uniforms.uSky, 0);
+      setUniforms(gl, program, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0, uFlowOn: lens?.glowing ? 1 : 0, uDazzle: lens?.dazzle ?? 0 });
+      blackHoleView.bindDeflections(program, lens, placedBodies?.[0] === hole);
+      setCockpit(program, cockpit);
+      setUniforms(gl, program, planetValues);
+      setBodies(program, bodies, ground, view.pixelAngle);
+      bindWarp(program, warp, adaptation);
+    };
+    const drawFullscreen = () => {
+      gl.bindVertexArray(emptyVao);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+    const bindSeen = (program, uniform, unit, texture) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(program.uniforms[uniform], unit);
+    };
+    const bodiesSeen = bodiesSeenTargetsFitting();
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.useProgram(eyeProgram.program);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, lens?.sky ?? shownSky.textures[0]);
-    gl.uniform1i(eyeProgram.uniforms.uSky, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bodiesSeen.surfaces.framebuffer);
+    useEyeView(surfacesProgram);
+    drawFullscreen();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bodiesSeen.bodies.framebuffer);
+    useEyeView(bodiesProgram);
+    bindSeen(bodiesProgram, 'uSurfacesSeen', SURFACES_SEEN_UNIT, bodiesSeen.surfaces.texture);
+    drawFullscreen();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, motion?.needed ? motionBlur.pictureFitting(canvas.width, canvas.height).framebuffer : null);
+    useEyeView(eyeProgram);
+    bindSeen(eyeProgram, 'uBodiesSeen', BODIES_SEEN_UNIT, bodiesSeen.bodies.texture);
     if (groundView) {
       gl.activeTexture(gl.TEXTURE0 + GROUND_VIEW_UNIT);
       gl.bindTexture(gl.TEXTURE_2D, groundView.ground);
@@ -1351,14 +1393,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
       gl.uniform1i(eyeProgram.uniforms.uCloudView, CLOUD_VIEW_UNIT);
       setUniforms(gl, eyeProgram, { uCloudsOn: groundView.clouds ? 1 : 0 });
     }
-    setUniforms(gl, eyeProgram, { ...viewUniforms(view), uWhiteBalance: WHITE_BALANCE, uFrameSeed: { uint: seed }, uLongExposure: longExposure ? 1 : 0, uFlowOn: lens?.glowing ? 1 : 0, uDazzle: lens?.dazzle ?? 0 });
-    blackHoleView.bindDeflections(eyeProgram, lens, placedBodies?.[0] === hole);
-    setCockpit(eyeProgram, cockpit);
-    setUniforms(gl, eyeProgram, planetValues);
-    setBodies(eyeProgram, bodies, ground, view.pixelAngle);
-    bindWarp(eyeProgram, warp, adaptation);
-    gl.bindVertexArray(emptyVao);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    drawFullscreen();
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
