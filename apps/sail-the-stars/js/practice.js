@@ -73,9 +73,10 @@ function drawMarker(context, label, colour, spot, text, radius) {
   label(text, spot.x + radius + 4, spot.y + 4);
 }
 
-export function drawEdgeArrow(context, spot, width, height, text) {
+export function drawEdgeArrow(context, spot, width, height, text, bottom = height) {
   const [dx, dy] = spot.direction;
-  const reach = Math.min((width / 2 - EDGE_MARGIN) / Math.max(Math.abs(dx), 1e-6), (height / 2 - EDGE_MARGIN) / Math.max(Math.abs(dy), 1e-6));
+  const roomDown = dy > 0 ? bottom - height / 2 : height / 2;
+  const reach = Math.min((width / 2 - EDGE_MARGIN) / Math.max(Math.abs(dx), 1e-6), (roomDown - EDGE_MARGIN) / Math.max(Math.abs(dy), 1e-6));
   const length = Math.hypot(dx, dy) || 1;
   const tip = [width / 2 + dx * reach, height / 2 + dy * reach];
   const unit = [dx / length, dy / length];
@@ -87,11 +88,11 @@ export function drawEdgeArrow(context, spot, width, height, text) {
   const textWidth = context.measureText(text).width;
   const inset = 22 + Math.abs(unit[0]) * (textWidth / 2) + Math.abs(unit[1]) * 10;
   const x = Math.min(width - textWidth - 6, Math.max(6, tip[0] - unit[0] * inset - textWidth / 2));
-  const y = Math.min(height - 8, Math.max(18, tip[1] - unit[1] * inset + 4));
+  const y = Math.min(bottom - 8, Math.max(18, tip[1] - unit[1] * inset + 4));
   context.fillText(text, x, y);
 }
 
-export function drawGuides(context, { camera, basis, tanHalf, width, height, nebulae, galaxies, fontSize = 13 }) {
+export function drawGuides(context, { camera, basis, tanHalf, width, height, bottom = height, nebulae, galaxies, fontSize = 13 }) {
   const project = createProjector({ camera, basis, tanHalf, width, height });
   const onScreen = (spot) => spot.ahead && spot.x >= 0 && spot.x <= width && spot.y >= 0 && spot.y <= height;
   context.save();
@@ -105,8 +106,8 @@ export function drawGuides(context, { camera, basis, tanHalf, width, height, neb
   context.strokeStyle = SUN_COLOUR;
   context.fillStyle = SUN_COLOUR;
   const sunText = `Sun · ${formatDistance(sun.distance)}`;
-  if (onScreen(sun)) drawMarker(context, label, SUN_COLOUR, sun, sunText, SUN_RING);
-  else drawEdgeArrow(context, sun, width, height, sunText);
+  if (onScreen(sun) && sun.y <= bottom) drawMarker(context, label, SUN_COLOUR, sun, sunText, SUN_RING);
+  else drawEdgeArrow(context, sun, width, height, sunText, bottom);
 
   galaxies.forEach((galaxy) => {
     const spot = project(galaxy.centre);
