@@ -62,6 +62,7 @@ const EYE_BUDGET = 60000;
 const REGATHER_DISTANCE = 0.3;
 const REGATHER_INTERVAL = 150;
 const REGATHER_SHARE_OF_NEAREST_STAR = 0.5;
+const SHORTEST_REGATHER_DISTANCE = 1e-9;
 const STAR_STRIDE = 6;
 const STAR_DISTANCE_SLOT = 5;
 const LOOK_RATE = 0.9;
@@ -1972,7 +1973,7 @@ function nearestStarPc(stars) {
 }
 
 const gatherEyeStars = (camera) => gatherStars({ camera, limit: EYE_LIMIT, budget: EYE_BUDGET, armMap, nebulae, nearby });
-const regatherDistancePc = () => Math.min(REGATHER_DISTANCE, REGATHER_SHARE_OF_NEAREST_STAR * eyeNearestStarPc);
+const regatherDistancePc = () => Math.min(REGATHER_DISTANCE, Math.max(SHORTEST_REGATHER_DISTANCE, REGATHER_SHARE_OF_NEAREST_STAR * eyeNearestStarPc));
 
 function starFrom({ kind, key, position, absolute }) {
   if (kind === KIND.catalogue) return { ...key, kind };
