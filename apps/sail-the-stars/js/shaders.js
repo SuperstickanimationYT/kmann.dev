@@ -926,6 +926,7 @@ vec2 cloudMapPlace(vec3 local) {
 uniform highp sampler2DArray uSimulatedClouds;
 uniform float uSimulatedCloudsOn;
 uniform vec4 uBodyClouds[${MAX_BODIES}];
+uniform float uBodyWet[${MAX_BODIES}];
 const vec2 SIMULATED_CLOUD_SIZE = vec2(${SIMULATED_CLOUD_SIZE.map((size) => size.toFixed(1)).join(', ')});
 const float SUBSTELLAR_THICKENING = 2.2;
 vec4 cloudsNow = vec4(${EARTH_CLOUDS.toFixed(1)}, 0.0, 1.0, 0.0);
@@ -1499,18 +1500,13 @@ float mappedAboveSea(vec3 local, float fray) {
   return km / (km > 0.0 ? LAND_RISE_KM : SEA_FLOOR_KM);
 }
 
-bool isSeaWorld(float kelvin) {
-  return kelvin > 175.0 && kelvin < 300.0;
-}
-
 const float COOLEST_FLOWING_KELVIN = 950.0;
 
-Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin, float tideLocked, float footprint, bool bareGround) {
+Invented inventSurface(vec3 local, vec3 sun, vec3 tint, float seed, float kelvin, float tideLocked, bool wet, float footprint, bool bareGround) {
   Invented made = Invented(tint, vec3(0.0), 0.0, kelvin, tint, 1.0, 0.0, 0.0, 0.0, 0.0);
   float sunHeight = dot(local, sun);
   vec3 p = local * 1.7 + seed;
   vec3 warp = broadWarp(p * 1.3);
-  bool wet = isSeaWorld(kelvin);
   if (wet) {
     if (!bareGround && sunHeight < -0.1) return made;
   }
@@ -1626,6 +1622,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   float mu = max(dot(normal, -direction), 0.0);
   if (look.w == BODY_STAR) return look.rgb * (0.4 + 0.6 * mu);
   bool invented = INVENTED_PASS == 1;
+  bool wet = invented && uBodyWet[i] > 0.5;
 
   BodyFrame frame = BodyFrame(uBodyNorth[i], uBodyMeridian[i], cross(uBodyNorth[i], uBodyMeridian[i]));
   vec3 local = bodyLocal(normal, frame);
@@ -1679,7 +1676,7 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   vec3 sun = uBodySun[i].xyz;
   Invented made = Invented(albedo, vec3(0.0), 0.0, 0.0, albedo, 1.0, 0.0, 0.0, 0.0, 0.0);
   vec3 sunLocal = bodyLocal(sun, frame);
-  bool underClouds = look.w == BODY_OCEAN_WORLD || (invented && isSeaWorld(map.z));
+  bool underClouds = look.w == BODY_OCEAN_WORLD || wet;
   vec2 sheet = vec2(0.0);
   if (underClouds) {
     useClouds(i, sunLocal);
@@ -1687,9 +1684,9 @@ vec3 shadeBody(int i, vec3 direction, float hit, float radius) {
   }
 #if INVENTED_PASS
   if (sheet.x <= CLOUD_HIDES_SURFACE) {
-    bool painted = i == uInventedBody && isSeaWorld(map.z);
+    bool painted = i == uInventedBody && wet;
     if (painted) made = paintedSeaWorld(local, uv, map.y, footprint);
-    else made = inventSurface(placeOnShape(i, direction * hit - place.xyz, frame, local), sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, footprint, false);
+    else made = inventSurface(placeOnShape(i, direction * hit - place.xyz, frame, local), sunLocal, look.rgb, map.y, map.z, uBodyLamp[i].w, wet, footprint, false);
     albedo = made.albedo;
     vec3 slope = made.slope.x * frame.meridian + made.slope.y * frame.east + made.slope.z * frame.north;
     shaded = normalize(normal - (slope - normal * dot(slope, normal)));
@@ -3017,20 +3014,20 @@ export const INVENTED_GROUND_FRAGMENT = `#version 300 es
 ${EYE_SHARED}
 uniform vec3 uInventedTint;
 uniform vec3 uInventedSun;
-uniform vec3 uInventedPlanet;
+uniform vec4 uInventedPlanet;
 uniform vec3 uInventedShape;
 uniform float uInventedFootprint;
 void main() {
   float longitude = (vUv.x - 0.5) * 6.2831853;
   float latitude = (0.5 - vUv.y) * 3.1415927;
   vec3 local = vec3(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude));
-  Invented made = inventSurface(local, uInventedSun, uInventedTint, uInventedPlanet.x, uInventedPlanet.y, uInventedPlanet.z, uInventedFootprint, true);
+  bool wet = uInventedPlanet.w > 0.5;
+  Invented made = inventSurface(local, uInventedSun, uInventedTint, uInventedPlanet.x, uInventedPlanet.y, uInventedPlanet.z, wet, uInventedFootprint, true);
   if (uInventedShape.x > 0.5) {
     outColour = vec4((made.heightKm - uInventedShape.y) / uInventedShape.z, made.solid, pow(clamp(made.settled, 0.0, 1.0), CITY_LIGHT_LIFT), 0.5 * made.runny + 0.5 * made.growing);
     return;
   }
   bool hot = uInventedPlanet.y > HOT_PLANET_KELVIN;
-  bool wet = isSeaWorld(uInventedPlanet.y);
   outColour = vec4(sqrt(max(wet ? made.dryAlbedo : made.albedo, 0.0)), hot ? made.kelvin / HOTTEST_GROUND_KELVIN : 1.0);
 }`;
 

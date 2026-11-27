@@ -7,6 +7,7 @@ import { DEGREES, directionFromEquatorial, equatorialToFrame, fromHeliocentric, 
 import { createRandom } from './random.js';
 import { orbitPoint } from './kepler.js';
 import { facingParent, inStarlight, KM_PER_AU, ORBIT_PATH_POINTS, SUN_RADIUS_KM, SYNCHRONOUS_LOOKAHEAD_DAYS } from './solar-system.js';
+import { speculationShown } from './speculation.js';
 import { stellarProperties, temperatureFromColour } from './stellar-properties.js';
 import { generatePlanets, generatePlanetsOfBlackHole } from './system-generator.js';
 import { add, cross, dot, normalize, rotateAbout, scale, subtract } from './vectors.js';
@@ -34,6 +35,8 @@ const MOST_TILT_DEGREES = 28;
 const ALBEDO_FOR_BRIGHTNESS = { rocky: 0.25, hazy: 0.4, giant: 0.4 };
 const WET_KELVIN = [175, 300];
 const AGE_SALT = 0x3c6ef372;
+const WET_SALT = 0x5be0cd19;
+const WET_CHANCE_BY_HOST_KELVIN = [[3900, 0.02], [5300, 0.15], [Infinity, 0.3]];
 const SKYLIGHT = [0.07, 0.07, 0.07];
 const SKYLIGHT_RADIANS = 0.6;
 
@@ -140,6 +143,9 @@ const DEEP_AIR = { gas: { depth: [0.03, 0.07, 0.16], scaleKm: 60 }, dust: { dept
 
 const isWet = ({ kelvin }) => kelvin > WET_KELVIN[0] && kelvin < WET_KELVIN[1];
 
+const wetChance = (hostKelvin) => WET_CHANCE_BY_HOST_KELVIN.find(([below]) => hostKelvin < below)[1];
+const dryTint = (seed) => mixed([0.5, 0.43, 0.37], [0.55, 0.36, 0.25], seed % 1);
+
 function rockyTint({ kelvin }, random) {
   if (kelvin > 1300) return [0.2, 0.17, 0.16];
   if (kelvin > 850) return [0.33, 0.28, 0.26];
@@ -153,9 +159,17 @@ const nextCloudMap = () => seaWorlds++ % SIMULATED_CLOUD_MAPS;
 const cloudMapFor = (planet, random) => (planet.bare === undefined ? nextCloudMap() : random.integer(0, SIMULATED_CLOUD_MAPS - 1));
 const isRocky = ({ bare, earthRadii }) => bare ?? earthRadii < LARGEST_ROCKY_EARTH_RADII;
 
+function rockyLook(planet, random) {
+  const seed = random.between(1, 60);
+  if (!isWet(planet)) return { kind: 'rocky', invented: { seed }, tint: rockyTint(planet, random) };
+  const wet = { kind: 'rocky', invented: { seed, wet: true, version: 'wet', shapeVersion: 'wet', cloudMap: cloudMapFor(planet, random) }, tint: rockyTint(planet, random), haze: THIN_AIR };
+  const dry = { kind: 'rocky', invented: { seed, version: 'dry', shapeVersion: 'dry' }, tint: dryTint(seed), haze: undefined };
+  return { ...dry, looks: { wet, dry } };
+}
+
 function lookOf(planet, synchronous, selfLit, random) {
   const madeUp = planet.bare !== undefined;
-  if (isRocky(planet)) return { kind: 'rocky', invented: { seed: random.between(1, 60), ...(isWet(planet) && { cloudMap: cloudMapFor(planet, random) }) }, tint: rockyTint(planet, random), haze: isWet(planet) ? THIN_AIR : undefined };
+  if (isRocky(planet)) return rockyLook(planet, random);
   const bandedIce = madeUp && planet.earthRadii >= SMALLEST_BANDED_EARTH_RADII && planet.kelvin < WARMEST_BANDED_ICE_KELVIN;
   if (planet.earthRadii < SMALLEST_GIANT_EARTH_RADII && !bandedIce) {
     const tint = underTemperature(HAZY_TINTS, planet.kelvin);
@@ -165,6 +179,8 @@ function lookOf(planet, synchronous, selfLit, random) {
   const palette = selfLit ? SELF_LIT_PALETTE : madeUp ? usual.map((colour) => varied(colour, random)) : usual;
   return { kind: 'giant', tint: mixed(...palette, 0.4), giantLook: giantLook(palette, synchronous, random) };
 }
+
+const shownLook = ({ looks, measured }) => (looks && (speculationShown() || measured.wetByDefault) ? looks.wet : looks?.dry);
 
 const SELF_LIT_HOSTS = ['HR 8799', 'Beta Pictoris'];
 
@@ -185,7 +201,12 @@ function measuredSystem(data, index) {
 function madeUpPlanets(properties, random, { seed, companionAu }) {
   const planets = generatePlanets(properties, random, companionAu);
   const steady = steadyLongEnough(properties, createRandom(seed ^ AGE_SALT));
-  return planets.map((planet) => ({ ...planet, inhabited: isRocky(planet) && suitsLife(planet) && steady(planet) }));
+  const wetRoll = createRandom(seed ^ WET_SALT);
+  return planets.map((planet) => {
+    const habitable = isRocky(planet) && suitsLife(planet) && steady(planet);
+    const roll = wetRoll.next();
+    return { ...planet, inhabited: habitable, wetByDefault: habitable && roll < wetChance(properties.kelvin) };
+  });
 }
 
 export const hasMadeUpCivilization = (star, drawn) => madeUpPlanets(stellarProperties(star), createRandom(drawn.seed), drawn).some(({ inhabited }) => inhabited);
@@ -269,7 +290,7 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
     place(ms) {
       const bodies = planets.map((planet) => {
         const fromSunKm = offsetAt(planet, ms);
-        return { ...planet, ...facing(planet, fromSunKm, ms), fromSunKm, cloudTurn: planet.tideLocked ? 0 : cloudTurn(ms) };
+        return { ...planet, ...shownLook(planet), ...facing(planet, fromSunKm, ms), fromSunKm, cloudTurn: planet.tideLocked ? 0 : cloudTurn(ms) };
       });
       return inStarlight([star, ...bodies], position, radiusKm);
     },

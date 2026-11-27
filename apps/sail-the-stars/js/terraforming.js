@@ -86,6 +86,7 @@ function paintedLook(year) {
       seed: VENUS_SEED,
       cloudMap: VENUS_CLOUD_MAP,
       kelvin,
+      wet: true,
       version,
       shapeVersion: `${Math.round(seaLevelKm * 10)} ${Math.round(kelvin / 10)}`,
       terrain: { seaLevelKm, greenery: along(GREENERY, shownYear), cloudiness: along(CLOUDINESS, shownYear) },
