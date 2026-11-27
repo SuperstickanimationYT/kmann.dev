@@ -1,4 +1,4 @@
-import { createByteTarget, createContext, createProgram, createPrograms, createTarget, setUniforms } from './gl.js';
+import { compileVariantForTarget, createByteTarget, createContext, createPrograms, createTarget, setUniforms } from './gl.js';
 import { createInventedGround } from './invented-ground.js';
 import { SIMULATED_CLOUD_MAPS } from './clouds.js';
 import {
@@ -429,6 +429,7 @@ const PROGRAM_SOURCES = {
   groundSkyProgram: [FULLSCREEN_VERTEX, GROUND_SKY_FRAGMENT],
   cloudProgram: [FULLSCREEN_VERTEX, CLOUD_FRAGMENT],
   cloudNearbyProgram: [FULLSCREEN_VERTEX, CLOUD_NEARBY_FRAGMENT],
+  cloudBillowsProgram: [FULLSCREEN_VERTEX, CLOUD_BILLOWS_FRAGMENT],
   patchProgram: [PATCH_VERTEX, PATCH_FRAGMENT],
   riverProgram: [RIVER_VERTEX, RIVER_FRAGMENT],
   shadowProgram: [SHADOW_VERTEX, SHADOW_FRAGMENT],
@@ -448,9 +449,11 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
   const blackHoleView = createBlackHoleView(gl, emptyVao, { latticeUnit: LATTICE_UNIT });
   const inventedGround = createInventedGround(gl, { emptyVao, latticeUnit: LATTICE_UNIT, colourUnit: INVENTED_COLOUR_UNIT, landUnit: INVENTED_LAND_UNIT, heightUnit: BODY_HEIGHT_UNIT, heightLayerOf: (name) => MAPPED_BODIES.findIndex((mapped) => mapped.name === name), heightRangeOf: (layer) => mapRanges[layer] });
   const {
-    skyProgram, skyFromCubeProgram, eyeProgram, groundSkyProgram, cloudProgram, cloudNearbyProgram, patchProgram, riverProgram, shadowProgram,
+    skyProgram, skyFromCubeProgram, eyeProgram, groundSkyProgram, cloudProgram, cloudNearbyProgram, cloudBillowsProgram, patchProgram, riverProgram, shadowProgram,
     eyeStarProgram, cameraStarProgram, developProgram, sampleProgram,
-  } = await createPrograms(gl, PROGRAM_SOURCES, showProgress);
+  } = await createPrograms(gl, PROGRAM_SOURCES, showProgress, {
+    cloudProgram: (program) => compileVariantForTarget(gl, program, CLOUD_PASS_OUTPUTS, emptyVao),
+  });
   let shadowMaps = null;
   const groundDetailTexture = (() => {
     const { size, texels } = groundDetailTexels();
@@ -1167,14 +1170,13 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
   function bakedCloudBillows() {
     if (cloudBillows) return cloudBillows;
     const target = createTarget(gl, CLOUD_BILLOWS_WIDTH, CLOUD_BILLOWS_WIDTH / 2);
-    const program = createProgram(gl, FULLSCREEN_VERTEX, CLOUD_BILLOWS_FRAGMENT);
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.viewport(0, 0, target.width, target.height);
-    gl.useProgram(program.program);
-    gl.uniform1i(program.uniforms.uLattice, LATTICE_UNIT);
+    gl.useProgram(cloudBillowsProgram.program);
+    gl.uniform1i(cloudBillowsProgram.uniforms.uLattice, LATTICE_UNIT);
     gl.bindVertexArray(emptyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.deleteProgram(program.program);
+    gl.deleteProgram(cloudBillowsProgram.program);
     [cloudBillows] = target.textures;
     gl.bindTexture(gl.TEXTURE_2D, cloudBillows);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);

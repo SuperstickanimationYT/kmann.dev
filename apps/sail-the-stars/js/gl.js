@@ -48,15 +48,21 @@ export function createProgram(gl, vertexSource, fragmentSource) {
 const PROGRAM_POLL_MS = 50;
 const nextPoll = () => new Promise((resolve) => setTimeout(resolve, PROGRAM_POLL_MS));
 
-export async function createPrograms(gl, sources, showProgress) {
-  const started = Object.entries(sources).map(([name, source]) => [name, startProgram(gl, ...source)]);
-  for (let ready = -1; ready < started.length; ) {
+export async function createPrograms(gl, sources, showProgress, onLinked = {}) {
+  const linking = new Map(Object.entries(sources).map(([name, source]) => [name, startProgram(gl, ...source)]));
+  const linked = {};
+  while (linking.size > 0) {
     await nextPoll();
-    ready = started.filter(([, program]) => program.ready()).length;
-    showProgress(ready, started.length);
+    for (const [name, program] of linking) {
+      if (!program.ready()) continue;
+      linking.delete(name);
+      linked[name] = program.finish();
+      onLinked[name]?.(linked[name]);
+    }
+    showProgress(Object.keys(linked).length, Object.keys(sources).length);
   }
   await nextPoll();
-  return Object.fromEntries(started.map(([name, program]) => [name, program.finish()]));
+  return linked;
 }
 
 export function setUniforms(gl, { uniforms }, values) {
@@ -96,6 +102,37 @@ export function createTarget(gl, width, height, layers = 1) {
     gl.deleteFramebuffer(framebuffer);
   };
   return { framebuffer, textures, width, height, destroy };
+}
+
+function samplerLocations(gl, program) {
+  const samplerTypes = new Set([
+    gl.SAMPLER_2D, gl.SAMPLER_3D, gl.SAMPLER_CUBE, gl.SAMPLER_2D_ARRAY, gl.SAMPLER_2D_SHADOW, gl.SAMPLER_2D_ARRAY_SHADOW, gl.SAMPLER_CUBE_SHADOW,
+    gl.INT_SAMPLER_2D, gl.INT_SAMPLER_3D, gl.INT_SAMPLER_CUBE, gl.INT_SAMPLER_2D_ARRAY,
+    gl.UNSIGNED_INT_SAMPLER_2D, gl.UNSIGNED_INT_SAMPLER_3D, gl.UNSIGNED_INT_SAMPLER_CUBE, gl.UNSIGNED_INT_SAMPLER_2D_ARRAY,
+  ]);
+  const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+  return Array.from({ length: count }, (_, i) => gl.getActiveUniform(program, i))
+    .filter(({ type }) => samplerTypes.has(type))
+    .flatMap(({ name, size }) => Array.from({ length: size }, (_, k) => gl.getUniformLocation(program, size > 1 ? name.replace(/\[0\]$/, `[${k}]`) : name)));
+}
+
+export function compileVariantForTarget(gl, { program }, layers, vao) {
+  const target = createTarget(gl, 1, 1, layers);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  const viewport = gl.getParameter(gl.VIEWPORT);
+  const samplers = samplerLocations(gl, program);
+  gl.useProgram(program);
+  const units = samplers.map((location) => gl.getUniform(program, location));
+  samplers.forEach((location, unit) => gl.uniform1i(location, unit));
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+  gl.viewport(0, 0, 1, 1);
+  gl.bindVertexArray(vao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindVertexArray(null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(...viewport);
+  samplers.forEach((location, i) => gl.uniform1i(location, units[i]));
+  target.destroy();
 }
 
 export function createByteTarget(gl, width, height) {
