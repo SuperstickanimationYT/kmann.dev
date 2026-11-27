@@ -341,7 +341,7 @@ function brightestInDistanceOrder(seen) {
   return seen.filter((entry) => kept.has(entry));
 }
 
-const VALUES_PER_BODY = { uBodyNorth: 3, uBodyMeridian: 3, uBodyFlattening: 1 };
+const VALUES_PER_BODY = { uBodyNorth: 3, uBodyMeridian: 3, uBodyFlattening: 1, uBodyWet: 1 };
 const NO_STAR_SHIFT = [0, 0, 0];
 const NO_HOLE = [0, 0, 0, 0];
 const ONE_STAR_IMAGE = [0];
@@ -379,6 +379,7 @@ function bodyArrays(shown, mapRelief, giants) {
     uBodyGlow: new Float32Array(MAX_BODIES * 4),
     uBodyLamp: new Float32Array(MAX_BODIES * 4),
     uBodyClouds: new Float32Array(MAX_BODIES * 4),
+    uBodyWet: new Float32Array(MAX_BODIES),
   };
   const ringed = shown.findIndex(({ body }) => body.rings);
   const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringed >= 0 ? shown[ringed].body.radiusKm : 0 };
@@ -397,6 +398,7 @@ function bodyArrays(shown, mapRelief, giants) {
       arrays.uBodyEclipser.set([...eclipserKm.map((value) => value / body.radiusKm), ((reddens ? REDDENING_ECLIPSER_SIGN : 1) * radiusKm) / body.radiusKm], (i * ECLIPSERS_PER_BODY + k) * 4));
     arrays.uBodyNorth.set(body.north, i * 3);
     arrays.uBodyFlattening[i] = body.flattening ?? 0;
+    arrays.uBodyWet[i] = body.invented?.wet ? 1 : 0;
     arrays.uBodyNarrowing.set([...narrowAxis(body).map((value) => value * Math.sqrt(1 / (1 - (body.narrowing ?? 0)) - 1)), longestRadiusKm(body) / body.radiusKm], i * 4);
     arrays.uBodyMeridian.set(body.cloudMeridian || body.meridian, i * 3);
     arrays.uBodyLook.set([...body.tint.map((value) => (star ? value * SUN_DISK_GLOW : value)), body.invented ? INVENTED_ROCKY_CODE : BODY_KIND_CODES[body.kind]], i * 4);

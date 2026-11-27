@@ -136,10 +136,11 @@ function starFacts(pick) {
 
 const GENERATED_KINDS = { rocky: 'Procedurally generated rocky planet', hazy: 'Procedurally generated small gas planet', giant: 'Procedurally generated giant planet' };
 
-function exoplanetKind({ kind, invented, civilization, madeUp }) {
+function exoplanetKind({ kind, invented, looks, civilization, madeUp }) {
   const peopled = civilization && speculationShown();
   if (madeUp) return `${GENERATED_KINDS[kind]}${peopled ? ' with a civilization' : ''}`;
   if (peopled) return 'Rocky planet, surface and civilization made up';
+  if (looks && !invented.wet) return 'Rocky planet, surface made up; air and water unknown, shown bare';
   if (invented) return 'Rocky planet, surface made up';
   return kind === 'hazy' ? 'Small gas planet, clouds made up' : 'Giant planet, clouds made up';
 }

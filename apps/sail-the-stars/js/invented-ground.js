@@ -19,9 +19,9 @@ const sameLook = (painted, body) => painted?.name === body.name && painted.versi
 
 function groundKind(body) {
   if (body.invented.terrain) return MAPPED_SEA_WORLD;
+  if (body.invented.wet) return SEA_WORLD;
   const kelvin = kelvinOf(body);
   if (kelvin <= 175) return ICE_WORLD;
-  if (kelvin < 300) return SEA_WORLD;
   return kelvin < 850 ? BARE_WORLD : LAVA_WORLD;
 }
 
@@ -76,7 +76,7 @@ export function createInventedGround(gl, { emptyVao, latticeUnit, colourUnit, la
     setUniforms(gl, program, {
       uInventedTint: body.tint,
       uInventedSun: sunLocal,
-      uInventedPlanet: [body.invented.seed, kelvinOf(body), body.tideLocked ? 1 : 0],
+      uInventedPlanet: [body.invented.seed, kelvinOf(body), body.tideLocked ? 1 : 0, body.invented.wet ? 1 : 0],
       uInventedShape: [shape ? 1 : 0, lowKm, rangeKm],
       uInventedFootprint: (2 * Math.PI) / width,
       ...terrainUniforms(body),
