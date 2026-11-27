@@ -1420,6 +1420,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
       setUniforms(gl, eyeProgram, { uCloudsOn: groundView.clouds ? 1 : 0 });
     }
     drawFullscreen();
+    if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);
     gl.useProgram(eyeStarProgram.program);
     setCockpit(eyeStarProgram, cockpit);
     setUniforms(gl, eyeStarProgram, { ...planetValues, uLongExposure: longExposure ? 1 : 0 });
@@ -1430,7 +1431,6 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
       drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT, uHole: NO_HOLE, ...lens?.starUniforms, uHoleImage: { int: image } }, HIDDEN_BEHIND_FOREGROUND);
     }
     if (lens?.farStarImages) drawFarStars(view, beyond, lens);
-    if (motion?.needed) motionBlur.apply(motion, groundView, cockpit, canvas);
     if (craft.length && !warp) craftView.draw({ craft, bodies, ground, groundDepth: groundView?.depth ?? null, view, width: canvas.width, height: canvas.height, light: systemLight, drawInto: null });
     gl.colorMask(false, false, false, true);
     gl.clearColor(0, 0, 0, 1);
