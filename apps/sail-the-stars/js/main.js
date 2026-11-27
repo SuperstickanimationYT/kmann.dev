@@ -29,7 +29,8 @@ import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
 import { holdingBody, KM_PER_AU, KM_PER_PC, loadBodyMaps, loadCityLights, loadCloudMap, lowestAltitudeKm, placeBodies, radiusBelowKm, sunShareVisible } from './solar-system.js';
 import { showSpeculation, speculationShown } from './speculation.js';
 import { blackHolesWithin, KNOWN_BLACK_HOLES, nearestBlackHole } from './black-holes.js';
-import { withExoplanetHosts } from './exoplanets.js';
+import { PULSAR_HOSTS, withExoplanetHosts } from './exoplanets.js';
+import { beamReaches } from './pulsars.js';
 import { knowStarsNearSun, nearestCivilization, otherSystems, SOLAR_SYSTEM, SYSTEM_REACH_PC, systemAround, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
 import { drawCraftMarks, drawCraftPath, drawOrbits, drawRocketPath, rocketPathColour } from './orbits.js';
 import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
@@ -1243,11 +1244,19 @@ function riversUnder(holder, ground, up) {
 
 const CRAFT_SOLID_SHARE = 0.05;
 const CLOSEST_HORIZON_RADII = 1.2;
+const CLOSEST_NEUTRON_STAR_RADII = 2;
+
+function stopNews(holder) {
+  if (holder.hole) return 'The ship goes no closer to the event horizon.';
+  if (holder.pulsar) return 'The ship goes no closer to the neutron star.';
+  return `Touched down on ${spokenName(holder)}.`;
+}
 
 function lowestDistanceKm(holder, offsetKm) {
   if (holder.kind === 'craft') return CRAFT_SOLID_SHARE * holder.radiusKm;
   if (holder.kind === 'wormhole') return 0;
   if (holder.hole) return CLOSEST_HORIZON_RADII * holder.radiusKm;
+  if (holder.pulsar) return CLOSEST_NEUTRON_STAR_RADII * holder.radiusKm;
   const ground = groundFor(holder);
   if (!ground) return radiusBelowKm(holder, offsetKm) + lowestAltitudeKm(holder);
   const frame = groundFrame(toBodyLocal(holder, offsetKm), holder.radiusKm);
@@ -1286,7 +1295,7 @@ function followSolarSystem() {
   const landingArmed = solarFrame.landingArmed || distance - lowest > LANDING_REARM_KM;
   const touchedDown = landed && landingArmed && thrusting && holder.kind !== 'craft' && !rocketAboard();
   if (touchedDown) {
-    showStatus(holder.hole ? 'The ship goes no closer to the event horizon.' : `Touched down on ${spokenName(holder)}.`);
+    showStatus(stopNews(holder));
     if (holder.kind !== 'star') setRotatingWith(holder.name);
   }
   game.camera = add(system.position, scale(add(holder.fromSunKm, offsetKm), 1 / KM_PER_PC));
@@ -2283,9 +2292,12 @@ function bodyPick(body) {
       return (solarBodies && bodyNamed(body.name)) ?? placedNow(body);
     },
     locate: () => bodyOffsetPc(body),
+    beamHere: body.pulsar && beamHereFor(body.pulsar, systemOf(body), () => bodyOffsetPc(body)),
     destination: bodyDestination(body),
   };
 }
+
+const beamHereFor = (pulsar, { star, position }, offsetPc) => () => beamReaches(pulsar, star.north, normalize(subtract(SUN_POSITION, position)), scale(offsetPc(), -1), simNow());
 
 const nebulaPick = (nebula) => ({ kind: 'nebula', name: nebula.name, locate: () => nebulaOffsetPc(nebula), destination: nebulaDestination(nebula) });
 const galaxyPick = (galaxy) => ({ kind: 'galaxy', name: galaxy.name, locate: placedAt(galaxy.centre), destination: galaxyDestination(galaxy) });
@@ -2312,11 +2324,21 @@ function pickFor(destination) {
 }
 
 function hostPick(name) {
-  const { catalogueStar, data } = systemNamed(name);
-  return { ...catalogueStar, kind: catalogueStar.kind ?? KIND.catalogue, hostData: data, locate: placedAt(catalogueStar.position), destination: starDestination(catalogueStar) };
+  const system = systemNamed(name);
+  const { catalogueStar, data, star } = system;
+  const locate = placedAt(catalogueStar.position);
+  return {
+    ...catalogueStar,
+    kind: catalogueStar.kind ?? KIND.catalogue,
+    hostData: data,
+    radiusKm: star.radiusKm,
+    locate,
+    beamHere: data.pulsar && beamHereFor(data.pulsar, system, locate),
+    destination: starDestination(catalogueStar),
+  };
 }
 
-const starBodyPick = (body) => (body.host ? hostPick(body.host) : sunPick());
+const starBodyPick = (body) => (body.orbit ? bodyPick(body) : body.host ? hostPick(body.host) : sunPick());
 
 function clickedStarPick(star) {
   if (star.kind === KIND.sun) return sunPick();
@@ -2802,7 +2824,7 @@ if (!renderer) {
     .catch(() => showStatus("Earth's city lights failed to load; its night side stays dark."));
   loadNearbyStars('data/nearby-stars.bin', 'data/nearby-star-names.json').then((stars) => {
     catalogue = stars;
-    nearby = [...withExoplanetHosts(stars), ...KNOWN_BLACK_HOLES.map(({ name }) => systemNamed(name).catalogueStar)];
+    nearby = [...withExoplanetHosts(stars), ...PULSAR_HOSTS.map(({ catalogueStar }) => catalogueStar), ...KNOWN_BLACK_HOLES.map(({ name }) => systemNamed(name).catalogueStar)];
     knowStarsNearSun(nearby);
   }).finally(() => requestAnimationFrame(() => requestAnimationFrame(hideLoading)));
   requestAnimationFrame(frame);

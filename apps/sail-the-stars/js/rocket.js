@@ -63,6 +63,7 @@ const PLACING_STEP_MS = 10000;
 function starGm(star, bodies) {
   if (MEASURED_GM_KM3_PER_S2[star.name]) return MEASURED_GM_KM3_PER_S2[star.name];
   if (star.hole) return star.hole.suns * SUN_GM;
+  if (star.pulsar) return star.pulsar.suns * SUN_GM;
   const timed = bodies.find((body) => body.orbit && body.measured?.periodDays);
   if (!timed) return SUN_GM;
   const seconds = timed.measured.periodDays * SECONDS_PER_DAY;

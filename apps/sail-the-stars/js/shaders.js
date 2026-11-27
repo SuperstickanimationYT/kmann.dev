@@ -3442,6 +3442,7 @@ void main() {
 
 const HOLE_BENDING = `${DEFLECTION}
 uniform vec4 uHoleInFront;
+uniform vec4 uHoleSurface;
 
 bool bentAroundHole(inout vec3 direction) {
   if (uHoleInFront.w < 0.5) return false;
@@ -3482,7 +3483,7 @@ ${HOLE_BENDING}
 void main() {
   vec3 unbent = directionBeforeWarp(viewDirection());
   if (bentAroundHole(unbent)) {
-    outColour = vec4(0.0);
+    outColour = uHoleSurface.w > 0.5 ? vec4(uHoleSurface.rgb, 1.0) : vec4(0.0);
     return;
   }
   vec4 body = bodiesColour(unbent);

@@ -1,6 +1,7 @@
 import { createTarget, setUniforms, startProgram } from './gl.js';
 import { bendingAt, DEFLECTION_SAMPLES, IMAGE_SAMPLES, starImages } from './light-bending.js';
 import { DEFLECTION, FULLSCREEN_VERTEX, LATTICE_PERIOD } from './shaders.js';
+import { GRAVITY_KM_PER_SUN } from './pulsars.js';
 import { simNow } from './sim-clock.js';
 import { KM_PER_PC } from './solar-system.js';
 import { scale } from './vectors.js';
@@ -14,7 +15,9 @@ const IMAGE_ROWS = 2 * NEAR_IMAGE_ROWS;
 const STAR_IMAGES = [0, 1];
 const FAR_STAR_IMAGES = [2, 3];
 const ONE_IMAGE = [0];
-const NOTHING_COVERED = { uHoleInFront: [0, 0, 0, 0], uFarSunLook: [0, 0, 0, 0] };
+const NO_SURFACE = [0, 0, 0, 0];
+const NOTHING_COVERED = { uHoleInFront: [0, 0, 0, 0], uFarSunLook: [0, 0, 0, 0], uHoleSurface: NO_SURFACE };
+const NEUTRON_STAR_GLOW = 2;
 const REBEND_CHANGE = 2e-4;
 const DEFLECTION_UNIT = 28;
 const IMAGES_UNIT = 29;
@@ -262,14 +265,14 @@ export function createBlackHoleView(gl, emptyVao, { latticeUnit }) {
   let bending = null;
   const targets = new Map();
 
-  function bendFor(wormhole, depth, radius) {
+  function bendFor(wormhole, depth, radius, edgeImpact) {
     tables ??= {
       deflections: tableTexture(gl, DEFLECTION_UNIT, gl.R32F, DEFLECTION_SAMPLES, 1),
       images: tableTexture(gl, IMAGES_UNIT, gl.RG32F, IMAGE_SAMPLES, IMAGE_ROWS + 1),
     };
     const reach = wormhole ? Math.hypot(depth, radius) : depth;
-    if (bending?.wormhole === wormhole && bending.mouthRadius === radius && Math.abs(depth - bending.depth) < REBEND_CHANGE * reach) return;
-    const bent = wormhole ? wormholeBendingAt(depth, radius) : bendingAt(depth / radius);
+    if (bending?.wormhole === wormhole && bending.mouthRadius === radius && bending.edgeImpact === edgeImpact && Math.abs(depth - bending.depth) < REBEND_CHANGE * reach) return;
+    const bent = wormhole ? wormholeBendingAt(depth, radius) : bendingAt(depth / radius, edgeImpact);
     const images = new Float32Array(2 * IMAGE_SAMPLES * (IMAGE_ROWS + 1));
     images.set(starImages(bent));
     if (wormhole) {
@@ -280,7 +283,7 @@ export function createBlackHoleView(gl, emptyVao, { latticeUnit }) {
     }
     tables.deflections(gl.RED, bent.deflections);
     tables.images(gl.RG, images);
-    bending = { ...bent, wormhole, depth, mouthRadius: radius };
+    bending = { ...bent, wormhole, depth, mouthRadius: radius, edgeImpact };
   }
 
   function targetFor(name, width, height) {
@@ -304,7 +307,7 @@ export function createBlackHoleView(gl, emptyVao, { latticeUnit }) {
   }
 
   const tableScale = () => ({ uShadow: bending.shadow, uLeastLog: bending.leastLog, uLogSpan: bending.logSpan });
-  const coversOf = (hole) => ({ uHoleInFront: [...hole, 1], uFarSunLook: NOTHING_COVERED.uFarSunLook });
+  const coversOf = (hole, surface = NO_SURFACE) => ({ uHoleInFront: [...hole, 1], uFarSunLook: NOTHING_COVERED.uFarSunLook, uHoleSurface: surface });
   const raysTo = (hole, { basis, tanHalf }) => ({ uRight: basis.right, uUp: basis.up, uForward: basis.forward, uTanHalf: tanHalf, uHole: hole });
 
   function bendSky(hole, { view, sky, keptSky, width, height }, values, textures) {
@@ -333,10 +336,11 @@ export function createBlackHoleView(gl, emptyVao, { latticeUnit }) {
     const { view } = scene;
     const distanceKm = Math.hypot(...offsetKm);
     const horizons = distanceKm / body.radiusKm;
-    if (Math.sqrt(RADII_PER_HORIZON / horizons) < LEAST_BENDING_PIXELS * view.pixelAngle) return null;
-    bendFor(false, distanceKm, body.radiusKm / RADII_PER_HORIZON);
+    const gravityKm = body.pulsar ? body.pulsar.suns * GRAVITY_KM_PER_SUN : body.radiusKm / RADII_PER_HORIZON;
+    if (Math.sqrt((2 * RADII_PER_HORIZON * gravityKm) / distanceKm) < LEAST_BENDING_PIXELS * view.pixelAngle) return null;
+    bendFor(false, distanceKm, gravityKm, body.pulsar && body.radiusKm / gravityKm);
     const hole = scale(offsetKm, 1 / distanceKm);
-    const glowing = body.hole.glowing && FLOW_HORIZONS / horizons > LEAST_FLOW_PIXELS * view.pixelAngle;
+    const glowing = body.hole?.glowing && FLOW_HORIZONS / horizons > LEAST_FLOW_PIXELS * view.pixelAngle;
     if (glowing) drawFlow(hole, body, horizons, scene);
     const sky = bendSky(hole, scene, { uFlowOn: glowing ? 1 : 0, uWormhole: 0 });
     const dazzle = glowing ? DAZZLE_PER_DECADE * Math.log10(1 + FLOW_LUX_AT_AU * (KM_PER_AU / distanceKm) ** 2 / UNDAZZLING_LUX) : 0;
@@ -344,7 +348,7 @@ export function createBlackHoleView(gl, emptyVao, { latticeUnit }) {
       sky,
       glowing,
       dazzle,
-      covers: coversOf(hole),
+      covers: coversOf(hole, body.pulsar && [...scale(body.tint, NEUTRON_STAR_GLOW), 1]),
       starImages: STAR_IMAGES,
       starUniforms: { uHole: [...hole, 1], uHoleDistancePc: distanceKm / KM_PER_PC, uHoleHidesSprite: glowing ? spriteHidden(horizons) : 0, uDazzle: dazzle },
     };
@@ -382,8 +386,9 @@ export function createBlackHoleView(gl, emptyVao, { latticeUnit }) {
 
   function bindDeflections(program, lens, inFront) {
     gl.uniform1i(program.uniforms.uDeflections, DEFLECTION_UNIT);
-    const { uHoleInFront, uFarSunLook } = lens?.covers ?? NOTHING_COVERED;
-    setUniforms(gl, program, { uFarSunLook, uHoleInFront: inFront ? uHoleInFront : NOTHING_COVERED.uHoleInFront, ...(bending && tableScale()) });
+    const { uHoleInFront, uFarSunLook, uHoleSurface } = lens?.covers ?? NOTHING_COVERED;
+    const shown = inFront ? { uHoleInFront, uHoleSurface } : NOTHING_COVERED;
+    setUniforms(gl, program, { uFarSunLook, uHoleInFront: shown.uHoleInFront, uHoleSurface: shown.uHoleSurface, ...(bending && tableScale()) });
   }
 
   function bindStarImages(program) {

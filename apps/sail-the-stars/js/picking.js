@@ -1,6 +1,7 @@
 import { HORIZON_KM_PER_SUN } from './black-holes.js';
 import { LY_PER_PC } from './milky-way.js';
 import { formatDistance } from './practice.js';
+import { NEUTRON_STAR_RADIUS_KM } from './pulsars.js';
 import { settlementShown } from './settlements.js';
 import { KM_PER_PC } from './solar-system.js';
 import { simNow } from './sim-clock.js';
@@ -251,7 +252,32 @@ function deepSkyFacts(pick) {
   };
 }
 
+const formatSpin = (seconds) => (seconds < 1 ? `${(1 / seconds).toPrecision(3)} turns a second` : `once every ${seconds.toPrecision(3)} s`);
+const INVISIBLE_BEAMS = 'Its beams are invisible: in empty space nothing scatters their light toward you. Pulses show only where a beam sweeps over you.';
+
+function pulsarFacts({ title, pulsar, radiusKm, distance, planets = [], beamHere }) {
+  const kind = pulsar.kind ?? (planets.length ? `Pulsar with ${planetCount(planets.length, 'known')}` : 'Pulsar (spinning neutron star)');
+  return {
+    title,
+    kind,
+    facts: [
+      ['Distance', distance],
+      ['Spins', formatSpin(pulsar.periodSeconds)],
+      ['Mass', `${formatSuns(pulsar.suns)}${pulsar.massMeasured ? '' : ', assumed'}`],
+      ['Radius', `about ${NEUTRON_STAR_RADIUS_KM} km; looks ${radiusKm.toFixed(1)} km as gravity bends its light`],
+      ['Surface', pulsar.kelvinNote ?? `about ${Number(pulsar.kelvin.toPrecision(2)).toLocaleString('en')} K`],
+      ['Pulses seen from Earth in', pulsar.seenFromEarth],
+      ['Beam here (model)', beamHere() ? 'sweeps over you' : 'misses you'],
+    ],
+    note: `${INVISIBLE_BEAMS} ${pulsar.story}`,
+  };
+}
+
+const hostDistance = (pick) => (pick.distance < SHOW_PARSECS_FROM ? formatKm(pick.distance * KM_PER_PC) : formatDistance(pick.distance));
+
 export function describePick(pick) {
+  if (pick.kind === 'body' && pick.body.pulsar) return pulsarFacts({ title: pick.body.name, pulsar: pick.body.pulsar, radiusKm: pick.body.radiusKm, distance: formatKm(pick.distanceKm), beamHere: pick.beamHere });
+  if (pick.hostData?.pulsar) return pulsarFacts({ title: pick.name, pulsar: pick.hostData.pulsar, radiusKm: pick.radiusKm, distance: hostDistance(pick), planets: pick.hostData.planets, beamHere: pick.beamHere });
   if (pick.kind === 'body') return bodyFacts(pick);
   if (pick.kind === 'galaxy' || pick.kind === 'nebula') return deepSkyFacts(pick);
   return pick.hostData?.hole ? holeFacts(pick) : starFacts(pick);

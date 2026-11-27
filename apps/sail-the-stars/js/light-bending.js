@@ -30,8 +30,8 @@ function endAzimuth(startInverse, startSlope) {
   return Infinity;
 }
 
-export function shadowAngle(radius) {
-  const angle = Math.asin(Math.min(1, (CRITICAL_IMPACT * Math.sqrt(1 - HORIZON / radius)) / radius));
+export function shadowAngle(radius, edgeImpact = CRITICAL_IMPACT) {
+  const angle = Math.asin(Math.min(1, (edgeImpact * Math.sqrt(1 - HORIZON / radius)) / radius));
   return radius >= PHOTON_SPHERE ? angle : Math.PI - angle;
 }
 
@@ -43,8 +43,8 @@ function deflection(radius, angle) {
   return angle - Math.PI + endAzimuth(u, angle < Math.PI / 2 ? slope : -slope);
 }
 
-export function bendingAt(radius) {
-  const shadow = shadowAngle(radius);
+export function bendingAt(radius, edgeImpact = CRITICAL_IMPACT) {
+  const shadow = shadowAngle(radius, edgeImpact);
   const leastLog = Math.log(LEAST_EXCESS * shadow);
   const logSpan = Math.log(0.9999 * (Math.PI - shadow)) - leastLog;
   const angles = Array.from({ length: DEFLECTION_SAMPLES }, (_, k) => shadow + Math.exp(leastLog + (logSpan * k) / (DEFLECTION_SAMPLES - 1)));
@@ -82,8 +82,12 @@ export function starImages(bending) {
   for (const second of [0, 1]) {
     for (let k = 0; k < IMAGE_SAMPLES; k++) {
       const skyAngle = skyAngleOfSample(k);
-      const { seen, slope } = angleSeenAt(bending, second ? -skyAngle : skyAngle);
       const at = 2 * (second * IMAGE_SAMPLES + k);
+      if (second && -skyAngle < bending.angles[0] - bending.deflections[0]) {
+        images[at] = bending.shadow;
+        continue;
+      }
+      const { seen, slope } = angleSeenAt(bending, second ? -skyAngle : skyAngle);
       images[at] = seen;
       images[at + 1] = Math.abs((Math.sin(seen) * slope) / Math.sin(skyAngle));
     }
