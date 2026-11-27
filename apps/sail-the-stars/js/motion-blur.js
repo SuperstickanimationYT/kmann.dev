@@ -179,18 +179,19 @@ float reaches(float away, float length) { return clamp(1.0 - away / max(length, 
 float within(float away, float length) { return 1.0 - smoothstep(0.95 * length, 1.05 * length + 0.01, away); }
 
 void main() {
-  vec3 here = texture(uPicture, vUv).rgb;
+  vec4 here = texture(uPicture, vUv);
   vec2 fastest = texelFetch(uFastest, min(ivec2(gl_FragCoord.xy) / ${TILE_PIXELS}, textureSize(uFastest, 0) - 1), 0).xy;
   float reach = 0.5 * length(fastest);
   if (reach < 0.5) {
-    outColour = vec4(here, 1.0);
+    outColour = here;
     return;
   }
   vec3 mine = texture(uVelocity, vUv).xyz;
   float myReach = 0.5 * length(mine.xy);
   float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
   float total = 1.0 / max(myReach, 0.5);
-  vec3 light = toLight(here) * total;
+  vec3 light = toLight(here.rgb) * total;
+  float foreground = here.a * total;
   for (int i = 0; i < SAMPLES; i++) {
     float along = (float(i) + 0.5 + jitter) / float(SAMPLES) - 0.5;
     vec2 place = vUv + fastest * along / uSize;
@@ -202,9 +203,11 @@ void main() {
       + inFrontShare(mine.z, theirs.z) * reaches(away, myReach)
       + within(away, theirReach) * within(away, myReach) * 2.0;
     total += weight;
-    light += toLight(textureLod(uPicture, place, 0.0).rgb) * weight;
+    vec4 there = textureLod(uPicture, place, 0.0);
+    light += toLight(there.rgb) * weight;
+    foreground += there.a * weight;
   }
-  outColour = vec4(pow(light / total, vec3(1.0 / SCREEN_GAMMA)), 1.0);
+  outColour = vec4(pow(light / total, vec3(1.0 / SCREEN_GAMMA)), foreground / total);
 }`;
 
 const turnBetween = (past, now) => Math.max(...['right', 'up', 'forward'].map((axis) => Math.hypot(...subtract(now[axis], past[axis]))));
