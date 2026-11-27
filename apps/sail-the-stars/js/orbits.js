@@ -150,6 +150,8 @@ const PATH_RGB = '255, 196, 110';
 const PATH_ALPHA = { past: 0.85, future: 0.3 };
 const MARK_FONT = '12px "Trebuchet MS", sans-serif';
 const MARK_TEXT_HEIGHT = 15;
+const LABEL_OUTLINE = 'rgba(0, 0, 0, 0.85)';
+const LABEL_OUTLINE_PX = 3;
 const SHORTEST_PIECE_PX = 3;
 
 export function drawCraftPath(context, { past, future, ...scene }) {
@@ -209,8 +211,14 @@ export function drawRocketPath(context, { lines, marks, ...scene }) {
     const box = LABEL_NUDGES.map((nudge) => ({ x: side === 'left' ? x - 7 - width : x + 7, y: y + nudge * MARK_TEXT_HEIGHT, width })).find((placed) => !crowded(placed));
     if (!box) continue;
     written.push(box);
+    context.save();
     context.textAlign = 'left';
+    context.strokeStyle = LABEL_OUTLINE;
+    context.lineWidth = LABEL_OUTLINE_PX;
+    context.lineJoin = 'round';
+    context.strokeText(label, box.x, box.y);
     context.fillText(label, box.x, box.y);
+    context.restore();
   }
   context.restore();
 }

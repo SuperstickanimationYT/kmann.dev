@@ -1256,6 +1256,8 @@ function lowestDistanceKm(holder, offsetKm) {
   return holder.radiusKm + (Math.max(height, waterLevel) + EYE_HEIGHT_METRES) / 1000;
 }
 
+const groundUnderKm = (body, offsetKm) => (groundFor(body) ? lowestDistanceKm(body, offsetKm) : body.radiusKm);
+
 function followSolarSystem() {
   if (!game.mode.solarSystem) {
     solarBodies = null;
@@ -1751,6 +1753,8 @@ function refreshBurnPanel() {
   burnAutopilotButton.setAttribute('aria-pressed', String(plan.autopilot));
 }
 
+const aboveDock = (height) => height - dock.offsetHeight;
+
 function drawBurnMarker(context, width, height) {
   const left = rocket.burnLeftKmS;
   const leftKmS = left ? Math.hypot(...left) : 0;
@@ -1763,7 +1767,8 @@ function drawBurnMarker(context, width, height) {
   context.fillStyle = `rgb(${BURN_RGB})`;
   context.font = SELECTION_FONT;
   context.lineWidth = 1.5;
-  if (!spot || spot.x < 0 || spot.x > width || spot.y < 0 || spot.y > height) drawEdgeArrow(context, { direction: edgeDirection(direction) }, width, height, label);
+  const bottom = aboveDock(height);
+  if (!spot || spot.x < 0 || spot.x > width || spot.y < 0 || spot.y > bottom) drawEdgeArrow(context, { direction: edgeDirection(direction) }, width, height, label, bottom);
   else {
     context.beginPath();
     context.arc(spot.x, spot.y, BURN_MARKER_PX, 0, 2 * Math.PI);
@@ -1789,10 +1794,10 @@ function formatWait(ms) {
   return `${Math.round(days / 365.25)} years`;
 }
 
-function pathMarkLabel(body, { kind, distanceKm }, aside) {
+function pathMarkLabel(body, groundKm, { kind, distanceKm }, aside) {
   const over = aside ? ` over ${nameOfWell(body)}` : '';
   if (body.kind === 'star') return `${kind === 'lowest' ? 'Closest' : 'Farthest'} ${formatRocketDistance(distanceKm)}${aside ? ` from ${nameOfWell(body)}` : ''}`;
-  return `${kind === 'lowest' ? 'Lowest' : 'Highest'} ${formatRocketDistance(distanceKm - body.radiusKm)}${over}`;
+  return `${kind === 'lowest' ? 'Lowest' : 'Highest'} ${formatRocketDistance(Math.max(0, distanceKm - groundKm))}${over}`;
 }
 
 function segmentEndLabel({ end, holder, next, toMs }) {
@@ -1814,6 +1819,8 @@ function drawRocketLine(context, width, height) {
     return;
   }
   const { segments, planned, burn, approach, target } = rocket.path;
+  const takeoffGroundKm = segments[0]?.groundKm ?? body.radiusKm;
+  const hiders = scene.bodies.map((seen) => (seen.name === body.name ? { ...seen, radiusKm: Math.min(seen.radiusKm, takeoffGroundKm) } : seen));
   const anchors = new Map([[rocket.state.holder, subtract(rocket.shipFromEyeKm, rocket.state.positionKm)]]);
   const legAnchors = [];
   const lines = [];
@@ -1828,7 +1835,7 @@ function drawRocketLine(context, width, height) {
     const holder = bodyNamed(segment.holder);
     const fromEye = (pointKm) => add(anchor, pointKm);
     lines.push({ pointsKm: segment.pointsKm.map(fromEye), rgb, planned: plannedLegs });
-    for (const mark of segment.marks) marks.push({ pointKm: fromEye(mark.pointKm), label: pathMarkLabel(holder, mark, index > 0), rgb });
+    for (const mark of segment.marks) marks.push({ pointKm: fromEye(mark.pointKm), label: pathMarkLabel(holder, groundUnderKm(holder, mark.pointKm), mark, index > 0), rgb });
     if (segment.met) marks.push({ pointKm: anchor, label: `${holder.name} then`, rgb, hollow: true, side: 'left' });
     const label = segmentEndLabel(segment);
     if (label) marks.push({ pointKm: fromEye(segment.finish.positionKm), label, rgb });
@@ -1844,7 +1851,7 @@ function drawRocketLine(context, width, height) {
     marks.push({ pointKm: add(anchor, approach.pointKm), label: heightKm > 0 ? `Closest to ${nameOfWell(body)}: ${formatRocketDistance(heightKm)}` : `Hits ${nameOfWell(body)}`, rgb });
     marks.push({ pointKm: add(anchor, approach.targetKm), label: `${body.name} then`, rgb, hollow: true, side: 'left' });
   }
-  drawRocketPath(context, { ...scene, lines, marks });
+  drawRocketPath(context, { ...scene, bodies: hiders, lines, marks });
 }
 
 const nameOfWell = (body) => (body.kind === 'star' && body.name === 'Sun' ? 'the Sun' : spokenName(body));
@@ -1855,6 +1862,7 @@ function formatRocketSpeed(kmS) {
 }
 
 function formatRocketDistance(km) {
+  if (km < 1) return `${Math.round(km * 1000).toLocaleString('en')} m`;
   return km < ROCKET_AU_FROM_KM ? `${Math.round(km).toLocaleString('en')} km` : `${(km / KM_PER_AU).toFixed(2)} AU`;
 }
 
@@ -1865,7 +1873,7 @@ function rocketReadout(well, offsetKm) {
   const { plan } = rocket;
   const burnNews = !plan ? '' : plan.ms > rocket.ms ? `, burn in ${formatWait(plan.ms - rocket.ms)}` : ', burn now';
   if (well.body.kind === 'star') return `${speed} around ${name}, ${formatRocketDistance(Math.hypot(...offsetKm))} out${burnNews}`;
-  return `${speed} around ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - well.body.radiusKm))} up${burnNews}`;
+  return `${speed} around ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - groundUnderKm(well.body, offsetKm)))} up${burnNews}`;
 }
 
 let spinSinceSharpSky = 0;
@@ -2078,7 +2086,7 @@ function refreshGuides(now) {
   context.clearRect(0, 0, width, height);
   if (photo || warp || !atlasFrame.hidden) return;
   if (orbitsShown()) drawOrbitLines(context, width, height);
-  if (labelsShown()) drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, nebulae, galaxies });
+  if (labelsShown()) drawGuides(context, { camera: game.camera, basis: game.basis, tanHalf: eyeTanHalf(), width, height, bottom: aboveDock(height), nebulae, galaxies });
   if (selection) followSelection(context, now);
   if (selection?.destination?.craft) drawSelectedPath(context, width, height);
   if (rocketOutside() && rocket.view === 'orbit' && solarFrame) drawRocketLine(context, width, height);
@@ -2424,11 +2432,12 @@ function followSelection(context, now) {
   const spot = spotOnStage(offset);
   const width = stage.clientWidth;
   const height = stage.clientHeight;
+  const bottom = aboveDock(height);
   context.strokeStyle = SELECTION_COLOUR;
   context.fillStyle = SELECTION_COLOUR;
-  if (!spot || spot.x < 0 || spot.x > width || spot.y < 0 || spot.y > height) {
+  if (!spot || spot.x < 0 || spot.x > width || spot.y < 0 || spot.y > bottom) {
     context.font = SELECTION_FONT;
-    drawEdgeArrow(context, { direction: edgeDirection(offset) }, width, height, `${describePick(selection).title} · ${formatDistance(Math.hypot(...offset))}`);
+    drawEdgeArrow(context, { direction: edgeDirection(offset) }, width, height, `${describePick(selection).title} · ${formatDistance(Math.hypot(...offset))}`, bottom);
     return;
   }
   if (discPixels(selection, offset) > SELECTION_RING_PX) return;
