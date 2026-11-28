@@ -36,13 +36,14 @@ import { holdingBody, KM_PER_AU, KM_PER_PC, loadBodyMaps, loadCityLights, loadCl
 import { showSpeculation, speculationShown } from './speculation.js';
 import { blackHolesWithin, KNOWN_BLACK_HOLES, nearestBlackHole } from './black-holes.js';
 import { PULSAR_HOSTS, withExoplanetHosts } from './exoplanets.js';
-import { beamReaches } from './pulsars.js';
+import { beamReaches, visibleFlash } from './pulsars.js';
+import { createPulsarSound } from './pulsar-sound.js';
 import { knowStarsNearSun, nearestCivilization, otherSystems, SOLAR_SYSTEM, SYSTEM_REACH_PC, systemAround, systemNamed, systemNear, systemOf, withinSystem } from './planetary-systems.js';
 import { drawCraftMarks, drawCraftPath, drawOrbits, drawRocketPath, rocketPathColour } from './orbits.js';
 import { cruiseOf, cruisePoint, flightDates, isOut, loadSpacecraft, placeSpacecraft } from './spacecraft.js';
 import { createPathTracer } from './craft-path-line.js';
 import { offsetInStretch } from './spacecraft-paths.js';
-import { backToNow, capRate, capRateWithin, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, simNow, slower, togglePause } from './sim-clock.js';
+import { backToNow, capRate, capRateWithin, describeRate, EARLIEST_MS, faster, hitTimeLimit, jumpTo, LATEST_MS, paused, playFrom, realTime, simNow, slower, togglePause } from './sim-clock.js';
 import { EYE_HEIGHT_METRES, groundFrame, groundHeightMetres } from './terrain.js';
 import { createGroundPatches } from './ground-patches.js';
 import { createSpeedDial, createThumbStick, createTwoFingerGesture, touchScreen } from './touch-controls.js';
@@ -95,6 +96,7 @@ const TAP_DISTANCE = { mouse: 6, touch: 12 };
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
+const PULSAR_SOUND_STORAGE_KEY = 'sail-the-stars-pulsar-sound';
 const UNLIMITED_FUEL_STORAGE_KEY = 'sail-the-stars-unlimited-fuel';
 const ROCKET_DESIGN_STORAGE_KEY = 'sail-the-stars-rocket-design';
 const TRUE_SIZE_STORAGE_KEY = 'sail-the-stars-true-size';
@@ -136,6 +138,8 @@ const unlimitedFuelField = $('[data-unlimited-fuel-field]');
 const unlimitedFuelToggle = $('[data-unlimited-fuel]');
 const rocketToggle = $('[data-rocket]');
 const motionBlurToggle = $('[data-motion-blur]');
+const pulsarSoundToggle = $('[data-pulsar-sound]');
+const pulsarSound = createPulsarSound();
 const trueSizeToggle = $('[data-true-size]');
 const screenWidthInput = $('[data-screen-width]');
 const eyeDistanceInput = $('[data-eye-distance]');
@@ -440,6 +444,19 @@ function motionBlurWanted() {
 function rememberMotionBlur() {
   try {
     localStorage.setItem(MOTION_BLUR_STORAGE_KEY, motionBlurToggle.checked ? 'on' : 'off');
+  } catch {}
+}
+
+function recallPulsarSound() {
+  try {
+    pulsarSoundToggle.checked = localStorage.getItem(PULSAR_SOUND_STORAGE_KEY) === 'on';
+  } catch {}
+}
+
+function pulsarSoundChanged() {
+  if (pulsarSoundToggle.checked) pulsarSound.wake();
+  try {
+    localStorage.setItem(PULSAR_SOUND_STORAGE_KEY, pulsarSoundToggle.checked ? 'on' : 'off');
   } catch {}
 }
 
@@ -2383,8 +2400,36 @@ function groundInView() {
 
 function bodiesInView() {
   if (!solarFrame) return null;
-  return seenFromCamera(solarBodies).sort((a, b) => Math.hypot(...a.offsetKm) - Math.hypot(...b.offsetKm));
+  return seenFromCamera(solarBodies)
+    .map(withFlash)
+    .sort((a, b) => Math.hypot(...a.offsetKm) - Math.hypot(...b.offsetKm));
 }
+
+const beamSweepsCamera = ({ body, offsetKm }) => beamHereFor(body.pulsar, systemOf(body), () => offsetKm)();
+const FLASHING_PULSARS = PULSAR_HOSTS.filter(({ star }) => star.pulsar.visiblePulses);
+const flashOf = (pulsar) => pulsar && flashesNow.find(({ system }) => system.star.pulsar === pulsar)?.flash;
+const withFlash = (entry) => {
+  const flash = flashOf(entry.body.pulsar);
+  return flash ? { ...entry, flash } : entry;
+};
+
+let flashesNow = [];
+let flashFromMs = simNow();
+function refreshFlashes() {
+  const [fromMs, toMs] = [flashFromMs, simNow()];
+  flashFromMs = toMs;
+  const sweptBy = (system) => beamHereFor(system.star.pulsar, system, () => subtract(system.position, game.camera))();
+  flashesNow = longExposureShown() ? [] : FLASHING_PULSARS.filter(sweptBy).map((system) => ({ system, flash: visibleFlash(system.star.pulsar, fromMs, toMs) }));
+}
+
+function flashingEyeStar() {
+  const [flashing] = flashesNow;
+  const star = flashing && Array.prototype.indexOf.call(eyeStars.names, flashing.system.catalogueStar.name);
+  return star >= 0 ? { star, ...flashing.flash } : null;
+}
+
+const soundHeard = () => pulsarSoundToggle.checked && realTime() && solarFrame && !menu && document.visibilityState === 'visible';
+const heardPulsars = () => (soundHeard() ? seenFromCamera(solarBodies).filter((entry) => entry.body.pulsar && !entry.body.pulsar.radioQuiet && beamSweepsCamera(entry)).map(({ body }) => body.pulsar) : []);
 
 function seenFromCamera(bodies) {
   const here = add(bodyNamed(solarFrame.holder).fromSunKm, solarFrame.offsetKm);
@@ -2487,6 +2532,7 @@ function frame(now) {
   followSolarSystem();
   inventGroundBelow();
   refreshEyeStars(now);
+  refreshFlashes();
   if (eyeStars) {
     frameSeed = (frameSeed + 1) >>> 0;
     const ground = groundInView();
@@ -2500,6 +2546,7 @@ function frame(now) {
       cockpit: { ...cockpitUniforms(game.ship), enabled: game.mode.cockpit && !rocketOutside() },
       planet: intro?.planet ?? null,
       bodies: bodiesInView(),
+      flash: flashingEyeStar(),
       beyond: seenThroughMouth(),
       craft: [...craftInView(), ...rocketInView()],
       starlight: system.light,
@@ -2514,6 +2561,7 @@ function frame(now) {
     wentThrough = false;
   }
   if (labelsShown() || selection || orbitsShown() || rocket) refreshGuides(now);
+  pulsarSound.hear(heardPulsars());
   placeCrosshair();
   $('[data-clock]').textContent = game.mode.scored ? formatClock(game.clock) : '';
   const flyingRocket = rocketAboard() && solarFrame;
@@ -3278,6 +3326,9 @@ $('[data-pick-close]').addEventListener('click', clearSelection);
 $('[data-pick-fold]').addEventListener('click', togglePickDetails);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
+recallPulsarSound();
+pulsarSoundToggle.addEventListener('change', pulsarSoundChanged);
+for (const gesture of ['pointerdown', 'keydown']) addEventListener(gesture, () => pulsarSoundToggle.checked && pulsarSound.wake(), { once: true });
 recallUnlimitedFuel();
 unlimitedFuelToggle.addEventListener('change', unlimitedFuelChanged);
 recallTrueSize();

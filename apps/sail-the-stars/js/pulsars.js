@@ -34,6 +34,7 @@ export const PULSAR_SYSTEMS = [
       periodSeconds: 0.0333924123, suns: ASSUMED_SUNS, kelvin: 1.6e6, kelvinNote: 'under 2 million K; not measured',
       seenFromEarth: 'radio, visible light, X-rays, gamma rays',
       spin: { positionAngle: 124, fromEarthDegrees: 61.3 },
+      visiblePulses: { between: 0.012, peaks: [{ phase: 0, height: 1, halfHeightWidth: 0.046 }, { phase: 0.39, height: 0.28, halfHeightWidth: 0.091 }] },
       story: 'Left by the supernova seen from Earth in 1054. It flashes in visible light 30 times a second, one of very few pulsars bright enough.',
     },
     planets: [],
@@ -53,6 +54,7 @@ export const PULSAR_SYSTEMS = [
     pulsar: {
       periodSeconds: 0.237099441692, suns: ASSUMED_SUNS, kelvin: 5e5,
       seenFromEarth: 'gamma rays and X-rays; radio telescopes barely detect it',
+      radioQuiet: true,
       spin: { fromEarthDegrees: 50 },
       story: 'Its name means "Gemini gamma-ray source", and in Milanese "it\'s not there": for years nothing could be seen at its place.',
     },
@@ -84,6 +86,44 @@ export const PULSAR_SYSTEMS = [
     planets: planets(['B', 0, 1.2489 * EARTH_MASSES_PER_SUN, 0.10225156248, 0.005876, 0.0877775, 90.501, 87.0331, UNKNOWN_OLD_KELVIN, null, 2453156.407428, false, 'measured']).map((row) => ({ ...row, name: 'Double Pulsar B', pulsar: DOUBLE_PULSAR_B })),
   },
 ];
+
+export const FWHM_PER_SIGMA = 2 * Math.sqrt(2 * Math.LN2);
+const NEIGHBOUR_TURNS = [-1, 0, 1];
+const ERF_FIT_SCALE = 0.3275911;
+const ERF_FIT = [1.061405429, -1.453152027, 1.421413741, -0.284496736, 0.254829592];
+
+function erf(x) {
+  const t = 1 / (1 + ERF_FIT_SCALE * Math.abs(x));
+  const fit = ERF_FIT.reduce((total, coefficient) => total * t + coefficient, 0) * t;
+  return Math.sign(x) * (1 - fit * Math.exp(-x * x));
+}
+
+const sum = (items, valueOf) => items.reduce((total, item) => total + valueOf(item), 0);
+const pulseShapes = new WeakMap();
+
+function pulseShape(pulses) {
+  if (pulseShapes.has(pulses)) return pulseShapes.get(pulses);
+  const peaks = pulses.peaks.map(({ phase, height, halfHeightWidth }) => ({ phase, height, sigma: halfHeightWidth / FWHM_PER_SIGMA }));
+  const level = (turn) => pulses.between + sum(peaks, ({ phase, height, sigma }) => sum(NEIGHBOUR_TURNS, (k) => height * Math.exp(-((turn - phase - k) ** 2) / (2 * sigma * sigma))));
+  const risenWithinTurn = (turn) =>
+    pulses.between * turn +
+    sum(peaks, ({ phase, height, sigma }) =>
+      sum(NEIGHBOUR_TURNS, (k) => height * sigma * Math.sqrt(Math.PI / 2) * (erf((turn - phase - k) / (sigma * Math.SQRT2)) - erf((-phase - k) / (sigma * Math.SQRT2))))
+    );
+  const perTurn = risenWithinTurn(1);
+  const shape = { risenWithinTurn, perTurn, peak: Math.max(...peaks.map(({ phase }) => level(phase))) / perTurn };
+  pulseShapes.set(pulses, shape);
+  return shape;
+}
+
+export function visibleFlash(pulsar, fromMs, toMs) {
+  const shape = pulseShape(pulsar.visiblePulses);
+  const [start, end] = [fromMs, toMs].map((ms) => ms / 1000 / pulsar.periodSeconds).sort((a, b) => a - b);
+  if (end === start) return { share: 1, peak: shape.peak };
+  const wholeTurns = Math.floor(end) - Math.floor(start);
+  const risen = wholeTurns * shape.perTurn + shape.risenWithinTurn(end - Math.floor(end)) - shape.risenWithinTurn(start - Math.floor(start));
+  return { share: risen / ((end - start) * shape.perTurn), peak: shape.peak };
+}
 
 const yearAt = (ms) => 2000 + (ms - YEAR_2000_MS) / MS_PER_YEAR;
 
