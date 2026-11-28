@@ -1638,9 +1638,10 @@ function forecastFromAir(state, fromMs, met, options) {
   let currentMet = met;
   while (legs.length < MOST_PATH_LEGS) {
     const holder = options.wells.get(current.holder);
-    const fall = fallThroughAir(current, { air: rocketAir(holder.body), gm: holder.gm, noseward: game.ship.forward, groundKm: holder.body.radiusKm });
+    const groundKm = Math.min(lowestDistanceKm(holder.body, current.positionKm), Math.hypot(...current.positionKm));
+    const fall = fallThroughAir(current, { air: rocketAir(holder.body), gm: holder.gm, noseward: game.ship.forward, groundKm });
     const toMs = ms + fall.seconds * 1000;
-    legs.push({ holder: current.holder, fromMs: ms, toMs, start: current, finish: fall.state, end: fall.end, next: null, met: currentMet, gm: holder.gm, groundKm: holder.body.radiusKm, wholeTurn: false, pointsKm: fall.pointsKm, marks: [] });
+    legs.push({ holder: current.holder, fromMs: ms, toMs, start: current, finish: fall.state, end: fall.end, next: null, met: currentMet, gm: holder.gm, groundKm, wholeTurn: false, pointsKm: fall.pointsKm, marks: [] });
     if (fall.end !== 'out of air') break;
     const onward = forecastPath(fall.state, { ...options, fromMs: toMs });
     legs.push(...onward);
@@ -1957,7 +1958,8 @@ function drawRocketLine(context, width, height) {
   if (!scene) return;
   const body = bodyNamed(rocket.state.holder);
   const up = normalize(subtract(rocket.shipFromEyeKm, scene.offsetOf(body.name)));
-  const ships = rocket.view === 'orbit' ? [{ pointKm: add(rocket.shipFromEyeKm, scale(up, LANDER_MARK_RAISED_RADII * body.radiusKm)), label: 'Rocket', side: 'left', rgb: rocketPathColour(0) }] : [];
+  const raisedKm = rocket.state.landedKm ? LANDER_MARK_RAISED_RADII * body.radiusKm : 0;
+  const ships = rocket.view === 'orbit' ? [{ pointKm: add(rocket.shipFromEyeKm, scale(up, raisedKm)), label: 'Rocket', side: 'left', rgb: rocketPathColour(0) }] : [];
   if (!rocket.path) {
     drawRocketPath(context, { ...scene, lines: [], marks: ships });
     return;
