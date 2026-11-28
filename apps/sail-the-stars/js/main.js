@@ -89,6 +89,7 @@ const TAP_DISTANCE = { mouse: 6, touch: 12 };
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
+const TRUE_SIZE_STORAGE_KEY = 'sail-the-stars-true-size';
 const MUSIC_STORAGE_KEY = 'find-home-music';
 const MENU_STEADY_PIXELS = 0.5;
 const MUSIC_FADE_SECONDS = 1.5;
@@ -125,6 +126,10 @@ const longExposureField = $('[data-long-exposure-field]');
 const rocketField = $('[data-rocket-field]');
 const rocketToggle = $('[data-rocket]');
 const motionBlurToggle = $('[data-motion-blur]');
+const trueSizeToggle = $('[data-true-size]');
+const screenWidthInput = $('[data-screen-width]');
+const eyeDistanceInput = $('[data-eye-distance]');
+const trueSizeUnitSelect = $('[data-true-size-unit]');
 const speculationToggle = $('[data-speculation]');
 const longExposureToggle = $('[data-long-exposure]');
 const selectInput = $('[data-select]');
@@ -212,7 +217,7 @@ function newGame(seed = randomSeed(), modeName = modeSelect.value) {
   };
   eyeStars = null;
   closePhoto();
-  setField(EYE_FIELD_HEIGHT);
+  setField(normalFieldHeight());
   ending.hidden = true;
   setMode(modeName);
   if (game.mode === MODES.mission) playIntro();
@@ -392,6 +397,40 @@ function rememberMotionBlur() {
   try {
     localStorage.setItem(MOTION_BLUR_STORAGE_KEY, motionBlurToggle.checked ? 'on' : 'off');
   } catch {}
+}
+
+function recallTrueSize() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TRUE_SIZE_STORAGE_KEY));
+    if (!saved) return;
+    trueSizeToggle.checked = saved.on;
+    trueSizeUnitSelect.value = saved.centimetresPerUnit;
+    screenWidthInput.value = saved.screenWidth;
+    eyeDistanceInput.value = saved.eyeDistance;
+  } catch {}
+}
+
+function rememberTrueSize() {
+  try {
+    localStorage.setItem(TRUE_SIZE_STORAGE_KEY, JSON.stringify({ on: trueSizeToggle.checked, centimetresPerUnit: trueSizeUnitSelect.value, screenWidth: screenWidthInput.value, eyeDistance: eyeDistanceInput.value }));
+  } catch {}
+}
+
+function trueSizeChanged() {
+  rememberTrueSize();
+  showTrueSizeField();
+  if (trueSizeToggle.checked || fieldFollowsTrueSize) resetZoom();
+}
+
+let centimetresPerUnitShown = 1;
+
+function convertTrueSizeUnits() {
+  const centimetresPerUnit = Number(trueSizeUnitSelect.value);
+  for (const input of [screenWidthInput, eyeDistanceInput]) {
+    if (input.value) input.value = Number((Number(input.value) * centimetresPerUnitShown / centimetresPerUnit).toFixed(1));
+  }
+  centimetresPerUnitShown = centimetresPerUnit;
+  trueSizeChanged();
 }
 
 function setMusic(wanted) {
@@ -626,9 +665,28 @@ function resize() {
   view.width = Math.max(1, Math.round(stage.clientWidth * ratio));
   view.height = Math.max(1, Math.round(stage.clientHeight * ratio));
   skyStale = true;
+  showTrueSizeField();
+  if (fieldFollowsTrueSize) setField(trueFieldHeight());
 }
 
 let fieldHeight = EYE_FIELD_HEIGHT;
+let fieldFollowsTrueSize = false;
+
+function trueFieldHeight() {
+  const centimetresPerUnit = Number(trueSizeUnitSelect.value);
+  const screenWidthCm = Number(screenWidthInput.value) * centimetresPerUnit;
+  const eyeDistanceCm = Number(eyeDistanceInput.value) * centimetresPerUnit;
+  if (!(screenWidthCm > 0 && eyeDistanceCm > 0 && screen.width > 0)) return null;
+  const viewHeightCm = stage.clientHeight * (screenWidthCm / screen.width);
+  return 2 * Math.atan(viewHeightCm / 2 / eyeDistanceCm);
+}
+
+const normalFieldHeight = () => (trueSizeToggle.checked && trueFieldHeight()) || EYE_FIELD_HEIGHT;
+
+function showTrueSizeField() {
+  const height = trueFieldHeight();
+  $('[data-true-size-field]').textContent = height ? formatField(height) : '—';
+}
 
 function formatField(radians) {
   const degrees = radians / DEGREES;
@@ -639,6 +697,7 @@ function formatField(radians) {
 
 function setField(height) {
   fieldHeight = Math.min(WIDEST_FIELD_HEIGHT, Math.max(NARROWEST_FIELD_HEIGHT, height));
+  fieldFollowsTrueSize = trueSizeToggle.checked && height === trueFieldHeight();
   $('[data-zoom-reset]').textContent = formatField(fieldHeight);
   viewChanged();
 }
@@ -648,7 +707,7 @@ function zoomTo(height) {
 }
 
 const zoomBy = (factor) => zoomTo(fieldHeight / factor);
-const resetZoom = () => zoomTo(EYE_FIELD_HEIGHT);
+const resetZoom = () => zoomTo(normalFieldHeight());
 
 function eyeTanHalf() {
   const tanY = Math.tan(fieldHeight / 2);
@@ -2784,6 +2843,11 @@ $('[data-pick-close]').addEventListener('click', clearSelection);
 $('[data-pick-fold]').addEventListener('click', togglePickDetails);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
+recallTrueSize();
+centimetresPerUnitShown = Number(trueSizeUnitSelect.value);
+trueSizeToggle.addEventListener('change', trueSizeChanged);
+for (const input of [screenWidthInput, eyeDistanceInput]) input.addEventListener('input', trueSizeChanged);
+trueSizeUnitSelect.addEventListener('change', convertTrueSizeUnits);
 rocketToggle.addEventListener('change', () => setRocket(rocketToggle.checked));
 speculationToggle.checked = speculationShown();
 speculationToggle.addEventListener('change', () => showSpeculation(speculationToggle.checked));
