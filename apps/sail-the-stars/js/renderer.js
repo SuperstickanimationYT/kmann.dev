@@ -330,8 +330,13 @@ function groundDetailTexels() {
 }
 
 const NO_WARP = { uWarpAxis: [0, 0, 1, 0], uGlareLux: 0, uShutter: 0 };
+const NO_FLASH = { uFlashingStar: { int: -1 }, uFlash: [1, 1] };
+const flashUniforms = (flash) => (flash ? { uFlashingStar: { int: flash.star }, uFlash: [flash.share, flash.peak] } : NO_FLASH);
 
-const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (0.16 * (6.5 - magnitude))) : 0);
+const STAR_POINT_SLOPE = 0.16;
+const STAR_POINT_POWER = 2.5 * STAR_POINT_SLOPE;
+const starPointBrightness = (magnitude) => (magnitude < 6.8 ? Math.min(2.5, 0.2 * 10 ** (STAR_POINT_SLOPE * (6.5 - magnitude))) : 0);
+const flashingBrightness = (magnitude, flash) => (flash ? starPointBrightness(magnitude - 2.5 * Math.log10(flash.peak)) * (flash.share / flash.peak) ** STAR_POINT_POWER : starPointBrightness(magnitude));
 
 const bendsLight = ({ hole, kind }) => hole || kind === 'wormhole';
 const ABSOLUTE_MAGNITUDE_PC = 10;
@@ -399,7 +404,7 @@ function bodyArrays(shown, mapRelief, giants) {
   const ringed = shown.findIndex(({ body }) => body.rings);
   const ringedBody = shown[ringed]?.body;
   const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringedBody ? (ringedBody.radiusKm * SATURN_RING_OUTER_KM) / ringedBody.ringOuterKm : 0 };
-  shown.forEach(({ body, offsetKm }, i) => {
+  shown.forEach(({ body, offsetKm, flash }, i) => {
     const distance = Math.hypot(...offsetKm);
     const angularRadius = Math.asin(Math.min(1, body.radiusKm / distance));
     const direction = offsetKm.map((value) => value / distance);
@@ -425,7 +430,7 @@ function bodyArrays(shown, mapRelief, giants) {
       mapped ? body.mapLayer : -1,
       giantFaces ? giantFaces.now : body.invented?.seed ?? relief,
       giantFaces ? giantFaces.next : body.invented?.kelvin ?? body.measured?.kelvin ?? body.roughness ?? 0,
-      shownAsPoint(body) ? starPointBrightness(pointMagnitude(body, offsetKm)) : 0,
+      shownAsPoint(body) ? flashingBrightness(pointMagnitude(body, offsetKm), flash) : 0,
     ], i * 4);
   });
   return { arrays, count: shown.length, rings };
@@ -1353,12 +1358,12 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     const farView = { ...view, camera: beyond.camera };
     for (const [target, anchorShift] of [[farStars, beyond.anchorShift], [farPlanets, NO_STAR_SHIFT]]) {
       for (const image of farStarImages) {
-        drawStars(eyeStarProgram, target, farView, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: anchorShift, uStarShift: NO_STAR_SHIFT, ...farStarUniforms, uHoleImage: { int: image } }, HIDDEN_BEHIND_FOREGROUND);
+        drawStars(eyeStarProgram, target, farView, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: anchorShift, uStarShift: NO_STAR_SHIFT, ...farStarUniforms, uHoleImage: { int: image }, ...NO_FLASH }, HIDDEN_BEHIND_FOREGROUND);
       }
     }
   }
 
-  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies: placedBodies, beyond, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight }) {
+  function renderEye({ view, nebulae, stars, starsChanged, seed, skyResolution, skySharpening, cockpit, planet, bodies: placedBodies, beyond, craft = [], cloudSeconds, ground, warp, adaptation, longExposure, blurMotion, starlight, flash }) {
     systemLight = starlight ?? SUNLIGHT;
     const hole = nearest(placedBodies?.filter(({ body }) => body.hole || body.pulsar || body === beyond?.mouth) ?? []);
     const holeInFront = Boolean(hole) && nearest(placedBodies) === hole;
@@ -1440,7 +1445,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     bindWarp(eyeStarProgram, warp, adaptation);
     blackHoleView.bindStarImages(eyeStarProgram);
     for (const image of lens?.starImages ?? ONE_STAR_IMAGE) {
-      drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT, uHole: NO_HOLE, ...lens?.starUniforms, uHoleImage: { int: image } }, HIDDEN_BEHIND_FOREGROUND);
+      drawStars(eyeStarProgram, eyeStars, view, { uWhiteBalance: WHITE_BALANCE, uAnchorShift: view.anchorShift, uStarShift: motion?.starShiftPc ?? NO_STAR_SHIFT, uHole: NO_HOLE, ...lens?.starUniforms, uHoleImage: { int: image }, ...flashUniforms(flash) }, HIDDEN_BEHIND_FOREGROUND);
     }
     if (lens?.farStarImages) drawFarStars(view, beyond, lens);
     if (craft.length && !warp) craftView.draw({ craft, bodies, ground, groundDepth: groundView?.depth ?? null, view, width: canvas.width, height: canvas.height, light: systemLight, drawInto: null });

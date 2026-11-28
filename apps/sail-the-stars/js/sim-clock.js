@@ -66,6 +66,7 @@ export function capRateWithin(simSeconds, realSeconds, slowest) {
 export const slower = () => setStep(step - 1);
 export const faster = () => setStep(step + 1);
 export const paused = () => rate() === 0;
+export const realTime = () => rate() === 1;
 
 export function togglePause() {
   if (paused()) {

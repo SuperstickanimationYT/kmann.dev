@@ -1,5 +1,5 @@
 {
-  "bytes": 7623884,
+  "bytes": 7632898,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -98,6 +98,7 @@
     "js/planetary-systems.js",
     "js/population.js",
     "js/practice.js",
+    "js/pulsar-sound.js",
     "js/pulsars.js",
     "js/random.js",
     "js/renderer.js",
