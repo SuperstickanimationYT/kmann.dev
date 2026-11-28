@@ -8,7 +8,6 @@ const TILE_PIXELS = LONGEST_BLUR_PIXELS;
 const LEAST_MOTION_PIXELS = 1;
 const CUT_RADIANS = 1;
 const NEAREST_GROUND_KM = 0.002;
-const RING_RADII = 2.41;
 const SKY_DEPTH = 60;
 
 const VELOCITY_FRAGMENT = `#version 300 es
@@ -290,7 +289,7 @@ export function createMotionBlur(gl, emptyVao) {
     }
     const ringed = shown.findIndex(({ body }) => body.rings);
     setUniforms(gl, velocityProgram, { uBlurredCount: { int: shown.length }, uBlurredRingBody: { int: ringed } });
-    if (ringed >= 0) setUniforms(gl, velocityProgram, { uBlurredRing: [...shown[ringed].body.north, shown[ringed].body.radiusKm * RING_RADII] });
+    if (ringed >= 0) setUniforms(gl, velocityProgram, { uBlurredRing: [...shown[ringed].body.north, shown[ringed].body.ringOuterKm] });
   }
 
   function planFor(now) {

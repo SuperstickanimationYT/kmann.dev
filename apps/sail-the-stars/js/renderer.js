@@ -28,7 +28,7 @@ import { SHADOW_MAP_SIZE } from './ground-patches.js';
 import { createMapEdges } from './map-edges.js';
 import { RIBBON_FLOATS } from './rivers.js';
 import { rocksSeen, SCATTER_FLOATS, SCATTER_LAYERS } from './surface-scatter.js';
-import { apparentMagnitude, KM_PER_PC, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
+import { apparentMagnitude, KM_PER_PC, longestRadiusKm, MAPPED_BODIES, narrowAxis, SATURN_RING_OUTER_KM, sunShareVisible } from './solar-system.js';
 import { lattice, mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
 import { nebulaLight, nebulaRadius, STAR_FLOATS } from './stars.js';
 
@@ -363,14 +363,14 @@ const ONE_STAR_IMAGE = [0];
 const FAINTEST_FAR_PLANET = 6.8;
 const FAR_PLANET_COLOUR = 0.65;
 const SEEN_RADII = 1.5;
-const RINGS_SEEN_RADII = 2.5;
+const RINGS_SEEN_MARGIN = 1.04;
 const GLOW_SEEN_PIXELS = 200;
 const SMALLEST_GLOW_ANGLE = 0.01;
 
 function bodyReaches(shown, pixelAngle, coronaShown) {
   const reaches = new Float32Array(MAX_BODIES).fill(1);
   shown.forEach(({ body, offsetKm }, i) => {
-    const share = (body.radiusKm * (body.rings ? RINGS_SEEN_RADII : SEEN_RADII)) / Math.hypot(...offsetKm);
+    const share = (body.rings ? body.ringOuterKm * RINGS_SEEN_MARGIN : body.radiusKm * SEEN_RADII) / Math.hypot(...offsetKm);
     const everywhere = share >= 1 || (body.kind === 'star' && coronaShown > 0);
     reaches[i] = everywhere ? -1 : Math.cos(Math.min(Math.PI, Math.asin(share) + Math.max(SMALLEST_GLOW_ANGLE, GLOW_SEEN_PIXELS * pixelAngle)));
   });
@@ -397,7 +397,8 @@ function bodyArrays(shown, mapRelief, giants) {
     uBodyWet: new Float32Array(MAX_BODIES),
   };
   const ringed = shown.findIndex(({ body }) => body.rings);
-  const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringed >= 0 ? shown[ringed].body.radiusKm : 0 };
+  const ringedBody = shown[ringed]?.body;
+  const rings = { uRingedBody: { int: ringed }, uRingedBodyKm: ringedBody ? (ringedBody.radiusKm * SATURN_RING_OUTER_KM) / ringedBody.ringOuterKm : 0 };
   shown.forEach(({ body, offsetKm }, i) => {
     const distance = Math.hypot(...offsetKm);
     const angularRadius = Math.asin(Math.min(1, body.radiusKm / distance));

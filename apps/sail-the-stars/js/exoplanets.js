@@ -181,6 +181,7 @@ function lookOf(planet, synchronous, selfLit, random) {
   return { kind: 'giant', tint: mixed(...palette, 0.4), giantLook: giantLook(palette, synchronous, random) };
 }
 
+const shownNow = ({ measured }) => !measured.speculative || speculationShown();
 const shownLook = ({ looks, measured }) => (looks && (speculationShown() || measured.wetByDefault) ? looks.wet : looks?.dry);
 
 const SELF_LIT_HOSTS = ['HR 8799', 'Beta Pictoris'];
@@ -281,6 +282,8 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
       tideLocked: synchronous,
       madeUp: data.madeUp,
       civilization: planet.inhabited ? { lamps: { dim: light, bright: light } } : undefined,
+      speculative: planet.speculative,
+      ...(planet.ringOuterKm && { rings: true, ringOuterKm: planet.ringOuterKm }),
       holdKm: Math.min(HOLD_RADII * bodyRadiusKm, HOLD_SHARE_OF_ORBIT * orbit.a),
       orbit,
       spinHours: random.between(...SPIN_HOURS),
@@ -308,20 +311,22 @@ function buildSystem(data, { random, toFrame, catalogueStar }) {
     position,
     light: light.map((value) => value ** EYE_ADAPTS_TO_STARLIGHT),
     star,
-    planets,
+    get planets() {
+      return planets.filter(shownNow);
+    },
     data,
     outermostKm: Math.max(LONE_STAR_VIEW_RADII * radiusKm, ...planets.map(({ orbit }) => orbit.a * (1 + orbit.e))),
     catalogueStar,
     planetFromStarKm: (letter, ms) => offsetAt(planets.find(({ measured }) => measured.letter === letter), ms),
     place(ms) {
-      const bodies = planets.map((planet) => {
+      const bodies = planets.filter(shownNow).map((planet) => {
         const fromSunKm = offsetAt(planet, ms);
         return { ...planet, ...shownLook(planet), ...facing(planet, fromSunKm, ms), fromSunKm, cloudTurn: planet.tideLocked ? 0 : cloudTurn(ms) };
       });
       return inStarlight([star, ...bodies], position, radiusKm);
     },
     paths: (ms) =>
-      planets.map(({ name, orbit }) => ({
+      planets.filter(shownNow).map(({ name, orbit }) => ({
         name,
         parent: data.name,
         pointsKm: Array.from({ length: ORBIT_PATH_POINTS }, (_, step) => toFrame(orbitPoint({ ...orbit, meanAnomaly: orbit.meanAnomalyAt(ms) - (2 * Math.PI * step) / ORBIT_PATH_POINTS }))),

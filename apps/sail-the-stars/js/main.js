@@ -1074,11 +1074,13 @@ function warpToSelection() {
 let destinationList = null;
 let listedSpeculative = '';
 let listedSystems = 0;
+let listedWithSpeculation = false;
 function destinations() {
   const speculative = speculativeBodiesNow();
   const speculativeNames = speculative.map(({ name }) => name).join();
-  if (nearby.length && (!destinationList || speculativeNames !== listedSpeculative || otherSystems().length !== listedSystems)) {
+  if (nearby.length && (!destinationList || speculativeNames !== listedSpeculative || otherSystems().length !== listedSystems || speculationShown() !== listedWithSpeculation)) {
     listedSpeculative = speculativeNames;
+    listedWithSpeculation = speculationShown();
     destinationList = listDestinations({
       nearby,
       nebulae,
@@ -2892,7 +2894,8 @@ function timewarpToMissionStart() {
   selectionShownAt = -Infinity;
 }
 
-const dismantled = ({ kind, destination }) => kind === 'body' && isSpeculative(destination.subject.body) && !speculativeBodiesNow().some(({ name }) => name === destination.name);
+const stillShown = (body, name) => (body.speculative ? speculationShown() : speculativeBodiesNow().some((other) => other.name === name));
+const dismantled = ({ kind, destination }) => kind === 'body' && isSpeculative(destination.subject.body) && !stillShown(destination.subject.body, destination.name);
 
 function followSelection(context, now) {
   if (dismantled(selection)) {

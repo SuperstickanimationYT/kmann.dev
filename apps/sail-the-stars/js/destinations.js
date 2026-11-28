@@ -169,7 +169,7 @@ export function speculativeBodiesNow() {
   return [...SOLAR_SYSTEM.place(now).filter(({ kind }) => kind === 'mirror'), ...mouthsOpen(now).map((mouth) => placeMouth(mouth, systemOf(mouth), now))];
 }
 
-export const isSpeculative = ({ kind }) => kind === 'mirror' || kind === 'wormhole';
+export const isSpeculative = ({ kind, speculative }) => Boolean(speculative) || kind === 'mirror' || kind === 'wormhole';
 
 export function listDestinations({ nearby, nebulae, galaxies, speculative, nearestHole, nearestCivilization }) {
   const starsByName = nearby.filter((star) => star.name && !star.host).map(starDestination);
