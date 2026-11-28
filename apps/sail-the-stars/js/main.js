@@ -22,6 +22,7 @@ import { coast, createMotions, forecastPath, rangeOf } from './rocket-forecast.j
 import { burnKmS, closestApproach, cutAtBurn, secondsToApsis, stateOnPath } from './rocket-burn.js';
 import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
+import { exhaustOf } from './rocket-exhaust.js';
 import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
@@ -1482,7 +1483,27 @@ function rocketInView() {
     sunward: normalize(subtract(star.fromSunKm, here)),
     sunlitShare: sunShareVisible(solarBodies.map((other) => ({ body: other, offsetKm: subtract(other.fromSunKm, here) })), ROCKET_NAME),
   };
+  body.exhaust = rocketExhaust(body);
   return [{ body, offsetKm: rocket.shipFromEyeKm }];
+}
+
+const EXHAUST_GROUND_CHECK_METRES = 60;
+
+function rocketExhaust(body) {
+  if (!rocket.push.some(Boolean)) return null;
+  const axes = [body.meridian, cross(body.north, body.meridian), body.north];
+  const inModel = (vector) => axes.map((axis) => dot(axis, vector));
+  const holder = bodyNamed(rocket.state.holder);
+  const offsetKm = rocket.state.landedKm ? fromBodyLocal(holder, rocket.state.landedKm) : rocket.state.positionKm;
+  const distanceKm = Math.hypot(...offsetKm);
+  const nearGround = holder.kind !== 'craft' && distanceKm - holder.radiusKm < EXHAUST_GROUND_CHECK_METRES / 1000 + GROUND_CHECK_KM;
+  const groundMetres = nearGround ? (distanceKm - lowestDistanceKm(holder, offsetKm)) * 1000 + EYE_HEIGHT_METRES : Infinity;
+  const touching = groundMetres < EXHAUST_GROUND_CHECK_METRES;
+  return exhaustOf({
+    pushInModel: inModel(scale(rocket.push, 1 / ENGINE_KM_PER_S2)),
+    groundUpInModel: touching ? inModel(normalize(offsetKm)) : null,
+    groundMetres,
+  });
 }
 
 function pathFramingKm() {

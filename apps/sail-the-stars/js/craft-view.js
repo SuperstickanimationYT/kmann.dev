@@ -1,6 +1,7 @@
 import { createByteTarget, createProgram, setUniforms } from './gl.js';
 import { MODEL_ATTRIBUTES, MODEL_FLOATS, SURFACE } from './model-builder.js';
 import { modelNamed } from './spacecraft-models.js';
+import { EXHAUST_REACH_METRES, createExhaustView } from './rocket-exhaust.js';
 import { FARTHEST_SEEN_METRES, FULLSCREEN_VERTEX, NEAREST_SEEN_METRES } from './shaders.js';
 import { cross, dot, normalize, scale, subtract } from './vectors.js';
 
@@ -192,6 +193,8 @@ void main() {}`;
 
 const axesOf = ({ north, meridian }) => [meridian, cross(north, meridian), north];
 const inAxes = (axes, vector) => axes.map((axis) => dot(axis, vector));
+const toCameraOf = (axes, { basis }) => axes.flatMap((axis) => inAxes([basis.right, basis.up, basis.forward], axis));
+const planesOf = ({ distance, radiusMetres }) => [Math.max(NEAREST_PLANE_METRES, distance - radiusMetres * 1.02), distance + radiusMetres * 1.02];
 const squared = (colour) => colour.map((value) => value ** 2.2);
 
 function panelTurn(sunInModel) {
@@ -241,6 +244,7 @@ export function createCraftView(gl, emptyVao) {
   let programs = null;
   let target = null;
   const buffers = new Map();
+  const exhaustView = createExhaustView(gl, emptyVao);
 
   function programsReady() {
     programs ??= {
@@ -311,7 +315,7 @@ export function createCraftView(gl, emptyVao) {
         const spot = inAxes([view.basis.right, view.basis.up, view.basis.forward], seen.offsetKm).map((km) => km * 1000);
         const distance = Math.hypot(...spot);
         if ((seen.body.radiusKm * 1000 * 2) / distance / view.pixelAngle < SMALLEST_SHOWN_PIXELS) return null;
-        const { radiusMetres } = modelNamed(seen.body.model);
+        const radiusMetres = modelNamed(seen.body.model).radiusMetres + (seen.body.exhaust ? EXHAUST_REACH_METRES : 0);
         if (spot[2] < -radiusMetres) return null;
         const box = pixelBox(spot, radiusMetres, view, width, height);
         return box[2] > 0 && box[3] > 0 ? { ...seen, spot, distance, radiusMetres, box } : null;
@@ -337,6 +341,7 @@ export function createCraftView(gl, emptyVao) {
       gl.depthFunc(gl.LESS);
       gl.useProgram(program.program);
       drawModel(program, seen, bodies, ground, groundDepth, view, light);
+      if (seen.body.exhaust) exhaustView.draw(seen.body.exhaust, { toCamera: toCameraOf(axesOf(seen.body), view), offset: seen.spot, planes: planesOf(seen), view, groundOn: Boolean(groundDepth), depthUnit: DEPTH_UNIT });
       gl.disable(gl.DEPTH_TEST);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, framebuffer);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolved.framebuffer);
@@ -357,18 +362,18 @@ export function createCraftView(gl, emptyVao) {
   }
 
   function drawModel(program, seen, bodies, ground, groundDepth, view, light) {
-    const { body, spot, distance, radiusMetres } = seen;
+    const { body, spot } = seen;
     const axes = axesOf(body);
     const toModel = (vector) => inAxes(axes, vector);
     const sun = toModel(body.sunward);
     const parentSeen = bodies.find((other) => other.body.name === body.parent);
     const around = body.landed ? groundLight(seen, parentSeen.body, ground) : orbitLight(seen, parentSeen);
     const strength = body.sunlitShare * (around.direct ?? 1);
-    gl.uniformMatrix3fv(program.uniforms.uToCamera, false, axes.flatMap((axis) => inAxes([view.basis.right, view.basis.up, view.basis.forward], axis)));
+    gl.uniformMatrix3fv(program.uniforms.uToCamera, false, toCameraOf(axes, view));
     setUniforms(gl, program, {
       uOffset: spot,
       uTanHalf: view.tanHalf,
-      uPlanes: [Math.max(NEAREST_PLANE_METRES, distance - radiusMetres * 1.02), distance + radiusMetres * 1.02],
+      uPlanes: planesOf(seen),
       uPanelTurn: panelTurn(sun),
       uSun: sun,
       uSunlight: scale(light, strength),
