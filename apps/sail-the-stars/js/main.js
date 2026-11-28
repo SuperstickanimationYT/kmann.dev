@@ -1601,6 +1601,19 @@ function rocketStart(well, offsetKm, ms, wells) {
   return { holder: well.body.name, positionKm: offsetKm, velocityKmS: groundVelocityKmS(well.body, offsetKm, ms) };
 }
 
+const LAUNCH_PAD = { world: 'Earth', name: 'Launch Complex 39A at Kennedy Space Center, Florida', latitude: 28.6083 * DEGREES, longitude: -80.6041 * DEGREES };
+
+function padStart(wells, startWell, ms) {
+  const earth = wells.get(LAUNCH_PAD.world);
+  if (!earth || ![earth, wells.get(earth.parent)].includes(startWell)) return null;
+  const { latitude, longitude } = LAUNCH_PAD;
+  const up = fromBodyLocal(earth.body, [Math.cos(latitude) * Math.cos(longitude), Math.cos(latitude) * Math.sin(longitude), Math.sin(latitude)]);
+  faceDirection(up, earth.body.north);
+  setRotatingWith(LAUNCH_PAD.world);
+  showStatus(`Rocket on, standing on ${LAUNCH_PAD.name}: gravity is real now. ${ROCKET_VIEW_NEWS[touchScreen.matches ? 'chaseByTouch' : 'chase']}`);
+  return rocketStart(earth, up, ms, wells);
+}
+
 function liftOff(well, ms, seconds) {
   const offsetKm = fromBodyLocal(well.body, rocket.state.landedKm);
   const up = normalize(offsetKm);
@@ -1626,10 +1639,11 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   const fresh = !rocket.state || rocket.camera !== game.camera || rocket.system !== system || !wells.has(rocket.state.holder);
   if (fresh) {
     if (rocket.plan) endPlan();
+    const firstStart = !rocket.state;
     rebuildRocket(rocketDesign);
     rocket.dropped = [];
     const well = wellAround(wells, star, framedFromSunKm);
-    rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms, wells);
+    rocket.state = (firstStart && padStart(wells, well, ms)) || rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms, wells);
     if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
   } else if (rocket.state.landedKm) {
     liftOff(wells.get(rocket.state.holder), ms, (ms - rocket.ms) / 1000);
