@@ -5,12 +5,12 @@ const PLUME_METRES = 18;
 const JET_METRES = 4;
 export const EXHAUST_REACH_METRES = PLUME_METRES * 1.2;
 
-const PLUME_PARTICLES = 700;
+const PLUME_PARTICLES = 1400;
 const JET_PARTICLES_PER_POD = 90;
 const PODS = 4;
 const PARTICLES = PLUME_PARTICLES + PODS * JET_PARTICLES_PER_POD;
-const NOZZLE_EXIT = { z: -1.6, radius: 0.33 };
-const POD = { radius: 1.68, z: 9.2, firstAngle: Math.PI / 4 };
+const MOST_NOZZLES = 16;
+const POD_FIRST_ANGLE = Math.PI / 4;
 const CROSSINGS_PER_SECOND = { plume: 7, jet: 9 };
 const SPREAD_RADIANS = { plume: 0.34, jet: 0.25 };
 const SECONDS_WRAP = 1000;
@@ -26,6 +26,9 @@ uniform float uSeconds;
 uniform float uPlume;
 uniform vec4 uJet;
 uniform vec4 uGround;
+uniform vec4 uNozzles[${MOST_NOZZLES}];
+uniform int uNozzleCount;
+uniform vec2 uPods;
 out vec3 vColour;
 out float vSeenZ;
 const float PI = 3.14159265;
@@ -72,19 +75,19 @@ void main() {
   float reach;
   float spread;
   if (plume) {
-    strength = uPlume;
+    strength = uNozzleCount > 0 ? uPlume : 0.0;
     axis = vec3(0.0, 0.0, -1.0);
     float ring = 2.0 * PI * hash(seed + cycle * 4.3);
-    axisStart = vec3(0.0, 0.0, ${NOZZLE_EXIT.z.toFixed(2)});
-    axisStart += vec3(cos(ring), sin(ring), 0.0) * ${NOZZLE_EXIT.radius.toFixed(2)} * sqrt(hash(seed + cycle * 5.9));
+    vec4 exit = uNozzles[index % max(uNozzleCount, 1)];
+    axisStart = exit.xyz + vec3(cos(ring), sin(ring), 0.0) * exit.w * sqrt(hash(seed + cycle * 5.9));
     reach = ${PLUME_METRES.toFixed(1)} * sqrt(uPlume);
     spread = ${SPREAD_RADIANS.plume.toFixed(2)};
   } else {
-    float podAngle = ${POD.firstAngle.toFixed(4)} + float(pod) * PI * 0.5;
+    float podAngle = ${POD_FIRST_ANGLE.toFixed(4)} + float(pod) * PI * 0.5;
     vec3 radial = vec3(cos(podAngle), sin(podAngle), 0.0);
     strength = uJet.w * clamp(max(dot(radial, uJet.xyz), 0.0) + max(uJet.z, 0.0), 0.0, 1.0);
     axis = uJet.xyz;
-    axisStart = radial * ${POD.radius.toFixed(2)} + vec3(0.0, 0.0, ${POD.z.toFixed(2)});
+    axisStart = radial * uPods.x + vec3(0.0, 0.0, uPods.y);
     reach = ${JET_METRES.toFixed(1)};
     spread = ${SPREAD_RADIANS.jet.toFixed(2)};
   }
@@ -125,7 +128,7 @@ void main() {
   outColour = vec4(vColour * soft * soft, 0.0);
 }`;
 
-export function exhaustOf({ pushInModel, groundUpInModel, groundMetres }) {
+export function exhaustOf({ pushInModel, groundUpInModel, groundMetres, nozzles, pods }) {
   const [x, y, z] = pushInModel;
   const plume = Math.min(1, Math.max(0, z));
   const sideways = [-x, -y, -Math.min(0, z)];
@@ -135,6 +138,9 @@ export function exhaustOf({ pushInModel, groundUpInModel, groundMetres }) {
     plume,
     jet: jet ? [...sideways.map((value) => value / jet), jet] : [0, 0, 1, 0],
     ground: groundUpInModel ? [...groundUpInModel, groundMetres] : [0, 0, 1, 1e6],
+    nozzles: Float32Array.from({ length: MOST_NOZZLES * 4 }, (_, k) => nozzles[Math.floor(k / 4)]?.[k % 4] ?? 0),
+    nozzleCount: Math.min(MOST_NOZZLES, nozzles.length),
+    pods,
     seconds: (performance.now() / 1000) % SECONDS_WRAP,
   };
 }
@@ -156,7 +162,10 @@ export function createExhaustView(gl, emptyVao) {
       uJet: exhaust.jet,
       uGround: exhaust.ground,
       uGroundOn: groundOn ? 1 : 0,
+      uNozzleCount: { int: exhaust.nozzleCount },
+      uPods: exhaust.pods,
     });
+    gl.uniform4fv(program.uniforms.uNozzles, exhaust.nozzles);
     gl.uniform1i(program.uniforms.uGroundDepth, depthUnit);
     gl.depthMask(false);
     gl.enable(gl.BLEND);
