@@ -2075,11 +2075,13 @@ function formatRocketDistance(km) {
 function rocketReadout(well, offsetKm) {
   const name = nameOfWell(well.body);
   if (rocket.state.landedKm) return `landed on ${name}`;
-  const speed = formatRocketSpeed(Math.hypot(...rocket.state.velocityKmS));
+  const heading = headingOverGround();
+  const speed = formatRocketSpeed(heading?.speedKmS ?? 0);
+  const motion = heading?.surface ? 'over' : 'around';
   const { plan } = rocket;
   const burnNews = !plan ? '' : plan.ms > rocket.ms ? `, burn in ${formatWait(plan.ms - rocket.ms)}` : ', burn now';
   if (well.body.kind === 'star') return `${speed} around ${name}, ${formatRocketDistance(Math.hypot(...offsetKm))} out${burnNews}`;
-  return `${speed} around ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - groundUnderKm(well.body, offsetKm)))} up${burnNews}`;
+  return `${speed} ${motion} ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - groundUnderKm(well.body, offsetKm)))} up${burnNews}`;
 }
 
 let spinSinceSharpSky = 0;
