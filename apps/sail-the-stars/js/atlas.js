@@ -1,4 +1,5 @@
 import { armTraces, BAR_ANGLE, DEGREES, DISK, LY_PER_PC, SUN_POSITION } from './milky-way.js';
+import { nebulaLight } from './stars.js';
 
 const SIZE = 900;
 const HALF_SPAN = 19000;
@@ -93,14 +94,16 @@ function createLabeller(context) {
 
 const isCatalogueDesignation = (name) => /^G\d/.test(name);
 
+const ATLAS_SMALLEST_LIGHT = 370;
+
 function drawNebulae(context, nebulae, toCanvas, label) {
   const byImportance = [...nebulae].sort(
-    (a, b) => isCatalogueDesignation(a.name) - isCatalogueDesignation(b.name) || b.ionizing - a.ionizing,
+    (a, b) => isCatalogueDesignation(a.name) - isCatalogueDesignation(b.name) || nebulaLight(b) - nebulaLight(a),
   );
   context.font = '13px "Trebuchet MS", sans-serif';
   byImportance.forEach((nebula) => {
     const [x, y] = toCanvas(nebula.present[0], nebula.present[1]);
-    const radius = 1.5 + 1.4 * Math.max(0, Math.log10(nebula.ionizing / 1e48));
+    const radius = 1.5 + 1.4 * Math.max(0, Math.log10(nebulaLight(nebula) / ATLAS_SMALLEST_LIGHT));
     context.fillStyle = COLOURS.nebula;
     context.beginPath();
     context.arc(x, y, radius, 0, 2 * Math.PI);

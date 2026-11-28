@@ -73,7 +73,7 @@ function velocityOf({ ra, dec, parsecs, motion: [pmRa, pmDec], radialKmS }) {
   return add(equatorialToFrame(heliocentric), velocityFromHeliocentric(SUN_PECULIAR));
 }
 
-function skyFrame({ ra, dec }) {
+export function skyFrame({ ra, dec }) {
   const away = equatorialToFrame(along(ra * DEGREES, dec * DEGREES));
   const pole = equatorialToFrame([0, 0, 1]);
   const north = normalize(subtract(pole, scale(away, dot(pole, away))));
@@ -243,11 +243,16 @@ const neutronStarShape = ({ suns, kelvin }) => ({ radiusKm: apparentRadiusKm(sun
 const shapeOf = (data) => (data.hole ? holeShape(data.hole) : data.pulsar ? neutronStarShape(data.pulsar) : starShape(data));
 const neutronStarLook = (pulsar) => ({ kind: 'star', tint: whiteForSunlight(pulsar.kelvin), pulsar });
 
-function spinFromSky({ positionAngle, fromEarthDegrees }, toFrame, random) {
-  const angle = (positionAngle ?? random.between(0, 360)) * DEGREES;
-  const fromEarth = fromEarthDegrees * DEGREES;
-  return normalize(toFrame([Math.sin(fromEarth) * Math.cos(angle), -Math.sin(fromEarth) * Math.sin(angle), -Math.cos(fromEarth)]));
+function axisOnSky(positionAngleDegrees, fromEarthDegrees) {
+  const [angle, fromEarth] = [positionAngleDegrees * DEGREES, fromEarthDegrees * DEGREES];
+  return [Math.sin(fromEarth) * Math.cos(angle), -Math.sin(fromEarth) * Math.sin(angle), -Math.cos(fromEarth)];
 }
+
+function spinFromSky({ positionAngle, fromEarthDegrees }, toFrame, random) {
+  return normalize(toFrame(axisOnSky(positionAngle ?? random.between(0, 360), fromEarthDegrees)));
+}
+
+export const skyAxis = (place, { positionAngle, fromEarthDegrees }) => normalize(skyFrame(place)(axisOnSky(positionAngle, fromEarthDegrees)));
 
 function buildSystem(data, { random, toFrame, catalogueStar }) {
   const { position, absolute } = catalogueStar;
