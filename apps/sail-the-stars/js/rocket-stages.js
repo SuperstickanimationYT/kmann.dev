@@ -10,7 +10,8 @@ export const PARTS = {
   separator: { widthM: 3.7, heightM: 0.4, kg: 300, separates: true },
   sideSeparator: { widthM: 0.4, heightM: 1.2, kg: 100, separates: true },
   heatShield: { widthM: 3.7, heightM: 0.5, kg: 1000 },
-  parachute: { widthM: 1.2, heightM: 0.8, kg: 600 },
+  parachute: { widthM: 1.2, heightM: 0.8, kg: 600, canopyDragAreaM2: 1500, tearsAtPa: 10000 },
+  legs: { widthM: 1, heightM: 3, kg: 300 },
 };
 
 const stack = (types) => {
@@ -23,7 +24,7 @@ const stack = (types) => {
 };
 
 const firstStage = ['engine', ...Array(6).fill('tank'), 'separator'];
-const secondStage = ['engine', 'tank', 'heatShield', 'capsule', 'parachute'];
+const secondStage = ['engine', 'tank', 'separator', 'heatShield', 'capsule', 'parachute'];
 
 export const DEFAULT_DESIGN = {
   parts: [...stack([...firstStage, ...secondStage]), { type: 'engine', x: 1.25, y: 0, copies: 6 }],

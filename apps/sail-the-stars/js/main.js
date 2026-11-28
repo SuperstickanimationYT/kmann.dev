@@ -22,11 +22,11 @@ import { coast, createMotions, forecastPath, rangeOf } from './rocket-forecast.j
 import { burnKmS, closestApproach, cutAtBurn, secondsToApsis, stateOnPath } from './rocket-burn.js';
 import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { modelNamed } from './spacecraft-models.js';
-import { FEET_BELOW_ORIGIN_M, modelOfParts, nozzlesOf, podsOf } from './rocket-model.js';
+import { CANOPY_STEPS, canopyModel, canopyTopZ, FEET_BELOW_ORIGIN_M, modelOfParts, nozzlesOf, podsOf } from './rocket-model.js';
 import { dropAway, FARTHEST_DROPPED_KM, MOST_DROPPED, stepDropped } from './dropped-stages.js';
 import { exhaustOf } from './rocket-exhaust.js';
-import { airAround, fallThroughAir, insideAir, seaLevelsOfPressure } from './air-drag.js';
-import { assemble, attachedEntries, burn, deltaVLeftMS, DEFAULT_DESIGN, designFrom, firingEngines, lowestOf, massKg, refuel, separate, shapeOf, stagesLeft, thrustOf } from './rocket-stages.js';
+import { airAround, airVelocityKmS, dynamicPressurePa, fallThroughAir, insideAir, seaLevelsOfPressure } from './air-drag.js';
+import { assemble, attachedEntries, burn, deltaVLeftMS, DEFAULT_DESIGN, designFrom, firingEngines, lowestOf, massKg, PARTS, refuel, separate, shapeOf, stagesLeft, thrustOf } from './rocket-stages.js';
 import { createRocketEditor } from './rocket-editor.js';
 import { circularOrbit, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
@@ -606,7 +606,7 @@ function showCompanionButtons() {
   const near = Boolean(holder) && holder.kind !== 'star';
   followButton.hidden = !near || rocketAboard();
   rocketViewButton.hidden = !rocketAboard();
-  stageButton.hidden = !rocketAboard() || !rocket.vehicle || !stagesLeft(rocket.vehicle);
+  stageButton.hidden = !rocketAboard() || !rocket.vehicle || !(stagesLeft(rocket.vehicle) || parachutePacked());
   buildButton.hidden = !rocketAboard();
   rocketTurnButton.hidden = !rocketOutside();
   burnButton.hidden = !rocketAboard();
@@ -1206,6 +1206,7 @@ function flightStep(seconds) {
   if (yaw || pitch || roll) aimView();
   else if (moved) viewChanged();
   if (rocket?.plan && rocketAboard() && solarFrame) steerToBurn(seconds, thrusting, Boolean(yaw || pitch || roll));
+  else if (rocket?.trail && rocketAboard() && !(yaw || pitch || roll)) turnToward(rocket.trail, seconds);
 }
 
 let system = SOLAR_SYSTEM;
@@ -1425,7 +1426,6 @@ function followSolarSystem() {
 
 const GROUND_SPIN_SAMPLE_MS = 1000;
 const LOW_START_SHARE_OF_RADIUS = 1.1;
-const GENTLE_LANDING_KM_S = 0.01;
 const ROCKET_AU_FROM_KM = 1e7;
 let rocket = null;
 
@@ -1435,7 +1435,7 @@ const rocketOutside = () => rocketAboard() && rocket.view !== 'inside';
 function setRocket(on) {
   if (rocket && rocket.view !== 'inside') backInsideRocket();
   editorPanel.hidden = true;
-  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, model: null, bottomM: 0, lengthM: 0, pods: [0, 0], dropped: [], throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
+  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, model: null, bottomM: 0, lengthM: 0, pods: [0, 0], dropped: [], parachutes: [], hasLegs: false, chute: { state: 'packed', openedMs: 0 }, trail: null, throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
   showBurnPanel(false);
   rocketToggle.checked = on;
   rocketViewButton.setAttribute('aria-pressed', 'false');
@@ -1492,6 +1492,8 @@ function stepThrottle(steps) {
 
 function rebuildRocket(design) {
   rocket.vehicle = assemble(design);
+  rocket.chute = { state: 'packed', openedMs: 0 };
+  rocket.trail = null;
   refreshRocketLook();
 }
 
@@ -1501,6 +1503,50 @@ function refreshRocketLook() {
   rocket.model = modelOfParts(parts, rocket.bottomM);
   rocket.pods = podsOf(rocket.vehicle.entries[rocket.vehicle.root], rocket.bottomM);
   rocket.lengthM = shapeOf(rocket.vehicle).lengthM;
+  rocket.parachutes = parts.filter(({ type }) => type === 'parachute');
+  rocket.hasLegs = parts.some(({ type }) => type === 'legs');
+}
+
+const CANOPY_OPENING_SECONDS = 8;
+const TRAIL_SLOWEST_KM_S = 0.002;
+const SAFE_LANDING_KM_S = { legs: 0.008, parachute: 0.01, bare: 0.003 };
+const canopies = () => rocket.parachutes.reduce((sum, { copies }) => sum + copies, 0);
+const parachutePacked = () => rocket.chute.state === 'packed' && rocket.parachutes.length > 0;
+const canopyShare = () => (rocket.chute.state === 'open' ? Math.min(1, Math.max(0, (rocket.ms - rocket.chute.openedMs) / 1000 / CANOPY_OPENING_SECONDS)) : 0);
+const tearingKPa = () => PARTS.parachute.tearsAtPa / 1000;
+
+function openParachute() {
+  if (rocket.state.landedKm) {
+    showStatus('The parachute needs to be falling through air to open.');
+    return;
+  }
+  rocket.chute = { state: 'open', openedMs: rocket.ms };
+  const air = rocketAir(bodyNamed(rocket.state.holder));
+  showStatus(insideAir(air, rocket.state.positionKm) ? 'Parachute opening.' : 'Parachute out, but there is no air here for it to catch.');
+}
+
+function watchParachute(body) {
+  if (rocket.chute.state !== 'open') return;
+  if (rocket.state.landedKm) {
+    rocket.chute.state = 'spent';
+    rocket.trail = null;
+    return;
+  }
+  const air = rocketAir(body);
+  const throughAirKmS = airVelocityKmS(air, rocket.state);
+  const speedKmS = Math.hypot(...throughAirKmS);
+  rocket.trail = speedKmS > TRAIL_SLOWEST_KM_S && insideAir(air, rocket.state.positionKm) ? scale(throughAirKmS, -1 / speedKmS) : null;
+  const pushPa = dynamicPressurePa(air, rocket.state);
+  if (pushPa <= PARTS.parachute.tearsAtPa) return;
+  rocket.chute.state = 'torn';
+  rocket.trail = null;
+  showStatus(`Parachute torn away: the air pushed on it at ${Math.round(pushPa / 1000)} kPa. It holds ${tearingKPa()} kPa, about 130 m/s at sea level.`, 8);
+}
+
+function safeLanding() {
+  if (rocket.hasLegs) return { kmS: SAFE_LANDING_KM_S.legs, what: 'landing legs' };
+  if (canopyShare() >= 1) return { kmS: SAFE_LANDING_KM_S.parachute, what: 'a capsule under its parachute' };
+  return { kmS: SAFE_LANDING_KM_S.bare, what: 'a rocket without legs' };
 }
 
 function dropStage() {
@@ -1509,7 +1555,8 @@ function dropStage() {
   const bottomM = rocket.bottomM;
   const dropped = separate(rocket.vehicle);
   if (!dropped.length) {
-    showStatus('No stages left to drop.');
+    if (parachutePacked()) openParachute();
+    else showStatus('Nothing left to drop or open.');
     return;
   }
   rocket.warnedDry = false;
@@ -1520,7 +1567,7 @@ function dropStage() {
   showStatus(`Stage dropped: ${Math.round((before - massKg(rocket.vehicle)) / 1000)} t gone, ${left ? `${left} more to drop` : 'last stage now'}.`);
 }
 
-const rocketCraft = () => ({ noseward: game.ship.forward, ...shapeOf(rocket.vehicle) });
+const rocketCraft = () => ({ noseward: game.ship.forward, ...shapeOf(rocket.vehicle), canopyDragAreaM2: canopyShare() * canopies() * PARTS.parachute.canopyDragAreaM2 });
 
 function describeEngines() {
   const throttle = `${Math.round(rocket.throttle * 100)}%`;
@@ -1568,7 +1615,8 @@ function touchDown(well, ms) {
   const hitKmS = Math.hypot(...subtract(velocityKmS, groundVelocityKmS(well.body, offsetKm, ms)));
   rocket.state = { holder: well.body.name, landedKm: toBodyLocal(well.body, offsetKm) };
   const name = spokenName(well.body);
-  showStatus(hitKmS < GENTLE_LANDING_KM_S ? `Touched down on ${name} at ${Math.round(hitKmS * 1000)} m/s.` : `Hit ${name} at ${formatRocketSpeed(hitKmS)}. A real ship would not survive that.`, 6);
+  const safe = safeLanding();
+  showStatus(hitKmS <= safe.kmS ? `Touched down on ${name} at ${Math.round(hitKmS * 1000)} m/s.` : `Hit ${name} at ${formatRocketSpeed(hitKmS)}. A real ship would not survive that: ${safe.what} can take about ${Math.round(safe.kmS * 1000)} m/s.`, 6);
   if (well.body.kind !== 'star') setRotatingWith(well.body.name);
 }
 
@@ -1591,6 +1639,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
     if (flight.landed) touchDown(wells.get(flight.state.holder), flight.ms);
   }
   if (!fresh) stepDroppedStages(wells, bodiesBefore, ms);
+  if (!fresh) watchParachute(wells.get(rocket.state.holder).body);
   rocket.stepSeconds = fresh ? 0 : (ms - rocket.ms) / 1000;
   if (rocket.firing && rocket.stepSeconds > 0 && !unlimitedFuelToggle.checked) burn(rocket.vehicle, rocket.stepSeconds, rocket.firing);
   rocket.ms = ms;
@@ -1653,7 +1702,18 @@ function rocketInView() {
     const fromSunKm = add(bodyNamed(stage.state.holder).fromSunKm, offsetOf(stage.state));
     return { body: craftBody(`${DROPPED_NAME} ${k + 1}`, stage.model, fromSunKm, stage.state, stage.basis), offsetKm: subtract(fromSunKm, eyeFromSunKm) };
   });
-  return [{ body, offsetKm: rocket.shipFromEyeKm }, ...dropped];
+  return [{ body, offsetKm: rocket.shipFromEyeKm }, ...canopyInView(here, craftBody), ...dropped];
+}
+
+const CANOPY_NAME = 'Parachute';
+
+function canopyInView(here, craftBody) {
+  if (rocket.chute.state !== 'open' || rocket.state.landedKm) return [];
+  const trail = rocket.trail ?? game.ship.forward;
+  const basis = orthonormal(trail, Math.abs(dot(trail, game.ship.up)) < 0.95 ? game.ship.up : game.ship.right);
+  const attachKm = scale(game.ship.forward, canopyTopZ(rocket.parachutes, rocket.bottomM) / 1000);
+  const model = canopyModel(canopies(), Math.max(1, Math.ceil(canopyShare() * CANOPY_STEPS)));
+  return [{ body: craftBody(CANOPY_NAME, model, add(here, attachKm), rocket.state, basis), offsetKm: add(rocket.shipFromEyeKm, attachKm) }];
 }
 
 const EXHAUST_GROUND_CHECK_METRES = 60;
@@ -1693,7 +1753,7 @@ const rocketMiddleKm = () => (rocket.lengthM / 2 - FEET_BELOW_ORIGIN_M) / 1000;
 const CAMERA_ZOOM_RANGE = [0.2, 500];
 const NEXT_ROCKET_VIEW = { chase: 'orbit', orbit: 'chase' };
 const ROCKET_VIEW_NEWS = {
-  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. W fires the engines, the other flight keys small side thrusters; Z and X set the throttle, Space drops a stage, G builds a new rocket.',
+  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. W fires the engines, the other flight keys small side thrusters; Z and X set the throttle, Space drops a stage or opens the parachute, G builds a new rocket.',
   chaseByTouch: 'Chase view: drag to swing the camera, pinch to zoom. Tap Turn to steer the rocket with the stick.',
   orbit: 'Orbit view: the whole path, from above the orbit. Zoom stays fixed as the path changes; the wheel or a pinch changes it.',
 };
