@@ -23,6 +23,7 @@ import { burnKmS, closestApproach, cutAtBurn, secondsToApsis, stateOnPath } from
 import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
 import { exhaustOf } from './rocket-exhaust.js';
+import { airAround, fallThroughAir, insideAir } from './air-drag.js';
 import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
@@ -1406,6 +1407,20 @@ function groundVelocityKmS(body, offsetKm, ms) {
   return scale(subtract(fromBodyLocal(later, toBodyLocal(then, offsetKm)), offsetKm), 1000 / GROUND_SPIN_SAMPLE_MS);
 }
 
+const spinRates = new WeakMap();
+
+function spinRadiansPerSecond(body) {
+  if (!spinRates.has(system)) spinRates.set(system, new Map());
+  const known = spinRates.get(system);
+  if (!known.has(body.name)) {
+    const east = cross(body.north, body.meridian);
+    known.set(body.name, dot(groundVelocityKmS(body, scale(body.meridian, body.radiusKm), simNow()), east) / body.radiusKm);
+  }
+  return known.get(body.name);
+}
+
+const rocketAir = (body) => airAround(body, spinRadiansPerSecond);
+
 function rocketStart(well, offsetKm, ms, wells) {
   const distance = Math.hypot(...offsetKm);
   const ground = lowestDistanceKm(well.body, offsetKm);
@@ -1444,7 +1459,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   } else if (rocket.state.landedKm) {
     liftOff(wells.get(rocket.state.holder), ms, (ms - rocket.ms) / 1000);
   } else {
-    const flight = flown(rocket.state, { wells, before: bodiesBefore ?? solarBodies, now: solarBodies, fromMs: rocket.ms, toMs: ms, pushKmS2: rocket.push, placeAt: system.place, groundKm: lowestDistanceKm });
+    const flight = flown(rocket.state, { wells, before: bodiesBefore ?? solarBodies, now: solarBodies, fromMs: rocket.ms, toMs: ms, pushKmS2: rocket.push, placeAt: system.place, groundKm: lowestDistanceKm, drag: { airOf: rocketAir, noseward: game.ship.forward } });
     rocket.state = flight.state;
     if (flight.landed) touchDown(wells.get(flight.state.holder), flight.ms);
   }
@@ -1608,20 +1623,55 @@ function rocketTarget(wells) {
 }
 
 const latestBurnMs = (segments) => (['orbit', 'horizon'].includes(segments.at(-1).end) ? Infinity : segments.at(-1).toMs - 1000);
-const withPaths = (segments) => segments.map((segment) => ({ ...segment, ...segmentPath(segment, segment.groundKm) }));
+const withPaths = (segments) => segments.map((segment) => (segment.pointsKm ? segment : { ...segment, ...segmentPath(segment, segment.groundKm) }));
+const MOST_PATH_LEGS = 6;
+
+function airTopKm(body) {
+  const air = rocketAir(body);
+  return air ? air.radiusKm + air.topKm : 0;
+}
+
+function forecastFromAir(state, fromMs, met, options) {
+  const legs = [];
+  let current = state;
+  let ms = fromMs;
+  let currentMet = met;
+  while (legs.length < MOST_PATH_LEGS) {
+    const holder = options.wells.get(current.holder);
+    const fall = fallThroughAir(current, { air: rocketAir(holder.body), gm: holder.gm, noseward: game.ship.forward, groundKm: holder.body.radiusKm });
+    const toMs = ms + fall.seconds * 1000;
+    legs.push({ holder: current.holder, fromMs: ms, toMs, start: current, finish: fall.state, end: fall.end, next: null, met: currentMet, gm: holder.gm, groundKm: holder.body.radiusKm, wholeTurn: false, pointsKm: fall.pointsKm, marks: [] });
+    if (fall.end !== 'out of air') break;
+    const onward = forecastPath(fall.state, { ...options, fromMs: toMs });
+    legs.push(...onward);
+    const last = onward.at(-1);
+    if (last.end !== 'air') break;
+    current = { holder: last.holder, positionKm: last.finish.positionKm, velocityKmS: last.finish.velocityKmS };
+    ms = last.toMs;
+    currentMet = last.met;
+  }
+  return legs;
+}
+
+function throughAir(segments, options) {
+  const last = segments.at(-1);
+  if (last?.end !== 'air') return segments;
+  return [...segments, ...forecastFromAir({ holder: last.holder, positionKm: last.finish.positionKm, velocityKmS: last.finish.velocityKmS }, last.toMs, last.met, options)];
+}
 
 function rocketForecast(wells, ms) {
   const now = performance.now();
   const kept = rocket.path;
   const { plan } = rocket;
   const target = rocketTarget(wells);
-  const everyMs = rocket.push.some(Boolean) ? FORECAST_EVERY_MS.burning : FORECAST_EVERY_MS.coasting;
+  const inAir = insideAir(rocketAir(wells.get(rocket.state.holder).body), rocket.state.positionKm);
+  const everyMs = rocket.push.some(Boolean) || inAir ? FORECAST_EVERY_MS.burning : FORECAST_EVERY_MS.coasting;
   const same = kept && kept.holder === rocket.state.holder && kept.system === system && kept.planVersion === plan?.version && kept.target === target;
   if (same && ms >= kept.fromMs && ms < kept.staleMs && now - kept.madeAt < everyMs) return kept;
   if (rocket.motions?.system !== system || Math.abs(ms - rocket.motions.ms) > MOTIONS_LAST_SIM_MS) rocket.motions = { system, ms, motions: createMotions(wells, relativeMotions(system.place, ms, wells), ms) };
   const { motions } = rocket.motions;
-  const options = { wells, motions, groundKm: (body) => body.radiusKm, edgeKm: systemEdgeKm() };
-  const ahead = Boolean(plan) && plan.ms > ms;
+  const options = { wells, motions, groundKm: (body) => body.radiusKm, airKm: airTopKm, edgeKm: systemEdgeKm() };
+  const ahead = !inAir && Boolean(plan) && plan.ms > ms;
   const forecast = forecastPath(rocket.state, { ...options, fromMs: ms, atLeastMs: ahead ? plan.ms : ms });
   let segments = forecast;
   let planned = [];
@@ -1639,8 +1689,9 @@ function rocketForecast(wells, ms) {
     planned = forecastPath({ holder: node.holder, positionKm: node.state.positionKm, velocityKmS: afterKmS }, { ...options, fromMs: plan.ms });
     burn = { index: node.index, pointKm: node.state.positionKm };
   }
-  const approach = target ? closestApproach([...segments, ...planned], target, motions) : null;
-  return { madeAt: now, holder: rocket.state.holder, system, fromMs: ms, staleMs: segments[0].toMs, planVersion: plan?.version, target, segments: withPaths(segments), planned: withPaths(planned), burn, approach };
+  const approach = target && !inAir ? closestApproach([...segments, ...planned], target, motions) : null;
+  const shown = inAir ? forecastFromAir(rocket.state, ms, null, options) : throughAir(segments, options);
+  return { madeAt: now, holder: rocket.state.holder, system, fromMs: ms, staleMs: shown[0].toMs, planVersion: plan?.version, target, segments: withPaths(shown), planned: withPaths(throughAir(planned, options)), burn, approach };
 }
 
 const BURN_AXES = ['prograde', 'normal', 'radial'];
@@ -1896,6 +1947,8 @@ function segmentEndLabel({ end, holder, next, toMs }) {
   if (end === 'enters') return `Into ${nameOfWell(bodyNamed(next))}'s pull in ${wait}`;
   if (end === 'leaves') return `Out of ${nameOfWell(bodyNamed(holder))}'s pull in ${wait}`;
   if (end === 'ground') return `Hits ${nameOfWell(bodyNamed(holder))} in ${wait}`;
+  if (end === 'air') return `Into ${nameOfWell(bodyNamed(holder))}'s air in ${wait}`;
+  if (end === 'out of air') return `Out of ${nameOfWell(bodyNamed(holder))}'s air in ${wait}`;
   return null;
 }
 
