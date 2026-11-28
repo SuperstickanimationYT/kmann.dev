@@ -1,5 +1,7 @@
-const STANDARD_GRAVITY = 9.80665;
+export const STANDARD_GRAVITY = 9.80665;
 const TOUCHING_M = 0.01;
+const POSITION_DECIMALS = 1000;
+export const SYMMETRIES = [2, 3, 4, 6, 8];
 
 export const PARTS = {
   capsule: { widthM: 3.7, heightM: 3.5, kg: 6000 },
@@ -24,18 +26,17 @@ const firstStage = ['engine', ...Array(6).fill('tank'), 'separator'];
 const secondStage = ['engine', 'tank', 'heatShield', 'capsule', 'parachute'];
 
 export const DEFAULT_DESIGN = {
-  name: 'Two-stage rocket',
   parts: [...stack([...firstStage, ...secondStage]), { type: 'engine', x: 1.25, y: 0, copies: 6 }],
 };
 
-const rectOf = (entry) => {
+export const rectOf = (entry) => {
   const { widthM, heightM } = PARTS[entry.type];
   return { left: entry.x - widthM / 2, right: entry.x + widthM / 2, bottom: entry.y, top: entry.y + heightM };
 };
 
 const overlap = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > TOUCHING_M;
 
-function touching(a, b) {
+export function touching(a, b) {
   const [p, q] = [rectOf(a), rectOf(b)];
   const stacked = (Math.abs(p.top - q.bottom) < TOUCHING_M || Math.abs(q.top - p.bottom) < TOUCHING_M) && overlap(p.left, p.right, q.left, q.right);
   const beside = (Math.abs(p.right - q.left) < TOUCHING_M || Math.abs(q.right - p.left) < TOUCHING_M) && overlap(p.bottom, p.top, q.bottom, q.top);
@@ -44,12 +45,28 @@ function touching(a, b) {
 
 const rests = (upper, lower) => Math.abs(rectOf(upper).bottom - rectOf(lower).top) < TOUCHING_M && overlap(rectOf(upper).left, rectOf(upper).right, rectOf(lower).left, rectOf(lower).right);
 
+export function designFrom(value) {
+  const parts = value?.parts;
+  if (!Array.isArray(parts) || !parts.length) return null;
+  const valid = parts.every(({ type, x, y, copies }) => Object.hasOwn(PARTS, type) && Number.isFinite(x) && x >= 0 && Number.isFinite(y) && (copies === 1 || SYMMETRIES.includes(copies)));
+  return valid ? { parts: parts.map(({ type, x, y, copies }) => ({ type, x, y, copies })) } : null;
+}
+
+export const rounded = (metres) => Math.round(metres * POSITION_DECIMALS) / POSITION_DECIMALS;
+
+export function settled(design) {
+  const lowest = Math.min(...design.parts.map(({ y }) => y));
+  return { parts: design.parts.map((part) => ({ ...part, y: rounded(part.y - lowest) })) };
+}
+
 export function assemble(design) {
   const entries = design.parts.map((part, id) => ({ ...part, id, fuelKg: (PARTS[part.type].fuelKg ?? 0) * part.copies }));
   const links = entries.map((entry) => entries.filter((other) => other !== entry && touching(entry, other)).map(({ id }) => id));
   const capsule = entries.find(({ type }) => type === 'capsule');
   const root = capsule ? capsule.id : entries.reduce((top, entry) => (rectOf(entry).top > rectOf(top).top ? entry : top)).id;
-  return { entries, links, root, attached: new Set(entries.map(({ id }) => id)) };
+  const vehicle = { entries, links, root, attached: new Set(entries.map(({ id }) => id)) };
+  vehicle.attached = reachable(vehicle, root, () => true);
+  return vehicle;
 }
 
 function reachable(vehicle, from, passes) {
@@ -162,24 +179,30 @@ export function separate(vehicle) {
   return [...firing, ...dropped];
 }
 
-export function deltaVLeftMS(vehicle) {
+export function stageSummaries(vehicle) {
   const copy = { ...vehicle, entries: vehicle.entries.map((entry) => ({ ...entry })), attached: new Set(vehicle.attached) };
   const engine = engineAt(0);
   const exhaustMS = engine.thrustN / engine.flowKgS;
-  let total = 0;
+  const stages = [];
+  const begin = () => stages.push({ startKg: massKg(copy), seaLevelThrustN: thrustOf(copy, 1).thrustN, vacuumThrustN: thrustOf(copy, 0).thrustN, deltaVMS: 0, burnSeconds: 0 });
+  begin();
   for (let guard = 0; guard < 100; guard++) {
     const firing = firingSections(copy);
     if (!firing.length) {
       if (!separate(copy).length) break;
+      begin();
       continue;
     }
     const seconds = Math.min(...firing.map(({ engines, tanks }) => tanks.reduce((sum, tank) => sum + tank.fuelKg, 0) / (engines * engine.flowKgS)));
     const before = massKg(copy);
     burn(copy, seconds, 1);
-    total += exhaustMS * Math.log(before / massKg(copy));
+    stages.at(-1).deltaVMS += exhaustMS * Math.log(before / massKg(copy));
+    stages.at(-1).burnSeconds += seconds;
   }
-  return total;
+  return stages;
 }
+
+export const deltaVLeftMS = (vehicle) => stageSummaries(vehicle).reduce((sum, { deltaVMS }) => sum + deltaVMS, 0);
 
 export function shapeOf(vehicle) {
   const rects = attachedEntries(vehicle).map((entry) => ({ entry, ...rectOf(entry) }));

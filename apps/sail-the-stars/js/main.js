@@ -24,7 +24,8 @@ import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
 import { exhaustOf } from './rocket-exhaust.js';
 import { airAround, fallThroughAir, insideAir, seaLevelsOfPressure } from './air-drag.js';
-import { assemble, burn, deltaVLeftMS, DEFAULT_DESIGN, massKg, refuel, separate, shapeOf, stagesLeft, thrustOf } from './rocket-stages.js';
+import { assemble, burn, deltaVLeftMS, DEFAULT_DESIGN, designFrom, massKg, refuel, separate, shapeOf, stagesLeft, thrustOf } from './rocket-stages.js';
+import { createRocketEditor } from './rocket-editor.js';
 import { circularOrbit, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
@@ -93,6 +94,7 @@ const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
 const UNLIMITED_FUEL_STORAGE_KEY = 'sail-the-stars-unlimited-fuel';
+const ROCKET_DESIGN_STORAGE_KEY = 'sail-the-stars-rocket-design';
 const TRUE_SIZE_STORAGE_KEY = 'sail-the-stars-true-size';
 const MUSIC_STORAGE_KEY = 'find-home-music';
 const MENU_STEADY_PIXELS = 0.5;
@@ -391,6 +393,27 @@ function endIntro() {
   view.focus();
 }
 
+function recallDesign() {
+  try {
+    return designFrom(JSON.parse(localStorage.getItem(ROCKET_DESIGN_STORAGE_KEY))) ?? DEFAULT_DESIGN;
+  } catch {
+    return DEFAULT_DESIGN;
+  }
+}
+
+let rocketDesign = recallDesign();
+
+function useDesign(design) {
+  rocketDesign = design;
+  try {
+    localStorage.setItem(ROCKET_DESIGN_STORAGE_KEY, JSON.stringify(design));
+  } catch {}
+  if (!rocket?.vehicle) return;
+  rocket.vehicle = assemble(design);
+  rocket.warnedDry = false;
+  showStatus('New rocket built, tanks full.');
+}
+
 function recallUnlimitedFuel() {
   try {
     unlimitedFuelToggle.checked = localStorage.getItem(UNLIMITED_FUEL_STORAGE_KEY) === 'on';
@@ -552,6 +575,9 @@ function drawSelectedPath(context, width, height) {
 const followButton = $('[data-follow]');
 const rocketViewButton = $('[data-rocket-view]');
 const stageButton = $('[data-drop-stage]');
+const buildButton = $('[data-build]');
+const editorPanel = $('[data-editor]');
+const editor = createRocketEditor(editorPanel, { onDone: useDesign });
 const enginesField = $('[data-engines-field]');
 const enginesReadout = $('[data-engines]');
 const rocketTurnButton = $('[data-rocket-turn]');
@@ -579,6 +605,7 @@ function showCompanionButtons() {
   followButton.hidden = !near || rocketAboard();
   rocketViewButton.hidden = !rocketAboard();
   stageButton.hidden = !rocketAboard() || !rocket.vehicle || !stagesLeft(rocket.vehicle);
+  buildButton.hidden = !rocketAboard();
   rocketTurnButton.hidden = !rocketOutside();
   burnButton.hidden = !rocketAboard();
   if (burnButton.hidden && !burnPanel.hidden) showBurnPanel(false);
@@ -1405,6 +1432,7 @@ const rocketOutside = () => rocketAboard() && rocket.view !== 'inside';
 
 function setRocket(on) {
   if (rocket && rocket.view !== 'inside') backInsideRocket();
+  editorPanel.hidden = true;
   rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
   showBurnPanel(false);
   rocketToggle.checked = on;
@@ -1530,7 +1558,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   const fresh = !rocket.state || rocket.camera !== game.camera || rocket.system !== system || !wells.has(rocket.state.holder);
   if (fresh) {
     if (rocket.plan) endPlan();
-    rocket.vehicle = assemble(DEFAULT_DESIGN);
+    rocket.vehicle = assemble(rocketDesign);
     const well = wellAround(wells, star, framedFromSunKm);
     rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms, wells);
     if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
@@ -1616,7 +1644,7 @@ const ROCKET_MIDDLE_KM = 0.005;
 const CAMERA_ZOOM_RANGE = [0.2, 500];
 const NEXT_ROCKET_VIEW = { chase: 'orbit', orbit: 'chase' };
 const ROCKET_VIEW_NEWS = {
-  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. W fires the engines, the other flight keys small side thrusters; Z and X set the throttle, Space drops a stage.',
+  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. W fires the engines, the other flight keys small side thrusters; Z and X set the throttle, Space drops a stage, G builds a new rocket.',
   chaseByTouch: 'Chase view: drag to swing the camera, pinch to zoom. Tap Turn to steer the rocket with the stick.',
   orbit: 'Orbit view: the whole path, from above the orbit. Zoom stays fixed as the path changes; the wheel or a pinch changes it.',
 };
@@ -2360,7 +2388,7 @@ function frame(now) {
 }
 
 function placeCrosshair() {
-  const cannotFly = menu || intro || photo || warp || game.over || !atlasFrame.hidden;
+  const cannotFly = menu || intro || photo || warp || game.over || !atlasFrame.hidden || !editorPanel.hidden;
   const spot = cannotFly ? null : spotOnStage(game.ship.forward);
   crosshair.hidden = !spot;
   if (spot) crosshair.style.transform = `translate(${spot.x}px, ${spot.y}px)`;
@@ -2859,6 +2887,10 @@ function zoomWithKey(event) {
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', (event) => {
   if (event.target.closest?.('select, input, textarea')) return;
+  if (!editorPanel.hidden) {
+    if (event.code === 'Escape') closeEditor();
+    return;
+  }
   if (menu) {
     if (event.code === 'Escape' && menu.parked) resumeFromMenu();
     return;
@@ -2892,6 +2924,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyO' && game.mode.solarSystem) setOrbits(!orbitsShown());
   else if (event.code === 'KeyV' && rocketAboard()) nextRocketView();
   else if (event.code === 'KeyB' && rocketAboard()) toggleBurnPanel();
+  else if (event.code === 'KeyG' && rocketAboard()) openEditor();
   else if (BURN_KEYS.has(event.code) && rocket?.plan) {
     burnKeyStreak = event.repeat ? burnKeyStreak + 1 : 0;
     nudgeBurn(...BURN_KEYS.get(event.code), burnKeyStreak);
@@ -2958,6 +2991,8 @@ orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
 followButton.addEventListener('click', () => setFollowing(!following));
 rocketViewButton.addEventListener('click', nextRocketView);
 stageButton.addEventListener('click', dropStage);
+buildButton.addEventListener('click', openEditor);
+for (const button of editorPanel.querySelectorAll('[data-editor-done], [data-editor-close]')) button.addEventListener('click', closeEditor);
 rocketTurnButton.addEventListener('click', () => rocket && setRocketTurning(!rocket.turning));
 burnButton.addEventListener('click', toggleBurnPanel);
 $('[data-burn-close]').addEventListener('click', () => showBurnPanel(false));
@@ -3009,6 +3044,18 @@ const fullscreenButton = $('[data-fullscreen]');
 const trayOpen = () => dock.classList.contains('fh-tray-open');
 const sheetOpen = () => document.body.classList.contains('fh-sheet-open');
 const showPanelState = () => moreButton.setAttribute('aria-expanded', String(touchScreen.matches ? sheetOpen() : studioPanelOpen()));
+
+function openEditor() {
+  if (!rocketAboard()) return;
+  letGo();
+  showBurnPanel(false);
+  setTray(false);
+  editor.open(rocketDesign);
+}
+
+function closeEditor() {
+  if (editor.finish()) view.focus();
+}
 
 function setTray(open) {
   dock.classList.toggle('fh-tray-open', open);
