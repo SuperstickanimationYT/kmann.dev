@@ -1,5 +1,5 @@
 {
-  "bytes": 7543417,
+  "bytes": 7551503,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -103,6 +103,7 @@
     "js/rivers.js",
     "js/rocket-burn.js",
     "js/rocket-camera.js",
+    "js/rocket-exhaust.js",
     "js/rocket-forecast.js",
     "js/rocket-path.js",
     "js/rocket.js",
