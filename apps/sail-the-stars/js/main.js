@@ -1346,6 +1346,7 @@ function followSolarSystem() {
   const framedFromSunKm = add(carriedFrom, frameOffsetKm(previous, solarFrame));
   const shipFromSunKm = rocketAboard() ? flyRocket(bodiesBefore, framedFromSunKm) : framedFromSunKm;
   if (rocketAboard()) rocket.outward = normalize(subtract(shipFromSunKm, bodyNamed(rocket.state.holder).fromSunKm));
+  if (rocketAboard() && rocket.view === 'inside') showRocketView('chase');
   const fromSunKm = rocketOutside() ? rocketEyeFromSunKm(shipFromSunKm) : shipFromSunKm;
   const holder = holdingBody(holders(), fromSunKm);
   if (rotatingWith && rotatingWith !== holder.name) setRotatingWith(null);
@@ -1388,7 +1389,7 @@ function setRocket(on) {
   rocketViewButton.setAttribute('aria-pressed', 'false');
   document.body.classList.toggle('fh-rocket', on);
   clearGuides();
-  showStatus(on ? 'Rocket on: gravity is real now. Coast, or fire the engine with the flight keys.' : 'Rocket off: thrusters fly at a set speed again.');
+  showStatus(on ? `Rocket on: gravity is real now. ${ROCKET_VIEW_NEWS[touchScreen.matches ? 'chaseByTouch' : 'chase']}` : 'Rocket off: thrusters fly at a set speed again.');
 }
 
 function aimRocket(move) {
@@ -1533,9 +1534,8 @@ const CHASE_VIEW_RISE_RADIANS = (25 * Math.PI) / 180;
 const LEVEL_ENOUGH = 0.3;
 const ROCKET_MIDDLE_KM = 0.005;
 const CAMERA_ZOOM_RANGE = [0.2, 500];
-const NEXT_ROCKET_VIEW = { inside: 'chase', chase: 'orbit', orbit: 'inside' };
+const NEXT_ROCKET_VIEW = { chase: 'orbit', orbit: 'chase' };
 const ROCKET_VIEW_NEWS = {
-  inside: 'Back inside the rocket.',
   chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. The flight keys fire along the rocket.',
   chaseByTouch: 'Chase view: drag to swing the camera, pinch to zoom. Tap Turn to steer the rocket with the stick.',
   orbit: 'Orbit view: the whole path, from above the orbit. Zoom stays fixed as the path changes; the wheel or a pinch changes it.',
@@ -1597,19 +1597,20 @@ function setRocketTurning(on) {
   rocketTurnButton.setAttribute('aria-pressed', String(on));
 }
 
+function showRocketView(view) {
+  rocket.away = view === 'chase' ? awayBehindRocket() : awayAboveOrbit() ?? rocket.away;
+  rocket.zoom = 1;
+  rocket.orbitViewKm = pathFramingKm();
+  rocket.view = view;
+  rocketViewButton.setAttribute('aria-pressed', String(view === 'orbit'));
+  aimView();
+  clearGuides();
+}
+
 function nextRocketView() {
   if (!rocketAboard()) return;
-  const view = NEXT_ROCKET_VIEW[rocket.view];
-  if (view === 'inside') backInsideRocket();
-  else {
-    rocket.away = view === 'chase' ? awayBehindRocket() : awayAboveOrbit() ?? rocket.away;
-    rocket.zoom = 1;
-    rocket.orbitViewKm = pathFramingKm();
-    rocket.view = view;
-    rocketViewButton.setAttribute('aria-pressed', 'true');
-    aimView();
-    clearGuides();
-  }
+  const view = NEXT_ROCKET_VIEW[rocket.view] ?? 'chase';
+  showRocketView(view);
   showStatus(ROCKET_VIEW_NEWS[view === 'chase' && touchScreen.matches ? 'chaseByTouch' : view], 6);
 }
 
@@ -1926,6 +1927,65 @@ function drawBurnMarker(context, width, height) {
   context.restore();
 }
 
+const HEADING_RGB = '235, 215, 90';
+const HEADING_MARKER_PX = 8;
+const SURFACE_SPEED_BELOW_RADII = 0.05;
+
+function headingOverGround() {
+  const { state } = rocket;
+  if (!state.velocityKmS) return null;
+  const body = bodyNamed(state.holder);
+  const altitudeKm = Math.hypot(...state.positionKm) - body.radiusKm;
+  const surface = body.kind !== 'star' && altitudeKm < Math.max(airTopKm(body) - body.radiusKm, SURFACE_SPEED_BELOW_RADII * body.radiusKm);
+  const velocityKmS = surface ? subtract(state.velocityKmS, cross(scale(body.north, spinRadiansPerSecond(body)), state.positionKm)) : state.velocityKmS;
+  const speedKmS = Math.hypot(...velocityKmS);
+  return speedKmS ? { direction: scale(velocityKmS, 1 / speedKmS), speedKmS, surface } : null;
+}
+
+function drawHeadingMarker(context, spot, label, crossed) {
+  const r = HEADING_MARKER_PX;
+  context.beginPath();
+  context.arc(spot.x, spot.y, r, 0, 2 * Math.PI);
+  for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0]]) {
+    context.moveTo(spot.x + dx * r, spot.y + dy * r);
+    context.lineTo(spot.x + dx * (r + 6), spot.y + dy * (r + 6));
+  }
+  if (crossed) {
+    const d = r * 0.6;
+    context.moveTo(spot.x - d, spot.y - d);
+    context.lineTo(spot.x + d, spot.y + d);
+    context.moveTo(spot.x + d, spot.y - d);
+    context.lineTo(spot.x - d, spot.y + d);
+  }
+  context.stroke();
+  if (!crossed) {
+    context.beginPath();
+    context.arc(spot.x, spot.y, 1.8, 0, 2 * Math.PI);
+    context.fill();
+  }
+  context.fillText(label, spot.x + r + 10, spot.y);
+}
+
+function drawHeadingMarkers(context, width, height) {
+  const heading = headingOverGround();
+  if (!heading) return;
+  const bottom = aboveDock(height);
+  context.save();
+  context.strokeStyle = `rgb(${HEADING_RGB})`;
+  context.fillStyle = `rgb(${HEADING_RGB})`;
+  context.font = SELECTION_FONT;
+  context.lineWidth = 1.5;
+  context.shadowColor = 'rgba(0, 0, 0, 0.9)';
+  context.shadowBlur = 4;
+  context.textBaseline = 'middle';
+  const frame = heading.surface ? 'over the ground' : 'in orbit';
+  for (const [sign, label, crossed] of [[1, `Prograde ${formatRocketSpeed(heading.speedKmS)} ${frame}`, false], [-1, 'Retrograde', true]]) {
+    const spot = spotOnStage(scale(heading.direction, sign));
+    if (spot && spot.x >= 0 && spot.x <= width && spot.y >= 0 && spot.y <= bottom) drawHeadingMarker(context, spot, label, crossed);
+  }
+  context.restore();
+}
+
 function formatWait(ms) {
   const seconds = ms / 1000;
   if (seconds < 90) return `${Math.max(1, Math.round(seconds))} s`;
@@ -2015,11 +2075,13 @@ function formatRocketDistance(km) {
 function rocketReadout(well, offsetKm) {
   const name = nameOfWell(well.body);
   if (rocket.state.landedKm) return `landed on ${name}`;
-  const speed = formatRocketSpeed(Math.hypot(...rocket.state.velocityKmS));
+  const heading = headingOverGround();
+  const speed = formatRocketSpeed(heading?.speedKmS ?? 0);
+  const motion = heading?.surface ? 'over' : 'around';
   const { plan } = rocket;
   const burnNews = !plan ? '' : plan.ms > rocket.ms ? `, burn in ${formatWait(plan.ms - rocket.ms)}` : ', burn now';
   if (well.body.kind === 'star') return `${speed} around ${name}, ${formatRocketDistance(Math.hypot(...offsetKm))} out${burnNews}`;
-  return `${speed} around ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - groundUnderKm(well.body, offsetKm)))} up${burnNews}`;
+  return `${speed} ${motion} ${name}, ${formatRocketDistance(Math.max(0, Math.hypot(...offsetKm) - groundUnderKm(well.body, offsetKm)))} up${burnNews}`;
 }
 
 let spinSinceSharpSky = 0;
@@ -2237,6 +2299,7 @@ function refreshGuides(now) {
   if (selection?.destination?.craft) drawSelectedPath(context, width, height);
   if (rocketOutside() && rocket.view === 'orbit' && solarFrame) drawRocketLine(context, width, height);
   if (rocket?.plan && rocketAboard() && solarFrame) drawBurnMarker(context, width, height);
+  if (rocketOutside() && rocket.view === 'chase' && solarFrame) drawHeadingMarkers(context, width, height);
 }
 
 function photoSize() {
