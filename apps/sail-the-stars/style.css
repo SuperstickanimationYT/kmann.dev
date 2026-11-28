@@ -673,6 +673,167 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
   color: var(--text-dim);
 }
 
+.fh-editor {
+  position: absolute;
+  z-index: 5;
+  inset: 76px 16px 16px;
+  display: grid;
+  grid-template: 'title title title' auto 'parts grid side' minmax(0, 1fr) / 170px minmax(0, 1fr) 290px;
+  gap: 10px 14px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.fh-editor h2 {
+  grid-area: title;
+  margin: 0 40px 0 0;
+  font-size: 16px;
+  color: var(--text-strong);
+}
+
+.fh-editor h3 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.fh-editor p {
+  margin: 6px 0;
+}
+
+.fh-editor .fh-close {
+  top: 8px;
+  right: 8px;
+}
+
+.fh-editor button {
+  border: 1px solid var(--edge-bright);
+  border-radius: 8px;
+  background: #0c2540;
+  color: var(--text-strong);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fh-editor button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fh-editor [aria-pressed='true'],
+.fh-editor .fh-editor-done {
+  border-color: var(--link);
+  background: #1d4d7d;
+}
+
+.fh-editor-parts {
+  grid-area: parts;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.fh-editor-parts button {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  text-align: left;
+  touch-action: none;
+  cursor: grab;
+}
+
+.fh-editor-parts canvas {
+  position: static;
+  width: 34px;
+  height: 34px;
+}
+
+.fh-editor-parts small {
+  display: block;
+  color: var(--text-dim);
+}
+
+.fh-editor-grid {
+  position: static;
+  grid-area: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 8px;
+  touch-action: none;
+}
+
+.fh-editor-side {
+  grid-area: side;
+  min-height: 0;
+  overflow: auto;
+}
+
+.fh-editor-symmetry {
+  display: flex;
+  gap: 6px;
+}
+
+.fh-editor-symmetry button {
+  flex: 1 1 0;
+  padding: 6px 0;
+}
+
+.fh-editor-note {
+  min-height: 1.4em;
+  color: var(--text-strong);
+}
+
+.fh-editor-stages {
+  margin: 0;
+  padding-left: 1.6em;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.fh-editor-hint {
+  font-size: 12px;
+}
+
+.fh-editor-warnings {
+  margin: 6px 0;
+  padding-left: 1.2em;
+  color: #ffb199;
+}
+
+.fh-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.fh-editor-actions button {
+  padding: 7px 10px;
+}
+
+@media (max-width: 760px) {
+  .fh-editor {
+    inset: 40px 8px 8px;
+    grid-template: 'title' auto 'grid' minmax(0, 1fr) 'parts' auto 'side' minmax(0, 36%) / minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .fh-editor-parts {
+    flex-direction: row;
+  }
+}
+
 .fh-close {
   position: absolute;
   top: 0;

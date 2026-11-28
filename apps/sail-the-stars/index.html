@@ -31,6 +31,7 @@
   <symbol id="icon-follow" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .4l3-3a4.2 4.2 0 0 0-6-6l-1.6 1.6M14 10a4 4 0 0 0-6-.4l-3 3a4.2 4.2 0 0 0 6 6l1.6-1.6"/></symbol>
   <symbol id="icon-rotate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M20.5 9.5A9 9 0 0 0 4 8M3.5 14.5A9 9 0 0 0 20 16M4 3.5V8h4.5M20 20.5V16h-4.5"/></symbol>
   <symbol id="icon-burn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/><path d="M12 12l5.5-5.5M14 6.5h3.5V10"/></symbol>
+  <symbol id="icon-build" viewBox="0 0 24 24"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
   <symbol id="icon-stage" viewBox="0 0 24 24"><path d="M12 2.5l3 3.5v5H9V6zM9 14h6v7.5H9zM5.5 12.5h2M16.5 12.5h2"/></symbol>
   <symbol id="icon-time" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6.5V12l3.7 2.3"/></symbol>
   <symbol id="icon-align" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4.5M12 17.5V22M2 12h4.5M17.5 12H22"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
@@ -113,6 +114,7 @@
       <button type="button" data-orbits aria-pressed="false" aria-description="Show the paths of planets and moons, and where spacecraft are" aria-keyshortcuts="O" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-orbits"/></svg><span class="fh-name">Orbits</span></button>
       <button type="button" data-rocket-view aria-pressed="false" aria-description="Switch between a chase camera behind the rocket and a view of its whole orbit" aria-keyshortcuts="V" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-outside"/></svg><span class="fh-name">View</span></button>
       <button type="button" data-drop-stage aria-description="Drop the lowest stage" aria-keyshortcuts="Space" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-stage"/></svg><span class="fh-name">Stage</span></button>
+      <button type="button" data-build aria-description="Design your own rocket on a blueprint grid" aria-keyshortcuts="G" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-build"/></svg><span class="fh-name">Build</span></button>
       <button type="button" data-burn-open aria-pressed="false" aria-description="Plan a burn on the rocket's path and see how close it comes to the selected body" aria-keyshortcuts="B" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-burn"/></svg><span class="fh-name">Burn</span></button>
       <button type="button" data-follow aria-pressed="true" aria-description="Move along with it" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-follow"/></svg><span class="fh-name">Follow</span></button>
       <button type="button" data-rotate-with aria-pressed="false" aria-description="Turn along with its spin" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-rotate"/></svg><span class="fh-name">Rotate with</span></button>
@@ -156,6 +158,28 @@
     <figcaption>Atlas as known from Earth today, seen from above the north galactic pole. Light you see left long ago.</figcaption>
     <button type="button" class="fh-close" data-atlas-close aria-label="Close atlas">&times;</button>
   </figure>
+  <section class="fh-editor" data-editor aria-labelledby="fh-editor-title" hidden>
+    <h2 id="fh-editor-title">Build a rocket</h2>
+    <button type="button" class="fh-close" data-editor-close aria-label="Close the editor">&times;</button>
+    <div class="fh-editor-parts" data-editor-parts role="group" aria-label="Parts: drag onto the grid, or click to stack on top"></div>
+    <canvas class="fh-editor-grid" data-editor-grid aria-label="Blueprint grid, 1 m squares. Drag a part to move it, or off the grid to remove it."></canvas>
+    <div class="fh-editor-side">
+      <p>Side parts go around the rocket</p>
+      <div class="fh-editor-symmetry" data-editor-symmetry role="group" aria-label="Copies around the rocket"></div>
+      <p class="fh-editor-note" data-editor-note aria-live="polite"></p>
+      <h3>Stages, first to fire on top</h3>
+      <ol class="fh-editor-stages" data-editor-stages></ol>
+      <p data-editor-total></p>
+      <p class="fh-editor-hint">Thrust is against Earth's weight: at sea level for stage 1, in vacuum after. A separator drops everything below or beside it, deepest first.</p>
+      <ul class="fh-editor-warnings" data-editor-warnings></ul>
+      <div class="fh-editor-actions">
+        <button type="button" data-editor-remove disabled>Remove part</button>
+        <button type="button" data-editor-default>Default rocket</button>
+        <button type="button" data-editor-clear>Clear</button>
+        <button type="button" class="fh-editor-done" data-editor-done>Done</button>
+      </div>
+    </div>
+  </section>
   <div class="fh-intro" data-intro hidden>
     <p data-intro-text aria-live="polite"></p>
     <button type="button" class="fh-intro-skip" data-intro-skip>Skip <kbd>any key</kbd></button>
@@ -212,7 +236,7 @@
       </label>
       <label class="fh-check" data-rocket-field hidden>
         <input type="checkbox" data-rocket>
-        <span>Rocket: real gravity and a two-stage rocket built from real parts. Its engines are like SpaceX's Merlin: thrust and fuel use change with air pressure, so they push about 10% harder in vacuum than at sea level and cannot fire at all in Venus's thick air. It weighs 334 t on the pad and has about 9.9 km/s to spend in vacuum, enough for Earth orbit with some to spare. Only the body whose sphere of influence you are in pulls on you. Air slows you on Venus, Earth, Mars, Titan, the giant planets and worlds with seas: drag grows with the air's real density and with how much of the rocket faces the wind, least nose first, most side on. It never burns up. Time runs at most 5&times; while the engine fires.</span>
+        <span>Rocket: real gravity and a two-stage rocket built from real parts. Its engines are like SpaceX's Merlin: thrust and fuel use change with air pressure, so they push about 10% harder in vacuum than at sea level and cannot fire at all in Venus's thick air. It weighs 334 t on the pad and has about 9.9 km/s to spend in vacuum, enough for Earth orbit with some to spare. Build (<kbd>G</kbd>) designs your own on a blueprint grid. Only the body whose sphere of influence you are in pulls on you. Air slows you on Venus, Earth, Mars, Titan, the giant planets and worlds with seas: drag grows with the air's real density and with how much of the rocket faces the wind, least nose first, most side on. It never burns up. Time runs at most 5&times; while the engine fires.</span>
       </label>
       <label class="fh-check" data-unlimited-fuel-field hidden>
         <input type="checkbox" data-unlimited-fuel>
@@ -309,7 +333,7 @@
           <li><kbd>Drag</kbd> turn your head &middot; <kbd>&larr;&uarr;&rarr;&darr;</kbd> <kbd>Q</kbd><kbd>E</kbd> turn the ship</li>
           <li><kbd>C</kbd> point the ship where you look &middot; <kbd>J</kbd> jump</li>
           <li><kbd>W</kbd><kbd>S</kbd> thrust forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
-          <li>Rocket: <kbd>W</kbd> main engines, the other flight keys small side thrusters &middot; <kbd>Z</kbd><kbd>X</kbd> throttle &middot; <kbd>Space</kbd> drop a stage</li>
+          <li>Rocket: <kbd>W</kbd> main engines, the other flight keys small side thrusters &middot; <kbd>Z</kbd><kbd>X</kbd> throttle &middot; <kbd>Space</kbd> drop a stage &middot; <kbd>G</kbd> build a rocket</li>
           <li><kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> thruster speed &middot; <kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; <kbd>O</kbd> orbits, <kbd>,</kbd><kbd>.</kbd> time slower, faster, <kbd>/</kbd> pause time and <kbd>P</kbd> long-exposure view (Explore)</li>
           <li><kbd>+</kbd><kbd>&minus;</kbd> or <kbd>Ctrl</kbd> <kbd>Wheel</kbd> zoom &middot; <kbd>0</kbd> normal view</li>
           <li>Click a star through a window to claim it</li>
