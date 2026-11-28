@@ -49,6 +49,7 @@ const MOON_ARGUMENTS = [
 ];
 const SIDEREAL_MONTH_DAYS = 27.321661;
 export const SUN_RADIUS_KM = 695700;
+export const SATURN_RING_OUTER_KM = 140300;
 const ECLIPSERS_PER_BODY = 2;
 const TT_TABLE_START_YEAR = 1800;
 const TT_TABLE_STEP_YEARS = 5;
@@ -293,7 +294,7 @@ export const BODIES = [
   { name: 'Moon', kind: 'rocky', parent: 'Earth', radiusKm: 1737.4, pole: [269.9949, 66.5392], spin: [38.3213, 13.17635815, -1.4e-12], tint: [0.6, 0.58, 0.55], magnitude: 0.21, map: 'moon', mapKmPerPixel: 10.7, roughness: 0.5, ground: { roughness: 0.06, craters: 1, rocks: { cover: [0.02, 0.014, 0.006, 0.002], sharpness: 10, flatness: 0.8, tint: [1, 1, 1] } } },
   { name: 'Mars', kind: 'rocky', radiusKm: 3389.5, pole: [317.269202, 54.432516], spin: [176.049863, 350.891982443297], tint: [0.7, 0.42, 0.25], magnitude: -1.52, map: 'mars', mapKmPerPixel: 20.8, roughness: 0.35, haze: { gas: { depth: [0, 0, 0], scaleKm: 11 }, dust: { depth: [0.2, 0.22, 0.25], light: [0.34, 0.26, 0.19], scaleKm: 11, forwardness: 0.4, sunDimming: 0.6 } }, ground: { roughness: 0.05, craters: 0.4, rocks: { cover: [0.04, 0.04, 0.012, 0.003], sharpness: 9, flatness: 0.7, tint: [0.84, 0.86, 0.92] }, clouds: { baseKm: 14, topKm: 20, extinctionPerKm: 0.08, coverShift: -0.06 }, air: { tint: [0.78, 0.56, 0.38], scaleKm: 11, glow: [0.45, 0.6, 0.85], hazeKm: 30, sunset: [0.45, 0.6, 0.85] } } },
   { name: 'Jupiter', kind: 'giant', radiusKm: 69911, flattening: 0.06487, pole: [268.056595, 64.495303], spin: [284.95, 870.536], tint: [0.82, 0.74, 0.62], magnitude: -9.4 },
-  { name: 'Saturn', kind: 'giant', rings: true, radiusKm: 58232, flattening: 0.09796, pole: [40.589, 83.537], spin: [38.9, 810.7939024], tint: [0.88, 0.8, 0.62], magnitude: -8.88 },
+  { name: 'Saturn', kind: 'giant', rings: true, ringOuterKm: SATURN_RING_OUTER_KM, radiusKm: 58232, flattening: 0.09796, pole: [40.589, 83.537], spin: [38.9, 810.7939024], tint: [0.88, 0.8, 0.62], magnitude: -8.88 },
   { name: 'Uranus', kind: 'giant', radiusKm: 25362, flattening: 0.02293, pole: [257.311, -15.175], spin: [203.81, -501.1600928], tint: [0.66, 0.85, 0.88], magnitude: -7.19 },
   { name: 'Titan', kind: 'hazy', parent: 'Saturn', radiusKm: 2574.76, pole: [39.4827, 83.4279], spin: [186.5855, 22.5769768], tint: [0.8, 0.56, 0.3], magnitude: -1.28, map: 'titan', mapKmPerPixel: 15.8, roughness: 0, haze: { gas: { depth: [0, 0, 0], scaleKm: 45 }, dust: { depth: [2, 2.4, 3.2], light: [2.9, 1.8, 0.85], scaleKm: 45, forwardness: 0.3, sunDimming: 0.1 }, layer: { light: [0.0022, 0.0027, 0.0042], heightKm: 450, thicknessKm: 30 } }, ground: { roughness: 0.03, craters: 0.1, viewFromKm: 120, rocks: { cover: [0.1, 0.055, 0, 0], sharpness: 3, flatness: 0.55, tint: [1.3, 1.3, 1.35] }, air: { tint: [0.5, 0.33, 0.15], scaleKm: 21, glow: [0.6, 0.42, 0.2], hazeKm: 8, sunset: [0.4, 0.22, 0.08], overcast: 0.9 } } },
   { name: 'Neptune', kind: 'giant', radiusKm: 24622, flattening: 0.01708, pole: [299.36, 43.46], spin: [249.978, 541.1397757], tint: [0.51, 0.69, 0.79], magnitude: -6.87 },

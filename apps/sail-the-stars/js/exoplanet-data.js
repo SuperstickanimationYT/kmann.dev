@@ -1,13 +1,22 @@
 const PLANET_COLUMNS = ['letter', 'earthRadii', 'earthMasses', 'periodDays', 'a', 'e', 'inclination', 'periapsis', 'kelvin', 'transitJd', 'periastronJd', 'radiusMeasured', 'massKnown'];
 export const planets = (...rows) => rows.map((row) => Object.fromEntries(PLANET_COLUMNS.map((column, k) => [column, row[k]])));
 
+const JUPITER_RADIUS_KM = 71492;
+
+const PROXIMA_C = {
+  ...planets(['c', 2.5, 7, 1928, 1.489, 0.04, null, null, 39, null, null, false, 'least'])[0],
+  speculative:
+    'Proposed in 2020 from a 5.3-year wobble of the star. A 2022 study traced that signal to how the data were processed, and a 2025 study finds the planet as proposed most likely does not exist. The ring is a 2020 guess to explain a spot in a SPHERE image too bright for a planet this light, if the spot was the planet at all; its shape is borrowed from Saturn\'s rings. The radius is a guess from the least mass.',
+  ringOuterKm: 5 * JUPITER_RADIUS_KM,
+};
+
 export const EXOPLANET_SYSTEMS = [
   {
     name: 'Proxima Centauri', ra: 217.3934657, dec: -62.6761821, parsecs: 1.30119, motion: [-3781.31, 769.766], radialKmS: 0, kelvin: 2900, radius: 0.141, visual: 11.01,
     planets: planets(
       ['d', 0.692, 0.26, 5.12338, 0.02881, 0, null, 4, 282, null, 2460557.55, false, 'least'],
       ['b', 1.02, 1.055, 11.18465, 0.04848, 0, null, 3.3, 218, 2457897.9, null, false, 'least'],
-    ),
+    ).concat(PROXIMA_C),
   },
   {
     name: "Barnard's Star", ra: 269.4486144, dec: 4.7379808, parsecs: 1.82655, motion: [-802.803, 10362.5], radialKmS: -110.5, kelvin: 3195, radius: 0.185, visual: 9.54,

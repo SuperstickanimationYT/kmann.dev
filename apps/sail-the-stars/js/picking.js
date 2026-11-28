@@ -77,7 +77,7 @@ function formatKm(km) {
 const GENERATED = 'procedurally generated';
 const ONLY_PLAUSIBLE = 'not real, only plausible and consistent with physics.';
 const notRealPlanets = ({ planets, madeUp }) => (madeUp && planets.length ? `The planets are ${ONLY_PLAUSIBLE}` : '');
-const notRealPlanet = ({ madeUp, civilization }) => (madeUp ? `This planet is ${ONLY_PLAUSIBLE}${civilization && speculationShown() ? ' Its civilization is speculation.' : ''}` : '');
+const notRealPlanet = ({ madeUp, civilization, speculative }) => speculative ?? (madeUp ? `This planet is ${ONLY_PLAUSIBLE}${civilization && speculationShown() ? ' Its civilization is speculation.' : ''}` : '');
 
 const planetCount = (count, source) => `${count} ${source} planet${count === 1 ? '' : 's'}`;
 
@@ -110,7 +110,8 @@ function holeFacts(pick) {
 }
 
 function starKind(pick) {
-  const { planets, madeUp } = pick.hostData ?? { planets: [] };
+  const { madeUp } = pick.hostData ?? {};
+  const planets = (pick.hostData?.planets ?? []).filter(({ speculative }) => !speculative);
   if (planets.length && !madeUp) return `Star with ${planetCount(planets.length, 'known')} here`;
   if (planets.length) return `${STAR_KINDS[pick.kind]} with ${planetCount(planets.length, GENERATED)}`;
   return pick.kind === KIND.cluster ? `${STAR_KINDS[KIND.cluster]} in ${pick.name}` : STAR_KINDS[pick.kind];
@@ -137,8 +138,9 @@ function starFacts(pick) {
 
 const GENERATED_KINDS = { rocky: 'Procedurally generated rocky planet', hazy: 'Procedurally generated small gas planet', giant: 'Procedurally generated giant planet' };
 
-function exoplanetKind({ kind, invented, looks, civilization, madeUp }) {
+function exoplanetKind({ kind, invented, looks, civilization, madeUp, speculative }) {
   const peopled = civilization && speculationShown();
+  if (speculative) return 'Proposed planet, probably not real; clouds and ring made up';
   if (madeUp) return `${GENERATED_KINDS[kind]}${peopled ? ' with a civilization' : ''}`;
   if (peopled) return 'Rocky planet, surface and civilization made up';
   if (looks && !invented.wet) return 'Rocky planet, surface made up; air and water unknown, shown bare';

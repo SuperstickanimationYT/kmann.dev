@@ -42,10 +42,10 @@ export function placeMouth(mouth, system, ms) {
   };
 }
 
-export const withWormholes = (system) => ({
-  ...system,
-  place: (ms) => [...system.place(ms), ...mouthsOpen(ms).filter(({ host }) => host === system.name).map((mouth) => placeMouth(mouth, system, ms))],
-});
+const placeWithMouths = (system) => (ms) => [...system.place(ms), ...mouthsOpen(ms).filter(({ host }) => host === system.name).map((mouth) => placeMouth(mouth, system, ms))];
+
+export const withWormholes = (system) =>
+  Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(system), place: { value: placeWithMouths(system), enumerable: true } });
 
 export const otherEnd = (mouth, system, ms) => placeMouth(MOUTHS.find(({ name }) => name === mouth.partner), system, ms);
 
