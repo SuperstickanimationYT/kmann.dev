@@ -861,6 +861,15 @@ body:has(.fh-loading:not([hidden])) .studio-panel {
   color: var(--text-dim);
 }
 
+.fh-more-note summary {
+  cursor: pointer;
+  color: var(--link);
+}
+
+.fh-more-note p {
+  margin: 8px 0 0;
+}
+
 .fh-brief {
   font-size: 14px;
   color: var(--text);
