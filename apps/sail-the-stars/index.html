@@ -209,7 +209,15 @@
       </label>
       <label class="fh-check" data-rocket-field hidden>
         <input type="checkbox" data-rocket>
-        <span>Rocket: real gravity and about 1.5 g of thrust in any direction, fuel unlimited. Only the body whose sphere of influence you are in pulls on you. Air slows you on Venus, Earth, Mars, Titan, the giant planets and worlds with seas: the rocket weighs 30 t, and drag grows with the air's real density and with how much of the rocket faces the wind, least nose first, most side on. It never burns up. Time runs at most 5&times; while the engine fires.</span>
+        <span>Rocket: real gravity and thrust in any direction, fuel unlimited. Only the body whose sphere of influence you are in pulls on you. Air slows you on Venus, Earth, Mars, Titan, the giant planets and worlds with seas: the rocket weighs 30 t, and drag grows with the air's real density and with how much of the rocket faces the wind, least nose first, most side on. It never burns up. Time runs at most 5&times; while the engine fires.</span>
+      </label>
+      <label class="fh-field" data-engine-field hidden>
+        <span>Engine</span>
+        <select data-engine>
+          <option value="1" selected>1.5 g: real-scale burns (about 9 min to orbit Earth)</option>
+          <option value="2">3 g: about 4.5 min to orbit</option>
+          <option value="4">6 g: about 2.5 min to orbit, harder to time</option>
+        </select>
       </label>
       <label class="fh-check">
         <input type="checkbox" data-motion-blur>

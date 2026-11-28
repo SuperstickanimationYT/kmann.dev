@@ -91,6 +91,7 @@ const TAP_DISTANCE = { mouse: 6, touch: 12 };
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
+const ENGINE_STORAGE_KEY = 'sail-the-stars-engine';
 const TRUE_SIZE_STORAGE_KEY = 'sail-the-stars-true-size';
 const MUSIC_STORAGE_KEY = 'find-home-music';
 const MENU_STEADY_PIXELS = 0.5;
@@ -126,6 +127,8 @@ const restartButton = $('[data-restart]');
 const selectField = $('[data-select-field]');
 const longExposureField = $('[data-long-exposure-field]');
 const rocketField = $('[data-rocket-field]');
+const engineField = $('[data-engine-field]');
+const engineSelect = $('[data-engine]');
 const rocketToggle = $('[data-rocket]');
 const motionBlurToggle = $('[data-motion-blur]');
 const trueSizeToggle = $('[data-true-size]');
@@ -387,6 +390,21 @@ function endIntro() {
   view.focus();
 }
 
+const engineKmS2 = () => ENGINE_KM_PER_S2 * Number(engineSelect.value);
+
+function recallEngine() {
+  try {
+    const saved = localStorage.getItem(ENGINE_STORAGE_KEY);
+    if (saved && [...engineSelect.options].some(({ value }) => value === saved)) engineSelect.value = saved;
+  } catch {}
+}
+
+function rememberEngine() {
+  try {
+    localStorage.setItem(ENGINE_STORAGE_KEY, engineSelect.value);
+  } catch {}
+}
+
 function motionBlurWanted() {
   try {
     const saved = localStorage.getItem(MOTION_BLUR_STORAGE_KEY);
@@ -594,6 +612,7 @@ function setMode(name) {
   if (!mode.solarSystem) timePanel.hidden = true;
   longExposureField.hidden = !mode.longExposure;
   rocketField.hidden = mode !== MODES.explore;
+  engineField.hidden = rocketField.hidden;
   if (rocketField.hidden && rocket) setRocket(false);
   solarNote.hidden = !mode.solarSystem;
   exploreBrief.hidden = mode !== MODES.explore;
@@ -1400,7 +1419,7 @@ function aimRocket(move) {
     showStatus(`Time slowed to ${FASTEST_BURN_RATE}× while the engine fires.`);
     return;
   }
-  rocket.push = scale(push, ENGINE_KM_PER_S2 / Math.max(1, strength));
+  rocket.push = scale(push, engineKmS2() / Math.max(1, strength));
 }
 
 function groundVelocityKmS(body, offsetKm, ms) {
@@ -1516,7 +1535,7 @@ function rocketExhaust(body) {
   const groundMetres = nearGround ? (distanceKm - lowestDistanceKm(holder, offsetKm)) * 1000 + EYE_HEIGHT_METRES : Infinity;
   const touching = groundMetres < EXHAUST_GROUND_CHECK_METRES;
   return exhaustOf({
-    pushInModel: inModel(scale(rocket.push, 1 / ENGINE_KM_PER_S2)),
+    pushInModel: inModel(scale(rocket.push, 1 / engineKmS2())),
     groundUpInModel: touching ? inModel(normalize(offsetKm)) : null,
     groundMetres,
   });
@@ -1724,7 +1743,7 @@ const BURN_KEYS = new Map([
 ]);
 let burnKeyStreak = 0;
 
-const burnSeconds = (plan) => Math.hypot(...plan.kickKmS) / ENGINE_KM_PER_S2;
+const burnSeconds = (plan) => Math.hypot(...plan.kickKmS) / engineKmS2();
 const burnWindowSeconds = (plan) => burnSeconds(plan) + BURN_WINDOW_PAD_SECONDS;
 
 function planBurn() {
@@ -1846,8 +1865,8 @@ function flyBurn(leftKmS, angleLeft) {
     showStatus(`Time slowed to ${FASTEST_BURN_RATE}× while the engine fires.`);
     return;
   }
-  const fullStepKmS = ENGINE_KM_PER_S2 * Math.max(rocket.stepSeconds, Number.EPSILON);
-  rocket.push = scale(game.ship.forward, ENGINE_KM_PER_S2 * Math.min(1, leftKmS / fullStepKmS));
+  const fullStepKmS = engineKmS2() * Math.max(rocket.stepSeconds, Number.EPSILON);
+  rocket.push = scale(game.ship.forward, engineKmS2() * Math.min(1, leftKmS / fullStepKmS));
 }
 
 function showBurnPanel(open) {
@@ -2982,6 +3001,8 @@ $('[data-pick-close]').addEventListener('click', clearSelection);
 $('[data-pick-fold]').addEventListener('click', togglePickDetails);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
+recallEngine();
+engineSelect.addEventListener('change', rememberEngine);
 recallTrueSize();
 centimetresPerUnitShown = Number(trueSizeUnitSelect.value);
 trueSizeToggle.addEventListener('change', trueSizeChanged);
