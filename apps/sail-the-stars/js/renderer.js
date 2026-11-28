@@ -30,9 +30,8 @@ import { RIBBON_FLOATS } from './rivers.js';
 import { rocksSeen, SCATTER_FLOATS, SCATTER_LAYERS } from './surface-scatter.js';
 import { apparentMagnitude, KM_PER_PC, longestRadiusKm, MAPPED_BODIES, narrowAxis, sunShareVisible } from './solar-system.js';
 import { lattice, mapCoordinates, PATCH_FLOATS, patchIndices } from './terrain.js';
-import { nebulaRadius, STAR_FLOATS } from './stars.js';
+import { nebulaLight, nebulaRadius, STAR_FLOATS } from './stars.js';
 
-const NEBULA_LIGHT_PER_IONIZING = 3700 / 1e49;
 const NANOMAGGIES_PER_LIGHT_AT_PC = 1.169e9;
 const GAS_COLOUR = [2.6, 1, 0.75];
 const GAS_SHARE = 0.15;
@@ -90,16 +89,28 @@ function writeUnresolved(row, bins, reaches) {
   }
 }
 
-function writeNebulae(place, glow, nebulae, camera) {
+const ROUND_ON_SKY = [0, 0, 1, 1];
+
+function stretchOnSky({ axis, radius, widthRadius }, toward) {
+  const along = axis.reduce((sum, value, k) => sum + value * toward[k], 0);
+  const across = axis.map((value, k) => value - along * toward[k]);
+  const acrossLength = Math.hypot(...across);
+  if (acrossLength < 1e-6) return ROUND_ON_SKY;
+  const skyRadius = Math.sqrt((radius * acrossLength) ** 2 + (widthRadius * along) ** 2);
+  return [...across.map((value) => value / acrossLength), skyRadius / widthRadius];
+}
+
+function writeNebulae(place, glow, shape, nebulae, camera) {
   nebulae.slice(0, MAX_NEBULAE).forEach((nebula, i) => {
     const firstGuess = Math.hypot(...nebula.present.map((value, axis) => value - camera[axis]));
     const seen = positionSeenAt(nebula.present, [0, 0, 0], firstGuess * LY_PER_PC);
     const offset = seen.map((value, axis) => value - camera[axis]);
     const distance = Math.max(Math.hypot(...offset), 1e-3);
     const radius = nebulaRadius(nebula);
-    place.set([offset[0] / distance, offset[1] / distance, offset[2] / distance, Math.min(radius / distance, 1.5)], i * 4);
-    const light = NEBULA_LIGHT_PER_IONIZING * nebula.ionizing;
-    glow.set([(light * NANOMAGGIES_PER_LIGHT_AT_PC) / Math.max(distance, radius) ** 2, distance, 0, i * 0.618], i * 4);
+    const toward = offset.map((value) => value / distance);
+    place.set([...toward, Math.min((nebula.widthRadius ?? radius) / distance, 1.5)], i * 4);
+    glow.set([(nebulaLight(nebula) * NANOMAGGIES_PER_LIGHT_AT_PC) / Math.max(distance, radius) ** 2, distance, nebula.remnant ? 1 : 0, i * 0.618], i * 4);
+    shape.set(nebula.remnant ? stretchOnSky(nebula, toward) : ROUND_ON_SKY, i * 4);
   });
   return Math.min(nebulae.length, MAX_NEBULAE);
 }
@@ -834,7 +845,7 @@ export async function createRenderer(canvas, armMap, galaxies, showProgress) {
     writeUnresolved(tableRow(tables, TABLE_ROWS.armedUnresolved), ARMED_BINS, reaches.slice(YOUNG_BINS.length));
     writeUnresolved(tableRow(tables, TABLE_ROWS.youngUnresolved), YOUNG_BINS, reaches.slice(0, YOUNG_BINS.length));
     writeUnresolved(tableRow(tables, TABLE_ROWS.bulgeUnresolved), BULGE_BINS, reaches.slice(YOUNG_BINS.length));
-    const nebulaCount = writeNebulae(tableRow(tables, TABLE_ROWS.nebulaPlace), tableRow(tables, TABLE_ROWS.nebulaGlow), nebulae, view.camera);
+    const nebulaCount = writeNebulae(tableRow(tables, TABLE_ROWS.nebulaPlace), tableRow(tables, TABLE_ROWS.nebulaGlow), tableRow(tables, TABLE_ROWS.nebulaShape), nebulae, view.camera);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, tableTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, TABLE_WIDTH, Object.keys(TABLE_ROWS).length, 0, gl.RGBA, gl.FLOAT, tables);

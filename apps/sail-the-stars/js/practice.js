@@ -1,5 +1,5 @@
 import { AU_PER_LY, LY_PER_PC, positionSeenAt, SUN_POSITION } from './milky-way.js';
-import { KIND, SUN_VELOCITY } from './stars.js';
+import { KIND, nebulaLight, SUN_VELOCITY } from './stars.js';
 
 const NEBULA_COLOUR = '#ff8fa8';
 const GALAXY_COLOUR = '#c9b8ff';
@@ -117,7 +117,7 @@ export function drawGuides(context, { camera, basis, tanHalf, width, height, bot
   [...nebulae]
     .map((nebula) => ({ nebula, spot: project(seenFrom(camera, nebula.present, [0, 0, 0])) }))
     .filter(({ spot }) => onScreen(spot))
-    .sort((a, b) => isCatalogueDesignation(a.nebula.name) - isCatalogueDesignation(b.nebula.name) || b.nebula.ionizing - a.nebula.ionizing)
+    .sort((a, b) => isCatalogueDesignation(a.nebula.name) - isCatalogueDesignation(b.nebula.name) || nebulaLight(b.nebula) - nebulaLight(a.nebula))
     .forEach(({ nebula, spot }) => drawMarker(context, label, NEBULA_COLOUR, spot, `${nebula.name} · ${formatDistance(spot.distance)}`, 4));
   context.restore();
 }

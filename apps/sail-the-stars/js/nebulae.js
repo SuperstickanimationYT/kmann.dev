@@ -1,3 +1,25 @@
+import { skyAxis } from './exoplanets.js';
+import { DEGREES } from './milky-way.js';
+import { PULSAR_SYSTEMS } from './pulsars.js';
+
+const SUN_ABSOLUTE_V = 4.83;
+const lightOfAbsolute = (magnitude) => 10 ** ((SUN_ABSOLUTE_V - magnitude) / 2.5);
+const absoluteOf = ({ visual, parsecs, extinction }) => visual - 5 * Math.log10(parsecs / 10) - extinction;
+
+const CRAB = PULSAR_SYSTEMS.find(({ name }) => name === 'Crab Pulsar');
+const CRAB_SKY = { visual: 8.4, extinction: 1.6, arcsec: [420, 290] };
+
+function crabNebula() {
+  const [skyLengthPc, widthPc] = CRAB_SKY.arcsec.map((arcsec) => (arcsec / 2 / 3600) * DEGREES * CRAB.parsecs);
+  const tilt = CRAB.pulsar.spin.fromEarthDegrees * DEGREES;
+  const lengthPc = Math.sqrt((skyLengthPc ** 2 - (widthPc * Math.cos(tilt)) ** 2) / Math.sin(tilt) ** 2);
+  return {
+    name: 'Crab Nebula', l: 184.5575, b: -5.7843, kpc: CRAB.parsecs / 1000,
+    light: lightOfAbsolute(absoluteOf({ ...CRAB_SKY, parsecs: CRAB.parsecs })),
+    radius: lengthPc, widthRadius: widthPc, axis: skyAxis(CRAB, CRAB.pulsar.spin), remnant: true,
+  };
+}
+
 export const NEBULAE = [
   { name: 'W49A', l: 43.2, b: 0.0, kpc: 11.1, ionizing: 1.5e51 },
   { name: 'G338.0-0.1', l: 338.0, b: -0.1, kpc: 12, ionizing: 1.1e51 },
@@ -55,4 +77,5 @@ export const NEBULAE = [
   { name: 'Rosette Nebula', l: 206.3, b: -2.1, kpc: 1.5, ionizing: 3e49 },
   { name: 'North America Nebula', l: 85.6, b: -0.9, kpc: 0.8, ionizing: 1e49 },
   { name: 'California Nebula', l: 160.6, b: -12.4, kpc: 0.45, ionizing: 2e48 },
+  crabNebula(),
 ];

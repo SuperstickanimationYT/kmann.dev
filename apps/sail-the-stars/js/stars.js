@@ -26,6 +26,10 @@ export function nebulaRadius(nebula) {
   return nebula.radius ?? 5 * Math.cbrt(nebula.ionizing / 1e49);
 }
 
+const LIGHT_PER_IONIZING = 3700 / 1e49;
+
+export const nebulaLight = (nebula) => nebula.light ?? LIGHT_PER_IONIZING * nebula.ionizing;
+
 export async function loadNearbyStars(url, namesUrl) {
   const [buffer, names] = await Promise.all([fetch(url).then((r) => r.arrayBuffer()), fetch(namesUrl).then((r) => r.json())]);
   const packed = new DataView(buffer);

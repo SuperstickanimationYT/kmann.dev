@@ -21,7 +21,7 @@ export const NOISE_SIZE = 64;
 export const LATTICE_PERIOD = 64;
 export const INVENTED_COLOUR_WIDTH = 4096;
 export const TABLE_WIDTH = 64;
-export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4, armedUnresolved: 5 };
+export const TABLE_ROWS = { oldUnresolved: 0, youngUnresolved: 1, nebulaPlace: 2, nebulaGlow: 3, bulgeUnresolved: 4, armedUnresolved: 5, nebulaShape: 6 };
 export const UNRESOLVED_NEAREST = 0.1;
 export const UNRESOLVED_FARTHEST = 1e6;
 
@@ -310,6 +310,36 @@ vec3 lookupUnresolved(int row, float distance) {
   return mix(texelFetch(uTables, ivec2(i, row), 0).rgb, texelFetch(uTables, ivec2(j, row), 0).rgb, x - float(i));
 }
 
+const float ARCSEC2_PER_STERADIAN = 4.2545e10;
+const vec3 IONIZED_GAS_COLOUR = vec3(2.6, 1.0, 0.75);
+const vec3 SYNCHROTRON_COLOUR = vec3(1.14, 1.0, 0.84);
+const vec3 FILAMENT_COLOUR = vec3(2.6, 1.0, 0.6);
+const float FILAMENT_SHARE = 0.25;
+const float SHELL_EDGE_SOFTNESS = 0.06;
+const float SHELL_LIMB_DEPTH = 0.25;
+const float STRANDS_PER_MEAN = 4.0;
+
+vec3 remnantSurface(vec3 direction, float cosAngle, vec4 place, vec4 glow, vec4 shape, int n) {
+  vec3 across = direction - place.xyz * cosAngle;
+  float width = max(place.w, 1e-9);
+  float lengthwise = width * shape.w;
+  float along = dot(across, shape.xyz);
+  float aside = sqrt(max(dot(across, across) - along * along, 0.0));
+  float pixel = 0.25 * uPixelAngle * uPixelAngle;
+  float sigmaAlong = sqrt(0.25 * lengthwise * lengthwise + pixel);
+  float sigmaAside = sqrt(0.25 * width * width + pixel);
+  float blur = exp(-0.5 * (along * along / (sigmaAlong * sigmaAlong) + aside * aside / (sigmaAside * sigmaAside))) / (6.2831853 * sigmaAlong * sigmaAside);
+  float resolvedShare = clamp(width / max(uPixelAngle, 1e-12), 0.0, 1.0);
+  vec3 offset = across / width;
+  float wisps = fbm(offset * 3.0 + vec3(glow.w * 11.0), uint(n) * 23u + 7u, 4.0);
+  float synchrotron = mix(blur, blur * (0.6 + 0.8 * wisps), resolvedShare);
+  float fromCentre = length(vec2(along / lengthwise, aside / width));
+  float shell = smoothstep(1.0 + SHELL_EDGE_SOFTNESS, 1.0 - SHELL_EDGE_SOFTNESS, fromCentre) / sqrt(max(1.0 - fromCentre * fromCentre, SHELL_LIMB_DEPTH)) / (6.2831853 * lengthwise * width);
+  float strands = pow(1.0 - abs(2.0 * fbm(offset * 5.0 - vec3(glow.w * 3.7), uint(n) * 29u + 1u, 5.0) - 1.0), 6.0);
+  float filaments = mix(blur, shell * strands * STRANDS_PER_MEAN, resolvedShare);
+  return glow.x / ARCSEC2_PER_STERADIAN * ((1.0 - FILAMENT_SHARE) * synchrotron * SYNCHROTRON_COLOUR + FILAMENT_SHARE * filaments * FILAMENT_COLOUR);
+}
+
 vec2 slabSpan(vec3 origin, vec3 direction, vec3 halfSize) {
   vec3 inverse = 1.0 / direction;
   vec3 t0 = (-halfSize - origin) * inverse;
@@ -372,6 +402,16 @@ void main() {
     float angle = acos(min(cosAngle, 1.0));
     float sigma = sqrt(place.w * place.w + 0.25 * uPixelAngle * uPixelAngle);
     if (angle > 5.0 * sigma) continue;
+    float behind = 0.0;
+    for (int c = 0; c < CHECKPOINTS; c++) {
+      if (c >= checkpoints) break;
+      if (checkpointDistance[c] <= glow.y) behind = checkpointDepth[c];
+    }
+    vec3 dimmed = exp(-behind * EXTINCTION_BANDS);
+    if (glow.z > 0.5) {
+      light += remnantSurface(direction, cosAngle, place, glow, texelFetch(uTables, ivec2(n, ${TABLE_ROWS.nebulaShape}), 0), n) * dimmed;
+      continue;
+    }
     vec3 offset = (direction - place.xyz * cosAngle) / max(place.w, 1e-9);
     float structure = fbm(offset * 2.2 + vec3(glow.w * 13.1), uint(n) * 31u + 5u, 5.0);
     float filaments = pow(1.0 - abs(2.0 * fbm(offset * 3.1 - vec3(glow.w * 5.7), uint(n) * 13u + 9u, 5.0) - 1.0), 4.0);
@@ -381,13 +421,8 @@ void main() {
     float core = 0.4 * exp(-0.5 * angle * angle / (sigmaCore * sigmaCore)) / (6.2831853 * sigmaCore * sigmaCore);
     float resolvedShare = clamp(place.w / max(uPixelAngle, 1e-12), 0.0, 1.0);
     float pattern = mix(1.0, (0.1 + 1.5 * structure * structure + 1.3 * filaments) * (0.2 + 0.8 * lanes), resolvedShare);
-    float surface = glow.x * (outer + core) * pattern / 4.2545e10;
-    float behind = 0.0;
-    for (int c = 0; c < CHECKPOINTS; c++) {
-      if (c >= checkpoints) break;
-      if (checkpointDistance[c] <= glow.y) behind = checkpointDepth[c];
-    }
-    light += surface * exp(-behind * EXTINCTION_BANDS) * vec3(2.6, 1.0, 0.75);
+    float surface = glow.x * (outer + core) * pattern / ARCSEC2_PER_STERADIAN;
+    light += surface * dimmed * IONIZED_GAS_COLOUR;
   }
 
   vec3 throughMilkyWay = exp(-depth);
