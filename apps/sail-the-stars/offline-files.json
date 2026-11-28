@@ -1,5 +1,5 @@
 {
-  "bytes": 7551503,
+  "bytes": 7559732,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -49,6 +49,7 @@
     "data/spacecraft-paths.json",
     "data/warp-optics.bin",
     "index.html",
+    "js/air-drag.js",
     "js/atlas.js",
     "js/black-hole-view.js",
     "js/black-holes.js",

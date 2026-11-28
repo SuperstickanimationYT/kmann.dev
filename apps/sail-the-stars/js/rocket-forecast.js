@@ -53,13 +53,14 @@ function watchedChildren(wells, holderName, range, motions, ms) {
     });
 }
 
-function firstEvent(start, holder, children, { range, motions, fromMs, untilMs, groundKm, edgeKm }) {
+function firstEvent(start, holder, children, { range, motions, fromMs, untilMs, groundKm, airKm, edgeKm }) {
   const reachKm = Math.min(holder.reachKm, edgeKm);
   const at = (seconds) => coast(start, holder.gm, seconds);
   const childFrom = (child, state, ms) => subtract(state.positionKm, motions.stateAt(child.body.name, ms).positionKm);
   const happening = (state, ms) => {
     const distance = Math.hypot(...state.positionKm);
     if (distance < groundKm) return { end: 'ground' };
+    if (distance < airKm) return { end: 'air' };
     if (distance > reachKm) return { end: holder.reachKm <= edgeKm ? 'leaves' : 'edge' };
     const entered = children.find((child) => Math.hypot(...childFrom(child, state, ms)) < child.reachKm);
     return entered ? { end: 'enters', next: entered.body.name } : null;
@@ -69,6 +70,7 @@ function firstEvent(start, holder, children, { range, motions, fromMs, untilMs, 
     const speed = Math.hypot(...state.velocityKmS);
     const margins = [];
     if (groundKm > 0 && range.lowest < groundKm) margins.push((distance - groundKm) / speed);
+    if (airKm > 0 && range.lowest < airKm) margins.push((distance - airKm) / speed);
     if (range.highest > reachKm) margins.push((reachKm - distance) / speed);
     for (const child of children) {
       const motion = motions.stateAt(child.body.name, ms);
@@ -102,7 +104,7 @@ function firstEvent(start, holder, children, { range, motions, fromMs, untilMs, 
   return { end: seconds < limit ? 'unfinished' : bound ? 'orbit' : 'horizon', seconds, state };
 }
 
-export function forecastPath(state, { wells, motions, fromMs, atLeastMs = fromMs, groundKm, edgeKm }) {
+export function forecastPath(state, { wells, motions, fromMs, atLeastMs = fromMs, groundKm, airKm = () => 0, edgeKm }) {
   const met = new Map();
   const segments = [];
   let current = { holder: state.holder, positionKm: state.positionKm, velocityKmS: state.velocityKmS };
@@ -114,7 +116,8 @@ export function forecastPath(state, { wells, motions, fromMs, atLeastMs = fromMs
     const untilMs = Math.min(lastMs, Math.max(atLeastMs, ms + range.periodSeconds * 1000));
     const children = watchedChildren(wells, current.holder, range, motions, ms);
     const ground = segments.length ? groundKm(holder.body) : Math.min(groundKm(holder.body), Math.hypot(...current.positionKm));
-    const event = firstEvent(current, holder, children, { range, motions, fromMs: ms, untilMs, groundKm: ground, edgeKm });
+    const air = segments.length ? airKm(holder.body) : Math.min(airKm(holder.body), Math.hypot(...current.positionKm));
+    const event = firstEvent(current, holder, children, { range, motions, fromMs: ms, untilMs, groundKm: ground, airKm: air, edgeKm });
     const toMs = ms + event.seconds * 1000;
     segments.push({ holder: current.holder, fromMs: ms, toMs, start: current, finish: event.state, end: event.end, next: event.next ?? holder.parent, met: met.get(current.holder) ?? null, gm: holder.gm, groundKm: ground, wholeTurn: event.end === 'orbit' && Number.isFinite(range.periodSeconds) });
     if (event.end === 'enters') {
