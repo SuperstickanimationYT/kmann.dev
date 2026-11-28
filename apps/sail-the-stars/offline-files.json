@@ -1,5 +1,5 @@
 {
-  "bytes": 7600771,
+  "bytes": 7608009,
   "files": [
     "./",
     "data/clouds/cover-0.webp",
@@ -64,6 +64,7 @@
     "js/detail-meshes.js",
     "js/dock-buttons.js",
     "js/drainage.js",
+    "js/dropped-stages.js",
     "js/dwarf-planets.js",
     "js/exoplanet-data.js",
     "js/exoplanets.js",
@@ -107,6 +108,7 @@
     "js/rocket-editor.js",
     "js/rocket-exhaust.js",
     "js/rocket-forecast.js",
+    "js/rocket-model.js",
     "js/rocket-path.js",
     "js/rocket-stages.js",
     "js/rocket.js",

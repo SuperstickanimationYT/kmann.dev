@@ -21,10 +21,12 @@ import { segmentPath } from './rocket-path.js';
 import { coast, createMotions, forecastPath, rangeOf } from './rocket-forecast.js';
 import { burnKmS, closestApproach, cutAtBurn, secondsToApsis, stateOnPath } from './rocket-burn.js';
 import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
-import { halfSizeKm } from './spacecraft-models.js';
+import { modelNamed } from './spacecraft-models.js';
+import { FEET_BELOW_ORIGIN_M, modelOfParts, nozzlesOf, podsOf } from './rocket-model.js';
+import { dropAway, FARTHEST_DROPPED_KM, MOST_DROPPED, stepDropped } from './dropped-stages.js';
 import { exhaustOf } from './rocket-exhaust.js';
 import { airAround, fallThroughAir, insideAir, seaLevelsOfPressure } from './air-drag.js';
-import { assemble, burn, deltaVLeftMS, DEFAULT_DESIGN, designFrom, massKg, refuel, separate, shapeOf, stagesLeft, thrustOf } from './rocket-stages.js';
+import { assemble, attachedEntries, burn, deltaVLeftMS, DEFAULT_DESIGN, designFrom, firingEngines, lowestOf, massKg, refuel, separate, shapeOf, stagesLeft, thrustOf } from './rocket-stages.js';
 import { createRocketEditor } from './rocket-editor.js';
 import { circularOrbit, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
@@ -409,7 +411,7 @@ function useDesign(design) {
     localStorage.setItem(ROCKET_DESIGN_STORAGE_KEY, JSON.stringify(design));
   } catch {}
   if (!rocket?.vehicle) return;
-  rocket.vehicle = assemble(design);
+  rebuildRocket(design);
   rocket.warnedDry = false;
   showStatus('New rocket built, tanks full.');
 }
@@ -1433,7 +1435,7 @@ const rocketOutside = () => rocketAboard() && rocket.view !== 'inside';
 function setRocket(on) {
   if (rocket && rocket.view !== 'inside') backInsideRocket();
   editorPanel.hidden = true;
-  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
+  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, model: null, bottomM: 0, lengthM: 0, pods: [0, 0], dropped: [], throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
   showBurnPanel(false);
   rocketToggle.checked = on;
   rocketViewButton.setAttribute('aria-pressed', 'false');
@@ -1488,14 +1490,32 @@ function stepThrottle(steps) {
   setThrottle(Math.round(rocket.throttle / THROTTLE_STEP + steps) * THROTTLE_STEP);
 }
 
+function rebuildRocket(design) {
+  rocket.vehicle = assemble(design);
+  refreshRocketLook();
+}
+
+function refreshRocketLook() {
+  const parts = attachedEntries(rocket.vehicle);
+  rocket.bottomM = lowestOf(parts);
+  rocket.model = modelOfParts(parts, rocket.bottomM);
+  rocket.pods = podsOf(rocket.vehicle.entries[rocket.vehicle.root], rocket.bottomM);
+  rocket.lengthM = shapeOf(rocket.vehicle).lengthM;
+}
+
 function dropStage() {
   if (!rocketAboard() || !rocket.vehicle) return;
   const before = massKg(rocket.vehicle);
-  if (!separate(rocket.vehicle).length) {
+  const bottomM = rocket.bottomM;
+  const dropped = separate(rocket.vehicle);
+  if (!dropped.length) {
     showStatus('No stages left to drop.');
     return;
   }
   rocket.warnedDry = false;
+  refreshRocketLook();
+  rocket.dropped = [...rocket.dropped, dropAway(dropped, { state: rocket.state, basis: game.ship, model: modelOfParts(dropped, bottomM) })].slice(-MOST_DROPPED);
+  if (rocket.state.positionKm) rocket.state = { ...rocket.state, positionKm: add(rocket.state.positionKm, scale(game.ship.forward, (rocket.bottomM - bottomM) / 1000)) };
   const left = stagesLeft(rocket.vehicle);
   showStatus(`Stage dropped: ${Math.round((before - massKg(rocket.vehicle)) / 1000)} t gone, ${left ? `${left} more to drop` : 'last stage now'}.`);
 }
@@ -1558,7 +1578,8 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   const fresh = !rocket.state || rocket.camera !== game.camera || rocket.system !== system || !wells.has(rocket.state.holder);
   if (fresh) {
     if (rocket.plan) endPlan();
-    rocket.vehicle = assemble(rocketDesign);
+    rebuildRocket(rocketDesign);
+    rocket.dropped = [];
     const well = wellAround(wells, star, framedFromSunKm);
     rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms, wells);
     if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
@@ -1569,6 +1590,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
     rocket.state = flight.state;
     if (flight.landed) touchDown(wells.get(flight.state.holder), flight.ms);
   }
+  if (!fresh) stepDroppedStages(wells, bodiesBefore, ms);
   rocket.stepSeconds = fresh ? 0 : (ms - rocket.ms) / 1000;
   if (rocket.firing && rocket.stepSeconds > 0 && !unlimitedFuelToggle.checked) burn(rocket.vehicle, rocket.stepSeconds, rocket.firing);
   rocket.ms = ms;
@@ -1583,32 +1605,55 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   return add(well.body.fromSunKm, offsetKm);
 }
 
+function offsetOf(state) {
+  return state.landedKm ? fromBodyLocal(bodyNamed(state.holder), state.landedKm) : state.positionKm;
+}
+
+function stepDroppedStages(wells, bodiesBefore, ms) {
+  const settle = (state) => {
+    const { body } = wells.get(state.holder);
+    return { holder: state.holder, landedKm: toBodyLocal(body, scale(state.positionKm, lowestDistanceKm(body, state.positionKm) / Math.hypot(...state.positionKm))) };
+  };
+  const flight = { wells, before: bodiesBefore ?? solarBodies, now: solarBodies, fromMs: rocket.ms, toMs: ms, placeAt: system.place, groundKm: lowestDistanceKm, airOf: rocketAir, settle };
+  const rocketKm = offsetOf(rocket.state);
+  rocket.dropped = rocket.dropped
+    .map((stage) => stepDropped(stage, flight))
+    .filter(({ state }) => state.holder === rocket.state.holder && Math.hypot(...subtract(offsetOf(state), rocketKm)) < FARTHEST_DROPPED_KM);
+}
+
 const systemEdgeKm = () => SYSTEM_REACH_PC * KM_PER_PC;
 const OUTSIDE_VIEW_PATH_SHARE = 3;
 const OUTSIDE_VIEW_NEAREST_RADII = 1;
 const OUTSIDE_VIEW_SYSTEM_SHARE = 0.3;
 const OUTSIDE_VIEW_TILT_RADIANS = (20 * Math.PI) / 180;
 const ROCKET_NAME = 'Your rocket';
+const DROPPED_NAME = 'Dropped stage';
 
 function rocketInView() {
   if (!rocketOutside() || !rocket.shipFromSunKm) return [];
   const here = rocket.shipFromSunKm;
+  const eyeFromSunKm = subtract(here, rocket.shipFromEyeKm);
   const star = solarBodies.find(({ kind }) => kind === 'star');
-  const body = {
-    name: ROCKET_NAME,
+  const craftBody = (name, model, fromSunKm, state, basis) => ({
+    name,
     kind: 'craft',
-    model: 'rocket',
-    radiusKm: halfSizeKm('rocket'),
-    parent: rocket.state.holder,
-    landed: Boolean(rocket.state.landedKm),
-    fromSunKm: here,
-    north: game.ship.forward,
-    meridian: game.ship.up,
-    sunward: normalize(subtract(star.fromSunKm, here)),
-    sunlitShare: sunShareVisible(solarBodies.map((other) => ({ body: other, offsetKm: subtract(other.fromSunKm, here) })), ROCKET_NAME),
-  };
+    model,
+    radiusKm: modelNamed(model).radiusMetres / 1000,
+    parent: state.holder,
+    landed: Boolean(state.landedKm),
+    fromSunKm,
+    north: basis.forward,
+    meridian: basis.up,
+    sunward: normalize(subtract(star.fromSunKm, fromSunKm)),
+    sunlitShare: sunShareVisible(solarBodies.map((other) => ({ body: other, offsetKm: subtract(other.fromSunKm, fromSunKm) })), name),
+  });
+  const body = craftBody(ROCKET_NAME, rocket.model, here, rocket.state, game.ship);
   body.exhaust = rocketExhaust(body);
-  return [{ body, offsetKm: rocket.shipFromEyeKm }];
+  const dropped = rocket.dropped.map((stage, k) => {
+    const fromSunKm = add(bodyNamed(stage.state.holder).fromSunKm, offsetOf(stage.state));
+    return { body: craftBody(`${DROPPED_NAME} ${k + 1}`, stage.model, fromSunKm, stage.state, stage.basis), offsetKm: subtract(fromSunKm, eyeFromSunKm) };
+  });
+  return [{ body, offsetKm: rocket.shipFromEyeKm }, ...dropped];
 }
 
 const EXHAUST_GROUND_CHECK_METRES = 60;
@@ -1618,7 +1663,7 @@ function rocketExhaust(body) {
   const axes = [body.meridian, cross(body.north, body.meridian), body.north];
   const inModel = (vector) => axes.map((axis) => dot(axis, vector));
   const holder = bodyNamed(rocket.state.holder);
-  const offsetKm = rocket.state.landedKm ? fromBodyLocal(holder, rocket.state.landedKm) : rocket.state.positionKm;
+  const offsetKm = offsetOf(rocket.state);
   const distanceKm = Math.hypot(...offsetKm);
   const nearGround = holder.kind !== 'craft' && distanceKm - holder.radiusKm < EXHAUST_GROUND_CHECK_METRES / 1000 + GROUND_CHECK_KM;
   const groundMetres = nearGround ? (distanceKm - lowestDistanceKm(holder, offsetKm)) * 1000 + EYE_HEIGHT_METRES : Infinity;
@@ -1627,6 +1672,8 @@ function rocketExhaust(body) {
     pushInModel: inModel(add(scale(game.ship.forward, rocket.firing), rocket.jets ?? [0, 0, 0])),
     groundUpInModel: touching ? inModel(normalize(offsetKm)) : null,
     groundMetres,
+    nozzles: rocket.firing ? nozzlesOf(firingEngines(rocket.vehicle), rocket.bottomM) : [],
+    pods: rocket.pods,
   });
 }
 
@@ -1638,9 +1685,11 @@ function pathFramingKm() {
 }
 
 const CHASE_VIEW_KM = 0.045;
+const CHASE_VIEW_LENGTHS = 2.2;
 const CHASE_VIEW_RISE_RADIANS = (25 * Math.PI) / 180;
 const LEVEL_ENOUGH = 0.3;
-const ROCKET_MIDDLE_KM = 0.005;
+const chaseViewKm = () => Math.max(CHASE_VIEW_KM, (CHASE_VIEW_LENGTHS * rocket.lengthM) / 1000);
+const rocketMiddleKm = () => (rocket.lengthM / 2 - FEET_BELOW_ORIGIN_M) / 1000;
 const CAMERA_ZOOM_RANGE = [0.2, 500];
 const NEXT_ROCKET_VIEW = { chase: 'orbit', orbit: 'chase' };
 const ROCKET_VIEW_NEWS = {
@@ -1666,8 +1715,8 @@ function awayBehindRocket() {
 
 function rocketEyeFromSunKm(shipFromSunKm) {
   const chasing = rocket.view === 'chase';
-  const aimedAt = chasing ? add(shipFromSunKm, scale(game.ship.forward, ROCKET_MIDDLE_KM)) : shipFromSunKm;
-  const distanceKm = Math.min((chasing ? CHASE_VIEW_KM : rocket.orbitViewKm) * rocket.zoom, OUTSIDE_VIEW_SYSTEM_SHARE * systemEdgeKm());
+  const aimedAt = chasing ? add(shipFromSunKm, scale(game.ship.forward, rocketMiddleKm())) : shipFromSunKm;
+  const distanceKm = Math.min((chasing ? chaseViewKm() : rocket.orbitViewKm) * rocket.zoom, OUTSIDE_VIEW_SYSTEM_SHARE * systemEdgeKm());
   return add(aimedAt, scale(rocket.away, distanceKm));
 }
 

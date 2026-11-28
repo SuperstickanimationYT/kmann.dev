@@ -83,7 +83,9 @@ function reachable(vehicle, from, passes) {
   return seen;
 }
 
-const attachedEntries = (vehicle) => vehicle.entries.filter(({ id }) => vehicle.attached.has(id));
+export const attachedEntries = (vehicle) => vehicle.entries.filter(({ id }) => vehicle.attached.has(id));
+
+export const lowestOf = (entries) => Math.min(...entries.map(({ y }) => y));
 
 function sections(vehicle) {
   const found = [];
@@ -117,6 +119,8 @@ function firingSections(vehicle) {
     .map((members) => ({ members, engines: members.filter((entry) => entry.type === 'engine' && nozzleFree(vehicle, entry)).reduce((sum, entry) => sum + entry.copies, 0), tanks: members.filter((entry) => entry.fuelKg > 0) }))
     .filter(({ engines, tanks }) => engines > 0 && tanks.length);
 }
+
+export const firingEngines = (vehicle) => firingSections(vehicle).flatMap(({ members }) => members.filter((entry) => entry.type === 'engine' && nozzleFree(vehicle, entry)));
 
 export function thrustOf(vehicle, pressureShare) {
   const engine = engineAt(pressureShare);
