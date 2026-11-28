@@ -1435,7 +1435,7 @@ const rocketOutside = () => rocketAboard() && rocket.view !== 'inside';
 function setRocket(on) {
   if (rocket && rocket.view !== 'inside') backInsideRocket();
   editorPanel.hidden = true;
-  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, model: null, bottomM: 0, lengthM: 0, pods: [0, 0], dropped: [], parachutes: [], hasLegs: false, chute: { state: 'packed', openedMs: 0 }, trail: null, throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
+  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, model: null, bottomM: 0, lengthM: 0, pods: [0, 0], dropped: [], parachutes: [], hasLegs: false, chute: { state: 'packed', openedMs: 0 }, trail: null, launch: null, throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
   showBurnPanel(false);
   rocketToggle.checked = on;
   rocketViewButton.setAttribute('aria-pressed', 'false');
@@ -1645,6 +1645,7 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
     const well = wellAround(wells, star, framedFromSunKm);
     rocket.state = (firstStart && padStart(wells, well, ms)) || rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms, wells);
     if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
+    rocket.launch = { state: rocket.state, ship: game.ship };
   } else if (rocket.state.landedKm) {
     liftOff(wells.get(rocket.state.holder), ms, (ms - rocket.ms) / 1000);
   } else {
@@ -1666,6 +1667,23 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   rocket.seaLevels = seaLevelsOfPressure(rocketAir(well.body), offsetKm);
   rocket.engines = describeEngines();
   return add(well.body.fromSunKm, offsetKm);
+}
+
+function relaunch() {
+  if (!rocketAboard() || !rocket.launch) return;
+  if (rocket.plan) endPlan();
+  idleEngines();
+  rebuildRocket(rocketDesign);
+  rocket.dropped = [];
+  rocket.warnedDry = false;
+  rocket.state = rocket.launch.state;
+  game.ship = rocket.launch.ship;
+  const { holder, landedKm } = rocket.state;
+  if (landedKm) {
+    faceDirection(fromBodyLocal(bodyNamed(holder), landedKm), bodyNamed(holder).north);
+    setRotatingWith(holder);
+  }
+  showStatus('Relaunched: the whole rocket again, tanks full, back where it started.');
 }
 
 function offsetOf(state) {
@@ -1767,7 +1785,7 @@ const rocketMiddleKm = () => (rocket.lengthM / 2 - FEET_BELOW_ORIGIN_M) / 1000;
 const CAMERA_ZOOM_RANGE = [0.2, 500];
 const NEXT_ROCKET_VIEW = { chase: 'orbit', orbit: 'chase' };
 const ROCKET_VIEW_NEWS = {
-  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. W fires the engines, the other flight keys small side thrusters; Z and X set the throttle, Space drops a stage or opens the parachute, G builds a new rocket.',
+  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. W fires the engines, the other flight keys small side thrusters; Z and X set the throttle, Space drops a stage or opens the parachute, G builds a new rocket, N relaunches it whole.',
   chaseByTouch: 'Chase view: drag to swing the camera, pinch to zoom. Tap Turn to steer the rocket with the stick.',
   orbit: 'Orbit view: the whole path, from above the orbit. Zoom stays fixed as the path changes; the wheel or a pinch changes it.',
 };
@@ -3048,6 +3066,7 @@ window.addEventListener('keydown', (event) => {
   else if (event.code === 'KeyV' && rocketAboard()) nextRocketView();
   else if (event.code === 'KeyB' && rocketAboard()) toggleBurnPanel();
   else if (event.code === 'KeyG' && rocketAboard()) openEditor();
+  else if (event.code === 'KeyN' && rocketAboard()) relaunch();
   else if (BURN_KEYS.has(event.code) && rocket?.plan) {
     burnKeyStreak = event.repeat ? burnKeyStreak + 1 : 0;
     nudgeBurn(...BURN_KEYS.get(event.code), burnKeyStreak);
@@ -3116,6 +3135,11 @@ rocketViewButton.addEventListener('click', nextRocketView);
 stageButton.addEventListener('click', dropStage);
 buildButton.addEventListener('click', openEditor);
 for (const button of editorPanel.querySelectorAll('[data-editor-done], [data-editor-close]')) button.addEventListener('click', closeEditor);
+editorPanel.querySelector('[data-editor-relaunch]').addEventListener('click', () => {
+  if (!editor.finish()) return;
+  view.focus();
+  relaunch();
+});
 rocketTurnButton.addEventListener('click', () => rocket && setRocketTurning(!rocket.turning));
 burnButton.addEventListener('click', toggleBurnPanel);
 $('[data-burn-close]').addEventListener('click', () => showBurnPanel(false));
