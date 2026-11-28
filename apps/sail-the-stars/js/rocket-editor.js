@@ -8,6 +8,7 @@ const PART_NAMES = {
   engine: 'Engine',
   separator: 'Separator',
   sideSeparator: 'Side separator',
+  legs: 'Landing legs',
 };
 const PALETTE = Object.keys(PART_NAMES);
 
@@ -19,6 +20,7 @@ const OUTLINES = {
   engine: [[0.28, 0], [0.72, 0], [0.72, 0.3], [1, 1], [0, 1], [0.28, 0.3]],
   separator: [[0, 0], [1, 0], [1, 1], [0, 1]],
   sideSeparator: [[0, 0], [1, 0], [1, 1], [0, 1]],
+  legs: [[0, 0], [0.3, 0], [1, 0.9], [1, 1], [0.6, 1], [0.6, 0.9], [0, 0.2]],
 };
 const DETAIL_LINES = {
   tank: [[[0, 0.1], [1, 0.1]], [[0, 0.9], [1, 0.9]]],
@@ -80,8 +82,8 @@ function snapped(type, copiesWanted, rawX, rawY, others, metresPerPixel) {
   return { placed, problem: problemWith(placed, others) };
 }
 
-function tracePart(context, type, left, top, width, height) {
-  const at = ([u, v]) => [left + u * width, top + v * height];
+function tracePart(context, type, left, top, width, height, mirrored = false) {
+  const at = ([u, v]) => [left + (mirrored ? 1 - u : u) * width, top + v * height];
   context.beginPath();
   OUTLINES[type].forEach((corner, k) => context[k ? 'lineTo' : 'moveTo'](...at(corner)));
   context.closePath();
@@ -162,7 +164,7 @@ export function createRocketEditor(panel, { onDone }) {
     for (const sign of images(part)) {
       const left = view.originX + (part.x * sign - widthM / 2) * view.scale;
       const top = view.originY - (part.y + heightM) * view.scale;
-      tracePart(context, part.type, left, top, widthM * view.scale, heightM * view.scale);
+      tracePart(context, part.type, left, top, widthM * view.scale, heightM * view.scale, sign < 0);
     }
     if (part.copies > 1) {
       context.fillStyle = colour;
@@ -230,7 +232,7 @@ export function createRocketEditor(panel, { onDone }) {
     stages.forEach((stage, k) => {
       const thrustN = k ? stage.vacuumThrustN : stage.seaLevelThrustN;
       const item = document.createElement('li');
-      item.textContent = stage.deltaVMS ? `${formatKmS(stage.deltaVMS)}, ${Math.round(stage.burnSeconds)} s, thrust ${(thrustN / (stage.startKg * STANDARD_GRAVITY)).toFixed(2)} × weight` : 'Nothing fires';
+      item.textContent = stage.deltaVMS ? `${formatKmS(stage.deltaVMS)}, ${Math.round(stage.burnSeconds)} s, thrust ${(thrustN / (stage.startKg * STANDARD_GRAVITY)).toFixed(2)} × weight` : 'No engine';
       stagesList.append(item);
     });
     const deltaVMS = stages.reduce((sum, { deltaVMS: part }) => sum + part, 0);

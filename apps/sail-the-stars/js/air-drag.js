@@ -41,11 +41,15 @@ export const seaLevelsOfPressure = (air, positionKm) => (air ? (air.surfaceKPa *
 
 const windAt = (air, positionKm) => cross(air.spin, positionKm);
 
+export const airVelocityKmS = (air, state) => (air ? subtract(state.velocityKmS, windAt(air, state.positionKm)) : state.velocityKmS);
+
+export const dynamicPressurePa = (air, state) => (insideAir(air, state.positionKm) ? 0.5 * densityAt(air, state.positionKm) * (1000 * Math.hypot(...airVelocityKmS(air, state))) ** 2 : 0);
+
 function dragAreaM2(craft, heading) {
   const along = dot(craft.noseward, heading);
   const across = Math.sqrt(Math.max(0, 1 - along * along));
   const endCoefficient = along > 0 ? DRAG_COEFFICIENT.noseFirst : DRAG_COEFFICIENT.tailFirst;
-  return endCoefficient * craft.endAreaM2 * Math.abs(along) + DRAG_COEFFICIENT.sideways * craft.sideAreaM2 * across;
+  return endCoefficient * craft.endAreaM2 * Math.abs(along) + DRAG_COEFFICIENT.sideways * craft.sideAreaM2 * across + (craft.canopyDragAreaM2 ?? 0);
 }
 
 function slowingPerKm(air, state, craft) {
