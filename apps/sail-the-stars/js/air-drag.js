@@ -2,22 +2,19 @@ import { coastedState } from './kepler.js';
 import { add, cross, dot, scale, subtract } from './vectors.js';
 
 const MEASURED_AIR = {
-  Venus: { kgPerM3: 65, scaleKm: 15.9 },
-  Earth: { kgPerM3: 1.217, scaleKm: 8.5 },
-  Mars: { kgPerM3: 0.02, scaleKm: 11.1 },
-  Titan: { kgPerM3: 5.3, scaleKm: 21 },
-  Jupiter: { kgPerM3: 0.16, scaleKm: 27 },
-  Saturn: { kgPerM3: 0.19, scaleKm: 59.5 },
-  Uranus: { kgPerM3: 0.42, scaleKm: 27.7 },
-  Neptune: { kgPerM3: 0.45, scaleKm: 19.7 },
+  Venus: { kgPerM3: 65, scaleKm: 15.9, surfaceKPa: 9200 },
+  Earth: { kgPerM3: 1.217, scaleKm: 8.5, surfaceKPa: 101.325 },
+  Mars: { kgPerM3: 0.02, scaleKm: 11.1, surfaceKPa: 0.636 },
+  Titan: { kgPerM3: 5.3, scaleKm: 21, surfaceKPa: 146.7 },
+  Jupiter: { kgPerM3: 0.16, scaleKm: 27, surfaceKPa: 100 },
+  Saturn: { kgPerM3: 0.19, scaleKm: 59.5, surfaceKPa: 100 },
+  Uranus: { kgPerM3: 0.42, scaleKm: 27.7, surfaceKPa: 100 },
+  Neptune: { kgPerM3: 0.45, scaleKm: 19.7, surfaceKPa: 100 },
 };
+const SEA_LEVEL_KPA = 101.325;
 const THINNEST_KG_PER_M3 = 1e-9;
 const DEEPEST_SCALE_HEIGHTS = 5;
 
-export const ROCKET_KG = 30000;
-const ROCKET_RADIUS_M = 1.5;
-const END_AREA_M2 = Math.PI * ROCKET_RADIUS_M ** 2;
-const SIDE_AREA_M2 = 36;
 const DRAG_COEFFICIENT = { noseFirst: 0.5, tailFirst: 1.2, sideways: 1.2 };
 
 const LARGEST_SLOWING_PER_STEP = 0.1;
@@ -36,34 +33,38 @@ export function airAround(body, spinRadiansPerSecondOf) {
 
 export const insideAir = (air, positionKm) => Boolean(air) && Math.hypot(...positionKm) - air.radiusKm < air.topKm;
 
-const densityAt = (air, positionKm) => air.kgPerM3 * Math.exp(Math.min(DEEPEST_SCALE_HEIGHTS, (air.radiusKm - Math.hypot(...positionKm)) / air.scaleKm));
+const scaleHeightsDown = (air, positionKm) => Math.min(DEEPEST_SCALE_HEIGHTS, (air.radiusKm - Math.hypot(...positionKm)) / air.scaleKm);
+
+const densityAt = (air, positionKm) => air.kgPerM3 * Math.exp(scaleHeightsDown(air, positionKm));
+
+export const seaLevelsOfPressure = (air, positionKm) => (air ? (air.surfaceKPa * Math.exp(scaleHeightsDown(air, positionKm))) / SEA_LEVEL_KPA : 0);
 
 const windAt = (air, positionKm) => cross(air.spin, positionKm);
 
-function dragAreaM2(noseward, heading) {
-  const along = dot(noseward, heading);
+function dragAreaM2(craft, heading) {
+  const along = dot(craft.noseward, heading);
   const across = Math.sqrt(Math.max(0, 1 - along * along));
   const endCoefficient = along > 0 ? DRAG_COEFFICIENT.noseFirst : DRAG_COEFFICIENT.tailFirst;
-  return endCoefficient * END_AREA_M2 * Math.abs(along) + DRAG_COEFFICIENT.sideways * SIDE_AREA_M2 * across;
+  return endCoefficient * craft.endAreaM2 * Math.abs(along) + DRAG_COEFFICIENT.sideways * craft.sideAreaM2 * across;
 }
 
-function slowingPerKm(air, state, noseward) {
+function slowingPerKm(air, state, craft) {
   const throughAirKmS = subtract(state.velocityKmS, windAt(air, state.positionKm));
   const speedKmS = Math.hypot(...throughAirKmS);
   if (!speedKmS) return { throughAirKmS, speedKmS, perKm: 0 };
-  const areaM2 = dragAreaM2(noseward, scale(throughAirKmS, 1 / speedKmS));
-  return { throughAirKmS, speedKmS, perKm: (1000 * densityAt(air, state.positionKm) * areaM2) / (2 * ROCKET_KG) };
+  const areaM2 = dragAreaM2(craft, scale(throughAirKmS, 1 / speedKmS));
+  return { throughAirKmS, speedKmS, perKm: (1000 * densityAt(air, state.positionKm) * areaM2) / (2 * craft.kg) };
 }
 
-export function dragged(state, air, noseward, seconds) {
+export function dragged(state, air, craft, seconds) {
   if (!insideAir(air, state.positionKm)) return state;
-  const { throughAirKmS, speedKmS, perKm } = slowingPerKm(air, state, noseward);
+  const { throughAirKmS, speedKmS, perKm } = slowingPerKm(air, state, craft);
   const kept = 1 / (1 + perKm * speedKmS * seconds);
   return { ...state, velocityKmS: add(windAt(air, state.positionKm), scale(throughAirKmS, kept)) };
 }
 
-export function airStepSeconds(state, air, noseward) {
-  const { speedKmS, perKm } = slowingPerKm(air, state, noseward);
+export function airStepSeconds(state, air, craft) {
+  const { speedKmS, perKm } = slowingPerKm(air, state, craft);
   const speed = Math.max(speedKmS, Math.hypot(...state.velocityKmS), 1e-9);
   return Math.min(LARGEST_SLOWING_PER_STEP / Math.max(perKm * speedKmS, 1e-12), (LARGEST_CLIMB_PER_STEP_SCALE_HEIGHTS * air.scaleKm) / speed);
 }
@@ -78,14 +79,14 @@ const FALL_STEP_SECONDS = [0.05, 20];
 const FALL_LONGEST_SECONDS = 6 * 3600;
 const FALL_PATH_POINTS = 256;
 
-export function fallThroughAir(start, { air, gm, noseward, groundKm }) {
+export function fallThroughAir(start, { air, gm, craft, groundKm }) {
   let state = start;
   let seconds = 0;
   const pointsKm = [start.positionKm];
   let end = 'unfinished';
   for (let step = 0; step < FALL_MOST_STEPS && seconds < FALL_LONGEST_SECONDS; step++) {
-    const stepSeconds = Math.min(FALL_STEP_SECONDS[1], Math.max(FALL_STEP_SECONDS[0], airStepSeconds(state, air, noseward)));
-    state = dragged(coasted(dragged(state, air, noseward, stepSeconds / 2), gm, stepSeconds), air, noseward, stepSeconds / 2);
+    const stepSeconds = Math.min(FALL_STEP_SECONDS[1], Math.max(FALL_STEP_SECONDS[0], airStepSeconds(state, air, craft)));
+    state = dragged(coasted(dragged(state, air, craft, stepSeconds / 2), gm, stepSeconds), air, craft, stepSeconds / 2);
     seconds += stepSeconds;
     pointsKm.push(state.positionKm);
     const distanceKm = Math.hypot(...state.positionKm);

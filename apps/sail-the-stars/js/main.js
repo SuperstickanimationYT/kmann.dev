@@ -23,8 +23,9 @@ import { burnKmS, closestApproach, cutAtBurn, secondsToApsis, stateOnPath } from
 import { cameraBasis, cameraPole, swungAround } from './rocket-camera.js';
 import { halfSizeKm } from './spacecraft-models.js';
 import { exhaustOf } from './rocket-exhaust.js';
-import { airAround, fallThroughAir, insideAir } from './air-drag.js';
-import { circularOrbit, ENGINE_KM_PER_S2, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
+import { airAround, fallThroughAir, insideAir, seaLevelsOfPressure } from './air-drag.js';
+import { assemble, burn, deltaVLeftMS, DEFAULT_DESIGN, massKg, refuel, separate, shapeOf, stagesLeft, thrustOf } from './rocket-stages.js';
+import { circularOrbit, FASTEST_BURN_RATE, flown, gravityWells, orbitalPlanePole, pullKmS2, relativeMotions, wellAround } from './rocket.js';
 import { studioPanelOpen, toggleStudioPanel } from '../../../assets/js/studio.js';
 import { loadCloudMapsOf } from './clouds.js';
 import { CLOUD_MAP_SIZE, SIMULATED_CLOUD_SIZE } from './shaders.js';
@@ -91,7 +92,7 @@ const TAP_DISTANCE = { mouse: 6, touch: 12 };
 const ARCSEC_PER_RADIAN = 206264.8;
 const GUIDE_FONT = 13;
 const MOTION_BLUR_STORAGE_KEY = 'sail-the-stars-motion-blur';
-const ENGINE_STORAGE_KEY = 'sail-the-stars-engine';
+const UNLIMITED_FUEL_STORAGE_KEY = 'sail-the-stars-unlimited-fuel';
 const TRUE_SIZE_STORAGE_KEY = 'sail-the-stars-true-size';
 const MUSIC_STORAGE_KEY = 'find-home-music';
 const MENU_STEADY_PIXELS = 0.5;
@@ -127,8 +128,8 @@ const restartButton = $('[data-restart]');
 const selectField = $('[data-select-field]');
 const longExposureField = $('[data-long-exposure-field]');
 const rocketField = $('[data-rocket-field]');
-const engineField = $('[data-engine-field]');
-const engineSelect = $('[data-engine]');
+const unlimitedFuelField = $('[data-unlimited-fuel-field]');
+const unlimitedFuelToggle = $('[data-unlimited-fuel]');
 const rocketToggle = $('[data-rocket]');
 const motionBlurToggle = $('[data-motion-blur]');
 const trueSizeToggle = $('[data-true-size]');
@@ -390,18 +391,16 @@ function endIntro() {
   view.focus();
 }
 
-const engineKmS2 = () => ENGINE_KM_PER_S2 * Number(engineSelect.value);
-
-function recallEngine() {
+function recallUnlimitedFuel() {
   try {
-    const saved = localStorage.getItem(ENGINE_STORAGE_KEY);
-    if (saved && [...engineSelect.options].some(({ value }) => value === saved)) engineSelect.value = saved;
+    unlimitedFuelToggle.checked = localStorage.getItem(UNLIMITED_FUEL_STORAGE_KEY) === 'on';
   } catch {}
 }
 
-function rememberEngine() {
+function unlimitedFuelChanged() {
+  if (unlimitedFuelToggle.checked && rocket?.vehicle) refuel(rocket.vehicle);
   try {
-    localStorage.setItem(ENGINE_STORAGE_KEY, engineSelect.value);
+    localStorage.setItem(UNLIMITED_FUEL_STORAGE_KEY, unlimitedFuelToggle.checked ? 'on' : 'off');
   } catch {}
 }
 
@@ -552,6 +551,9 @@ function drawSelectedPath(context, width, height) {
 }
 const followButton = $('[data-follow]');
 const rocketViewButton = $('[data-rocket-view]');
+const stageButton = $('[data-drop-stage]');
+const enginesField = $('[data-engines-field]');
+const enginesReadout = $('[data-engines]');
 const rocketTurnButton = $('[data-rocket-turn]');
 const burnButton = $('[data-burn-open]');
 const burnPanel = $('[data-burn]');
@@ -576,6 +578,7 @@ function showCompanionButtons() {
   const near = Boolean(holder) && holder.kind !== 'star';
   followButton.hidden = !near || rocketAboard();
   rocketViewButton.hidden = !rocketAboard();
+  stageButton.hidden = !rocketAboard() || !rocket.vehicle || !stagesLeft(rocket.vehicle);
   rocketTurnButton.hidden = !rocketOutside();
   burnButton.hidden = !rocketAboard();
   if (burnButton.hidden && !burnPanel.hidden) showBurnPanel(false);
@@ -612,7 +615,7 @@ function setMode(name) {
   if (!mode.solarSystem) timePanel.hidden = true;
   longExposureField.hidden = !mode.longExposure;
   rocketField.hidden = mode !== MODES.explore;
-  engineField.hidden = rocketField.hidden;
+  unlimitedFuelField.hidden = rocketField.hidden;
   if (rocketField.hidden && rocket) setRocket(false);
   solarNote.hidden = !mode.solarSystem;
   exploreBrief.hidden = mode !== MODES.explore;
@@ -1142,7 +1145,7 @@ let thrusting = false;
 
 function flightStep(seconds) {
   thrusting = false;
-  if (rocket) rocket.push = [0, 0, 0];
+  if (rocket) idleEngines();
   if (menu || intro || photo?.running || warp || aim || glide) return;
   const stickTurns = rocketOutside() && rocket.turning;
   const thrustStick = stickTurns ? { across: 0, along: 0 } : stick.push;
@@ -1402,7 +1405,7 @@ const rocketOutside = () => rocketAboard() && rocket.view !== 'inside';
 
 function setRocket(on) {
   if (rocket && rocket.view !== 'inside') backInsideRocket();
-  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], readout: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
+  rocket = on ? { state: null, ms: simNow(), stepSeconds: 0, camera: null, system: null, push: [0, 0, 0], firing: 0, jets: null, vehicle: null, throttle: 1, seaLevels: 0, warnedDry: false, readout: '', engines: '', path: null, plan: null, pointing: false, burnLeftKmS: null, view: 'inside', away: [0, 0, 1], outward: [0, 0, 1], zoom: 1, turning: false, shipFromEyeKm: [0, 0, 0], shipFromSunKm: null } : null;
   showBurnPanel(false);
   rocketToggle.checked = on;
   rocketViewButton.setAttribute('aria-pressed', 'false');
@@ -1411,15 +1414,69 @@ function setRocket(on) {
   showStatus(on ? `Rocket on: gravity is real now. ${ROCKET_VIEW_NEWS[touchScreen.matches ? 'chaseByTouch' : 'chase']}` : 'Rocket off: thrusters fly at a set speed again.');
 }
 
+const SIDE_THRUSTERS_N = 6400;
+const THROTTLE_RANGE = [0.1, 1];
+const THROTTLE_STEP = 0.1;
+
+function idleEngines() {
+  rocket.push = [0, 0, 0];
+  rocket.firing = 0;
+  rocket.jets = null;
+}
+
+const kmS2From = (newtons) => newtons / massKg(rocket.vehicle) / 1000;
+
+function fire(throttle, jets) {
+  const engines = thrustOf(rocket.vehicle, rocket.seaLevels);
+  rocket.firing = engines.thrustN ? throttle : 0;
+  rocket.jets = jets;
+  rocket.push = add(scale(game.ship.forward, kmS2From(engines.thrustN * rocket.firing)), jets ? scale(jets, kmS2From(SIDE_THRUSTERS_N)) : [0, 0, 0]);
+  if (throttle && !rocket.firing && !rocket.warnedDry) showStatus(whyEnginesCannotFire(engines), 6);
+  rocket.warnedDry = throttle > 0 && !rocket.firing;
+}
+
+function whyEnginesCannotFire({ engines }) {
+  if (engines) return 'The air is too thick here for the engines to fire.';
+  return stagesLeft(rocket.vehicle) ? 'No engine can fire: tanks empty or a part under the nozzle. Space drops a stage.' : 'Out of fuel.';
+}
+
 function aimRocket(move) {
-  const push = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, move[2]));
-  const strength = Math.hypot(...push);
-  if (!strength) return;
+  if (!rocket.vehicle) return;
+  const main = Math.min(1, Math.max(0, move[2]));
+  const sideways = add(add(scale(game.ship.right, move[0]), scale(game.ship.up, move[1])), scale(game.ship.forward, Math.min(0, move[2])));
+  if (!main && !sideways.some(Boolean)) return;
   if (capRate(FASTEST_BURN_RATE)) {
     showStatus(`Time slowed to ${FASTEST_BURN_RATE}× while the engine fires.`);
     return;
   }
-  rocket.push = scale(push, engineKmS2() / Math.max(1, strength));
+  fire(main * rocket.throttle, sideways.some(Boolean) ? normalize(sideways) : null);
+}
+
+function setThrottle(throttle) {
+  rocket.throttle = Math.min(THROTTLE_RANGE[1], Math.max(THROTTLE_RANGE[0], throttle));
+}
+
+function stepThrottle(steps) {
+  setThrottle(Math.round(rocket.throttle / THROTTLE_STEP + steps) * THROTTLE_STEP);
+}
+
+function dropStage() {
+  if (!rocketAboard() || !rocket.vehicle) return;
+  const before = massKg(rocket.vehicle);
+  if (!separate(rocket.vehicle).length) {
+    showStatus('No stages left to drop.');
+    return;
+  }
+  rocket.warnedDry = false;
+  const left = stagesLeft(rocket.vehicle);
+  showStatus(`Stage dropped: ${Math.round((before - massKg(rocket.vehicle)) / 1000)} t gone, ${left ? `${left} more to drop` : 'last stage now'}.`);
+}
+
+const rocketCraft = () => ({ noseward: game.ship.forward, ...shapeOf(rocket.vehicle) });
+
+function describeEngines() {
+  const throttle = `${Math.round(rocket.throttle * 100)}%`;
+  return unlimitedFuelToggle.checked ? `${throttle}, fuel unlimited` : `${throttle}, Δv ${formatRocketSpeed(deltaVLeftMS(rocket.vehicle) / 1000)}`;
 }
 
 function groundVelocityKmS(body, offsetKm, ms) {
@@ -1473,17 +1530,19 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   const fresh = !rocket.state || rocket.camera !== game.camera || rocket.system !== system || !wells.has(rocket.state.holder);
   if (fresh) {
     if (rocket.plan) endPlan();
+    rocket.vehicle = assemble(DEFAULT_DESIGN);
     const well = wellAround(wells, star, framedFromSunKm);
     rocket.state = rocketStart(well, subtract(framedFromSunKm, well.body.fromSunKm), ms, wells);
     if (rocket.view === 'orbit') rocket.away = awayAboveOrbit() ?? rocket.away;
   } else if (rocket.state.landedKm) {
     liftOff(wells.get(rocket.state.holder), ms, (ms - rocket.ms) / 1000);
   } else {
-    const flight = flown(rocket.state, { wells, before: bodiesBefore ?? solarBodies, now: solarBodies, fromMs: rocket.ms, toMs: ms, pushKmS2: rocket.push, placeAt: system.place, groundKm: lowestDistanceKm, drag: { airOf: rocketAir, noseward: game.ship.forward } });
+    const flight = flown(rocket.state, { wells, before: bodiesBefore ?? solarBodies, now: solarBodies, fromMs: rocket.ms, toMs: ms, pushKmS2: rocket.push, placeAt: system.place, groundKm: lowestDistanceKm, drag: { airOf: rocketAir, craft: rocketCraft() } });
     rocket.state = flight.state;
     if (flight.landed) touchDown(wells.get(flight.state.holder), flight.ms);
   }
   rocket.stepSeconds = fresh ? 0 : (ms - rocket.ms) / 1000;
+  if (rocket.firing && rocket.stepSeconds > 0 && !unlimitedFuelToggle.checked) burn(rocket.vehicle, rocket.stepSeconds, rocket.firing);
   rocket.ms = ms;
   rocket.system = system;
   const well = wells.get(rocket.state.holder);
@@ -1491,6 +1550,8 @@ function flyRocket(bodiesBefore, framedFromSunKm) {
   rocket.path = rocket.state.landedKm ? null : rocketForecast(wells, ms);
   if (rocket.plan) followPlan(wells, ms);
   rocket.readout = rocketReadout(well, offsetKm);
+  rocket.seaLevels = seaLevelsOfPressure(rocketAir(well.body), offsetKm);
+  rocket.engines = describeEngines();
   return add(well.body.fromSunKm, offsetKm);
 }
 
@@ -1525,7 +1586,7 @@ function rocketInView() {
 const EXHAUST_GROUND_CHECK_METRES = 60;
 
 function rocketExhaust(body) {
-  if (!rocket.push.some(Boolean)) return null;
+  if (!rocket.firing && !rocket.jets) return null;
   const axes = [body.meridian, cross(body.north, body.meridian), body.north];
   const inModel = (vector) => axes.map((axis) => dot(axis, vector));
   const holder = bodyNamed(rocket.state.holder);
@@ -1535,7 +1596,7 @@ function rocketExhaust(body) {
   const groundMetres = nearGround ? (distanceKm - lowestDistanceKm(holder, offsetKm)) * 1000 + EYE_HEIGHT_METRES : Infinity;
   const touching = groundMetres < EXHAUST_GROUND_CHECK_METRES;
   return exhaustOf({
-    pushInModel: inModel(scale(rocket.push, 1 / engineKmS2())),
+    pushInModel: inModel(add(scale(game.ship.forward, rocket.firing), rocket.jets ?? [0, 0, 0])),
     groundUpInModel: touching ? inModel(normalize(offsetKm)) : null,
     groundMetres,
   });
@@ -1555,7 +1616,7 @@ const ROCKET_MIDDLE_KM = 0.005;
 const CAMERA_ZOOM_RANGE = [0.2, 500];
 const NEXT_ROCKET_VIEW = { chase: 'orbit', orbit: 'chase' };
 const ROCKET_VIEW_NEWS = {
-  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. The flight keys fire along the rocket.',
+  chase: 'Chase view: drag to swing the camera, the arrows and Q/E turn the rocket, the wheel zooms. W fires the engines, the other flight keys small side thrusters; Z and X set the throttle, Space drops a stage.',
   chaseByTouch: 'Chase view: drag to swing the camera, pinch to zoom. Tap Turn to steer the rocket with the stick.',
   orbit: 'Orbit view: the whole path, from above the orbit. Zoom stays fixed as the path changes; the wheel or a pinch changes it.',
 };
@@ -1659,7 +1720,7 @@ function forecastFromAir(state, fromMs, met, options) {
   while (legs.length < MOST_PATH_LEGS) {
     const holder = options.wells.get(current.holder);
     const groundKm = Math.min(lowestDistanceKm(holder.body, current.positionKm), Math.hypot(...current.positionKm));
-    const fall = fallThroughAir(current, { air: rocketAir(holder.body), gm: holder.gm, noseward: game.ship.forward, groundKm });
+    const fall = fallThroughAir(current, { air: rocketAir(holder.body), gm: holder.gm, craft: rocketCraft(), groundKm });
     const toMs = ms + fall.seconds * 1000;
     legs.push({ holder: current.holder, fromMs: ms, toMs, start: current, finish: fall.state, end: fall.end, next: null, met: currentMet, gm: holder.gm, groundKm, wholeTurn: false, pointsKm: fall.pointsKm, marks: [] });
     if (fall.end !== 'out of air') break;
@@ -1743,7 +1804,13 @@ const BURN_KEYS = new Map([
 ]);
 let burnKeyStreak = 0;
 
-const burnSeconds = (plan) => Math.hypot(...plan.kickKmS) / engineKmS2();
+function burnSeconds(plan) {
+  const { thrustN, flowKgS } = thrustOf(rocket.vehicle, rocket.seaLevels);
+  if (!flowKgS) return 0;
+  const exhaustKmS = thrustN / flowKgS / 1000;
+  return (massKg(rocket.vehicle) * -Math.expm1(-Math.hypot(...plan.kickKmS) / exhaustKmS)) / flowKgS;
+}
+
 const burnWindowSeconds = (plan) => burnSeconds(plan) + BURN_WINDOW_PAD_SECONDS;
 
 function planBurn() {
@@ -1865,8 +1932,8 @@ function flyBurn(leftKmS, angleLeft) {
     showStatus(`Time slowed to ${FASTEST_BURN_RATE}× while the engine fires.`);
     return;
   }
-  const fullStepKmS = engineKmS2() * Math.max(rocket.stepSeconds, Number.EPSILON);
-  rocket.push = scale(game.ship.forward, engineKmS2() * Math.min(1, leftKmS / fullStepKmS));
+  const fullStepKmS = kmS2From(thrustOf(rocket.vehicle, rocket.seaLevels).thrustN) * Math.max(rocket.stepSeconds, Number.EPSILON);
+  fire(fullStepKmS ? Math.min(1, leftKmS / fullStepKmS) : 1, null);
 }
 
 function showBurnPanel(open) {
@@ -2281,7 +2348,10 @@ function frame(now) {
   const flyingRocket = rocketAboard() && solarFrame;
   $('[data-speed-label]').textContent = flyingRocket ? 'Rocket' : 'Thrusters';
   $('[data-speed]').textContent = flyingRocket ? rocket.readout : formatSpeed(game.speed);
-  if (touchScreen.matches) showSpeedOnDial(game.speed, { slowest: game.mode.slowestSpeed, top: game.mode.topSpeed, label: formatSpeed(game.speed) });
+  enginesField.hidden = !flyingRocket;
+  if (flyingRocket) enginesReadout.textContent = rocket.engines;
+  if (touchScreen.matches && flyingRocket) showSpeedOnDial(rocket.throttle, { slowest: THROTTLE_RANGE[0], top: THROTTLE_RANGE[1], label: `${Math.round(rocket.throttle * 100)}% thrust` });
+  else if (touchScreen.matches) showSpeedOnDial(game.speed, { slowest: game.mode.slowestSpeed, top: game.mode.topSpeed, label: formatSpeed(game.speed) });
   if (game.mode.solarSystem) showSimTime(now);
   showCompanionButtons();
   if (rocket?.plan && !burnPanel.hidden) refreshBurnPanel();
@@ -2771,7 +2841,8 @@ view.addEventListener(
 );
 
 function changeSpeed(factor) {
-  game.speed = Math.min(game.mode.topSpeed, Math.max(game.mode.slowestSpeed, game.speed * factor));
+  if (rocketAboard()) setThrottle(rocket.throttle * factor);
+  else game.speed = Math.min(game.mode.topSpeed, Math.max(game.mode.slowestSpeed, game.speed * factor));
 }
 
 const ZOOM_IN_KEYS = new Set(['Equal', 'NumpadAdd']);
@@ -2801,8 +2872,16 @@ window.addEventListener('keydown', (event) => {
   if (FLIGHT_KEYS.has(event.code)) {
     held.add(event.code);
     event.preventDefault();
-  } else if (event.code === 'KeyZ') changeSpeed(0.5);
-  else if (event.code === 'KeyX') changeSpeed(2);
+  } else if (event.code === 'KeyZ') {
+    if (rocketAboard()) stepThrottle(-1);
+    else changeSpeed(0.5);
+  } else if (event.code === 'KeyX') {
+    if (rocketAboard()) stepThrottle(1);
+    else changeSpeed(2);
+  } else if (event.code === 'Space' && rocketAboard()) {
+    event.preventDefault();
+    dropStage();
+  }
   else if (event.code === 'KeyT') toggleExposure();
   else if (event.code === 'KeyJ') jump();
   else if (event.code === 'KeyC') faceDirection(game.basis.forward);
@@ -2878,6 +2957,7 @@ $('[data-jump]').addEventListener('click', jump);
 orbitsButton.addEventListener('click', () => setOrbits(!orbitsShown()));
 followButton.addEventListener('click', () => setFollowing(!following));
 rocketViewButton.addEventListener('click', nextRocketView);
+stageButton.addEventListener('click', dropStage);
 rocketTurnButton.addEventListener('click', () => rocket && setRocketTurning(!rocket.turning));
 burnButton.addEventListener('click', toggleBurnPanel);
 $('[data-burn-close]').addEventListener('click', () => showBurnPanel(false));
@@ -3001,8 +3081,8 @@ $('[data-pick-close]').addEventListener('click', clearSelection);
 $('[data-pick-fold]').addEventListener('click', togglePickDetails);
 motionBlurToggle.checked = motionBlurWanted();
 motionBlurToggle.addEventListener('change', rememberMotionBlur);
-recallEngine();
-engineSelect.addEventListener('change', rememberEngine);
+recallUnlimitedFuel();
+unlimitedFuelToggle.addEventListener('change', unlimitedFuelChanged);
 recallTrueSize();
 centimetresPerUnitShown = Number(trueSizeUnitSelect.value);
 trueSizeToggle.addEventListener('change', trueSizeChanged);
