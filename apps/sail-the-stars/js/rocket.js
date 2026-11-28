@@ -2,7 +2,6 @@ import { airStepSeconds, dragged, insideAir } from './air-drag.js';
 import { coastedState, elementsOf } from './kepler.js';
 import { add, cross, dot, normalize, scale, subtract } from './vectors.js';
 
-export const ENGINE_KM_PER_S2 = 0.015;
 export const FASTEST_BURN_RATE = 5;
 
 const SUN_GM = 1.32712440018e11;
@@ -197,11 +196,11 @@ export function flown(state, { wells, before, now, fromMs, toMs, pushKmS2, place
     const finalStep = step === MOST_STEPS_PER_FRAME - 1;
     const air = drag && direction > 0 ? drag.airOf(holder.body) : null;
     const inAir = insideAir(air, current.positionKm);
-    const seconds = finalStep ? leftSeconds : burning || inAir ? Math.min(leftSeconds, burning ? BURN_STEP_SECONDS : Infinity, inAir ? airStepSeconds(current, air, drag.noseward) : Infinity) : stepSeconds(current, holder, children, orbitRange(current, holder.gm), leftSeconds);
+    const seconds = finalStep ? leftSeconds : burning || inAir ? Math.min(leftSeconds, burning ? BURN_STEP_SECONDS : Infinity, inAir ? airStepSeconds(current, air, drag.craft) : Infinity) : stepSeconds(current, holder, children, orbitRange(current, holder.gm), leftSeconds);
     const push = burning ? scale(pushKmS2, 0.5 * direction) : null;
-    if (inAir) current = dragged(current, air, drag.noseward, seconds / 2);
+    if (inAir) current = dragged(current, air, drag.craft, seconds / 2);
     current = push ? kicked(coastFor(kicked(current, push, seconds), holder.gm, seconds * direction), push, seconds) : coastFor(current, holder.gm, seconds * direction);
-    if (inAir) current = dragged(current, air, drag.noseward, seconds / 2);
+    if (inAir) current = dragged(current, air, drag.craft, seconds / 2);
     ms += seconds * 1000 * direction;
     const distance = Math.hypot(...current.positionKm);
     if (distance < GROUND_WATCH_SHARE * holder.body.radiusKm && fallingIn(current) && distance < groundKm(holder.body, current.positionKm)) return { state: current, ms, landed: true };

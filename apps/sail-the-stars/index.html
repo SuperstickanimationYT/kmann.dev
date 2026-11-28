@@ -31,6 +31,7 @@
   <symbol id="icon-follow" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .4l3-3a4.2 4.2 0 0 0-6-6l-1.6 1.6M14 10a4 4 0 0 0-6-.4l-3 3a4.2 4.2 0 0 0 6 6l1.6-1.6"/></symbol>
   <symbol id="icon-rotate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M20.5 9.5A9 9 0 0 0 4 8M3.5 14.5A9 9 0 0 0 20 16M4 3.5V8h4.5M20 20.5V16h-4.5"/></symbol>
   <symbol id="icon-burn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/><path d="M12 12l5.5-5.5M14 6.5h3.5V10"/></symbol>
+  <symbol id="icon-stage" viewBox="0 0 24 24"><path d="M12 2.5l3 3.5v5H9V6zM9 14h6v7.5H9zM5.5 12.5h2M16.5 12.5h2"/></symbol>
   <symbol id="icon-time" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6.5V12l3.7 2.3"/></symbol>
   <symbol id="icon-align" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4.5M12 17.5V22M2 12h4.5M17.5 12H22"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
   <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.300l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.700l1.8-1.8M16.9 7.100l1.8-1.8"/></symbol>
@@ -49,6 +50,7 @@
     <span><span data-clock-label>Mission clock</span> <strong data-clock>0:00:00</strong></span>
     <span class="fh-hud-speed"><span data-speed-label>Thrusters</span> <strong data-speed></strong></span>
     <span data-sim-date-field hidden>Date <strong data-sim-date></strong></span>
+    <span data-engines-field hidden>Engines <strong data-engines></strong></span>
     <span data-energy-field>Warp left <strong data-energy></strong></span>
   </div>
   <aside class="fh-pick" data-pick hidden aria-live="polite">
@@ -110,6 +112,7 @@
       <button type="button" data-atlas-open aria-description="Map of the Milky Way" aria-keyshortcuts="M"><svg class="fh-icon" aria-hidden="true"><use href="#icon-atlas"/></svg><span class="fh-name">Atlas</span></button>
       <button type="button" data-orbits aria-pressed="false" aria-description="Show the paths of planets and moons, and where spacecraft are" aria-keyshortcuts="O" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-orbits"/></svg><span class="fh-name">Orbits</span></button>
       <button type="button" data-rocket-view aria-pressed="false" aria-description="Switch between a chase camera behind the rocket and a view of its whole orbit" aria-keyshortcuts="V" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-outside"/></svg><span class="fh-name">View</span></button>
+      <button type="button" data-drop-stage aria-description="Drop the lowest stage" aria-keyshortcuts="Space" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-stage"/></svg><span class="fh-name">Stage</span></button>
       <button type="button" data-burn-open aria-pressed="false" aria-description="Plan a burn on the rocket's path and see how close it comes to the selected body" aria-keyshortcuts="B" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-burn"/></svg><span class="fh-name">Burn</span></button>
       <button type="button" data-follow aria-pressed="true" aria-description="Move along with it" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-follow"/></svg><span class="fh-name">Follow</span></button>
       <button type="button" data-rotate-with aria-pressed="false" aria-description="Turn along with its spin" hidden><svg class="fh-icon" aria-hidden="true"><use href="#icon-rotate"/></svg><span class="fh-name">Rotate with</span></button>
@@ -209,15 +212,11 @@
       </label>
       <label class="fh-check" data-rocket-field hidden>
         <input type="checkbox" data-rocket>
-        <span>Rocket: real gravity and thrust in any direction, fuel unlimited. Only the body whose sphere of influence you are in pulls on you. Air slows you on Venus, Earth, Mars, Titan, the giant planets and worlds with seas: the rocket weighs 30 t, and drag grows with the air's real density and with how much of the rocket faces the wind, least nose first, most side on. It never burns up. Time runs at most 5&times; while the engine fires.</span>
+        <span>Rocket: real gravity and a two-stage rocket built from real parts. Its engines are like SpaceX's Merlin: thrust and fuel use change with air pressure, so they push about 10% harder in vacuum than at sea level and cannot fire at all in Venus's thick air. It weighs 334 t on the pad and has about 9.9 km/s to spend in vacuum, enough for Earth orbit with some to spare. Only the body whose sphere of influence you are in pulls on you. Air slows you on Venus, Earth, Mars, Titan, the giant planets and worlds with seas: drag grows with the air's real density and with how much of the rocket faces the wind, least nose first, most side on. It never burns up. Time runs at most 5&times; while the engine fires.</span>
       </label>
-      <label class="fh-field" data-engine-field hidden>
-        <span>Engine</span>
-        <select data-engine>
-          <option value="1" selected>1.5 g: real-scale burns (about 9 min to orbit Earth)</option>
-          <option value="2">3 g: about 4.5 min to orbit</option>
-          <option value="4">6 g: about 2.5 min to orbit, harder to time</option>
-        </select>
+      <label class="fh-check" data-unlimited-fuel-field hidden>
+        <input type="checkbox" data-unlimited-fuel>
+        <span>Unlimited fuel: tanks never empty, stages still drop</span>
       </label>
       <label class="fh-check">
         <input type="checkbox" data-motion-blur>
@@ -310,6 +309,7 @@
           <li><kbd>Drag</kbd> turn your head &middot; <kbd>&larr;&uarr;&rarr;&darr;</kbd> <kbd>Q</kbd><kbd>E</kbd> turn the ship</li>
           <li><kbd>C</kbd> point the ship where you look &middot; <kbd>J</kbd> jump</li>
           <li><kbd>W</kbd><kbd>S</kbd> thrust forward, back &middot; <kbd>A</kbd><kbd>D</kbd> sideways &middot; <kbd>R</kbd><kbd>F</kbd> up, down</li>
+          <li>Rocket: <kbd>W</kbd> main engines, the other flight keys small side thrusters &middot; <kbd>Z</kbd><kbd>X</kbd> throttle &middot; <kbd>Space</kbd> drop a stage</li>
           <li><kbd>Wheel</kbd> or <kbd>Z</kbd><kbd>X</kbd> thruster speed &middot; <kbd>T</kbd> start or stop exposure &middot; <kbd>M</kbd> atlas &middot; <kbd>O</kbd> orbits, <kbd>,</kbd><kbd>.</kbd> time slower, faster, <kbd>/</kbd> pause time and <kbd>P</kbd> long-exposure view (Explore)</li>
           <li><kbd>+</kbd><kbd>&minus;</kbd> or <kbd>Ctrl</kbd> <kbd>Wheel</kbd> zoom &middot; <kbd>0</kbd> normal view</li>
           <li>Click a star through a window to claim it</li>
